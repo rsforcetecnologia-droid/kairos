@@ -131,11 +131,11 @@ gap: 0.5rem;
 .toast {
 display: flex;
 align-items: center; /* Alinha o ícone e o texto verticalmente */
-padding: 0.75rem 1rem; /* Padding vertical ajustado */
+padding: 0.4rem 0.8rem; /* Padding vertical e horizontal reduzidos */
 border-radius: 0.75rem; 
 box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-min-width: 320px;
-max-width: 350px;
+min-width: auto;
+max-width: 280px; /* Largura máxima reduzida */
 border-left-width: 4px;
 position: relative;
 overflow: hidden;
@@ -149,7 +149,7 @@ animation: slideInFromRight 0.4s ease-out, fadeOutToTop 0.5s ease-in 3.5s forwar
 
 .toast-icon {
 flex-shrink: 0;
-margin-right: 0.75rem;
+margin-right: 0.5rem; /* Margem reduzida */
 }
 
 .toast-content {
@@ -158,11 +158,11 @@ flex-grow: 1;
 
 .toast-close {
 position: absolute;
-top: 4px;
-right: 8px;
+top: 2px; /* Ajustado */
+right: 6px; /* Ajustado */
 background: none;
 border: none;
-font-size: 1.5rem;
+font-size: 1.25rem; /* Tamanho reduzido */
 line-height: 1;
 color: inherit;
 opacity: 0.5;
@@ -554,7 +554,7 @@ position: absolute;
 top: 100%;
 right: 0;
 margin-top: 0.5rem;
-width: 320px;
+width: 280px; /* Reduzido de 320px */
 background-color: white;
 border-radius: 0.75rem; /* Arredondado */
 box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -563,7 +563,7 @@ z-index: 50;
 }
 
 .notification-item {
-padding: 0.75rem 1rem;
+padding: 0.5rem 0.75rem; /* Reduzido de 0.75rem 1rem */
 border-bottom: 1px solid #f3f4f6;
 transition: background-color 0.2s;
 }
@@ -587,4 +587,7 @@ background-color: #eff6ff; /* blue-50 */
     transform: translateY(0);
     pointer-events: auto;
 }
+
+
+
 

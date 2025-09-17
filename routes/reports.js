@@ -32,16 +32,24 @@ router.get('/sales/:establishmentId', async (req, res) => {
             .where('transaction.paidAt', '>=', startTimestamp)
             .where('transaction.paidAt', '<=', endTimestamp);
 
-        // Aplica o filtro de sessão de caixa se for fornecido
-        if (cashierSessionId && cashierSessionId !== 'all') {
-            // A lógica de filtragem será aplicada no código abaixo, pois não podemos
-            // garantir que o campo cashierSessionId exista em todos os documentos.
-        }
+        // Busca todas as sessões de caixa para mapear os nomes dos responsáveis
+        const cashierSessionsQuery = db.collection('cashierSessions')
+            .where('establishmentId', '==', establishmentId);
 
-        const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
+
+        const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
-            salesQuery.get()
+            salesQuery.get(),
+            cashierSessionsQuery.get()
         ]);
+
+        // Cria um mapa de ID da sessão -> Nome do responsável
+        const cashierSessionMap = new Map();
+        cashierSessionsSnapshot.forEach(doc => {
+            const data = doc.data();
+            cashierSessionMap.set(doc.id, data.openedByName || data.closedByName || 'N/A');
+        });
+
 
         let allTransactions = [];
         let paymentMethodTotals = {};
@@ -68,7 +76,9 @@ router.get('/sales/:establishmentId', async (req, res) => {
                 client: data.clientName,
                 items: (data.items || data.services || []).map(i => i.name).join(', '),
                 total: transactionData.totalAmount,
-                type: data.type === 'walk-in' ? 'Venda Avulsa' : 'Agendamento'
+                type: data.type === 'walk-in' ? 'Venda Avulsa' : 'Agendamento',
+                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido',
+                payments: transactionData.payments // Adiciona os detalhes do pagamento
             });
         };
         

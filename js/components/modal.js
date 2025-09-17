@@ -74,9 +74,9 @@ export function showNotification(message, type = 'info', playSound = false) {
     };
 
     const icons = {
-        success: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-        error: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-        info: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+        success: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+        error: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+        info: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
     };
 
     const progressBg = {
@@ -89,8 +89,7 @@ export function showNotification(message, type = 'info', playSound = false) {
     toast.innerHTML = `
         <div class="toast-icon">${icons[type] || icons['info']}</div>
         <div class="toast-content">
-            <p class="font-bold">${type.charAt(0).toUpperCase() + type.slice(1)}</p>
-            <p class="text-sm">${message}</p>
+            <p class="text-sm font-medium">${message}</p>
         </div>
         <button class="toast-close">&times;</button>
         <div class="toast-progress-bar">
@@ -125,9 +124,9 @@ export function showConfirmation(title, message) {
                 <div class="mt-2 text-sm text-gray-500">
                     <p>${message}</p>
                 </div>
-                <div class="mt-5 sm:mt-6 flex justify-center gap-4">
-                    <button id="genericModalCancelBtn" class="w-full py-2 px-4 bg-white text-gray-700 font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition">Cancelar</button>
-                    <button id="genericModalConfirmBtn" class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition">Confirmar</button>
+                <div class="mt-5 sm:mt-6 flex justify-end gap-2">
+                    <button id="genericModalCancelBtn" class="py-1 px-4 bg-white text-gray-700 font-semibold rounded-md border border-gray-300 hover:bg-gray-50 transition text-xs">Cancelar</button>
+                    <button id="genericModalConfirmBtn" class="py-1 px-4 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition text-xs">Confirmar</button>
                 </div>
             </div>`;
 
@@ -234,3 +233,6 @@ export function openCancellationHistoryModal() {
     // Carrega a busca inicial
     fetchAndDisplayCancellations();
 }
+
+
+

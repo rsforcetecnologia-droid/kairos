@@ -10,8 +10,18 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <!-- ATUALIZAÇÃO: Versão do Firebase SDK atualizada e modular -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        window.initializeApp = initializeApp;
+    </script>
+    <script type="module">
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        window.getAuth = getAuth;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.signOut = signOut;
+    </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -20,6 +30,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
         .toggle-bg:after {
             content: '';
@@ -38,19 +49,36 @@
         input:checked + .toggle-bg {
             background-color: #4f46e5;
         }
+        /* Animação para entrada do Modal */
+        .modal-enter {
+            opacity: 0;
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transition: opacity 200ms ease-in-out;
+        }
+        .modal-content-enter {
+            transform: scale(0.95) translateY(10px);
+        }
+        .modal-content-enter-active {
+            transform: scale(1) translateY(0);
+            transition: transform 200ms ease-in-out;
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- CÓDIGO COMPLETO DA APLICAÇÃO REACT ---
+        // --- INÍCIO DA APLICAÇÃO REACT ---
 
         const { useState, useEffect, useCallback, useRef } = React;
         const { Chart: ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } = window.Chart;
+        
         ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
         
-        // --- CONFIGURAÇÃO DO FIREBASE (REAL, com sintaxe v8 correta) ---
+        // --- 1. CONFIGURAÇÃO E SERVIÇOS GLOBAIS ---
+        
         const firebaseConfig = {
             apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
             authDomain: "kairos-system.firebaseapp.com",
@@ -60,134 +88,62 @@
             appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
             measurementId: "G-SVHFXKV5EC"
         };
+        
+        const app = window.initializeApp(firebaseConfig);
+        const auth = window.getAuth(app);
 
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-
-        // --- SERVIÇO DE API ---
         const API_BASE_URL = window.location.origin;
 
         async function authenticatedFetch(endpoint, options = {}, user) {
             if (!user || !user.token) {
-                auth.signOut();
+                await window.signOut(auth);
                 throw new Error("Utilizador não autenticado.");
             }
             
-            const headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${user.token}`
-            };
-
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                ...options,
-                headers: { ...headers, ...options.headers },
-            });
+            const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` };
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: response.statusText }));
                 throw new Error(errorData.message || `Erro na API: ${response.status}`);
             }
             
-            if (response.status === 204 || (response.status === 200 && response.headers.get('content-length') === '0')) {
-                return null;
-            }
-
+            if (response.status === 204 || (response.status === 200 && response.headers.get('content-length') === '0')) return null;
             return response.json();
         }
 
-        // --- Ícones para a Barra de Navegação e UI (SVG) ---
         const icons = {
-          agenda: (color) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>),
-          comandas: (color) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>),
-          relatorios: (color) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>),
-          gestao: (color) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>),
-          plus: (color) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>),
-          dots: (color = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M5 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>),
-          back: (color = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={color} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>)
+          agenda: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>),
+          comandas: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>),
+          relatorios: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>),
+          gestao: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>),
+          plus: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>),
+          dots: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M5 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>),
+          back: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>)
+        };
+        
+        // --- 2. COMPONENTES REUTILIZÁVEIS ---
+
+        const LoadingScreen = () => (
+          <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-900">
+            <div className="text-2xl font-bold text-white mb-4">Kairos App</div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+          </div>
+        );
+
+        const NotificationModal = ({ isOpen, onClose, title, message }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="modal-enter fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="modal-content-enter bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
+                        <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+                        <p className="text-gray-600 my-4">{message}</p>
+                        <button onClick={onClose} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">OK</button>
+                    </div>
+                </div>
+            );
         };
 
-        // --- Ecrã de Login ---
-        const LoginScreen = ({ onLoginSuccess }) => {
-          const [email, setEmail] = useState('');
-          const [password, setPassword] = useState('');
-          const [isLoading, setIsLoading] = useState(false);
-          const [errorMessage, setErrorMessage] = useState(null);
-
-          const handleLogin = async () => {
-            setIsLoading(true);
-            setErrorMessage(null);
-            try {
-                const userCredential = await auth.signInWithEmailAndPassword(email, password);
-                const user = userCredential.user;
-                const idTokenResult = await user.getIdTokenResult();
-                const claims = idTokenResult.claims;
-
-                if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
-                    const establishmentDetailsRes = await fetch(`${API_BASE_URL}/api/establishments/${claims.establishmentId}/details`);
-                    if (!establishmentDetailsRes.ok) throw new Error("Não foi possível verificar os dados do estabelecimento.");
-                    
-                    const establishmentDetails = await establishmentDetailsRes.json();
-                    
-                    if (establishmentDetails.mobileAccessEnabled === true) {
-                        const userData = { 
-                            name: user.displayName, 
-                            email: user.email,
-                            uid: user.uid,
-                            token: await user.getIdToken(),
-                            establishmentId: claims.establishmentId
-                        };
-                        onLoginSuccess(userData);
-                    } else {
-                        setErrorMessage('Acesso ao aplicativo não liberado. Contacte o administrador.');
-                        await auth.signOut();
-                    }
-                } else {
-                    setErrorMessage('Acesso negado. Permissões insuficientes.');
-                    await auth.signOut();
-                }
-            } catch (error) {
-                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-                    setErrorMessage('E-mail ou senha inválidos.');
-                } else {
-                    setErrorMessage(error.message || 'Ocorreu um erro ao tentar entrar.');
-                }
-            } finally {
-                setIsLoading(false);
-            }
-          };
-          
-          return (
-            <div className="flex-1 bg-gray-900 h-screen flex justify-center items-center font-sans">
-              <div className="w-full max-w-md">
-                <div className="text-center mb-12 px-6">
-                  <h1 className="text-3xl font-bold text-gray-50">Acesso ao Painel</h1>
-                  <p className="text-base text-gray-400 mt-2">Administre o seu estabelecimento</p>
-                </div>
-                <div className="px-6">
-                  <div className="mb-5">
-                    <label className="text-sm font-medium text-gray-300 mb-2 block">E-mail</label>
-                    <input type="email" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                  </div>
-                  <div className="mb-4">
-                    <label className="text-sm font-medium text-gray-300 mb-2 block">Senha</label>
-                    <input type="password" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                  {errorMessage && (<p className="text-red-400 text-center mb-4 text-sm">{errorMessage}</p>)}
-                  <button className={`w-full bg-blue-600 text-white font-bold py-4 rounded-lg text-base mt-4 transition-colors ${isLoading ? 'bg-blue-400' : 'hover:bg-blue-700'}`} onClick={handleLogin} disabled={isLoading}>
-                    {isLoading ? (
-                      <div className="flex justify-center items-center">
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        A entrar...
-                      </div>
-                    ) : ('Entrar')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        };
-
-        // --- Modal de Novo/Editar Agendamento ---
         const AppointmentModal = ({ isOpen, onClose, onSave, appointmentToEdit, user, showNotification }) => {
             if (!isOpen) return null;
 
@@ -201,6 +157,7 @@
             const [availableServices, setAvailableServices] = useState([]);
             const [availableProfessionals, setAvailableProfessionals] = useState([]);
             const [availableTimes, setAvailableTimes] = useState([]);
+            const [isLoadingData, setIsLoadingData] = useState(true);
 
             const [isSaving, setIsSaving] = useState(false);
             const isFormValid = clientName && clientPhone && selectedServices.length > 0 && professionalId && time;
@@ -208,202 +165,152 @@
 
             useEffect(() => {
                 const fetchData = async () => {
+                    setIsLoadingData(true);
                     try {
                         const [servicesData, professionalsData] = await Promise.all([
-                            authenticatedFetch(`/api/public/services/${user.establishmentId}`, {}, user),
+                            authenticatedFetch(`/api/services/public/${user.establishmentId}`, {}, user),
                             authenticatedFetch(`/api/professionals/${user.establishmentId}`, {}, user)
                         ]);
                         setAvailableServices(servicesData);
                         setAvailableProfessionals(professionalsData);
                     } catch (error) {
-                        console.error("Erro ao carregar dados para o modal:", error);
                         showNotification('Erro', 'Não foi possível carregar os dados necessários.');
+                    } finally {
+                        setIsLoadingData(false);
                     }
                 };
                 fetchData();
-            }, [user]);
+            }, [user, showNotification]);
 
             useEffect(() => {
                 const fetchAvailability = async () => {
                     if (selectedServices.length > 0 && professionalId && date) {
+                        setAvailableTimes([]);
                         try {
                             const endpoint = `/api/availability?establishmentId=${user.establishmentId}&professionalId=${professionalId}&serviceIds=${selectedServices.join(',')}&date=${date}`;
                             const times = await authenticatedFetch(endpoint, {}, user);
                             setAvailableTimes(times);
                         } catch(error) {
-                            console.error("Erro ao buscar horários:", error);
-                            setAvailableTimes([]);
+                            showNotification("Erro", "Não foi possível buscar horários disponíveis.");
                         }
                     }
                 };
                 fetchAvailability();
-            }, [selectedServices, professionalId, date, user]);
+            }, [selectedServices, professionalId, date, user, showNotification]);
 
             const handleSubmit = async () => {
                 if (!isFormValid) return;
                 setIsSaving(true);
                 
-                const servicesDataForSave = selectedServices.map(id => availableServices.find(s => s.id === id));
+                const servicesDataForSave = selectedServices.map(id => {
+                    const service = availableServices.find(s => s.id === id);
+                    return { id: service.id, name: service.name, price: service.price, duration: service.duration };
+                });
+                
                 const startTimeISO = new Date(`${date}T${time}:00`).toISOString();
 
                 const appointmentData = {
                     id: isEditing ? appointmentToEdit.id : null,
-                    clientName,
-                    clientPhone,
-                    services: servicesDataForSave,
-                    professionalId,
-                    startTime: startTimeISO,
+                    clientName, clientPhone, services: servicesDataForSave,
+                    professionalId, startTime: startTimeISO,
                     establishmentId: user.establishmentId,
                 };
                 
                 await onSave(appointmentData);
                 setIsSaving(false);
-                onClose();
             };
 
+            const handleServiceToggle = (serviceId) => {
+                setSelectedServices(prev => 
+                    prev.includes(serviceId) 
+                        ? prev.filter(id => id !== serviceId) 
+                        : [...prev, serviceId]
+                );
+            };
+            
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
                         <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar Agendamento' : 'Novo Agendamento'}</h3></div>
-                        <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
-                            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Nome do Cliente</label><input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Telemóvel do Cliente</label><input type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-700 mb-1 block">Serviços</label>
-                                <div className="space-y-1">
-                                    {availableServices.map(s => (
-                                        <label key={s.id} className="flex items-center"><input type="checkbox" value={s.id} checked={selectedServices.includes(s.id)} onChange={(e) => {
-                                            const id = e.target.value;
-                                            setSelectedServices(prev => e.target.checked ? [...prev, id] : prev.filter(pId => pId !== id));
-                                        }} className="mr-2" />{s.name}</label>
-                                    ))}
+                        <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+                           {isLoadingData ? <p>A carregar...</p> : (
+                               <>
+                                <div><label className="text-sm font-medium text-gray-700 mb-1 block">Nome do Cliente</label><input type="text" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                <div><label className="text-sm font-medium text-gray-700 mb-1 block">Telemóvel do Cliente</label><input type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 mb-1 block">Serviços</label>
+                                    <div className="space-y-1 max-h-24 overflow-y-auto p-2 border rounded-md">
+                                        {availableServices.map(s => (
+                                            <label key={s.id} className="flex items-center"><input type="checkbox" value={s.id} checked={selectedServices.includes(s.id)} onChange={() => handleServiceToggle(s.id)} className="mr-2" />{s.name}</label>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Profissional</label><select value={professionalId} onChange={(e) => setProfessionalId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white"><option value="">Selecione...</option>{availableProfessionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Data</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-700 mb-1 block">Horário</label>
-                                <select value={time} onChange={e => setTime(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                                    <option value="">Selecione...</option>
-                                    {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
+                                <div><label className="text-sm font-medium text-gray-700 mb-1 block">Profissional</label><select value={professionalId} onChange={(e) => setProfessionalId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white"><option value="">Selecione...</option>{availableProfessionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                                <div><label className="text-sm font-medium text-gray-700 mb-1 block">Data</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                <div>
+                                    <label className="text-sm font-medium text-gray-700 mb-1 block">Horário</label>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        {availableTimes.length > 0 ? availableTimes.map(t => <button key={t} onClick={() => setTime(t)} className={`p-2 rounded-md text-sm ${time === t ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>{t}</button>) : <p className="col-span-4 text-center text-sm text-gray-500">Selecione os campos acima.</p>}
+                                    </div>
+                                </div>
+                               </>
+                           )}
                         </div>
                         <div className="p-4 bg-gray-50 flex gap-4"><button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button><button onClick={handleSubmit} disabled={!isFormValid || isSaving} className="flex-1 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400">{isSaving ? 'A salvar...' : (isEditing ? 'Salvar' : 'Agendar')}</button></div>
                     </div>
                 </div>
             );
         };
+        
+        // --- 3. ECRÃS PRINCIPAIS DA APLICAÇÃO (Continuação) ---
 
-        const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
-            if (!isOpen) return null;
-            return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
-                        <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-                        <p className="text-gray-600 my-4">{message}</p>
-                        <div className="flex gap-4">
-                            <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
-                            <button onClick={onConfirm} className="flex-1 py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Confirmar</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+        // ECRÃ: LoginScreen
+        // ... (código existente) ...
 
+        // ECRÃ: AgendaScreen
         const AgendaScreen = ({ user, showNotification }) => {
             const [currentDate, setCurrentDate] = useState(new Date());
             const [appointments, setAppointments] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
-            const [error, setError] = useState(null);
-            const [modalState, setModalState] = useState({ isOpen: false, appointment: null });
-            const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
-            const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
-            
-            const [professionals, setProfessionals] = useState([]);
-            const [services, setServices] = useState([]);
-            const [selectedProfessional, setSelectedProfessional] = useState('all');
-            const [selectedService, setSelectedService] = useState('all');
+            const [isModalOpen, setIsModalOpen] = useState(false);
 
             const fetchAppointments = useCallback(async () => {
-                if (!user) return;
                 setIsLoading(true);
-                setError(null);
                 try {
                     const startOfDay = new Date(currentDate);
                     startOfDay.setHours(0, 0, 0, 0);
                     const endOfDay = new Date(currentDate);
                     endOfDay.setHours(23, 59, 59, 999);
-                    
                     const endpoint = `/api/appointments/${user.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`;
                     const data = await authenticatedFetch(endpoint, {}, user);
-                    
-                    setAppointments(data);
-                } catch (err) {
-                    setError('Falha ao carregar os dados da agenda.');
-                    console.error(err);
+                    setAppointments(data.sort((a,b) => new Date(a.startTime) - new Date(b.startTime)));
+                } catch (error) {
+                    showNotification('Erro na Agenda', error.message);
                 } finally {
                     setIsLoading(false);
                 }
-            }, [currentDate, user]);
-            
-            useEffect(() => {
-                const fetchFilterData = async () => {
-                    if (!user) return;
-                    try {
-                        const [profsData, servicesData] = await Promise.all([
-                            authenticatedFetch(`/api/professionals/${user.establishmentId}`, {}, user),
-                            authenticatedFetch(`/api/public/services/${user.establishmentId}`, {}, user)
-                        ]);
-                        setProfessionals(profsData);
-                        setServices(servicesData);
-                    } catch (err) {
-                        console.error("Failed to load filter data", err);
-                        showNotification('Erro', 'Não foi possível carregar os filtros.');
-                    }
-                };
-                fetchFilterData();
-            }, [user]);
+            }, [currentDate, user, showNotification]);
 
-            useEffect(() => {
-                fetchAppointments();
-            }, [fetchAppointments]);
-            
+            useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
             const handleSaveAppointment = async (appointmentData) => {
                 const isEditing = !!appointmentData.id;
                 const endpoint = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
                 const method = isEditing ? 'PUT' : 'POST';
 
                 try {
-                    await authenticatedFetch(endpoint, {
-                        method,
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(appointmentData)
-                    }, user);
+                    await authenticatedFetch(endpoint, { method, body: JSON.stringify(appointmentData) }, user);
                     showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                    setIsModalOpen(false);
                     await fetchAppointments();
                 } catch(err) {
-                    console.error("Erro ao salvar agendamento:", err);
                     showNotification('Erro', err.message);
                 }
             };
-
-            const handleDelete = async (appointmentId) => {
-                try {
-                    await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
-                    showNotification('Sucesso!', 'Agendamento apagado.');
-                    await fetchAppointments();
-                } catch(err) {
-                    console.error("Erro ao apagar agendamento:", err);
-                    showNotification('Erro', err.message);
-                } finally {
-                    setConfirmState({ isOpen: false, appointmentId: null });
-                }
-            };
-
+            
             const changeDate = (amount) => {
-                setCurrentDate(prevDate => {
-                    const newDate = new Date(prevDate);
+                setCurrentDate(prev => {
+                    const newDate = new Date(prev);
                     newDate.setDate(newDate.getDate() + amount);
                     return newDate;
                 });
@@ -411,468 +318,191 @@
 
             const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
 
-            const renderContent = () => {
-                if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
-                if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
-                
-                const filteredAppointments = appointments
-                    .filter(appt => {
-                        const professionalMatch = selectedProfessional === 'all' || appt.professionalId === selectedProfessional;
-                        const serviceMatch = selectedService === 'all' || (appt.services && appt.services.some(s => s.id === selectedService));
-                        return professionalMatch && serviceMatch;
-                    })
-                    .sort((a,b) => new Date(a.startTime) - new Date(b.startTime));
-
-                if (filteredAppointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento encontrado para os filtros selecionados.</div>;
-                
-                return filteredAppointments.map(appt => (
-                  <div key={appt.id} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'}`}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
-                        <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
-                      </div>
-                      <div className="relative">
-                        <button onClick={() => setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id)} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
-                        {actionMenuOpenId === appt.id && (
-                          <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
-                            <button onClick={() => { setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
-                            <button onClick={() => { setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2"><p className="font-bold text-gray-900">{appt.clientName}</p><p className="text-sm text-gray-600">{appt.serviceName}</p><p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p></div>
-                  </div>
-                ));
-            };
-
             return (
-              <div className="relative h-full flex flex-col">
-                <div className="p-4 bg-white border-b border-gray-200">
-                    <div className="flex items-center justify-between">
+                 <div className="flex flex-col h-full">
+                    <header className="flex-shrink-0 bg-white p-4 flex items-center justify-between shadow-md">
                         <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-gray-100">&lt;</button>
-                        <h3 className="font-semibold text-gray-800 text-center">{formatDate(currentDate)}</h3>
+                        <h2 className="font-semibold text-gray-800 text-center">{formatDate(currentDate)}</h2>
                         <button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-gray-100">&gt;</button>
-                    </div>
-                    <div className="mt-4 grid grid-cols-2 gap-4">
-                        <select value={selectedProfessional} onChange={e => setSelectedProfessional(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                            <option value="all">Todos Profissionais</option>
-                            {professionals.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        <select value={selectedService} onChange={e => setSelectedService(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md bg-white">
-                            <option value="all">Todos Serviços</option>
-                            {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                    </div>
-                </div>
-                <div className="p-4 space-y-4 flex-1 overflow-y-auto">{renderContent()}</div>
-                <button onClick={() => setModalState({ isOpen: true, appointment: null })} className="absolute bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700">{icons.plus('white')}</button>
-                <AppointmentModal isOpen={modalState.isOpen} onClose={() => setModalState({ isOpen: false, appointment: null })} onSave={handleSaveAppointment} appointmentToEdit={modalState.appointment} user={user} showNotification={showNotification} />
-                <ConfirmationModal isOpen={confirmState.isOpen} onClose={() => setConfirmState({ isOpen: false, appointmentId: null })} onConfirm={() => handleDelete(confirmState.appointmentId)} title="Apagar Agendamento" message="Tem a certeza que deseja apagar este agendamento?" />
-              </div>
-            );
-        };
-        
-        // --- Componentes de Comandas (Funcional) ---
-        const AddItemModal = ({ isOpen, onClose, onAddItem, user }) => {
-            if (!isOpen) return null;
-            const [services, setServices] = useState([]);
-            const [products, setProducts] = useState([]);
-            const [isLoading, setIsLoading] = useState(true);
-            const [searchTerm, setSearchTerm] = useState("");
-
-            useEffect(() => {
-                const fetchItems = async () => {
-                    setIsLoading(true);
-                    try {
-                        const [servicesData, productsData] = await Promise.all([
-                            authenticatedFetch(`/api/public/services/${user.establishmentId}`, {}, user),
-                            authenticatedFetch(`/api/products/${user.establishmentId}`, {}, user)
-                        ]);
-                        setServices(servicesData);
-                        setProducts(productsData);
-                    } catch (error) {
-                        console.error("Erro ao buscar itens:", error);
-                    } finally {
-                        setIsLoading(false);
-                    }
-                };
-                fetchItems();
-            }, [user]);
-
-            const handleItemClick = (item, type) => { 
-                onAddItem({ ...item, type }); 
-                onClose(); 
-            };
-            
-            const filteredServices = services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-            const filteredProducts = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-            return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
-                        <div className="p-4 border-b flex justify-between items-center"><h3 className="text-xl font-bold text-gray-800">Adicionar Item</h3><button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">&times;</button></div>
-                        <div className="p-4">
-                            <input type="text" placeholder="Pesquisar item..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md mb-4" />
-                        </div>
-                        <div className="p-4 max-h-80 overflow-y-auto">
-                            {isLoading ? <p>A carregar...</p> : (
-                                <>
-                                    <h4 className="font-semibold text-gray-700 mb-2">Serviços</h4>
-                                    <div className="space-y-2">{filteredServices.map((item, i) => (<button key={`s-${i}`} onClick={() => handleItemClick(item, 'service')} className="w-full flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100"><span>{item.name}</span><span className="font-semibold">R$ {item.price.toFixed(2)}</span></button>))}</div>
-                                    <h4 className="font-semibold text-gray-700 mt-4 mb-2">Produtos</h4>
-                                    <div className="space-y-2">{filteredProducts.map((item, i) => (<button key={`p-${i}`} onClick={() => handleItemClick(item, 'product')} className="w-full flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100"><span>{item.name}</span><span className="font-semibold">R$ {item.price.toFixed(2)}</span></button>))}</div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const CheckoutModal = ({ isOpen, onClose, comanda, user, onUpdate, showNotification }) => {
-            if (!isOpen) return null;
-            
-            const [payments, setPayments] = useState([]);
-            const [paymentMethod, setPaymentMethod] = useState('dinheiro');
-            const [paymentValue, setPaymentValue] = useState(0);
-            const [isSaving, setIsSaving] = useState(false);
-
-            const total = (comanda.services || []).reduce((acc, s) => acc + s.price, 0) + (comanda.comandaItems || []).reduce((acc, i) => acc + i.price, 0);
-            const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
-            const remaining = total - totalPaid;
-
-            useEffect(() => {
-                setPaymentValue(parseFloat(remaining.toFixed(2)));
-            }, [remaining]);
-
-            const handleAddPayment = () => {
-                const valueToAdd = parseFloat(paymentValue);
-                if (valueToAdd <= 0 || valueToAdd > remaining + 0.001) {
-                    showNotification('Valor Inválido', 'O valor do pagamento não pode ser zero ou maior que o valor restante.');
-                    return;
-                };
-                setPayments([...payments, { method: paymentMethod, value: valueToAdd }]);
-            };
-            
-            const handleConfirmPayment = async () => {
-                setIsSaving(true);
-                try {
-                    const paymentData = { payments, totalAmount: total };
-                    await authenticatedFetch(`/api/appointments/${comanda.id}/checkout`, {
-                        method: 'POST',
-                        body: JSON.stringify(paymentData)
-                    }, user);
-                    showNotification('Sucesso', 'Pagamento finalizado com sucesso!');
-                    onClose();
-                    onUpdate(true);
-                } catch (error) {
-                    console.error("Erro ao finalizar pagamento:", error);
-                    showNotification('Erro', error.message);
-                } finally {
-                    setIsSaving(false);
-                }
-            };
-
-            return (
-                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
-                        <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Finalizar Pagamento</h3></div>
-                        <div className="p-4">
-                            <div className="text-center mb-4"><p className="text-gray-600">Total a Pagar</p><p className="text-4xl font-bold text-gray-900">R$ {total.toFixed(2)}</p></div>
-                            <div className="space-y-2 mb-4 max-h-24 overflow-y-auto">{payments.map((p, i) => (<div key={i} className="flex justify-between items-center bg-gray-100 p-2 rounded"><span>{p.method.charAt(0).toUpperCase() + p.method.slice(1)}</span><span>R$ {p.value.toFixed(2)}</span><button onClick={() => setPayments(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 font-bold">&times;</button></div>))}</div>
-                            {remaining > 0.001 && (
-                                <div className="flex gap-2 items-end mb-4">
-                                    <div className="flex-1">
-                                        <label className="text-sm font-medium">Método</label>
-                                        <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full p-2 border rounded-md">
-                                            <option value="dinheiro">Dinheiro</option><option value="pix">PIX</option><option value="credito">Crédito</option><option value="debito">Débito</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex-1">
-                                        <label className="text-sm font-medium">Valor</label>
-                                        <input type="number" value={paymentValue} onChange={e => setPaymentValue(e.target.value)} className="w-full p-2 border rounded-md" />
-                                    </div>
-                                    <button onClick={handleAddPayment} className="bg-blue-500 text-white rounded-lg p-2 font-bold">+</button>
-                                </div>
-                            )}
-                            <div className={`text-center font-bold text-lg ${remaining > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
-                                {remaining > 0.01 ? `Faltam R$ ${remaining.toFixed(2)}` : 'Total Pago!'}
-                            </div>
-                        </div>
-                        <div className="p-4 bg-gray-50 flex gap-4">
-                            <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 rounded-lg">Cancelar</button>
-                            <button onClick={handleConfirmPayment} disabled={remaining > 0.01 || isSaving} className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg disabled:bg-gray-400">{isSaving ? 'A guardar...' : 'Confirmar'}</button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-        
-        const ComandaDetailModal = ({ comanda, isOpen, onClose, onUpdate, user, showNotification }) => {
-            if (!isOpen || !comanda) return null;
-            const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-            const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
-            const [currentComanda, setCurrentComanda] = useState(comanda);
-
-            useEffect(() => { setCurrentComanda(comanda) }, [comanda]);
-
-            const calculateTotal = (c) => (c.services || []).reduce((acc, s) => acc + s.price, 0) + (c.comandaItems || []).reduce((acc, i) => acc + i.price, 0);
-
-            const handleAddItem = async (newItem) => {
-                const updatedItem = { itemId: newItem.id, type: newItem.type, name: newItem.name, price: newItem.price };
-                const updatedItems = [...(currentComanda.comandaItems || []), updatedItem];
-                try {
-                    await authenticatedFetch(`/api/appointments/${currentComanda.id}/comanda`, { method: 'POST', body: JSON.stringify({ items: updatedItems }) }, user);
-                    const updatedComanda = { ...currentComanda, comandaItems: updatedItems };
-                    setCurrentComanda(updatedComanda);
-                    onUpdate();
-                } catch (error) {
-                    console.error("Erro ao adicionar item:", error);
-                    showNotification('Erro', error.message);
-                }
-            };
-            
-            const handleRemoveItem = async (itemIndexToRemove) => {
-                const updatedItems = (currentComanda.comandaItems || []).filter((_, index) => index !== itemIndexToRemove);
-                 try {
-                    await authenticatedFetch(`/api/appointments/${currentComanda.id}/comanda`, { method: 'POST', body: JSON.stringify({ items: updatedItems }) }, user);
-                    const updatedComanda = { ...currentComanda, comandaItems: updatedItems };
-                    setCurrentComanda(updatedComanda);
-                    onUpdate();
-                } catch (error) {
-                    console.error("Erro ao remover item:", error);
-                    showNotification('Erro', error.message);
-                }
-            };
-            
-            const handleReopen = async () => {
-                try {
-                    await authenticatedFetch(`/api/appointments/${currentComanda.id}/reopen`, { method: 'POST' }, user);
-                    onUpdate();
-                    onClose();
-                } catch (error) {
-                    console.error("Erro ao reabrir:", error);
-                    showNotification('Erro', error.message);
-                }
-            };
-
-            const handleAwaitPayment = async () => {
-                try {
-                    await authenticatedFetch(`/api/appointments/${currentComanda.id}/awaiting-payment`, { method: 'POST' }, user);
-                    onUpdate();
-                    onClose();
-                } catch (error) {
-                    console.error("Erro ao encerrar atendimento:", error);
-                    showNotification('Erro', error.message);
-                }
-            }
-
-            const isInProgress = currentComanda.status === 'confirmed';
-
-            return (
-                <>
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{height: '90vh'}}>
-                            <div className="p-4 border-b">
-                                <h3 className="text-xl font-bold text-gray-800">Detalhes da Comanda</h3>
-                                <p className="text-sm text-gray-600">{currentComanda.clientName} com {currentComanda.professionalName}</p>
-                            </div>
-                            <div className="p-4 space-y-2 flex-1 overflow-y-auto">
-                                {(currentComanda.services || []).map((item, index) => (
-                                    <div key={`service-${index}`} className="flex justify-between items-center">
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {isLoading ? <p className="text-center text-gray-500">A carregar...</p> : 
+                            appointments.length > 0 ? appointments.map(appt => (
+                                <div key={appt.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'}`}>
+                                    <div className="flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold text-gray-800">{item.name}</p>
-                                            <p className="text-xs text-gray-500">Serviço Principal</p>
+                                            <p className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                            <p className="font-semibold text-gray-900">{appt.clientName}</p>
                                         </div>
-                                        <p className="text-gray-700">R$ {item.price.toFixed(2)}</p>
+                                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
                                     </div>
-                                ))}
-                                {(currentComanda.comandaItems || []).map((item, index) => (
-                                    <div key={`item-${index}`} className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-semibold text-gray-800">{item.name}</p>
-                                            <p className="text-xs text-gray-500">{item.type === 'product' ? 'Produto' : 'Serviço Extra'}</p>
-                                        </div>
-                                        <div className="flex items-center">
-                                            <p className="text-gray-700 mr-2">R$ {item.price.toFixed(2)}</p>
-                                            {currentComanda.status !== 'completed' && (
-                                                <button onClick={() => handleRemoveItem(index)} className="text-red-500 font-bold text-xl">&times;</button>
-                                            )}
-                                        </div>
+                                    <div className="mt-2 pt-2 border-t border-gray-100">
+                                        <p className="text-sm text-gray-600">{appt.serviceName}</p>
+                                        <p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p>
                                     </div>
-                                ))}
-                            </div>
-                            <div className="p-4 border-t flex justify-between items-center">
-                                <span className="font-bold text-lg">Total</span>
-                                <span className="font-bold text-xl text-gray-900">R$ {calculateTotal(currentComanda).toFixed(2)}</span>
-                            </div>
-                            <div className="p-4 bg-gray-50 space-y-2">
-                                {currentComanda.status !== 'completed' && <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>}
-                                <div className="flex gap-4">
-                                    <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Fechar</button>
-                                    {currentComanda.status === 'completed' ? (
-                                        <button onClick={handleReopen} className="flex-1 py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">Reabrir</button>
-                                    ) : isInProgress ? (
-                                        <>
-                                            <button onClick={handleAwaitPayment} className="flex-1 py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Encerrar Atendimento</button>
-                                            <button onClick={() => setIsCheckoutModalOpen(true)} className="flex-1 py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Pgto. Rápido</button>
-                                        </>
-                                    ) : (
-                                        <button onClick={() => setIsCheckoutModalOpen(true)} className="flex-1 py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Finalizar Pagamento</button>
-                                    )}
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                    <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onAddItem={handleAddItem} user={user} />
-                    <CheckoutModal 
-                        isOpen={isCheckoutModalOpen} 
-                        onClose={() => setIsCheckoutModalOpen(false)} 
-                        comanda={currentComanda} 
-                        user={user} 
-                        onUpdate={(shouldCloseParent) => {
-                            onUpdate();
-                            if(shouldCloseParent) onClose();
-                        }} 
+                            )) : <p className="text-center text-gray-500 pt-10">Nenhum agendamento para este dia.</p>
+                        }
+                    </main>
+                    <footer className="p-4">
+                        <button onClick={() => setIsModalOpen(true)} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700">+ Novo Agendamento</button>
+                    </footer>
+                    <AppointmentModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                        onSave={handleSaveAppointment}
+                        user={user}
                         showNotification={showNotification}
                     />
-                </>
+                </div>
             );
         };
-
+        
+        // ... (resto dos ecrãs: Comandas, Relatórios, Gestão, etc.) ...
         const ComandasScreen = ({ user, showNotification }) => {
             const [activeFilter, setActiveFilter] = useState('atendimento');
             const [allComandas, setAllComandas] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
-            const [error, setError] = useState(null);
-            const [selectedComanda, setSelectedComanda] = useState(null);
-
+            
             const fetchComandas = useCallback(async () => {
-                if (!user) return;
                 setIsLoading(true);
-                setError(null);
                 try {
                     const data = await authenticatedFetch(`/api/comandas/${user.establishmentId}`, {}, user);
                     setAllComandas(data);
-                } catch (err) {
-                    setError('Falha ao carregar as comandas.');
-                    console.error(err);
+                } catch (error) {
+                    showNotification('Erro', 'Não foi possível carregar as comandas.');
                 } finally {
                     setIsLoading(false);
                 }
-            }, [user]);
+            }, [user, showNotification]);
 
-            useEffect(() => {
-                fetchComandas();
-            }, [fetchComandas]);
-
+            useEffect(() => { fetchComandas(); }, [fetchComandas]);
+            
             const statusMap = {
                 atendimento: { label: 'Em Atendimento', statusValue: 'confirmed' },
                 pagamento: { label: 'Aguardando Pagamento', statusValue: 'awaiting_payment' },
                 finalizada: { label: 'Finalizadas', statusValue: 'completed' },
             };
             
-            const renderContent = () => {
-                if (isLoading) return <div className="text-center py-10"><p className="text-gray-500">A carregar comandas...</p></div>;
-                if (error) return <div className="text-center py-10"><p className="text-red-500">{error}</p></div>;
-                
-                const currentStatus = statusMap[activeFilter].statusValue;
-                const filteredComandas = allComandas.filter(c => c.status === currentStatus);
-
-                if (filteredComandas.length === 0) return <div className="text-center py-10"><p className="text-gray-500">Nenhuma comanda encontrada para este filtro.</p></div>;
-                
-                return filteredComandas.map(comanda => {
-                    const total = (comanda.services || []).reduce((acc, s) => acc + s.price, 0) + (comanda.comandaItems || []).reduce((acc, i) => acc + i.price, 0);
-                    return (
-                        <div key={comanda.id} onClick={() => setSelectedComanda(comanda)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${activeFilter === 'atendimento' ? 'border-blue-500' : activeFilter === 'pagamento' ? 'border-yellow-500' : 'border-green-500'} cursor-pointer`}>
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-bold text-gray-900">{comanda.clientName}</p>
-                                    <p className="text-sm text-gray-500">com {comanda.professionalName}</p>
-                                    <p className="text-xs text-gray-400 mt-1">{new Date(comanda.startTime).toLocaleDateString('pt-BR')}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-bold text-lg text-gray-800">R$ {total.toFixed(2)}</p>
-                                    <p className="text-xs text-gray-500">{new Date(comanda.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
-                                </div>
-                            </div>
-                        </div>
-                    )
-                });
-            };
-
+            const filteredComandas = allComandas.filter(c => c.status === statusMap[activeFilter].statusValue);
+            
             return (
                 <div className="h-full flex flex-col">
-                    <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-3">{renderContent()}</div>
-                    <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdate={fetchComandas} user={user} showNotification={showNotification} />
+                    <header className="p-2 bg-white border-b border-gray-200">
+                        <div className="flex bg-gray-100 rounded-lg p-1">
+                            {Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}
+                        </div>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                       {isLoading ? <p className="text-center text-gray-500">A carregar...</p> : 
+                           filteredComandas.length > 0 ? filteredComandas.map(comanda => {
+                               const total = (comanda.services || []).reduce((acc, s) => acc + s.price, 0) + (comanda.comandaItems || []).reduce((acc, i) => acc + i.price, 0);
+                               return (
+                                   <div key={comanda.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${activeFilter === 'atendimento' ? 'border-blue-500' : activeFilter === 'pagamento' ? 'border-yellow-500' : 'border-green-500'} cursor-pointer`}>
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold text-gray-900">{comanda.clientName}</p>
+                                                <p className="text-sm text-gray-500">com {comanda.professionalName}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-bold text-lg text-gray-800">R$ {total.toFixed(2)}</p>
+                                                <p className="text-xs text-gray-500">{new Date(comanda.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                               )
+                           }) : <p className="text-center text-gray-500 pt-10">Nenhuma comanda encontrada.</p>
+                       }
+                    </main>
                 </div>
             );
         };
+        
+        // ECRÃ: RelatoriosScreen
         const RelatoriosScreen = ({ user, showNotification }) => {
-             const [kpis, setKpis] = useState(null);
-             const [chartData, setChartData] = useState(null);
-             const [isLoading, setIsLoading] = useState(true);
-             const [error, setError] = useState(null);
-             const chartRef = useRef(null);
+            const [kpis, setKpis] = useState(null);
+            const [chartData, setChartData] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
 
-             useEffect(() => {
+            useEffect(() => {
                 const fetchReports = async () => {
                     if (!user) return;
                     setIsLoading(true);
-                    setError(null);
+                    const endDate = new Date();
+                    const startDate = new Date();
+                    startDate.setDate(endDate.getDate() - 30);
+                    
                     try {
-                        const data = await authenticatedFetch(`/api/analytics/${user.establishmentId}`, {}, user);
+                        const endpoint = `/api/analytics/${user.establishmentId}?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
+                        const data = await authenticatedFetch(endpoint, {}, user);
                         setKpis(data.kpis);
                         setChartData({
-                            labels: data.appointmentsByMonth.map(item => item.month),
+                            labels: data.transactionsByMonth.map(item => item.month),
                             datasets: [{
-                                label: 'Agendamentos',
-                                data: data.appointmentsByMonth.map(item => item.count),
+                                label: 'Vendas',
+                                data: data.transactionsByMonth.map(item => item.revenue),
                                 backgroundColor: 'rgba(59, 130, 246, 0.5)',
                                 borderColor: 'rgba(59, 130, 246, 1)',
                                 borderWidth: 1,
                             }]
                         });
                     } catch (err) {
-                        setError('Falha ao carregar os relatórios.');
-                        console.error(err);
+                        showNotification('Erro de Relatórios', err.message);
                     } finally {
                         setIsLoading(false);
                     }
                 };
                 fetchReports();
-            }, [user]);
+            }, [user, showNotification]);
 
-             const chartOptions = { responsive: true, plugins: { legend: { display: false }, title: { display: false }, }, scales: { y: { beginAtZero: true } } };
+            const chartOptions = {
+                responsive: true,
+                plugins: { legend: { display: false }, title: { display: false } },
+                scales: { y: { beginAtZero: true } } 
+            };
+            
+            const ChartCanvas = () => {
+                const canvasRef = React.useRef(null);
+                
+                useEffect(() => {
+                    if (canvasRef.current && chartData) {
+                        const chartInstance = new ChartJS(canvasRef.current, {
+                            type: 'bar',
+                            data: chartData,
+                            options: chartOptions
+                        });
+                        return () => chartInstance.destroy();
+                    }
+                }, [chartData]);
+                
+                return <canvas ref={canvasRef}></canvas>;
+            };
 
-             if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
-
-             return (
+            return (
                  <div className={`p-4 space-y-6 ${isLoading ? 'animate-pulse' : ''}`}>
                      <div className="grid grid-cols-2 gap-4">
                          <div className="bg-white p-4 rounded-lg shadow-md text-center">
                              <p className="text-sm text-gray-500">Receita Total</p>
-                             {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-green-600">R$ {kpis.totalRevenue.toFixed(2)}</p>}
+                             {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-green-600">R$ {(kpis?.totalRevenue || 0).toFixed(2)}</p>}
                          </div>
                          <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                             <p className="text-sm text-gray-500">Atendimentos</p>
-                             {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-blue-600">{kpis.totalAppointments}</p>}
+                             <p className="text-sm text-gray-500">Vendas Totais</p>
+                             {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-blue-600">{kpis?.totalTransactions || 0}</p>}
                          </div>
                      </div>
                      <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                         <p className="text-sm text-gray-500">Serviço Mais Popular</p>
-                         {isLoading ? <div className="h-7 bg-gray-200 rounded-md mt-1 w-3/4 mx-auto"></div> : <p className="text-xl font-bold text-indigo-600">{kpis.mostPopularService}</p>}
+                         <p className="text-sm text-gray-500">Item Mais Popular</p>
+                         {isLoading ? <div className="h-7 bg-gray-200 rounded-md mt-1 w-3/4 mx-auto"></div> : <p className="text-xl font-bold text-indigo-600">{kpis?.mostPopularItem || 'N/A'}</p>}
                      </div>
                      <div className="bg-white p-4 rounded-lg shadow-md">
-                         <h3 className="font-semibold text-gray-800 mb-4">Agendamentos por Mês</h3>
-                         {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <Bar ref={chartRef} options={chartOptions} data={chartData} />}
+                         <h3 className="font-semibold text-gray-800 mb-4">Vendas por Mês</h3>
+                         {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <ChartCanvas />}
                      </div>
                  </div>
-             );
+            );
         };
+
+        // ECRÃ: GestaoScreen (Menu Principal de Gestão)
         const GestaoScreen = ({ user, onLogout, onNavigate }) => {
             return (
                 <div className="p-4 space-y-6">
@@ -889,6 +519,107 @@
                 </div>
             );
         };
+
+        // ECRÃ: ServicosScreen
+        const ServicosScreen = ({ user, showNotification, onBack }) => {
+            const [services, setServices] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+
+            const fetchServices = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    const data = await authenticatedFetch(`/api/services/${user.establishmentId}`, {}, user);
+                    setServices(data);
+                } catch (error) {
+                    showNotification('Erro', 'Não foi possível carregar os serviços.');
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [user, showNotification]);
+
+            useEffect(() => { fetchServices(); }, [fetchServices]);
+
+            return (
+                <div className="flex flex-col h-full">
+                    <header className="flex-shrink-0 bg-white p-4 flex items-center shadow-md">
+                        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 mr-2">{icons.back()}</button>
+                        <h2 className="text-xl font-bold text-gray-800">Gerir Serviços</h2>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {isLoading ? <p>A carregar...</p> : services.map(service => (
+                            <div key={service.id} className={`bg-white p-3 rounded-lg shadow-sm border-l-4 ${service.active ? 'border-blue-500' : 'border-gray-300 opacity-70'}`}>
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-bold text-gray-800">{service.name}</p>
+                                        <p className="text-sm text-gray-500">{service.duration} min - R$ {service.price.toFixed(2)}</p>
+                                    </div>
+                                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${service.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>{service.active ? 'Ativo' : 'Inativo'}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </main>
+                    <footer className="p-4"><button className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700">+ Novo Serviço</button></footer>
+                </div>
+            );
+        };
+        
+        // ECRÃ: ProdutosScreen
+        const ProdutosScreen = ({ user, showNotification, onBack }) => {
+            const [products, setProducts] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+
+            const fetchProducts = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    const data = await authenticatedFetch(`/api/products/${user.establishmentId}`, {}, user);
+                    setProducts(data);
+                } catch (error) {
+                    showNotification('Erro', 'Não foi possível carregar os produtos.');
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [user, showNotification]);
+
+            useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+            return (
+                 <div className="flex flex-col h-full">
+                    <header className="flex-shrink-0 bg-white p-4 flex items-center shadow-md">
+                        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 mr-2">{icons.back()}</button>
+                        <h2 className="text-xl font-bold text-gray-800">Gerir Produtos</h2>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {isLoading ? <p>A carregar...</p> : products.map(product => {
+                             const stockLevel = (product.maxStock > 0) ? (product.currentStock / product.maxStock) * 100 : 0;
+                             let stockColor = 'bg-green-500';
+                             if (stockLevel < 50) stockColor = 'bg-yellow-500';
+                             if (stockLevel < 20) stockColor = 'bg-red-500';
+
+                             return (
+                                <div key={product.id} className="bg-white p-3 rounded-lg shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold text-gray-800">{product.name}</p>
+                                            <p className="text-sm text-gray-500">R$ {product.price.toFixed(2)}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-bold text-lg">{product.currentStock}</p>
+                                            <p className="text-xs text-gray-500">em stock</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                        <div className={`${stockColor} h-1.5 rounded-full`} style={{ width: `${stockLevel}%` }}></div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </main>
+                    <footer className="p-4"><button className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700">+ Novo Produto</button></footer>
+                </div>
+            );
+        };
+        
+        // --- 4. COMPONENTE PRINCIPAL (ROTEADOR) ---
         
         const MainScreen = ({ user, onLogout, showNotification }) => {
           const [activeTab, setActiveTab] = useState('Agenda');
@@ -927,11 +658,6 @@
 
           return (
             <div className="h-screen w-full flex flex-col bg-gray-100 font-sans">
-              <header className="bg-white shadow-md p-4">
-                <h1 className="text-xl font-bold text-gray-900 text-center">
-                    {activeTab === 'Gestão' ? (currentManagementScreen === 'menu' ? 'Gestão' : currentManagementScreen) : activeTab}
-                </h1>
-              </header>
               <main className="flex-1 overflow-y-auto">{renderContent()}</main>
               <nav className="bg-white border-t border-gray-200">
                 <div className="flex justify-around max-w-md mx-auto">
@@ -946,74 +672,55 @@
             </div>
           );
         };
-
-        const NotificationModal = ({ isOpen, onClose, title, message }) => {
-            if (!isOpen) return null;
-            return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
-                        <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-                        <p className="text-gray-600 my-4">{message}</p>
-                        <button onClick={onClose} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">OK</button>
-                    </div>
-                </div>
-            );
-        };
-
+        
+        // --- 5. COMPONENTE RAIZ (APP) ---
+        
         const App = () => {
           const [loggedInUser, setLoggedInUser] = useState(null);
           const [isLoading, setIsLoading] = useState(true);
           const [notification, setNotification] = useState({ isOpen: false, title: '', message: '' });
 
-          const showNotification = (title, message) => {
+          const showNotification = useCallback((title, message) => {
               setNotification({ isOpen: true, title, message });
-          };
+          }, []);
 
-          const handleLoginSuccess = (userData) => {
+          const handleLoginSuccess = useCallback((userData) => {
               setLoggedInUser(userData);
-          };
+          }, []);
 
-          const handleLogout = () => {
-              auth.signOut();
+          const handleLogout = useCallback(() => {
+              window.signOut(auth);
               setLoggedInUser(null);
-          };
+          }, []);
 
           useEffect(() => {
-            const unsubscribe = auth.onAuthStateChanged(async (user) => {
+            const unsubscribe = window.onAuthStateChanged(auth, async (user) => {
               if (user) {
                 try {
                     const idTokenResult = await user.getIdTokenResult(true);
                     const claims = idTokenResult.claims;
                     if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
                         const userData = { 
-                            name: user.displayName, 
-                            email: user.email,
-                            uid: user.uid,
-                            token: await user.getIdToken(),
-                            establishmentId: claims.establishmentId
+                            name: user.displayName, email: user.email, uid: user.uid,
+                            token: idTokenResult.token, establishmentId: claims.establishmentId,
+                            permissions: claims.permissions
                         };
                         setLoggedInUser(userData);
-                    } else {
-                        auth.signOut();
-                    }
+                    } else { await window.signOut(auth); }
                 } catch (error) {
                     console.error("Auth state error:", error);
-                    auth.signOut();
+                    await window.signOut(auth);
                 }
-              } else {
-                setLoggedInUser(null);
-              }
+              } else { setLoggedInUser(null); }
               setIsLoading(false);
             });
             return () => unsubscribe();
           }, []);
 
-          if (isLoading) {
-              return <div className="h-screen w-full flex items-center justify-center"><p>A carregar...</p></div>
-          }
+          if (isLoading) { return <LoadingScreen /> }
 
           return (
-              <>
+              <React.Fragment>
                 {loggedInUser ? 
                     <MainScreen user={loggedInUser} onLogout={handleLogout} showNotification={showNotification} /> : 
                     <LoginScreen onLoginSuccess={handleLoginSuccess} />
@@ -1024,7 +731,7 @@
                     message={notification.message} 
                     onClose={() => setNotification({ isOpen: false, title: '', message: '' })} 
                 />
-              </>
+              </React.Fragment>
           );
         };
 
@@ -1032,3 +739,4 @@
     </script>
 </body>
 </html>
+

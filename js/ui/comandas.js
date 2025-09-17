@@ -382,18 +382,44 @@ async function handleCheckout() {
 function openCheckoutModal(sale, total) {
     const modal = document.getElementById('checkoutModal');
     let payments = [];
-    const renderPayments = () => {
+
+    // Função para renderizar a lista de pagamentos e calcular o troco
+    const renderPaymentsAndChange = () => {
         const paymentsList = modal.querySelector('#paymentsList');
         const remainingAmountEl = modal.querySelector('#remainingAmount');
         const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
         const remaining = total - totalPaid;
+        
         remainingAmountEl.textContent = `Faltam R$ ${remaining.toFixed(2)}`;
         remainingAmountEl.className = `text-xl font-bold text-center mb-4 ${remaining > 0.001 ? 'text-red-600' : 'text-green-600'}`;
         if (remaining <= 0.001) { remainingAmountEl.textContent = 'Total Pago!'; }
+
         paymentsList.innerHTML = payments.map((p, index) => `<div class="flex justify-between items-center bg-gray-100 p-2 rounded-md"><span>${p.method.charAt(0).toUpperCase() + p.method.slice(1)}</span><span>R$ ${p.value.toFixed(2)}</span><button data-payment-index="${index}" class="text-red-500 font-bold">&times;</button></div>`).join('');
-        modal.querySelector('#paymentValue').value = remaining > 0 ? remaining.toFixed(2) : '0.00';
+        
+        const paymentValueInput = modal.querySelector('#paymentValue');
+        if (paymentValueInput) {
+            paymentValueInput.value = remaining > 0 ? remaining.toFixed(2) : '0.00';
+        }
+
         modal.querySelector('#confirmPaymentBtn').disabled = remaining > 0.001;
+        
+        // Lógica para mostrar/esconder o cálculo de troco
+        const cashPaymentDetails = modal.querySelector('#cash-payment-details');
+        const paymentMethodSelect = modal.querySelector('#paymentMethod');
+        if (paymentMethodSelect && cashPaymentDetails) {
+            if (paymentMethodSelect.value === 'dinheiro') {
+                cashPaymentDetails.classList.remove('hidden');
+                const amountReceivedInput = modal.querySelector('#amountReceived');
+                const changeDueEl = modal.querySelector('#changeDue');
+                const received = parseFloat(amountReceivedInput.value) || 0;
+                const change = received - (remaining > 0 ? remaining : 0);
+                changeDueEl.textContent = `R$ ${change > 0 ? change.toFixed(2) : '0.00'}`;
+            } else {
+                cashPaymentDetails.classList.add('hidden');
+            }
+        }
     };
+
     modal.innerHTML = `
         <div class="modal-content max-w-lg">
             <h2 class="text-2xl font-bold mb-4">Finalizar Pagamento</h2>
@@ -406,26 +432,47 @@ function openCheckoutModal(sale, total) {
                     <button id="addPaymentBtn" class="action-btn-primary p-2">+</button>
                 </div>
                 <div id="remainingAmount"></div>
+                
+                <!-- NOVA SECÇÃO PARA CÁLCULO DE TROCO -->
+                <div id="cash-payment-details" class="hidden mt-4 p-4 bg-blue-50 rounded-lg space-y-2">
+                    <div>
+                        <label for="amountReceived" class="block text-sm font-medium text-gray-700">Valor Recebido (Dinheiro)</label>
+                        <input type="number" step="0.01" id="amountReceived" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-2xl p-2 text-center">
+                    </div>
+                    <p class="flex justify-between text-lg font-semibold">
+                        <span>Troco:</span>
+                        <strong id="changeDue" class="text-blue-600">R$ 0.00</strong>
+                    </p>
+                </div>
+
             </div>
             <div class="flex gap-4 pt-4 border-t"><button type="button" data-action="close-modal" data-target="checkoutModal" class="action-btn-secondary w-full">Cancelar</button><button id="confirmPaymentBtn" class="action-btn-primary w-full" disabled>Confirmar Pagamento</button></div>
         </div>`;
     modal.style.display = 'flex';
-    renderPayments();
+    
+    renderPaymentsAndChange();
+
     modal.querySelector('#addPaymentBtn').onclick = () => {
         const method = modal.querySelector('#paymentMethod').value;
         const value = parseFloat(modal.querySelector('#paymentValue').value);
         if (value > 0) {
             payments.push({ method, value });
-            renderPayments();
+            renderPaymentsAndChange();
         }
     };
+
     modal.querySelector('#paymentsList').onclick = (e) => {
         const paymentIndex = e.target.dataset.paymentIndex;
         if (paymentIndex) {
             payments.splice(parseInt(paymentIndex, 10), 1);
-            renderPayments();
+            renderPaymentsAndChange();
         }
     };
+
+    // Adiciona listeners para atualizar o troco dinamicamente
+    modal.querySelector('#paymentMethod').addEventListener('change', renderPaymentsAndChange);
+    modal.querySelector('#amountReceived').addEventListener('input', renderPaymentsAndChange);
+
     modal.querySelector('#confirmPaymentBtn').onclick = async () => {
         const btn = modal.querySelector('#confirmPaymentBtn');
         btn.disabled = true;
@@ -560,7 +607,7 @@ export async function loadComandasPage(params = {}) {
             </div>
             <div class="flex-grow relative overflow-hidden">
                 <div id="pdv-overlay" class="absolute inset-0 bg-gray-800 bg-opacity-50 z-20 flex flex-col items-center justify-center text-white hidden">
-                    <svg class="w-16 h-16 mb-4" xmlns="http://www.w-3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    <svg class="w-16 h-16 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                     <h3 class="text-2xl font-bold">Caixa Fechado</h3>
                     <p>Abra o caixa para iniciar as vendas.</p>
                 </div>
@@ -666,3 +713,4 @@ export async function loadComandasPage(params = {}) {
     
     await initializeData(params);
 }
+

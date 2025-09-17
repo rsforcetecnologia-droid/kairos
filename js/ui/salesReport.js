@@ -1,4 +1,4 @@
-// js/ui/salesReport.js (Completo e Corrigido)
+// js/ui/salesReport.js (Completo e Corrigido com Detalhes da Venda)
 
 // --- 1. IMPORTAÇÕES ---
 import * as reportsApi from '../api/reports.js';
@@ -10,7 +10,7 @@ import { navigateTo } from '../main.js';
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let activeCharts = {};
-let currentAnalyticsData = null; // Cache para os dados da visão principal
+let currentReportData = null; // Cache para os dados do relatório
 
 // --- 3. FUNÇÕES DE LIMPEZA E UTILIDADES ---
 function destroyAllCharts() {
@@ -56,6 +56,55 @@ function exportReportToPDF(title, tableId) {
     doc.save(`${title.replace(/[\s/]/g, '_').toLowerCase()}.pdf`);
 }
 
+// NOVO: Função para abrir o modal de detalhes da venda
+function openSaleDetailModal(transaction) {
+    const modal = document.getElementById('genericModal'); // Reutilizando o modal genérico
+    const paymentMethodsHTML = (transaction.payments || []).map(p => `
+        <div class="flex justify-between text-sm">
+            <span>${p.method.charAt(0).toUpperCase() + p.method.slice(1)}</span>
+            <span class="font-medium">R$ ${p.value.toFixed(2)}</span>
+        </div>
+    `).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content max-w-md">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Detalhes da Venda</h2>
+                    <p class="text-sm text-gray-500">${new Date(transaction.date).toLocaleString('pt-BR')}</p>
+                </div>
+                <button type="button" data-action="close-modal" data-target="genericModal" class="text-2xl font-bold">&times;</button>
+            </div>
+            <div class="mt-6 space-y-4">
+                <div class="bg-gray-50 p-3 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600">Cliente</p>
+                    <p class="font-semibold text-gray-800">${transaction.client}</p>
+                </div>
+                 <div class="bg-gray-50 p-3 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600">Itens</p>
+                    <p class="font-semibold text-gray-800">${transaction.items}</p>
+                </div>
+                <div class="bg-gray-50 p-3 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600">Responsável pelo Caixa</p>
+                    <p class="font-semibold text-gray-800">${transaction.responsavelCaixa}</p>
+                </div>
+                 <div class="border-t pt-4 mt-4">
+                     <h3 class="font-semibold mb-2">Pagamento</h3>
+                     <div class="space-y-1">
+                        ${paymentMethodsHTML}
+                     </div>
+                     <div class="flex justify-between font-bold text-lg mt-2 pt-2 border-t">
+                         <span>TOTAL</span>
+                         <span>R$ ${transaction.total.toFixed(2)}</span>
+                     </div>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
 
 function renderReportData(data) {
@@ -74,19 +123,31 @@ function renderReportData(data) {
     
     const transactionsTableBody = document.getElementById('transactionsTableBody');
     if (transactions.length === 0) {
-        transactionsTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-500">Nenhuma venda encontrada para o período selecionado.</td></tr>`;
+        transactionsTableBody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-500">Nenhuma venda encontrada para o período selecionado.</td></tr>`;
         return;
     }
 
-    transactionsTableBody.innerHTML = transactions.map(t => `
-        <tr class="border-b hover:bg-gray-50">
+    transactionsTableBody.innerHTML = transactions.map((t, index) => `
+        <tr class="border-b hover:bg-gray-50 cursor-pointer" data-transaction-index="${index}">
             <td class="py-3 px-4">${new Date(t.date).toLocaleString('pt-BR')}</td>
             <td class="py-3 px-4">${t.client}</td>
             <td class="py-3 px-4">${t.items}</td>
             <td class="py-3 px-4">${t.type}</td>
+            <td class="py-3 px-4">${t.responsavelCaixa}</td>
             <td class="py-3 px-4 text-right font-medium">R$ ${t.total.toFixed(2)}</td>
         </tr>
     `).join('');
+
+    // Adiciona o listener de duplo clique
+    transactionsTableBody.querySelectorAll('tr').forEach(row => {
+        row.addEventListener('dblclick', () => {
+            const transactionIndex = row.dataset.transactionIndex;
+            const selectedTransaction = currentReportData.transactions[transactionIndex];
+            if (selectedTransaction) {
+                openSaleDetailModal(selectedTransaction);
+            }
+        });
+    });
 }
 
 async function handleGenerateReport() {
@@ -111,6 +172,7 @@ async function handleGenerateReport() {
     try {
         const cashierSessionId = document.getElementById('cashierSessionFilter').value;
         const data = await reportsApi.getSalesReport({ establishmentId: state.establishmentId, startDate, endDate, cashierSessionId });
+        currentReportData = data; // Armazena os dados no cache
 
         mainReportsView.innerHTML = `
             <div id="salesReportSummaryCards" class="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -121,6 +183,7 @@ async function handleGenerateReport() {
             </div>
             <div class="bg-white p-6 rounded-lg shadow mt-8">
                 <h3 class="text-xl font-semibold mb-4">Detalhes das Transações</h3>
+                <p class="text-sm text-gray-500 mb-4">Dê um duplo clique numa linha para ver mais detalhes.</p>
                 <div class="overflow-y-auto max-h-[60vh]">
                     <table id="transactionsTable" class="min-w-full text-sm">
                         <thead class="bg-gray-100 sticky top-0"><tr>
@@ -128,6 +191,7 @@ async function handleGenerateReport() {
                             <th class="px-4 py-2 text-left font-semibold">Cliente</th>
                             <th class="px-4 py-2 text-left font-semibold">Itens</th>
                             <th class="px-4 py-2 text-left font-semibold">Tipo</th>
+                            <th class="px-4 py-2 text-left font-semibold">Responsável</th>
                             <th class="px-4 py-2 text-right font-semibold">Valor Total</th>
                         </tr></thead>
                         <tbody id="transactionsTableBody" class="divide-y"></tbody>
@@ -143,7 +207,6 @@ async function handleGenerateReport() {
 }
 
 // --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
-// CORREÇÃO: Nome da função alterado para corresponder à importação em main.js
 export async function loadSalesReportPage() {
     destroyAllCharts();
     
