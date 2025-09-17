@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Administrador</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: none; /* Esconde o conteúdo até a autenticação ser verificada */
+        }
+        /* Estilos para o link ativo na barra lateral */
+        .sidebar-link.active {
+            background-color: #4f46e5;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .sidebar-link.active svg {
+            color: #ffffff;
+        }
+        /* Estilos para o modal de notificação */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #fefefe;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="flex h-screen">
+        <!-- Barra Lateral de Navegação -->
+        <aside class="w-64 bg-gray-900 text-gray-300 flex flex-col">
+            <div class="p-6 text-center border-b border-gray-800">
+                <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
+            </div>
+            <nav class="flex-1 p-4 space-y-2">
+                <button class="tab-button w-full flex items-center gap-3 py-2 px-4 rounded-lg transition-colors hover:bg-gray-800" data-target="establishments-section">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                    <span>Estabelecimentos</span>
+                </button>
+                <button class="tab-button w-full flex items-center gap-3 py-2 px-4 rounded-lg transition-colors hover:bg-gray-800 text-gray-400" data-target="users-section">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21v-2a6 6 0 00-5.173-5.972M9 21a6 6 0 01-6-6v-1a6 6 0 016-6h6a6 6 0 016 6v1a6 6 0 01-6 6H9z" /></svg>
+                    <span>Utilizadores</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Conteúdo Principal -->
+        <div class="flex-1 flex flex-col">
+            <header class="bg-white shadow-sm p-4 flex justify-between items-center">
+                <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Gestão de Estabelecimentos</h2>
+                <div class="flex items-center gap-4">
+                    <span id="userDisplayEmail" class="text-sm text-gray-600"></span>
+                    <button id="logoutButton" class="text-sm font-semibold text-red-600 hover:text-red-800">Sair</button>
+                </div>
+            </header>
+
+            <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
+                <!-- Secção de Estabelecimentos -->
+                <div id="establishments-section" class="tab-content space-y-10">
+                    <section class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Criar Novo Estabelecimento</h2>
+                        <form id="createEstablishmentForm">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="form-group">
+                                    <label for="establishmentName" class="block mb-2 text-sm font-medium text-gray-900">Nome do Estabelecimento</label>
+                                    <input type="text" id="establishmentName" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="establishmentId" class="block mb-2 text-sm font-medium text-gray-900">ID Único (ex: barbearia-do-ze)</label>
+                                    <input type="text" id="establishmentId" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ownerEmail" class="block mb-2 text-sm font-medium text-gray-900">E-mail do Dono</label>
+                                    <input type="email" id="ownerEmail" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ownerPassword" class="block mb-2 text-sm font-medium text-gray-900">Senha Provisória do Dono</label>
+                                    <input type="password" id="ownerPassword" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Criar Estabelecimento</button>
+                        </form>
+                    </section>
+                    <section class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Estabelecimentos Registados</h2>
+                        <div id="establishmentsList" class="overflow-x-auto"></div>
+                    </section>
+                </div>
+
+                <!-- Secção de Utilizadores -->
+                <div id="users-section" class="tab-content hidden space-y-10">
+                    <section class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Criar Novo Utilizador Administrador</h2>
+                        <form id="createUserForm">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="form-group">
+                                    <label for="userEmail" class="block mb-2 text-sm font-medium text-gray-900">E-mail do Utilizador</label>
+                                    <input type="email" id="userEmail" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="userPassword" class="block mb-2 text-sm font-medium text-gray-900">Senha Provisória</label>
+                                    <input type="password" id="userPassword" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full mt-6 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition">Criar Utilizador</button>
+                        </form>
+                    </section>
+                    <section class="bg-white rounded-lg shadow-md p-6">
+                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Utilizadores Administradores</h2>
+                        <div id="usersList" class="overflow-x-auto"></div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal genérico para notificações e confirmações -->
+    <div id="genericModal" class="modal">
+        <div class="modal-content">
+             <h3 id="genericModalTitle" class="text-xl font-bold mb-4"></h3>
+             <p id="genericModalMessage" class="text-gray-600 mb-6"></p>
+             <div id="genericModalButtons" class="flex justify-center gap-4"></div>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
+            authDomain: "kairos-system.firebaseapp.com",
+            projectId: "kairos-system",
+            storageBucket: "kairos-system.firebasestorage.app",
+            messagingSenderId: "603994960586",
+            appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
+            measurementId: "G-SVHFXKV5EC"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        
+        let idToken = null;
+
+        function getAuthHeaders() {
+            if (!idToken) {
+                console.error("Token de autenticação não encontrado.");
+                signOut(auth).then(() => {
+                    window.location.href = '/admin-login';
+                });
+                return { 'Content-Type': 'application/json' };
+            }
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
+            };
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    const idTokenResult = await user.getIdTokenResult(true);
+                    if (idTokenResult.claims.role !== 'super-admin') {
+                        await signOut(auth);
+                        window.location.href = '/admin-login';
+                        return;
+                    }
+                    
+                    idToken = await user.getIdToken();
+                    
+                    document.body.style.display = 'flex';
+                    document.getElementById('userDisplayEmail').textContent = user.email;
+                    initializePage();
+
+                } catch (error) {
+                    console.error("Erro ao verificar permissões:", error);
+                    await signOut(auth);
+                    window.location.href = '/admin-login';
+                }
+            } else {
+                window.location.href = '/admin-login';
+            }
+        });
+
+        function initializePage() {
+            const API_BASE_URL = window.location.origin;
+
+            document.getElementById('logoutButton').addEventListener('click', () => {
+                signOut(auth).then(() => {
+                    window.location.href = '/admin-login';
+                });
+            });
+
+            // --- LÓGICA DO MODAL GENÉRICO ---
+            const genericModal = document.getElementById('genericModal');
+            const genericModalTitle = document.getElementById('genericModalTitle');
+            const genericModalMessage = document.getElementById('genericModalMessage');
+            const genericModalButtons = document.getElementById('genericModalButtons');
+
+            function showNotification(title, message) {
+                genericModalTitle.textContent = title;
+                genericModalMessage.textContent = message;
+                genericModalButtons.innerHTML = `<button class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg" onclick="closeModal()">OK</button>`;
+                genericModal.style.display = 'flex';
+            }
+
+            function showConfirmation(message) {
+                return new Promise((resolve) => {
+                    genericModalTitle.textContent = 'Confirmação';
+                    genericModalMessage.textContent = message;
+                    genericModalButtons.innerHTML = `
+                        <button class="w-full py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg" onclick="resolveConfirmation(false)">Cancelar</button>
+                        <button class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg" onclick="resolveConfirmation(true)">Confirmar</button>
+                    `;
+                    genericModal.style.display = 'flex';
+                    window.resolveConfirmation = (value) => {
+                        closeModal();
+                        resolve(value);
+                    };
+                });
+            }
+
+            window.closeModal = function() {
+                genericModal.style.display = 'none';
+            }
+
+            // --- LÓGICA DE NAVEGAÇÃO POR ABAS ---
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+            const pageTitle = document.getElementById('pageTitle');
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    tabButtons.forEach(btn => btn.classList.remove('active', 'sidebar-link'));
+                    button.classList.add('active', 'sidebar-link');
+                    
+                    pageTitle.textContent = button.textContent.trim();
+
+                    const targetId = button.dataset.target;
+                    tabContents.forEach(content => {
+                        content.id === targetId ? content.classList.remove('hidden') : content.classList.add('hidden');
+                    });
+                });
+            });
+            // Ativa o primeiro tab por defeito
+            document.querySelector('.tab-button').click();
+
+            // --- LÓGICA DE GESTÃO DE ESTABELECIMENTOS ---
+            const createEstablishmentForm = document.getElementById('createEstablishmentForm');
+            const establishmentsListDiv = document.getElementById('establishmentsList');
+
+            createEstablishmentForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = {
+                    establishmentId: document.getElementById('establishmentId').value,
+                    name: document.getElementById('establishmentName').value,
+                    ownerEmail: document.getElementById('ownerEmail').value,
+                    ownerPassword: document.getElementById('ownerPassword').value,
+                };
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/admin/establishments`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.message);
+                    showNotification('Sucesso!', 'Estabelecimento criado com sucesso!');
+                    createEstablishmentForm.reset();
+                    loadEstablishments();
+                } catch (error) {
+                    showNotification('Erro', `Erro: ${error.message}`);
+                }
+            });
+
+            async function loadEstablishments() {
+                establishmentsListDiv.innerHTML = '<p>A carregar...</p>';
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/admin/establishments`, { headers: getAuthHeaders() });
+                    const establishments = await res.json();
+
+                    let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
+                            <th scope="col" class="px-6 py-3">Nome</th>
+                            <th scope="col" class="px-6 py-3">ID</th>
+                            <th scope="col" class="px-6 py-3">Estado</th>
+                            <th scope="col" class="px-6 py-3">Links</th>
+                            <th scope="col" class="px-6 py-3">Ações</th>
+                        </tr></thead><tbody>`;
+                    if (establishments.length > 0) {
+                        establishments.forEach(est => {
+                            const managementLink = `/?id=${est.id}`;
+                            const bookingLink = `/agendar?id=${est.id}`;
+                            const isActive = est.status === 'active';
+                            const statusClass = isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                            const actionText = isActive ? 'Inativar' : 'Ativar';
+                            const actionClass = isActive ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600';
+                            const hasMobileAccess = est.mobileAccessEnabled === true;
+                            const mobileAccessActionText = hasMobileAccess ? 'Bloquear App' : 'Liberar App';
+                            const mobileAccessActionClass = hasMobileAccess ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700';
+
+                            tableHTML += `
+                                <tr class="bg-white border-b hover:bg-gray-50">
+                                    <td class="px-6 py-4 font-medium text-gray-900">${est.name}</td>
+                                    <td class="px-6 py-4 font-mono">${est.id}</td>
+                                    <td class="px-6 py-4"><span class="px-2 py-1 font-semibold leading-tight rounded-full ${statusClass}">${isActive ? 'Ativo' : 'Inativo'}</span></td>
+                                    <td class="px-6 py-4 space-x-2">
+                                        <a href="${managementLink}" target="_blank" class="font-medium text-blue-600 hover:underline">Painel</a>
+                                        <a href="${bookingLink}" target="_blank" class="font-medium text-blue-600 hover:underline">Cliente</a>
+                                    </td>
+                                    <td class="px-6 py-4 flex gap-2">
+                                        <button data-id="${est.id}" data-status="${isActive ? 'inactive' : 'active'}" class="toggle-status-btn text-white text-xs font-bold py-1 px-2 rounded ${actionClass}">${actionText}</button>
+                                        <button data-id="${est.id}" data-enabled="${!hasMobileAccess}" class="toggle-mobile-access-btn text-white text-xs font-bold py-1 px-2 rounded ${mobileAccessActionClass}">${mobileAccessActionText}</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento registado.</td></tr>`;
+                    }
+                    tableHTML += '</tbody></table>';
+                    establishmentsListDiv.innerHTML = tableHTML;
+                } catch (error) {
+                    establishmentsListDiv.innerHTML = '<p class="text-red-500">Erro ao carregar.</p>';
+                }
+            }
+
+            establishmentsListDiv.addEventListener('click', async (e) => {
+                const button = e.target;
+                if (button && button.classList.contains('toggle-status-btn')) {
+                    const establishmentId = button.dataset.id;
+                    const newStatus = button.dataset.status;
+
+                    const confirmed = await showConfirmation(`Tem a certeza de que deseja ${newStatus === 'active' ? 'ativar' : 'inativar'} este estabelecimento?`);
+                    if (confirmed) {
+                        try {
+                            const response = await fetch(`${API_BASE_URL}/api/admin/establishments/${establishmentId}/status`, {
+                                method: 'PATCH',
+                                headers: getAuthHeaders(),
+                                body: JSON.stringify({ status: newStatus }),
+                            });
+                            if (!response.ok) throw new Error('Falha ao atualizar o estado.');
+                            loadEstablishments();
+                        } catch (error) {
+                            showNotification('Erro', 'Erro ao atualizar o estado.');
+                        }
+                    }
+                }
+                
+                if (button && button.classList.contains('toggle-mobile-access-btn')) {
+                    const establishmentId = button.dataset.id;
+                    const newEnabledStatus = button.dataset.enabled === 'true';
+
+                    const confirmed = await showConfirmation(`Tem a certeza que deseja ${newEnabledStatus ? 'LIBERAR' : 'BLOQUEAR'} o acesso ao app para este estabelecimento?`);
+                    if (confirmed) {
+                        try {
+                            const response = await fetch(`${API_BASE_URL}/api/admin/establishments/${establishmentId}/mobile-access`, {
+                                method: 'PATCH',
+                                headers: getAuthHeaders(),
+                                body: JSON.stringify({ enabled: newEnabledStatus }),
+                            });
+                            if (!response.ok) throw new Error('Falha ao atualizar o acesso.');
+                            loadEstablishments();
+                        } catch (error) {
+                            showNotification('Erro', 'Erro ao atualizar o acesso ao app.');
+                        }
+                    }
+                }
+            });
+
+            // --- LÓGICA DE GESTÃO DE UTILIZADORES ---
+            const createUserForm = document.getElementById('createUserForm');
+            const usersListDiv = document.getElementById('usersList');
+
+            createUserForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = {
+                    email: document.getElementById('userEmail').value,
+                    password: document.getElementById('userPassword').value,
+                };
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/admin/users`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
+                    const result = await res.json();
+                    if (!res.ok) throw new Error(result.message);
+                    showNotification('Sucesso!', 'Utilizador criado com sucesso!');
+                    createUserForm.reset();
+                    loadAdminUsers();
+                } catch (error) {
+                    showNotification('Erro', `Erro: ${error.message}`);
+                }
+            });
+
+            async function loadAdminUsers() {
+                usersListDiv.innerHTML = '<p>A carregar...</p>';
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/admin/users`, { headers: getAuthHeaders() });
+                    const users = await res.json();
+
+                    let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
+                            <th scope="col" class="px-6 py-3">E-mail</th>
+                            <th scope="col" class="px-6 py-3">Função</th>
+                            <th scope="col" class="px-6 py-3">Ações</th>
+                        </tr></thead><tbody>`;
+                    if (users.length > 0) {
+                        users.forEach(user => {
+                            tableHTML += `
+                                <tr class="bg-white border-b hover:bg-gray-50">
+                                    <td class="px-6 py-4">${user.email}</td>
+                                    <td class="px-6 py-4">${user.role}</td>
+                                    <td class="px-6 py-4">
+                                        <button data-uid="${user.uid}" class="delete-user-btn font-medium text-red-600 hover:underline">Apagar</button>
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        tableHTML += `<tr><td colspan="3" class="text-center p-4">Nenhum utilizador encontrado.</td></tr>`;
+                    }
+                    tableHTML += `</tbody></table>`;
+                    usersListDiv.innerHTML = tableHTML;
+                } catch (error) {
+                    usersListDiv.innerHTML = '<p class="text-red-500">Erro ao carregar.</p>';
+                }
+            }
+
+            usersListDiv.addEventListener('click', async (e) => {
+                if (e.target && e.target.classList.contains('delete-user-btn')) {
+                    const uid = e.target.dataset.uid;
+                    const confirmed = await showConfirmation('Tem a certeza? Esta ação é irreversível.');
+                    if (confirmed) {
+                        try {
+                            await fetch(`${API_BASE_URL}/api/admin/users/${uid}`, { method: 'DELETE', headers: getAuthHeaders() });
+                            loadAdminUsers();
+                        } catch (error) {
+                            showNotification('Erro', 'Erro ao apagar utilizador.');
+                        }
+                    }
+                }
+            });
+
+            // Carrega os dados iniciais
+            loadEstablishments();
+            loadAdminUsers();
+        }
+    </script>
+</body>
+</html>
+

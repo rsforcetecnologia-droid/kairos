@@ -1,0 +1,302 @@
+// js/ui/users.js
+
+// --- 1. IMPORTAÇÕES ---
+import * as usersApi from '../api/users.js';
+import { state } from '../state.js';
+import { showNotification, showConfirmation } from '../components/modal.js';
+
+// --- 2. CONSTANTES E VARIÁVEIS ---
+const contentDiv = document.getElementById('content');
+const modules = {
+    'agenda-section': 'Agenda',
+    'comandas-section': 'Comandas',
+    'relatorios-section': 'Relatórios',
+    'servicos-section': 'Serviços',
+    'produtos-section': 'Produtos',
+    'profissionais-section': 'Profissionais',
+    'clientes-section': 'Clientes',
+    'estabelecimento-section': 'Estabelecimento',
+    'users-section': 'Usuários e Acessos'
+};
+const permissions = {
+    view: 'Visualizar',
+    create: 'Criar',
+    edit: 'Editar'
+};
+
+// --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
+
+function renderUsersList(users) {
+    const listContainer = document.getElementById('usersListContainer');
+    if (!listContainer) return;
+
+    if (users.length === 0) {
+        listContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Nenhum usuário cadastrado.</p>';
+        return;
+    }
+
+    listContainer.innerHTML = users.map(user => {
+        const permissionCount = user.permissions ? Object.values(user.permissions).filter(p => p.view).length : 0;
+        const userDataString = JSON.stringify(user).replace(/'/g, "&apos;");
+
+        return `
+        <div class="bg-white rounded-lg shadow-md p-4 flex flex-col text-center transition-transform hover:scale-105">
+            <div class="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto mb-3">
+                ${user.name.charAt(0).toUpperCase()}
+            </div>
+            <div class="flex-grow">
+                <p class="font-bold text-gray-800">${user.name}</p>
+                <p class="text-sm text-gray-500 truncate">${user.email}</p>
+                <p class="text-xs text-gray-400 mt-2 pt-2 border-t">Acesso a ${permissionCount} módulos</p>
+            </div>
+            <div class="mt-4 flex items-center justify-center gap-2">
+                <button data-action="edit-user" data-user='${userDataString}' class="text-gray-500 hover:text-blue-600 p-2 rounded-full transition-colors" title="Editar Permissões">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
+                </button>
+                <button data-action="delete-user" data-user-id="${user.id}" class="text-gray-500 hover:text-red-600 p-2 rounded-full transition-colors" title="Excluir Usuário">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        </div>
+    `}).join('');
+}
+
+function renderPermissionsForm(currentPermissions = {}) {
+    return Object.entries(modules).map(([key, title]) => `
+        <div class="grid grid-cols-1 md:grid-cols-3 items-center gap-4 py-3 border-b last:border-b-0">
+            <span class="font-semibold text-gray-800">${title}</span>
+            <div class="md:col-span-2 flex justify-around items-center">
+                ${Object.entries(permissions).map(([pKey, pLabel]) => `
+                    <label class="flex flex-col items-center space-y-1 cursor-pointer">
+                        <div class="relative">
+                            <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only" 
+                                ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                        </div>
+                        <span class="text-sm text-gray-600">${pLabel}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+    `).join('');
+}
+
+async function showUserFormView(user = null) {
+    document.getElementById('user-list-view').classList.add('hidden');
+    const formView = document.getElementById('user-form-view');
+    formView.classList.remove('hidden');
+
+    const isEditing = user !== null;
+    formView.querySelector('#userFormTitle').textContent = isEditing ? `Editar Usuário: ${user.name}` : 'Novo Usuário';
+
+    const form = formView.querySelector('#userForm');
+    form.innerHTML = `
+        <div class="bg-white p-8 rounded-lg shadow-md space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="userName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
+                    <input type="text" id="userName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" value="${user?.name || ''}">
+                </div>
+                <div>
+                    <label for="userEmail" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="userEmail" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" value="${user?.email || ''}" ${isEditing ? 'disabled' : ''}>
+                </div>
+            </div>
+            ${!isEditing ? `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="userPassword" class="block text-sm font-medium text-gray-700">Senha</label>
+                    <input type="password" id="userPassword" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                </div>
+            </div>
+            ` : ''}
+
+            <!-- NOVO: Secção para alterar senha, apenas no modo de edição -->
+            ${isEditing ? `
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Segurança</h3>
+                <div id="password-change-container" class="mt-4">
+                    <button type="button" data-action="show-password-form" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">Alterar Senha</button>
+                    <div id="password-form" class="hidden mt-4 space-y-4 max-w-sm">
+                        <div>
+                            <label for="userNewPassword" class="block text-sm font-medium text-gray-700">Nova Senha</label>
+                            <input type="password" id="userNewPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                        </div>
+                        <div class="flex gap-4">
+                             <button type="button" data-action="cancel-password-change" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">Cancelar</button>
+                             <button type="button" data-action="save-password" class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Salvar Nova Senha</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            <div>
+                <h3 class="text-xl font-semibold mb-2 border-t pt-6">Permissões de Acesso</h3>
+                <div class="space-y-2 bg-gray-50 p-4 rounded-md">
+                    ${renderPermissionsForm(user?.permissions)}
+                </div>
+            </div>
+
+            <div class="flex gap-4 pt-6 border-t">
+                <button type="button" data-action="back-to-list" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">Cancelar</button>
+                <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Alterações</button>
+            </div>
+        </div>
+    `;
+
+    // Listener para o formulário principal (nome e permissões)
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const permissions = {};
+        form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            const module = cb.dataset.module;
+            const permission = cb.dataset.permission;
+            if (!permissions[module]) permissions[module] = {};
+            permissions[module][permission] = cb.checked;
+        });
+
+        const userData = {
+            name: form.querySelector('#userName').value,
+            permissions
+        };
+
+        try {
+            if (isEditing) {
+                await usersApi.updateUser(user.id, userData);
+                showNotification('Usuário atualizado com sucesso!', 'success');
+            } else {
+                userData.email = form.querySelector('#userEmail').value;
+                userData.password = form.querySelector('#userPassword').value;
+                await usersApi.createUser(userData);
+                showNotification('Usuário criado com sucesso!', 'success');
+            }
+            loadUsersPage(); // Volta para a lista
+        } catch (error) {
+            showNotification(`Erro: ${error.message}`, 'error');
+        }
+    });
+
+    // NOVO: Listeners para a secção de alteração de senha
+    if (isEditing) {
+        const passwordChangeContainer = form.querySelector('#password-change-container');
+        const showPasswordBtn = passwordChangeContainer.querySelector('[data-action="show-password-form"]');
+        const passwordForm = passwordChangeContainer.querySelector('#password-form');
+        const savePasswordBtn = passwordForm.querySelector('[data-action="save-password"]');
+        const cancelPasswordBtn = passwordForm.querySelector('[data-action="cancel-password-change"]');
+
+        showPasswordBtn.addEventListener('click', () => {
+            showPasswordBtn.classList.add('hidden');
+            passwordForm.classList.remove('hidden');
+        });
+
+        cancelPasswordBtn.addEventListener('click', () => {
+            showPasswordBtn.classList.remove('hidden');
+            passwordForm.classList.add('hidden');
+            passwordForm.querySelector('#userNewPassword').value = '';
+        });
+
+        savePasswordBtn.addEventListener('click', async () => {
+            const newPassword = passwordForm.querySelector('#userNewPassword').value;
+            if (!newPassword || newPassword.length < 6) {
+                showNotification('Senha inválida', 'A nova senha deve ter pelo menos 6 caracteres.', 'error');
+                return;
+            }
+
+            const confirmed = await showConfirmation('Alterar Senha', 'Tem a certeza que deseja alterar a senha deste usuário?');
+            if (confirmed) {
+                try {
+                    savePasswordBtn.disabled = true;
+                    savePasswordBtn.textContent = 'Aguarde...';
+                    await usersApi.changeUserPassword(user.id, newPassword);
+                    showNotification('Sucesso!', 'A senha do usuário foi alterada.', 'success');
+
+                    showPasswordBtn.classList.remove('hidden');
+                    passwordForm.classList.add('hidden');
+                    passwordForm.querySelector('#userNewPassword').value = '';
+
+                } catch (error) {
+                    showNotification('Erro', `Não foi possível alterar a senha: ${error.message}`, 'error');
+                } finally {
+                    savePasswordBtn.disabled = false;
+                    savePasswordBtn.textContent = 'Salvar Nova Senha';
+                }
+            }
+        });
+    }
+}
+
+async function fetchAndRenderUsers() {
+    const listContainer = document.getElementById('usersListContainer');
+    listContainer.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
+    try {
+        const users = await usersApi.getUsers(state.establishmentId);
+        state.users = users;
+        renderUsersList(users);
+    } catch (error) {
+        showNotification('Erro ao carregar usuários.', 'error');
+        listContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Não foi possível carregar os usuários.</p>';
+    }
+}
+
+// --- 4. FUNÇÃO PRINCIPAL ---
+export async function loadUsersPage() {
+    contentDiv.innerHTML = `
+        <div id="user-list-view">
+            <section>
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-3xl font-bold text-gray-800">Usuários e Acessos</h2>
+                    <button data-action="new-user" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                        Novo Usuário
+                    </button>
+                </div>
+                <div id="usersListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+            </section>
+        </div>
+        <div id="user-form-view" class="hidden">
+             <section>
+                <div class="flex justify-between items-center mb-6">
+                    <h2 id="userFormTitle" class="text-3xl font-bold text-gray-800"></h2>
+                    <button data-action="back-to-list" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 transition">Voltar</button>
+                </div>
+                <form id="userForm"></form>
+            </section>
+        </div>
+    `;
+
+    contentDiv.addEventListener('click', async (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+
+        const action = button.dataset.action;
+
+        switch (action) {
+            case 'new-user':
+                showUserFormView();
+                break;
+            case 'edit-user':
+                const userData = JSON.parse(button.dataset.user.replace(/&apos;/g, "'"));
+                showUserFormView(userData);
+                break;
+            case 'back-to-list':
+                loadUsersPage();
+                break;
+            case 'delete-user': {
+                const userId = button.dataset.userId;
+                const confirmed = await showConfirmation('Excluir Usuário', 'Tem certeza que deseja excluir este usuário? Esta ação é irreversível.');
+                if (confirmed) {
+                    try {
+                        await usersApi.deleteUser(userId);
+                        showNotification('Usuário excluído com sucesso!', 'success');
+                        loadUsersPage();
+                    } catch (error) {
+                        showNotification(`Erro ao excluir: ${error.message}`, 'error');
+                    }
+                }
+                break;
+            }
+        }
+    });
+
+    await fetchAndRenderUsers();
+}
