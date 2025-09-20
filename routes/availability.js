@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
         ];
 
         const availableSlots = [];
-        const slotInterval = 15;
+        const slotInterval = 30; // ✅ ALTERADO DE 15 PARA 30
         const workStart = new Date(`${date}T${todayConfig.start}:00-03:00`);
         const workEnd = new Date(`${date}T${todayConfig.end}:00-03:00`);
         let breakStart, breakEnd;

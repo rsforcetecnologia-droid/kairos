@@ -38,6 +38,7 @@ async function handleEstablishmentFormSubmit(e) {
         email: form.querySelector('#establishmentEmail').value,
         address: form.querySelector('#establishmentAddress').value,
         website: form.querySelector('#establishmentWebsite').value,
+        welcomeMessage: form.querySelector('#establishmentWelcomeMessage').value, // ✅ NOVO CAMPO ADICIONADO
         workingHours: workingHours,
         logo: form.querySelector('#establishmentLogoBase64').value,
         loyaltyProgram: {
@@ -50,9 +51,9 @@ async function handleEstablishmentFormSubmit(e) {
     try {
         await establishmentApi.updateEstablishmentDetails(state.establishmentId, establishmentData);
         document.getElementById('panelEstablishmentName').textContent = establishmentData.name;
-        showNotification('Dados do estabelecimento salvos com sucesso!', 'success');
+        showNotification('Sucesso', 'Dados do estabelecimento salvos com sucesso!', 'success');
     } catch (error) {
-        showNotification(`Não foi possível salvar os dados: ${error.message}`, 'error');
+        showNotification('Erro', `Não foi possível salvar os dados: ${error.message}`, 'error');
     }
 }
 
@@ -81,6 +82,7 @@ async function fetchAndDisplayEstablishmentSettings() {
         document.getElementById('establishmentEmail').value = data.email || '';
         document.getElementById('establishmentAddress').value = data.address || '';
         document.getElementById('establishmentWebsite').value = data.website || '';
+        document.getElementById('establishmentWelcomeMessage').value = data.welcomeMessage || ''; // ✅ POPULA O NOVO CAMPO
 
         if (data.logo) {
             document.getElementById('establishmentLogoPreview').src = data.logo;
@@ -176,7 +178,7 @@ function setupEventListeners() {
                     showNotification(`Não foi possível limpar os agendamentos: ${error.message}`, 'error');
                 }
             }
-        } else if (button.dataset.action === 'cleanup-invalid-appointments') { // <-- NOVO EVENTO ADICIONADO
+        } else if (button.dataset.action === 'cleanup-invalid-appointments') { 
             const confirmed = await showConfirmation('Limpar Dados Inválidos', 'Isto irá procurar e apagar permanentemente todos os agendamentos que não têm uma data válida. Deseja continuar?');
             if (confirmed) {
                 try {
@@ -215,7 +217,7 @@ export async function loadEstablishmentPage() {
 
                 <div>
                     <h3 class="text-xl font-semibold mb-4 border-b pb-2">Identidade Visual</h3>
-                    <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-6 mb-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Logotipo</label>
                             <img id="establishmentLogoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Logo" class="mt-2 h-24 w-24 rounded-lg object-contain border p-1 bg-gray-50">
@@ -226,6 +228,11 @@ export async function loadEstablishmentPage() {
                             <button type="button" id="establishmentLogoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50">Alterar Logotipo</button>
                             <p class="text-xs text-gray-500 mt-2">Recomendado: PNG com fundo transparente.</p>
                         </div>
+                    </div>
+                     <div>
+                        <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
+                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida.">
+                        <p class="text-xs text-gray-500 mt-1">Esta mensagem aparece abaixo do nome na página de agendamento do cliente.</p>
                     </div>
                 </div>
 

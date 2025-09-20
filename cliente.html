@@ -16,14 +16,14 @@
         }
         .service-card.selected {
             border-color: #3b82f6; /* blue-500 */
-            transform: scale(1.05);
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            transform: scale(1.02);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
             background-color: #eff6ff; /* blue-50 */
         }
         .professional-card.selected {
             border-color: #3b82f6; /* blue-500 */
-            transform: scale(1.05);
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            transform: scale(1.02);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
         }
         .time-slot-selected {
             background-color: #3b82f6; /* blue-500 */
@@ -51,9 +51,9 @@
 
     <!-- Tela Principal de Agendamento -->
     <div id="booking-view">
-        <div class="container mx-auto max-w-3xl p-4">
-            <header class="my-10">
-                <div class="w-full flex justify-end mb-6">
+        <div class="container mx-auto max-w-2xl p-4">
+            <header class="my-6">
+                <div class="w-full flex justify-end mb-4">
                     <button id="myAppointmentsBtn" class="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -62,85 +62,83 @@
                     </button>
                 </div>
                 <div class="flex flex-col items-center">
-                     <div class="flex items-center justify-center gap-4">
-                         <div id="logo-container" class="h-20 w-20 rounded-full bg-gray-200 animate-pulse border-4 border-white shadow-lg">
+                     <div class="flex items-center justify-center gap-3">
+                         <div id="logo-container" class="h-16 w-16 rounded-full bg-gray-200 animate-pulse border-2 border-white shadow-md">
                             <img id="establishmentLogo" src="" alt="Logotipo do Estabelecimento" class="h-full w-full rounded-full object-cover opacity-0 transition-opacity duration-300">
                         </div>
-                        <h1 id="establishmentName" class="text-5xl font-extrabold text-gray-900 tracking-tight">
-                            <div class="h-14 bg-gray-200 rounded-md w-80 animate-pulse"></div>
+                        <h1 id="establishmentName" class="text-3xl font-extrabold text-gray-900 tracking-tight">
+                            <div class="h-10 bg-gray-200 rounded-md w-64 animate-pulse"></div>
                         </h1>
                     </div>
-                    <p class="text-lg text-gray-600 mt-3">Simples, rápido e à sua medida.</p>
+                    <p id="establishmentWelcomeMessage" class="text-base text-gray-600 mt-2">
+                        <div class="h-5 bg-gray-200 rounded-md w-48 animate-pulse"></div>
+                    </p>
                 </div>
             </header>
-            <main class="space-y-16">
-                <!-- Conteúdo das seções de agendamento aqui... -->
+            <main class="space-y-12">
                  <section id="services-section">
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center justify-center w-12 h-12 bg-blue-500 text-white rounded-full text-2xl font-bold">1</div>
-                        <h2 class="text-3xl font-bold text-gray-800">Selecione o Serviço</h2>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="flex items-center justify-center w-10 h-10 bg-blue-500 text-white rounded-full text-xl font-bold">1</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Selecione o Serviço</h2>
                     </div>
-                    <div id="services-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div id="services-container" class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <p class="col-span-full text-gray-500">A carregar serviços...</p>
-                    </div>
-                    <div class="mt-8 text-center">
-                        <button id="services-next-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 transition duration-300 shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>Próximo</button>
                     </div>
                 </section>
                 <section id="professionals-section" class="hidden">
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center justify-center w-12 h-12 bg-blue-500 text-white rounded-full text-2xl font-bold">2</div>
-                        <h2 class="text-3xl font-bold text-gray-800">Selecione o Profissional</h2>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="flex items-center justify-center w-10 h-10 bg-blue-500 text-white rounded-full text-xl font-bold">2</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Selecione o Profissional</h2>
                     </div>
-                    <div id="professionals-container" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
+                    <div id="professionals-container" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                         <p class="col-span-full text-gray-500">A carregar profissionais...</p>
                     </div>
-                    <div class="mt-8 text-center">
-                        <button id="professionals-back-btn" class="text-gray-600 font-bold py-3 px-8 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
+                    <div class="mt-6 text-center">
+                        <button id="professionals-back-btn" class="text-gray-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
                     </div>
                 </section>
                 <section id="schedule-section" class="hidden">
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center justify-center w-12 h-12 bg-blue-500 text-white rounded-full text-2xl font-bold">3</div>
-                        <h2 class="text-3xl font-bold text-gray-800">Selecione a Data e o Horário</h2>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="flex items-center justify-center w-10 h-10 bg-blue-500 text-white rounded-full text-xl font-bold">3</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Selecione a Data e o Horário</h2>
                     </div>
-                    <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <div class="bg-white p-4 rounded-xl shadow-lg">
                         <div class="flex justify-between items-center mb-4">
                             <button id="prev-week-btn" class="p-2 rounded-full hover:bg-gray-200">
-                                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                             </button>
-                            <h3 id="month-year-display" class="text-xl font-semibold text-gray-800"></h3>
+                            <h3 id="month-year-display" class="text-lg font-semibold text-gray-800"></h3>
                             <button id="next-week-btn" class="p-2 rounded-full hover:bg-gray-200">
-                                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                             </button>
                         </div>
-                        <div id="week-container" class="grid grid-cols-7 gap-2 mb-6">
+                        <div id="week-container" class="grid grid-cols-7 gap-1 mb-5">
                         </div>
-                        <div id="time-slots-container" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div id="time-slots-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <h4 class="font-semibold text-center mb-2">Manhã</h4>
+                                <h4 class="font-semibold text-center text-sm mb-2">Manhã</h4>
                                 <div id="morning-slots" class="grid grid-cols-3 gap-2"></div>
                             </div>
                             <div>
-                                <h4 class="font-semibold text-center mb-2">Tarde</h4>
+                                <h4 class="font-semibold text-center text-sm mb-2">Tarde</h4>
                                 <div id="afternoon-slots" class="grid grid-cols-3 gap-2"></div>
                             </div>
                         </div>
                     </div>
-                    <div class="mt-8 text-center">
-                        <button id="schedule-back-btn" class="text-gray-600 font-bold py-3 px-8 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
+                    <div class="mt-6 text-center">
+                        <button id="schedule-back-btn" class="text-gray-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
                     </div>
                 </section>
                 <section id="confirmation-section" class="hidden">
-                    <div class="flex items-center gap-4 mb-6">
-                        <div class="flex items-center justify-center w-12 h-12 bg-blue-500 text-white rounded-full text-2xl font-bold">4</div>
-                        <h2 class="text-3xl font-bold text-gray-800">Confirme os Seus Dados</h2>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="flex items-center justify-center w-10 h-10 bg-blue-500 text-white rounded-full text-xl font-bold">4</div>
+                        <h2 class="text-2xl font-bold text-gray-800">Confirme os Seus Dados</h2>
                     </div>
-                    <div class="bg-white p-6 rounded-xl shadow-lg">
-                        <div id="booking-summary" class="bg-blue-50 p-5 rounded-lg mb-6 border-l-4 border-blue-500">
-                            <h3 class="font-bold text-xl text-gray-900 mb-4">Resumo do Agendamento</h3>
+                    <div class="bg-white p-4 rounded-xl shadow-lg">
+                        <div id="booking-summary" class="bg-blue-50 p-4 rounded-lg mb-5 border-l-4 border-blue-500">
+                            <h3 class="font-bold text-lg text-gray-900 mb-3">Resumo do Agendamento</h3>
                             <div id="summary-service-images" class="flex gap-2 mb-3"></div>
-                            <div class="space-y-3 text-gray-700 text-base">
+                            <div class="space-y-2 text-gray-700 text-sm">
                                 <p><strong>Serviço:</strong> <span id="summary-service" class="font-semibold text-gray-900"></span></p>
                                 <p><strong>Profissional:</strong> <span id="summary-professional" class="font-semibold text-gray-900"></span></p>
                                 <p><strong>Data e Hora:</strong> <span id="summary-datetime" class="font-semibold text-gray-900"></span></p>
@@ -149,16 +147,16 @@
                         </div>
                         <form id="confirmation-form">
                             <div class="mb-4">
-                                <label for="clientName" class="block mb-2 text-sm font-medium text-gray-900">Nome Completo</label>
-                                <input type="text" id="clientName" class="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-lg text-lg" required>
+                                <label for="clientName" class="block mb-1 text-sm font-medium text-gray-900">Nome Completo</label>
+                                <input type="text" id="clientName" class="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-lg text-base" required>
                             </div>
                             <div>
-                                <label for="clientPhone" class="block mb-2 text-sm font-medium text-gray-900">Número do WhatsApp</label>
-                                <input type="tel" id="clientPhone" class="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-lg text-lg" required>
+                                <label for="clientPhone" class="block mb-1 text-sm font-medium text-gray-900">Número do WhatsApp</label>
+                                <input type="tel" id="clientPhone" class="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-lg text-base" required>
                             </div>
-                            <div class="flex gap-4 mt-6">
-                                <button type="button" id="confirmation-back-btn" class="w-full bg-gray-200 text-gray-700 font-bold py-4 px-4 rounded-lg hover:bg-gray-300 transition duration-300 text-lg">Voltar</button>
-                                <button type="submit" id="btn-confirm" class="w-full bg-green-600 text-white font-bold py-4 px-4 rounded-lg hover:bg-green-700 transition duration-300 text-lg shadow-lg hover:shadow-xl">Confirmar Agendamento</button>
+                            <div class="flex gap-3 mt-5">
+                                <button type="button" id="confirmation-back-btn" class="w-full bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition duration-300">Voltar</button>
+                                <button type="submit" id="btn-confirm" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300 shadow-md hover:shadow-lg">Confirmar Agendamento</button>
                             </div>
                         </form>
                     </div>
@@ -168,7 +166,6 @@
     </div>
     
     <div id="my-appointments-view" class="hidden fixed inset-0 bg-gray-100 z-50 p-4 fade-in">
-        <!-- O conteúdo será preenchido via JS -->
     </div>
     
     <div id="notificationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-[100] p-4 hidden">
@@ -204,9 +201,9 @@
             const myAppointmentsBtn = document.getElementById('myAppointmentsBtn');
             const establishmentNameEl = document.getElementById('establishmentName');
             const establishmentLogoEl = document.getElementById('establishmentLogo');
+            const establishmentWelcomeMessageEl = document.getElementById('establishmentWelcomeMessage'); // ✅ NOVO
             const logoContainer = document.getElementById('logo-container');
             const servicesContainer = document.getElementById('services-container');
-            const servicesNextBtn = document.getElementById('services-next-btn');
             const professionalsContainer = document.getElementById('professionals-container');
             const timeSlotsContainer = document.getElementById('time-slots-container');
             const morningSlotsContainer = document.getElementById('morning-slots');
@@ -306,12 +303,12 @@
                         }
                         
                         return `
-                            <div class="bg-white p-4 rounded-lg shadow border flex items-center gap-4">
-                                <img src="${photoUrl}" alt="Foto do Profissional" class="w-16 h-16 rounded-full object-cover"/>
+                            <div class="bg-white p-3 rounded-lg shadow border flex items-center gap-3">
+                                <img src="${photoUrl}" alt="Foto do Profissional" class="w-12 h-12 rounded-full object-cover"/>
                                 <div class="flex-grow">
-                                    <p class="font-bold text-gray-800">${appt.professionalName}</p>
-                                    <p class="text-sm text-gray-600">${appt.serviceName}</p>
-                                    <p class="text-sm text-gray-500">${date.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                    <p class="font-bold text-sm text-gray-800">${appt.professionalName}</p>
+                                    <p class="text-xs text-gray-600">${appt.serviceName}</p>
+                                    <p class="text-xs text-gray-500">${date.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                                 </div>
                                 <div class="flex-shrink-0">
                                     ${statusBadge}
@@ -322,7 +319,7 @@
                 };
 
                 myAppointmentsView.innerHTML = `
-                    <div class="container mx-auto max-w-3xl h-full flex flex-col">
+                    <div class="container mx-auto max-w-2xl h-full flex flex-col">
                         <header class="flex-shrink-0 flex justify-between items-center py-4">
                              <button data-action="close-appointments-view" class="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-800">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
@@ -331,12 +328,12 @@
                             <button data-action="new-appointment-from-history" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-green-600 transition-colors">Novo Agendamento</button>
                         </header>
                         <div class="flex-grow overflow-y-auto">
-                             <div class="text-center mb-8">
-                                <img src="${establishmentLogoEl.src}" alt="Logotipo" class="w-16 h-16 rounded-full mx-auto mb-2 border-2 border-white shadow-md">
-                                <h2 class="text-2xl font-bold text-gray-800">Meus agendamentos</h2>
-                                <p class="text-gray-500">Seja bem-vindo(a) ao ${establishmentNameEl.textContent.trim()}</p>
+                             <div class="text-center mb-6">
+                                <img src="${establishmentLogoEl.src}" alt="Logotipo" class="w-14 h-14 rounded-full mx-auto mb-2 border-2 border-white shadow-md">
+                                <h2 class="text-xl font-bold text-gray-800">Meus agendamentos</h2>
+                                <p class="text-sm text-gray-500">Seja bem-vindo(a) ao ${establishmentNameEl.textContent.trim()}</p>
                             </div>
-                            <div class="space-y-4">${renderList(allAppointments)}</div>
+                            <div class="space-y-3">${renderList(allAppointments)}</div>
                         </div>
                     </div>
                 `;
@@ -358,17 +355,17 @@
             const openMyAppointmentView = () => {
                 myAppointmentsView.innerHTML = `
                     <div class="flex items-center justify-center h-full">
-                        <div class="bg-white rounded-xl shadow-xl p-8 max-w-md w-full text-center fade-in">
+                        <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center fade-in">
                             <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100">
                                 <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
                             </div>
-                            <h2 class="mt-4 text-2xl font-bold text-gray-800">Consultar Agendamentos</h2>
-                            <p class="text-gray-600 mt-2 mb-6">Insira o seu número de WhatsApp para ver o seu histórico.</p>
+                            <h2 class="mt-4 text-xl font-bold text-gray-800">Consultar Agendamentos</h2>
+                            <p class="text-gray-600 mt-1 mb-4 text-sm">Insira o seu número de WhatsApp para ver o seu histórico.</p>
                             <form id="lookupForm">
-                                <input type="tel" id="lookupPhone" class="w-full p-4 bg-gray-100 border-2 border-gray-200 rounded-lg text-lg text-center" placeholder="(XX) XXXXX-XXXX" required>
-                                <button type="submit" class="w-full mt-4 bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition">Consultar</button>
+                                <input type="tel" id="lookupPhone" class="w-full p-3 bg-gray-100 border-2 border-gray-200 rounded-lg text-base text-center" placeholder="(XX) XXXXX-XXXX" required>
+                                <button type="submit" class="w-full mt-3 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Consultar</button>
                             </form>
-                             <button data-action="close-appointments-view" class="mt-4 text-sm text-gray-500 hover:text-gray-700">Voltar ao Agendamento</button>
+                             <button data-action="close-appointments-view" class="mt-3 text-xs text-gray-500 hover:text-gray-700">Voltar ao Agendamento</button>
                         </div>
                     </div>
                 `;
@@ -401,7 +398,6 @@
                 } else if (action === 'new-appointment-from-history') {
                     myAppointmentsView.classList.add('hidden');
                     bookingView.classList.remove('hidden');
-                    // Resetar e ir para o início do fluxo de agendamento
                     showSection('services');
                 } else if (action === 'cancel-appointment') {
                     const appointmentId = actionButton.dataset.id;
@@ -424,8 +420,6 @@
                 }
             });
             
-            // --- O resto do seu código de agendamento original começa aqui ---
-            
             const loadEstablishmentDetails = async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}/details`);
@@ -436,6 +430,10 @@
                     const data = await response.json();
                     establishmentNameEl.innerHTML = data.name || 'Nome do Estabelecimento';
                     establishmentNameEl.querySelector('div')?.remove();
+
+                    // ✅ ATUALIZA A MENSAGEM DE BOAS-VINDAS
+                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Simples, rápido e à sua medida.';
+
                     if (data.logo) {
                         logoContainer.classList.remove('bg-gray-200', 'animate-pulse');
                         establishmentLogoEl.src = data.logo;
@@ -446,6 +444,7 @@
                 } catch(error) {
                     console.error("Erro ao carregar detalhes do estabelecimento:", error);
                     establishmentNameEl.innerHTML = "Erro ao Carregar";
+                    establishmentWelcomeMessageEl.textContent = "Não foi possível carregar os dados.";
                     servicesContainer.innerHTML = `<p class="col-span-full text-red-500">Não foi possível carregar os dados do estabelecimento: ${error.message}</p>`;
                 }
             };
@@ -467,16 +466,16 @@
                     }
                     services.forEach(serv => {
                         const card = document.createElement('div');
-                        card.className = 'service-card flex items-center p-4 bg-white rounded-xl shadow-lg cursor-pointer border-2 border-transparent';
+                        card.className = 'service-card flex items-center p-3 bg-white rounded-lg shadow-md cursor-pointer border-2 border-transparent';
                         card.dataset.id = serv.id;
                         const photoSrc = serv.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(serv.name.charAt(0))}`;
                         card.innerHTML = `
-                            <img src="${photoSrc}" alt="Imagem de ${serv.name}" class="w-16 h-16 rounded-lg object-cover mr-4">
+                            <img src="${photoSrc}" alt="Imagem de ${serv.name}" class="w-12 h-12 rounded-md object-cover mr-3">
                             <div class="flex-grow">
-                                <h3 class="font-bold text-gray-900 text-lg">${serv.name}</h3>
-                                <p class="text-sm text-gray-500">Duração: ${serv.duration} min</p>
+                                <h3 class="font-bold text-gray-900 text-base">${serv.name}</h3>
+                                <p class="text-xs text-gray-500">Duração: ${serv.duration} min</p>
                             </div>
-                            <span class="font-semibold text-lg text-gray-900 ml-4 whitespace-nowrap">R$ ${serv.price.toFixed(2)}</span>`;
+                            <span class="font-semibold text-base text-gray-900 ml-3 whitespace-nowrap">R$ ${serv.price.toFixed(2)}</span>`;
                         card.addEventListener('click', () => handleServiceSelect(serv.id, card));
                         servicesContainer.appendChild(card);
                     });
@@ -484,11 +483,13 @@
                     servicesContainer.innerHTML = `<p class="col-span-full text-red-500">Erro ao carregar serviços: ${error.message}</p>`;
                 }
             };
-
+            
             const handleServiceSelect = (serviceId, cardElement) => {
                 const isAlreadySelected = cardElement.classList.contains('selected');
+                
                 document.querySelectorAll('.service-card').forEach(card => card.classList.remove('selected'));
                 booking.services = [];
+
                 if (!isAlreadySelected) {
                     cardElement.classList.add('selected');
                     const serviceData = allServicesData.find(s => s.id === serviceId);
@@ -497,18 +498,13 @@
                             id: serviceData.id, name: serviceData.name, duration: serviceData.duration, price: serviceData.price,
                             bufferTime: serviceData.bufferTime || 0, photo: serviceData.photo || null
                         });
+                        
+                        loadProfessionalsForService();
+                        showSection('professionals');
                     }
                 }
-                servicesNextBtn.disabled = booking.services.length === 0;
             };
-
-            servicesNextBtn.addEventListener('click', () => {
-                if (booking.services.length > 0) {
-                    loadProfessionalsForService();
-                    showSection('professionals');
-                }
-            });
-
+            
             const loadProfessionalsForService = async () => {
                 professionalsContainer.innerHTML = '<p class="col-span-full text-gray-500">A carregar profissionais...</p>';
                 try {
@@ -529,13 +525,13 @@
                     }
                     professionals.forEach(prof => {
                         const card = document.createElement('div');
-                        card.className = 'card professional-card p-4 bg-white rounded-xl shadow-lg text-center cursor-pointer border-2 border-transparent transition-transform duration-300 hover:scale-105';
+                        card.className = 'card professional-card p-3 bg-white rounded-lg shadow-md text-center cursor-pointer border-2 border-transparent transition-transform duration-300 hover:scale-105';
                         card.dataset.id = prof.id;
                         card.dataset.name = prof.name;
                         const photoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name.charAt(0))}`;
                         card.innerHTML = `
-                            <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-24 h-24 rounded-full mx-auto mb-2 border-2 border-gray-200 object-cover">
-                            <h4 class="font-semibold text-gray-800">${prof.name}</h4>
+                            <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-gray-200 object-cover">
+                            <h4 class="font-semibold text-sm text-gray-800">${prof.name}</h4>
                         `;
                         card.addEventListener('click', () => handleProfessionalSelect(prof.id, prof.name, card));
                         professionalsContainer.appendChild(card);
@@ -567,7 +563,7 @@
                         throw new Error(err.message || 'Falha ao buscar horários.');
                     }
                     let slots = await response.json();
-                    timeSlotsContainer.innerHTML = `<div><h4 class="font-semibold text-center mb-2">Manhã</h4><div id="morning-slots" class="grid grid-cols-3 gap-2"></div></div><div><h4 class="font-semibold text-center mb-2">Tarde</h4><div id="afternoon-slots" class="grid grid-cols-3 gap-2"></div></div>`;
+                    timeSlotsContainer.innerHTML = `<div><h4 class="font-semibold text-center text-sm mb-2">Manhã</h4><div id="morning-slots" class="grid grid-cols-3 gap-2"></div></div><div><h4 class="font-semibold text-center text-sm mb-2">Tarde</h4><div id="afternoon-slots" class="grid grid-cols-3 gap-2"></div></div>`;
                     const updatedMorningSlots = document.getElementById('morning-slots');
                     const updatedAfternoonSlots = document.getElementById('afternoon-slots');
                     if (slots.length === 0) {
@@ -589,7 +585,7 @@
                         const container = hour < 12 ? updatedMorningSlots : updatedAfternoonSlots;
                         const btn = document.createElement('button');
                         btn.type = 'button';
-                        btn.className = 'time-slot-btn p-3 bg-gray-100 rounded-lg hover:bg-gray-200 transition';
+                        btn.className = 'time-slot-btn p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition';
                         btn.textContent = slot;
                         btn.addEventListener('click', () => handleTimeSelect(slot, btn));
                         container.appendChild(btn);
@@ -597,8 +593,8 @@
                     if (availableSlotsCount === 0) {
                         timeSlotsContainer.innerHTML = isToday ? '<p class="col-span-full text-gray-500 text-center">Não há mais horários disponíveis para hoje.</p>' : '<p class="col-span-full text-gray-500 text-center">Nenhum horário disponível para este dia.</p>';
                     } else {
-                        if (updatedMorningSlots.innerHTML === '') updatedMorningSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-sm">Nenhum horário de manhã.</p>';
-                        if (updatedAfternoonSlots.innerHTML === '') updatedAfternoonSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-sm">Nenhum horário à tarde.</p>';
+                        if (updatedMorningSlots.innerHTML === '') updatedMorningSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-xs">Nenhum horário de manhã.</p>';
+                        if (updatedAfternoonSlots.innerHTML === '') updatedAfternoonSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-xs">Nenhum horário à tarde.</p>';
                     }
                 } catch (error) {
                     timeSlotsContainer.innerHTML = `<p class="col-span-full text-red-500 text-center">Erro ao carregar horários: ${error.message}</p>`;
@@ -613,8 +609,8 @@
                     const day = new Date(currentWeekStart);
                     day.setDate(day.getDate() + i);
                     const btn = document.createElement('button');
-                    btn.className = 'day-button text-center p-2 border-2 rounded-lg';
-                    btn.innerHTML = `<span class="block text-xs font-bold uppercase">${day.toLocaleDateString('pt-BR', { weekday: 'short' })}</span><span class="block text-xl font-semibold">${day.getDate()}</span>`;
+                    btn.className = 'day-button text-center p-1 border-2 rounded-lg';
+                    btn.innerHTML = `<span class="block text-xs font-bold uppercase">${day.toLocaleDateString('pt-BR', { weekday: 'short' })}</span><span class="block text-lg font-semibold">${day.getDate()}</span>`;
                     if (day < today) {
                         btn.disabled = true;
                         btn.classList.add('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
@@ -648,7 +644,7 @@
                 if (booking.services.length > 0) {
                     const firstService = booking.services[0];
                     const photoSrc = firstService.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(firstService.name.charAt(0))}`;
-                    summaryImagesContainer.innerHTML = `<img src="${photoSrc}" alt="Imagem de ${firstService.name}" class="w-16 h-16 rounded-lg object-cover">`;
+                    summaryImagesContainer.innerHTML = `<img src="${photoSrc}" alt="Imagem de ${firstService.name}" class="w-14 h-14 rounded-lg object-cover">`;
                 }
                 document.getElementById('summary-service').textContent = booking.services.map(s => s.name).join(', ');
                 document.getElementById('summary-professional').textContent = booking.professionalName;

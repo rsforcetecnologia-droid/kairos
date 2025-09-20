@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Scripts do Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         window.initializeApp = initializeApp;
@@ -20,6 +21,16 @@
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.onAuthStateChanged = onAuthStateChanged;
         window.signOut = signOut;
+    </script>
+    <script type="module">
+        import { getFirestore, collection, query, where, onSnapshot, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        window.getFirestore = getFirestore;
+        window.collection = collection;
+        window.query = query;
+        window.where = where;
+        window.onSnapshot = onSnapshot;
+        window.orderBy = orderBy;
+        window.Timestamp = Timestamp;
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -89,6 +100,7 @@
 
         const app = window.initializeApp(firebaseConfig);
         const auth = window.getAuth(app);
+        const db = window.getFirestore(app);
 
         const API_BASE_URL = window.location.origin;
 
@@ -105,8 +117,10 @@
                 const errorData = await response.json().catch(() => ({ message: response.statusText }));
                 throw new Error(errorData.message || `Erro na API: ${response.status}`);
             }
-
-            if (response.status === 204 || (response.status === 200 && response.headers.get('content-length') === '0')) return null;
+            
+            if (response.status === 204 || (response.status === 200 && response.headers.get('content-length') === '0')) {
+                return null;
+            }
             return response.json();
         }
 
@@ -119,7 +133,7 @@
             dots: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M5 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>),
             back: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>),
             edit: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>),
-            trash: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path fillRule="evenodd" d="M9 2a1 1 001-1h2a1 1 001 1v1h3.5a1 1 011 1v1a1 1 01-1 1H2.5a1 1 01-1-1v-1a1 1 011-1H6V2zM10 5H3.25l-.25 13.5A2.75 2.75 0 005.75 21h8.5A2.75 2.75 0 0017 18.5V5H10zm1.5 5.25a.75.75 0 00-1.5 0v5a.75.75 0 001.5 0v-5zm3.25-.75a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5zM6 10a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5z" clipRule="evenodd" /></svg>),
+            trash: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path fillRule="evenodd" d="M9 2a1 1 001-1h2a1 1 001 1v1h3.5a1 1 011 1v1a1 1 01-1-1H2.5a1 1 01-1-1v-1a1 1 011-1H6V2zM10 5H3.25l-.25 13.5A2.75 2.75 0 005.75 21h8.5A2.75 2.75 0 0017 18.5V5H10zm1.5 5.25a.75.75 0 00-1.5 0v5a.75.75 0 001.5 0v-5zm3.25-.75a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5zM6 10a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5z" clipRule="evenodd" /></svg>),
             photo: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill={c} className="h-5 w-5"><path fillRule="evenodd" d="M1 9.5A1.5 1.5 0 012.5 8h15a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 011 15.5v-6zM3.5 10a.5.5 0 00-.5.5v2a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-2a.5.5 0 00-.5-.5h-13z" clipRule="evenodd" /><path d="M16.5 13.5a1 1 0 11-2 0 1 1 0 012 0zM17 17a1 1 0 100-2 1 1 0 000 2zM3 13a1 1 0 100-2 1 1 0 000 2zM3 17a1 1 0 100-2 1 1 0 000 2z" /></svg>)
         };
 
@@ -266,7 +280,7 @@
         const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
                         <h3 className="text-xl font-bold text-gray-800">{title}</h3>
                         <p className="text-gray-600 my-4">{message}</p>
@@ -281,78 +295,40 @@
 
 
         // --- ECRÃ DA AGENDA ---
-        const AgendaScreen = ({ user, showNotification }) => {
+        const AgendaScreen = ({ user, showNotification, appointments, isLoading, error, refreshData, onNavigateToComanda }) => {
           const [currentDate, setCurrentDate] = useState(new Date());
-          const [appointments, setAppointments] = useState([]);
-          const [isLoading, setIsLoading] = useState(true);
-          const [error, setError] = useState(null);
           const [modalState, setModalState] = useState({ isOpen: false, appointment: null });
           const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
           const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
 
-          const fetchAppointments = async () => {
-            if (!user) return;
-            setIsLoading(true);
-            setError(null);
-            try {
-              const startOfDay = new Date(currentDate);
-              startOfDay.setHours(0, 0, 0, 0);
-              const endOfDay = new Date(currentDate);
-              endOfDay.setHours(23, 59, 59, 999);
-              const url = `/api/appointments/${user.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`;
-              const response = await fetch(url, { headers: { 'Authorization': `Bearer ${user.token}` } });
-              if (!response.ok) {
-                  const err = await response.json();
-                  throw new Error(err.message || 'Falha ao buscar agendamentos.');
-              }
-              const data = await response.json();
-              setAppointments(data.sort((a,b) => new Date(a.startTime) - new Date(b.startTime)));
-            } catch (err) {
-              setError('Falha ao carregar os dados da agenda.');
-              console.error(err);
-            } finally {
-              setIsLoading(false);
-            }
-          };
-
           useEffect(() => {
-            fetchAppointments();
-          }, [currentDate, user]);
+              // Quando a data local muda, informa o componente pai para buscar os dados dessa nova data
+              if (refreshData) {
+                  refreshData(currentDate);
+              }
+          }, [currentDate]);
 
           const handleSaveAppointment = async (appointmentData) => {
               const isEditing = !!appointmentData.id;
               const url = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
               const method = isEditing ? 'PUT' : 'POST';
-
               try {
-                  const response = await fetch(url, {
-                      method,
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-                      body: JSON.stringify(appointmentData)
-                  });
-                  if (!response.ok) {
-                      const err = await response.json();
-                      throw new Error(err.message || 'Falha ao salvar agendamento.');
-                  }
-                  await fetchAppointments();
+                  await authenticatedFetch(url, { method, body: JSON.stringify(appointmentData) }, user);
+                  showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                  setModalState({ isOpen: false, appointment: null });
+                  await refreshData(currentDate);
               } catch (err) {
-                  console.error("Erro ao salvar agendamento:", err);
+                  showNotification("Erro", `Não foi possível salvar o agendamento: ${err.message}`);
               }
           };
 
           const handleDelete = async (appointmentId) => {
               try {
-                  const response = await fetch(`/api/appointments/${appointmentId}`, {
-                      method: 'DELETE',
-                      headers: { 'Authorization': `Bearer ${user.token}` }
-                  });
-                  if (!response.ok) {
-                      const err = await response.json();
-                      throw new Error(err.message || 'Falha ao apagar agendamento.');
-                  }
-                  await fetchAppointments();
+                  await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
+                  showNotification('Sucesso!', 'Agendamento apagado com sucesso.');
+                  await refreshData(currentDate);
               } catch(err) {
-                  console.error("Erro ao apagar agendamento:", err);
+                  showNotification("Erro", `Não foi possível apagar o agendamento: ${err.message}`);
               } finally {
                   setConfirmState({ isOpen: false, appointmentId: null });
               }
@@ -367,35 +343,39 @@
           };
 
           const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
-
+          
           const renderContent = () => {
             if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
             if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
             if (appointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento para este dia.</div>;
-            return appointments.map(appt => (
-              <div key={appt.id} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'}`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
-                    <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
-                  </div>
-                  <div className="relative">
-                    <button onClick={() => setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id)} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
-                    {actionMenuOpenId === appt.id && (
-                      <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
-                        <button onClick={() => { setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
-                        <button onClick={() => { setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
+            
+            return appointments.map(appt => {
+                const serviceName = Array.isArray(appt.services) ? appt.services.map(s => s.name).join(', ') : (appt.serviceName || 'Serviço');
+                return (
+                  <div key={appt.id} onClick={() => onNavigateToComanda(appt.id)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'} cursor-pointer`}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
+                        <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
                       </div>
-                    )}
+                      <div className="relative">
+                        <button onClick={(e) => { e.stopPropagation(); setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id) }} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
+                        {actionMenuOpenId === appt.id && (
+                          <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
+                            <button onClick={(e) => { e.stopPropagation(); setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2"><p className="font-bold text-gray-900">{appt.clientName}</p><p className="text-sm text-gray-600">{serviceName}</p><p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p></div>
                   </div>
-                </div>
-                <div className="mt-2"><p className="font-bold text-gray-900">{appt.clientName}</p><p className="text-sm text-gray-600">{appt.serviceName}</p><p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p></div>
-              </div>
-            ));
+                )
+            });
           };
 
           return (
-            <div className="relative h-full">
+            <div className="relative h-full flex flex-col">
               <div className="p-4 bg-white border-b border-gray-200"><div className="flex items-center justify-between"><button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-gray-100">&lt;</button><h3 className="font-semibold text-gray-800">{formatDate(currentDate)}</h3><button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-gray-100">&gt;</button></div></div>
               <div className="flex-1 overflow-y-auto p-4 space-y-4">{renderContent()}</div>
               <button onClick={() => setModalState({ isOpen: true, appointment: null })} className="absolute bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700">{icons.plus('white')}</button>
@@ -406,7 +386,7 @@
         };
 
         // --- Modal para Adicionar Itens à Comanda ---
-        const AddItemModal = ({ isOpen, onClose, onAddItem, user }) => {
+        const AddItemModal = ({ isOpen, onClose, onAddItem, user, showNotification }) => {
             if (!isOpen) return null;
             const [searchTerm, setSearchTerm] = useState('');
             const [items, setItems] = useState({ services: [], products: [] });
@@ -422,13 +402,19 @@
                         ]);
                         setItems({ services: servicesData, products: productsData });
                     } catch (error) {
+                        showNotification('Erro', 'Não foi possível carregar o catálogo de itens.');
                         console.error('Erro ao carregar catálogo de itens:', error);
                     } finally {
                         setIsLoading(false);
                     }
                 };
                 fetchItems();
-            }, [user]);
+            }, [user, showNotification]);
+            
+            const handleItemClick = (item) => {
+                onAddItem(item);
+                onClose();
+            };
 
             const filteredServices = items.services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
             const filteredProducts = items.products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -457,7 +443,7 @@
                                             <h4 className="font-semibold text-gray-700 mb-2">Serviços</h4>
                                             <div className="space-y-2">
                                                 {filteredServices.map(item => (
-                                                    <button key={item.id} onClick={() => onAddItem({ ...item, type: 'service' })} className="w-full text-left flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                                                    <button key={item.id} onClick={() => handleItemClick({ ...item, type: 'service' })} className="w-full text-left flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
                                                         <span>{item.name}</span>
                                                         <span className="font-semibold">R$ {item.price.toFixed(2)}</span>
                                                     </button>
@@ -470,7 +456,7 @@
                                             <h4 className="font-semibold text-gray-700 mt-4 mb-2">Produtos</h4>
                                             <div className="space-y-2">
                                                 {filteredProducts.map(item => (
-                                                    <button key={item.id} onClick={() => onAddItem({ ...item, type: 'product' })} className="w-full text-left flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
+                                                    <button key={item.id} onClick={() => handleItemClick({ ...item, type: 'product' })} className="w-full text-left flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
                                                         <span>{item.name}</span>
                                                         <span className="font-semibold">R$ {item.price.toFixed(2)}</span>
                                                     </button>
@@ -487,123 +473,244 @@
             );
         };
 
-        // --- Modal de Detalhes da Comanda ---
-        const ComandaDetailModal = ({ comanda, isOpen, onClose, onUpdateComanda, user }) => {
-            if (!isOpen || !comanda) return null;
-            const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+        // --- Modal de Checkout ---
+        const CheckoutModal = ({ isOpen, onClose, onSave, comanda, total, user, showNotification }) => {
+            if (!isOpen) return null;
+        
+            const [payments, setPayments] = useState([]);
+            const [currentMethod, setCurrentMethod] = useState('dinheiro');
+            const [currentValue, setCurrentValue] = useState('');
+            const [amountReceived, setAmountReceived] = useState('');
             const [isSaving, setIsSaving] = useState(false);
-
-            const allDisplayItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
-            const total = allDisplayItems.reduce((acc, item) => acc + item.price, 0);
-
-            const handleFinalize = async () => {
+        
+            const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
+            const remainingAmount = total - totalPaid;
+            const change = (currentMethod === 'dinheiro' && amountReceived && remainingAmount > 0) ? parseFloat(amountReceived) - remainingAmount : 0;
+        
+            const handleAddPayment = () => {
+                const value = parseFloat(currentValue);
+                if (!value || value <= 0 || value > remainingAmount + 0.001) {
+                    showNotification('Valor Inválido', 'Por favor, insira um valor de pagamento válido e que não exceda o valor em falta.');
+                    return;
+                }
+                setPayments([...payments, { method: currentMethod, value }]);
+                setCurrentValue('');
+            };
+        
+            const handleRemovePayment = (index) => {
+                setPayments(payments.filter((_, i) => i !== index));
+            };
+        
+            const handleFinalizeCheckout = async () => {
                 setIsSaving(true);
                 try {
                     const paymentData = {
-                        payments: [{ method: 'Dinheiro', value: total }],
+                        payments,
                         totalAmount: total,
-                        items: allDisplayItems,
+                        items: [...(comanda.services || []), ...(comanda.comandaItems || [])],
                     };
-                    const response = await fetch(`/api/appointments/${comanda.id}/checkout`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-                        body: JSON.stringify(paymentData)
-                    });
-                    if (!response.ok) throw new Error('Falha ao finalizar pagamento.');
-                    onUpdateComanda({ ...comanda, status: 'completed', total: total });
+                    await authenticatedFetch(`/api/appointments/${comanda.id}/checkout`, { method: 'POST', body: JSON.stringify(paymentData) }, user);
+                    showNotification('Sucesso!', 'Pagamento finalizado com sucesso.');
+                    onSave();
                 } catch (error) {
-                    console.error("Erro ao finalizar pagamento:", error);
+                    showNotification("Erro", `Não foi possível finalizar o pagamento: ${error.message}`);
                 } finally {
                     setIsSaving(false);
-                    onClose();
+                }
+            };
+        
+            useEffect(() => {
+                if (remainingAmount > 0) {
+                    setCurrentValue(remainingAmount.toFixed(2));
+                } else {
+                    setCurrentValue('');
+                }
+            }, [remainingAmount]);
+        
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                        <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Finalizar Pagamento</h3></div>
+                        <div className="p-4 flex-1 overflow-y-auto">
+                            <div className="text-center mb-4">
+                                <p className="text-lg text-gray-600">Valor Total</p>
+                                <p className="text-5xl font-bold text-gray-800 my-2">R$ {total.toFixed(2)}</p>
+                            </div>
+                            <div className="space-y-2 mb-4">
+                                {payments.map((p, index) => (
+                                    <div key={index} className="flex justify-between items-center bg-gray-100 p-2 rounded-md">
+                                        <span>{p.method.charAt(0).toUpperCase() + p.method.slice(1)}</span>
+                                        <span>R$ {p.value.toFixed(2)}</span>
+                                        <button onClick={() => handleRemovePayment(index)} className="text-red-500 font-bold">&times;</button>
+                                    </div>
+                                ))}
+                            </div>
+                            {remainingAmount > 0.001 && (
+                                <div className="flex items-center gap-2 mb-4">
+                                    <select value={currentMethod} onChange={e => setCurrentMethod(e.target.value)} className="p-2 border rounded-md w-1/2 bg-white"><option value="dinheiro">Dinheiro</option><option value="pix">PIX</option><option value="credito">Crédito</option><option value="debito">Débito</option></select>
+                                    <input type="number" step="0.01" value={currentValue} onChange={e => setCurrentValue(e.target.value)} placeholder="Valor" className="p-2 border rounded-md w-1/2" />
+                                    <button onClick={handleAddPayment} className="p-2 bg-blue-500 text-white rounded-md font-bold">+</button>
+                                </div>
+                            )}
+                            <p className={`text-xl font-bold text-center mb-4 ${remainingAmount > 0.001 ? 'text-red-600' : 'text-green-600'}`}>
+                                {remainingAmount > 0.001 ? `Faltam R$ ${remainingAmount.toFixed(2)}` : 'Total Pago!'}
+                            </p>
+                            {currentMethod === 'dinheiro' && remainingAmount > 0.001 && (
+                                <div className="mt-4 p-4 bg-blue-50 rounded-lg space-y-2">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Valor Recebido (Dinheiro)</label>
+                                        <input type="number" step="0.01" value={amountReceived} onChange={e => setAmountReceived(e.target.value)} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm text-2xl p-2 text-center" />
+                                    </div>
+                                    <p className="flex justify-between text-lg font-semibold">
+                                        <span>Troco:</span>
+                                        <strong className="text-blue-600">R$ {change > 0 ? change.toFixed(2) : '0.00'}</strong>
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 bg-gray-50 flex gap-4">
+                            <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                            <button onClick={handleFinalizeCheckout} disabled={remainingAmount > 0.001 || isSaving} className="flex-1 py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-400">
+                                {isSaving ? 'A finalizar...' : 'Confirmar Pagamento'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Modal de Detalhes da Comanda ---
+        const ComandaDetailModal = ({ comanda, isOpen, onClose, onUpdate, user, showNotification }) => {
+            if (!isOpen || !comanda) return null;
+
+            const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+            const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+            const [isSaving, setIsSaving] = useState(false);
+            const [confirmationState, setConfirmationState] = useState({ isOpen: false, action: null });
+
+            const allDisplayItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
+            const total = allDisplayItems.reduce((acc, item) => acc + (item.price || 0), 0);
+            
+            const handleActionConfirm = async () => {
+                const { action } = confirmationState;
+                setIsSaving(true);
+                setConfirmationState({ isOpen: false, action: null });
+        
+                try {
+                    if (action === 'reopen') {
+                        const endpoint = comanda.type === 'appointment' ? `/api/appointments/${comanda.id}/reopen` : `/api/sales/${comanda.id}/reopen`;
+                        await authenticatedFetch(endpoint, { method: 'POST' }, user);
+                        showNotification('Sucesso!', 'Comanda foi reaberta para edição.');
+                    } else if (action === 'awaiting_payment') {
+                        await authenticatedFetch(`/api/appointments/${comanda.id}/awaiting-payment`, { method: 'POST' }, user);
+                        showNotification('Sucesso!', 'Comanda movida para aguardar pagamento.');
+                    }
+                    onUpdate();
+                } catch (error) {
+                    showNotification("Erro", `A ação falhou: ${error.message}`);
+                } finally {
+                    setIsSaving(false);
                 }
             };
 
             const handleAddItem = async (newItem) => {
-                const updatedItems = [...(comanda.comandaItems || []), newItem];
+                const updatedItems = [...(comanda.comandaItems || []), { itemId: newItem.id, name: newItem.name, price: newItem.price, type: newItem.type }];
                 try {
-                     const response = await fetch(`/api/appointments/${comanda.id}/comanda`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
-                        body: JSON.stringify({ items: updatedItems })
-                    });
-                    if (!response.ok) throw new Error('Falha ao adicionar item.');
-                    const updatedComanda = { ...comanda, comandaItems: updatedItems };
-                    onUpdateComanda(updatedComanda);
+                    await authenticatedFetch(`/api/appointments/${comanda.id}/comanda`, { method: 'POST', body: JSON.stringify({ items: updatedItems }) }, user);
+                    setIsAddItemModalOpen(false);
+                    onUpdate();
                 } catch (error) {
-                    console.error("Erro ao adicionar item:", error);
+                    showNotification("Erro", `Não foi possível adicionar o item: ${error.message}`);
                 }
             };
             
+            const renderFooter = () => {
+                if (comanda.status === 'completed') {
+                    return (
+                        <div className="p-4 bg-gray-50 space-y-2">
+                             <button onClick={() => setConfirmationState({ isOpen: true, action: 'reopen' })} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 disabled:bg-gray-400">
+                                 {isSaving ? 'Aguarde...' : 'Reabrir Comanda'}
+                             </button>
+                             <button onClick={onClose} className="w-full py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
+                                Fechar
+                            </button>
+                        </div>
+                    );
+                }
+
+                const commonButtons = (
+                    <div className="flex gap-4">
+                        <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Fechar</button>
+                        <button onClick={() => setIsCheckoutModalOpen(true)} disabled={isSaving} className="flex-1 py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-400">
+                            Finalizar Pagamento
+                        </button>
+                    </div>
+                );
+
+                if (comanda.status === 'awaiting_payment') {
+                    return <div className="p-4 bg-gray-50 space-y-2">{commonButtons}</div>;
+                }
+
+                return (
+                    <div className="p-4 bg-gray-50 space-y-2">
+                        <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>
+                        <button onClick={() => setConfirmationState({ isOpen: true, action: 'awaiting_payment' })} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">
+                            Aguardar Pagamento
+                        </button>
+                        {commonButtons}
+                    </div>
+                );
+            };
+
+            const confirmationDetails = {
+                reopen: { title: 'Reabrir Comanda', message: 'Tem a certeza que deseja reabrir esta comanda? O pagamento será revertido.' },
+                awaiting_payment: { title: 'Mover Comanda', message: 'Deseja mover esta comanda para a lista de "Aguardando Pagamento"? O cliente poderá pagar mais tarde.' }
+            };
+
             return (
                 <>
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
-                            <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Detalhes da Comanda</h3><p className="text-sm text-gray-600">{comanda.clientName} com {comanda.professionalName}</p></div>
-                            <div className="p-4 space-y-2 max-h-64 overflow-y-auto">{allDisplayItems.map((item, index) => (<div key={index} className="flex justify-between items-center"><div><p className="font-semibold text-gray-800">{item.name}</p></div><p className="text-gray-700">R$ {item.price.toFixed(2)}</p></div>))}</div>
-                            <div className="p-4 border-t flex justify-between items-center"><span className="font-bold text-lg">Total</span><span className="font-bold text-xl text-gray-900">R$ {total.toFixed(2)}</span></div>
-                            <div className="p-4 bg-gray-50 space-y-2">
-                                <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>
-                                <div className="flex gap-4">
-                                    <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Fechar</button>
-                                    <button onClick={handleFinalize} disabled={isSaving} className="flex-1 py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-gray-400">{isSaving ? 'A finalizar...' : 'Finalizar Pagamento'}</button>
-                                </div>
+                            <div className="p-4 border-b">
+                                <h3 className="text-xl font-bold text-gray-800">{comanda.clientName}</h3>
+                                <p className="text-sm text-gray-600">
+                                    {new Date(comanda.startTime).toLocaleString('pt-BR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                <p className="text-sm text-gray-500">com {comanda.professionalName}</p>
                             </div>
+                            <div className="p-4 space-y-2 max-h-64 overflow-y-auto">{allDisplayItems.map((item, index) => (<div key={index} className="flex justify-between items-center"><div><p className="font-semibold text-gray-800">{item.name}</p></div><p className="text-gray-700">R$ {(item.price || 0).toFixed(2)}</p></div>))}</div>
+                            <div className="p-4 border-t flex justify-between items-center"><span className="font-bold text-lg">Total</span><span className="font-bold text-xl text-gray-900">R$ {total.toFixed(2)}</span></div>
+                            {renderFooter()}
                         </div>
                     </div>
-                    <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onAddItem={handleAddItem} user={user} />
+                    <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onAddItem={handleAddItem} user={user} showNotification={showNotification} />
+                    <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} onSave={onUpdate} comanda={comanda} total={total} user={user} showNotification={showNotification} />
+                    <ConfirmationModal
+                        isOpen={confirmationState.isOpen}
+                        onClose={() => setConfirmationState({ isOpen: false, action: null })}
+                        onConfirm={handleActionConfirm}
+                        title={confirmationState.action ? confirmationDetails[confirmationState.action].title : ''}
+                        message={confirmationState.action ? confirmationDetails[confirmationState.action].message : ''}
+                    />
                 </>
             );
         };
 
 
         // --- Ecrã de Comandas ---
-        const ComandasScreen = ({ user }) => {
+        const ComandasScreen = ({ user, showNotification, comandas, isLoading, error, refreshData, selectedComandaId, onComandaOpened }) => {
             const [activeFilter, setActiveFilter] = useState('atendimento');
-            const [allComandas, setAllComandas] = useState([]);
-            const [isLoading, setIsLoading] = useState(true);
-            const [error, setError] = useState(null);
             const [selectedComanda, setSelectedComanda] = useState(null);
 
-            const fetchComandas = async () => {
-                if (!user) return;
-                setIsLoading(true);
-                setError(null);
-                try {
-                    const url = `/api/comandas/${user.establishmentId}`;
-                    const response = await fetch(url, {
-                        headers: { 'Authorization': `Bearer ${user.token}` }
-                    });
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Falha ao buscar comandas.');
-                    }
-                    const data = await response.json();
-                    setAllComandas(data);
-                } catch (err) {
-                    setError('Falha ao carregar as comandas.');
-                    console.error(err);
-                } finally {
-                    setIsLoading(false);
-                }
-            };
-
             useEffect(() => {
-                fetchComandas();
-            }, [user]);
-
-            const handleUpdateComanda = (updatedComanda) => {
-                setAllComandas(prev => {
-                    const index = prev.findIndex(c => c.id === updatedComanda.id);
-                    if (index > -1) {
-                        const newComandas = [...prev];
-                        newComandas[index] = updatedComanda;
-                        return newComandas;
+                if (selectedComandaId && comandas.length > 0) {
+                    const comandaToOpen = comandas.find(c => c.id === selectedComandaId);
+                    if (comandaToOpen) {
+                        setSelectedComanda(comandaToOpen);
+                        onComandaOpened();
                     }
-                    return prev;
-                });
-                setSelectedComanda(null);
-            };
+                }
+            }, [selectedComandaId, comandas, onComandaOpened]);
 
 
             const statusMap = {
@@ -611,20 +718,25 @@
                 pagamento: { label: 'Aguardando Pagamento', statusValue: 'awaiting_payment' },
                 finalizada: { label: 'Finalizadas', statusValue: 'completed' },
             };
+            
+            const handleUpdate = async () => {
+                await refreshData();
+                setSelectedComanda(null);
+            };
 
             const renderContent = () => {
                 if (isLoading) return <div className="text-center py-10"><p className="text-gray-500">A carregar comandas...</p></div>;
                 if (error) return <div className="text-center py-10"><p className="text-red-500">{error}</p></div>;
 
                 const currentStatus = statusMap[activeFilter].statusValue;
-                const filteredComandas = allComandas.filter(c => c.status === currentStatus);
+                const filteredComandas = comandas.filter(c => c.status === currentStatus);
 
                 if (filteredComandas.length === 0) return <div className="text-center py-10"><p className="text-gray-500">Nenhuma comanda encontrada para este filtro.</p></div>;
 
                 return filteredComandas.map(comanda => {
-                    const total = (comanda.comandaItems || comanda.services || []).reduce((acc, item) => acc + item.price, 0);
+                    const total = [...(comanda.services || []), ...(comanda.comandaItems || [])].reduce((acc, item) => acc + (item.price || 0), 0);
                     return (
-                        <div key={comanda.id} onClick={() => setSelectedComanda({...comanda, total})} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${activeFilter === 'atendimento' ? 'border-blue-500' : activeFilter === 'pagamento' ? 'border-yellow-500' : 'border-green-500'} cursor-pointer`}>
+                        <div key={comanda.id} onClick={() => setSelectedComanda(comanda)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${activeFilter === 'atendimento' ? 'border-blue-500' : activeFilter === 'pagamento' ? 'border-yellow-500' : 'border-green-500'} cursor-pointer`}>
                             <div className="flex justify-between items-start">
                                 <div><p className="font-bold text-gray-900">{comanda.clientName}</p><p className="text-sm text-gray-500">com {comanda.professionalName}</p></div>
                                 <div className="text-right"><p className="font-bold text-lg text-gray-800">R$ {total.toFixed(2)}</p><p className="text-xs text-gray-500">{new Date(comanda.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p></div>
@@ -638,13 +750,13 @@
                 <div className="h-full flex flex-col">
                     <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">{renderContent()}</div>
-                    <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdateComanda={handleUpdateComanda} user={user} />
+                    <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdate={handleUpdate} user={user} showNotification={showNotification} />
                 </div>
             );
         };
 
         // --- Ecrã de Relatórios ---
-        const RelatoriosScreen = ({ user }) => {
+        const RelatoriosScreen = ({ user, showNotification }) => {
             const [kpis, setKpis] = useState(null);
             const [chartData, setChartData] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
@@ -661,14 +773,7 @@
 
                     try {
                         const url = `/api/analytics/${user.establishmentId}?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
-                        const response = await fetch(url, {
-                            headers: { 'Authorization': `Bearer ${user.token}` }
-                        });
-                        if (!response.ok) {
-                            const err = await response.json();
-                            throw new Error(err.message || 'Falha ao buscar relatórios.');
-                        }
-                        const data = await response.json();
+                        const data = await authenticatedFetch(url, {}, user);
 
                         setKpis(data.kpis);
                         setChartData({
@@ -715,23 +820,25 @@
 
             return (
                 <div className={`p-4 space-y-6 ${isLoading ? 'animate-pulse' : ''}`}>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                            <p className="text-sm text-gray-500">Receita Total</p>
-                            {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-green-600">R$ {(kpis?.totalRevenue || 0).toFixed(2)}</p>}
+                    <div className={`p-4 space-y-6 ${!isLoading && 'animate-none'}`}>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow-md text-center">
+                                <p className="text-sm text-gray-500">Receita Total</p>
+                                {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-green-600">R$ {(kpis?.totalRevenue || 0).toFixed(2)}</p>}
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-md text-center">
+                                <p className="text-sm text-gray-500">Vendas Totais</p>
+                                {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-blue-600">{kpis?.totalTransactions || 0}</p>}
+                            </div>
                         </div>
                         <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                            <p className="text-sm text-gray-500">Vendas Totais</p>
-                            {isLoading ? <div className="h-8 bg-gray-200 rounded-md mt-1"></div> : <p className="text-2xl font-bold text-blue-600">{kpis?.totalTransactions || 0}</p>}
+                            <p className="text-sm text-gray-500">Item Mais Popular</p>
+                            {isLoading ? <div className="h-7 bg-gray-200 rounded-md mt-1 w-3/4 mx-auto"></div> : <p className="text-xl font-bold text-indigo-600">{kpis?.mostPopularItem || 'N/A'}</p>}
                         </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md text-center">
-                        <p className="text-sm text-gray-500">Item Mais Popular</p>
-                        {isLoading ? <div className="h-7 bg-gray-200 rounded-md mt-1 w-3/4 mx-auto"></div> : <p className="text-xl font-bold text-indigo-600">{kpis?.mostPopularItem || 'N/A'}</p>}
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md">
-                        <h3 className="font-semibold text-gray-800 mb-4">Receita por Mês</h3>
-                        {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <ChartCanvas />}
+                        <div className="bg-white p-4 rounded-lg shadow-md">
+                            <h3 className="font-semibold text-gray-800 mb-4">Receita por Mês</h3>
+                            {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <ChartCanvas />}
+                        </div>
                     </div>
                 </div>
             );
@@ -1006,7 +1113,7 @@
                     </footer>
                     <ItemFormModal
                         isOpen={isModalOpen}
-                        onClose={() => setModalOpen(false)}
+                        onClose={() => setIsModalOpen(false)}
                         onSave={handleSaveProduct}
                         itemToEdit={productToEdit}
                         itemType="product"
@@ -1026,10 +1133,25 @@
 
 
         // --- 4. COMPONENTE PRINCIPAL (ROTEADOR) ---
-
-        const MainScreen = ({ user, onLogout, showNotification }) => {
+        const MainScreen = ({ user, onLogout, showNotification, appData, isLoading, error, refreshData }) => {
             const [activeTab, setActiveTab] = useState('Agenda');
             const [currentManagementScreen, setCurrentManagementScreen] = useState('menu');
+            const [selectedComandaIdFromAgenda, setSelectedComandaIdFromAgenda] = useState(null);
+
+            useEffect(() => {
+                if(activeTab === 'Agenda' || activeTab === 'Comandas') {
+                    refreshData();
+                }
+            }, [activeTab, refreshData]);
+
+            const handleNavigateToComanda = (appointmentId) => {
+                setSelectedComandaIdFromAgenda(appointmentId);
+                setActiveTab('Comandas');
+            };
+            
+            const handleComandaOpened = () => {
+                setSelectedComandaIdFromAgenda(null);
+            };
 
             const tabs = [
                 { name: 'Agenda', icon: 'agenda' },
@@ -1044,8 +1166,8 @@
 
             const renderContent = () => {
                 switch (activeTab) {
-                    case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} />;
-                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} />;
+                    case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} appointments={appData.appointments} isLoading={isLoading} error={error} refreshData={refreshData} onNavigateToComanda={handleNavigateToComanda} />;
+                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} comandas={appData.comandas} isLoading={isLoading} error={error} refreshData={refreshData} selectedComandaId={selectedComandaIdFromAgenda} onComandaOpened={handleComandaOpened} />;
                     case 'Relatórios': return <RelatoriosScreen user={user} showNotification={showNotification}/>;
                     case 'Gestão':
                         switch (currentManagementScreen) {
@@ -1080,27 +1202,70 @@
         };
 
         // --- 5. COMPONENTE RAIZ (APP) ---
-
         const App = () => {
             const [loggedInUser, setLoggedInUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [notification, setNotification] = useState({ isOpen: false, title: '', message: '' });
 
+            const [appData, setAppData] = useState({ appointments: [], comandas: [] });
+            const [appIsLoading, setAppIsLoading] = useState(true);
+            const [appError, setAppError] = useState(null);
+
             const showNotification = useCallback((title, message) => {
                 setNotification({ isOpen: true, title, message });
             }, []);
+            
+            const refreshData = useCallback(async (date = new Date()) => {
+                if (!loggedInUser) return;
+                setAppIsLoading(true);
+                setAppError(null);
+                try {
+                    const startOfDay = new Date(date);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(date);
+                    endOfDay.setHours(23, 59, 59, 999);
 
-            const handleLoginSuccess = useCallback((userData) => {
-                setLoggedInUser(userData);
-            }, []);
-
-            const handleLogout = useCallback(() => {
-                window.signOut(auth);
-                setLoggedInUser(null);
-            }, []);
+                    const [appointmentsData, comandasData] = await Promise.all([
+                        authenticatedFetch(`/api/appointments/${loggedInUser.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`, {}, loggedInUser),
+                        authenticatedFetch(`/api/comandas/${loggedInUser.establishmentId}`, {}, loggedInUser)
+                    ]);
+                    setAppData({ appointments: appointmentsData, comandas: comandasData });
+                } catch (err) {
+                    setAppError('Falha ao sincronizar dados com o servidor.');
+                    showNotification('Erro de Sincronização', err.message);
+                } finally {
+                    setAppIsLoading(false);
+                }
+            }, [loggedInUser, showNotification]);
 
             useEffect(() => {
-                const unsubscribe = window.onAuthStateChanged(auth, async (user) => {
+                if (loggedInUser) {
+                    refreshData();
+                }
+            }, [loggedInUser, refreshData]);
+            
+            useEffect(() => {
+                if (!loggedInUser) return;
+
+                const notificationsRef = window.collection(db, 'establishments', loggedInUser.establishmentId, 'notifications');
+                const q = window.query(notificationsRef, window.where("timestamp", ">=", window.Timestamp.now()), window.orderBy("timestamp", "desc"));
+
+                const unsubscribe = window.onSnapshot(q, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added") {
+                            const notification = change.doc.data();
+                            showNotification(notification.title, notification.message);
+                            refreshData();
+                        }
+                    });
+                });
+
+                return () => unsubscribe();
+            }, [loggedInUser, refreshData, showNotification]);
+
+
+            useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         try {
                             const idTokenResult = await user.getIdTokenResult(true);
@@ -1112,24 +1277,107 @@
                                     permissions: claims.permissions
                                 };
                                 setLoggedInUser(userData);
-                            } else { await window.signOut(auth); }
+                            } else { await signOut(auth); }
                         } catch (error) {
                             console.error("Auth state error:", error);
-                            await window.signOut(auth);
+                            await signOut(auth);
                         }
                     } else { setLoggedInUser(null); }
                     setIsLoading(false);
                 });
                 return () => unsubscribe();
             }, []);
+            
+            const LoginScreen = ({ onLoginSuccess }) => {
+              const [email, setEmail] = useState('');
+              const [password, setPassword] = useState('');
+              const [isLoading, setIsLoading] = useState(false);
+              const [errorMessage, setErrorMessage] = useState(null);
 
-            if (isLoading) { return <LoadingScreen /> }
+              const handleLogin = async () => {
+                setIsLoading(true);
+                setErrorMessage(null);
+                try {
+                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    const idTokenResult = await user.getIdTokenResult();
+                    const claims = idTokenResult.claims;
+
+                    if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+                        const userData = { 
+                            name: user.displayName, 
+                            email: user.email,
+                            uid: user.uid,
+                            token: await user.getIdToken(),
+                            establishmentId: claims.establishmentId
+                        };
+                        onLoginSuccess(userData);
+                    } else {
+                        setErrorMessage('Acesso negado. Permissões insuficientes.');
+                        await signOut(auth);
+                    }
+                } catch (error) {
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                        setErrorMessage('E-mail ou senha inválidos.');
+                    } else {
+                        setErrorMessage('Ocorreu um erro ao tentar entrar.');
+                        console.error("Erro de login:", error);
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+              };
+
+              return (
+                <div className="flex-1 bg-gray-900 h-screen flex justify-center items-center font-sans">
+                  <div className="w-full max-w-md">
+                    <div className="text-center mb-12 px-6">
+                      <h1 className="text-3xl font-bold text-gray-50">Acesso ao Painel</h1>
+                      <p className="text-base text-gray-400 mt-2">Administre o seu estabelecimento</p>
+                    </div>
+                    <div className="px-6">
+                      <div className="mb-5">
+                        <label className="text-sm font-medium text-gray-300 mb-2 block">E-mail</label>
+                        <input type="email" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      </div>
+                      <div className="mb-4">
+                        <label className="text-sm font-medium text-gray-300 mb-2 block">Senha</label>
+                        <input type="password" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+                      </div>
+                      {errorMessage && (<p className="text-red-400 text-center mb-4 text-sm">{errorMessage}</p>)}
+                      <button className={`w-full bg-blue-600 text-white font-bold py-4 rounded-lg text-base mt-4 transition-colors ${isLoading ? 'bg-blue-400' : 'hover:bg-blue-700'}`} onClick={handleLogin} disabled={isLoading}>
+                        {isLoading ? (
+                          <div className="flex justify-center items-center">
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            A entrar...
+                          </div>
+                        ) : ('Entrar')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+
+            const handleLogout = useCallback(() => {
+                window.signOut(auth);
+                setLoggedInUser(null);
+                setAppData({ appointments: [], comandas: [] }); // Limpa os dados no logout
+            }, []);
 
             return (
                 <React.Fragment>
-                    {loggedInUser ?
-                        <MainScreen user={loggedInUser} onLogout={handleLogout} showNotification={showNotification} /> :
-                        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+                    {isLoading ? <LoadingScreen /> : loggedInUser ?
+                        <MainScreen 
+                            user={loggedInUser} 
+                            onLogout={handleLogout} 
+                            showNotification={showNotification}
+                            appData={appData}
+                            isLoading={appIsLoading}
+                            error={appError}
+                            refreshData={refreshData}
+                        /> :
+                        <LoginScreen onLoginSuccess={setLoggedInUser} />
                     }
                     <NotificationModal
                         isOpen={notification.isOpen}
@@ -1145,3 +1393,4 @@
     </script>
 </body>
 </html>
+
