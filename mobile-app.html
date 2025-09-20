@@ -120,7 +120,11 @@
             back: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>),
             edit: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" /></svg>),
             trash: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path fillRule="evenodd" d="M9 2a1 1 001-1h2a1 1 001 1v1h3.5a1 1 011 1v1a1 1 01-1 1H2.5a1 1 01-1-1v-1a1 1 011-1H6V2zM10 5H3.25l-.25 13.5A2.75 2.75 0 005.75 21h8.5A2.75 2.75 0 0017 18.5V5H10zm1.5 5.25a.75.75 0 00-1.5 0v5a.75.75 0 001.5 0v-5zm3.25-.75a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5zM6 10a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5z" clipRule="evenodd" /></svg>),
+<<<<<<< HEAD
             photo: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill={c} className="h-5 w-5"><path fillRule="evenodd" d="M1 9.5A1.5 1.5 0 012.5 8h15a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 011 15.5v-6zM3.5 10a.5.5 0 00-.5.5v2a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-2a.5.5 0 00-.5-.5h-13z" clipRule="evenodd" /><path d="M16.5 13.5a1 1 0 11-2 0 1 1 0 012 0zM17 17a1 1 0 100-2 1 1 0 000 2zM3 13a1 1 0 100-2 1 1 0 000 2zM3 17a1 1 0 100-2 1 1 0 000 2z" /></svg>)
+=======
+            
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
         };
 
         // --- 2. COMPONENTES REUTILIZÁVEIS ---
@@ -263,6 +267,82 @@
             );
         };
         
+<<<<<<< HEAD
+=======
+        // --- ECRÃ DE LOGIN ---
+        const LoginScreen = ({ onLoginSuccess }) => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [errorMessage, setErrorMessage] = useState(null);
+
+            const handleLogin = async () => {
+                setIsLoading(true);
+                setErrorMessage(null);
+                try {
+                    const userCredential = await window.signInWithEmailAndPassword(auth, email, password);
+                    const user = userCredential.user;
+                    const idTokenResult = await user.getIdTokenResult();
+                    const claims = idTokenResult.claims;
+
+                    if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+                        const userData = { 
+                            name: user.displayName, 
+                            email: user.email,
+                            uid: user.uid,
+                            token: await user.getIdToken(),
+                            establishmentId: claims.establishmentId
+                        };
+                        onLoginSuccess(userData);
+                    } else {
+                        setErrorMessage('Acesso negado. Permissões insuficientes.');
+                        await window.signOut(auth);
+                    }
+                } catch (error) {
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                        setErrorMessage('E-mail ou senha inválidos.');
+                    } else {
+                        setErrorMessage('Ocorreu um erro ao tentar entrar.');
+                        console.error("Erro de login:", error);
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            return (
+                <div className="flex-1 bg-gray-900 h-screen flex justify-center items-center font-sans">
+                    <div className="w-full max-w-md">
+                        <div className="text-center mb-12 px-6">
+                            <h1 className="text-3xl font-bold text-gray-50">Acesso ao Painel</h1>
+                            <p className="text-base text-gray-400 mt-2">Administre o seu estabelecimento</p>
+                        </div>
+                        <div className="px-6">
+                            <div className="mb-5">
+                                <label className="text-sm font-medium text-gray-300 mb-2 block">E-mail</label>
+                                <input type="email" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                            </div>
+                            <div className="mb-4">
+                                <label className="text-sm font-medium text-gray-300 mb-2 block">Senha</label>
+                                <input type="password" className="bg-gray-700 text-gray-50 w-full px-4 py-3 rounded-lg text-base border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+                            </div>
+                            {errorMessage && (<p className="text-red-400 text-center mb-4 text-sm">{errorMessage}</p>)}
+                            <button className={`w-full bg-blue-600 text-white font-bold py-4 rounded-lg text-base mt-4 transition-colors ${isLoading ? 'bg-blue-400' : 'hover:bg-blue-700'}`} onClick={handleLogin} disabled={isLoading}>
+                                {isLoading ? (
+                                    <div className="flex justify-center items-center">
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                        A entrar...
+                                    </div>
+                                ) : ('Entrar')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MODAL DE CONFIRMAÇÃO ---
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
         const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
             if (!isOpen) return null;
             return (
@@ -282,6 +362,7 @@
 
         // --- ECRÃ DA AGENDA ---
         const AgendaScreen = ({ user, showNotification }) => {
+<<<<<<< HEAD
           const [currentDate, setCurrentDate] = useState(new Date());
           const [appointments, setAppointments] = useState([]);
           const [isLoading, setIsLoading] = useState(true);
@@ -365,9 +446,74 @@
                   return newDate;
               });
           };
+=======
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [appointments, setAppointments] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [appointmentToEdit, setAppointmentToEdit] = useState(null);
+            const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
+            const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
 
-          const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+            const fetchAppointments = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    const startOfDay = new Date(currentDate);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(currentDate);
+                    endOfDay.setHours(23, 59, 59, 999);
+                    const endpoint = `/api/appointments/${user.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`;
+                    const data = await authenticatedFetch(endpoint, {}, user);
+                    setAppointments(data.sort((a,b) => new Date(a.startTime) - new Date(b.startTime)));
+                } catch (error) {
+                    showNotification('Erro na Agenda', error.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [currentDate, user, showNotification]);
 
+            useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+            const handleSaveAppointment = async (appointmentData) => {
+                const isEditing = !!appointmentData.id;
+                const endpoint = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
+                const method = isEditing ? 'PUT' : 'POST';
+
+                try {
+                    await authenticatedFetch(endpoint, { method, body: JSON.stringify(appointmentData) }, user);
+                    showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                    setIsModalOpen(false);
+                    setAppointmentToEdit(null);
+                    await fetchAppointments();
+                } catch(err) {
+                    showNotification('Erro', err.message);
+                }
+            };
+
+            const handleDelete = async (appointmentId) => {
+                try {
+                    await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
+                    showNotification('Sucesso!', 'Agendamento apagado com sucesso.');
+                    await fetchAppointments();
+                } catch(err) {
+                    showNotification('Erro', `Não foi possível apagar: ${err.message}`);
+                } finally {
+                    setConfirmState({ isOpen: false, appointmentId: null });
+                }
+            };
+
+            const changeDate = (amount) => {
+                setCurrentDate(prev => {
+                    const newDate = new Date(prev);
+                    newDate.setDate(newDate.getDate() + amount);
+                    return newDate;
+                });
+            };
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
+
+            const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+
+<<<<<<< HEAD
           const renderContent = () => {
             if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
             if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
@@ -403,6 +549,62 @@
               <ConfirmationModal isOpen={confirmState.isOpen} onClose={() => setConfirmState({ isOpen: false, appointmentId: null })} onConfirm={() => handleDelete(confirmState.appointmentId)} title="Apagar Agendamento" message="Tem a certeza que deseja apagar este agendamento?" />
             </div>
           );
+=======
+            return (
+                <div className="flex flex-col h-full">
+                    <header className="flex-shrink-0 bg-white p-4 flex items-center justify-between shadow-md">
+                        <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-gray-100">&lt;</button>
+                        <h2 className="font-semibold text-gray-800 text-center">{formatDate(currentDate)}</h2>
+                        <button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-gray-100">&gt;</button>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {isLoading ? <p className="text-center text-gray-500">A carregar...</p> : 
+                            appointments.length > 0 ? appointments.map(appt => (
+                                <div key={appt.id} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'}`}>
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                            <p className="font-semibold text-gray-900">{appt.clientName}</p>
+                                        </div>
+                                        <div className="relative">
+                                            <button onClick={() => setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id)} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
+                                            {actionMenuOpenId === appt.id && (
+                                                <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
+                                                    <button onClick={() => { setAppointmentToEdit(appt); setIsModalOpen(true); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
+                                                    <button onClick={() => { setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 pt-2 border-t border-gray-100">
+                                        <p className="text-sm text-gray-600">{appt.serviceName}</p>
+                                        <p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p>
+                                    </div>
+                                </div>
+                            )) : <p className="text-center text-gray-500 pt-10">Nenhum agendamento para este dia.</p>
+                        }
+                    </main>
+                    <footer className="p-4">
+                        <button onClick={() => { setAppointmentToEdit(null); setIsModalOpen(true); }} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700">+ Novo Agendamento</button>
+                    </footer>
+                    <AppointmentModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+                        onSave={handleSaveAppointment}
+                        appointmentToEdit={appointmentToEdit}
+                        user={user}
+                        showNotification={showNotification}
+                    />
+                    <ConfirmationModal 
+                        isOpen={confirmState.isOpen} 
+                        onClose={() => setConfirmState({ isOpen: false, appointmentId: null })} 
+                        onConfirm={() => handleDelete(confirmState.appointmentId)} 
+                        title="Apagar Agendamento" 
+                        message="Tem a certeza que deseja apagar este agendamento?" 
+                    />
+                </div>
+            );
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
         };
 
         // --- Modal para Adicionar Itens à Comanda ---
@@ -539,9 +741,28 @@
                 <>
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
+<<<<<<< HEAD
                             <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Detalhes da Comanda</h3><p className="text-sm text-gray-600">{comanda.clientName} com {comanda.professionalName}</p></div>
                             <div className="p-4 space-y-2 max-h-64 overflow-y-auto">{allDisplayItems.map((item, index) => (<div key={index} className="flex justify-between items-center"><div><p className="font-semibold text-gray-800">{item.name}</p></div><p className="text-gray-700">R$ {item.price.toFixed(2)}</p></div>))}</div>
                             <div className="p-4 border-t flex justify-between items-center"><span className="font-bold text-lg">Total</span><span className="font-bold text-xl text-gray-900">R$ {total.toFixed(2)}</span></div>
+=======
+                            <div className="p-4 border-b">
+                                <h3 className="text-xl font-bold text-gray-800">Detalhes da Comanda</h3>
+                                <p className="text-sm text-gray-600">{comanda.clientName} com {comanda.professionalName}</p>
+                            </div>
+                            <div className="p-4 space-y-2 max-h-64 overflow-y-auto">
+                                {allDisplayItems.map((item, index) => (
+                                    <div key={index} className="flex justify-between items-center">
+                                        <p className="font-semibold text-gray-800">{item.name}</p>
+                                        <p className="text-gray-700">R$ {item.price.toFixed(2)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-4 border-t flex justify-between items-center">
+                                <span className="font-bold text-lg">Total</span>
+                                <span className="font-bold text-xl text-gray-900">R$ {total.toFixed(2)}</span>
+                            </div>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                             <div className="p-4 bg-gray-50 space-y-2">
                                 <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>
                                 <div className="flex gap-4">
@@ -636,9 +857,54 @@
 
             return (
                 <div className="h-full flex flex-col">
+<<<<<<< HEAD
                     <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">{renderContent()}</div>
                     <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdateComanda={handleUpdateComanda} user={user} />
+=======
+                    <header className="p-2 bg-white border-b border-gray-200">
+                        <div className="flex bg-gray-100 rounded-lg p-1">
+                            {Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}
+                        </div>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {isLoading ? <p className="text-center text-gray-500">A carregar...</p> : 
+                                filteredComandas.length > 0 ? filteredComandas.map(comanda => {
+                                const total = (comanda.services || []).reduce((acc, s) => acc + s.price, 0) + (comanda.comandaItems || []).reduce((acc, i) => acc + i.price, 0);
+                                return (
+                                    <div key={comanda.id} onClick={() => setSelectedComanda(comanda)} className={`bg-white p-4 rounded-lg shadow-sm border-l-4 ${activeFilter === 'atendimento' ? 'border-blue-500' : activeFilter === 'pagamento' ? 'border-yellow-500' : 'border-green-500'} cursor-pointer`}>
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold text-gray-900">{comanda.clientName}</p>
+                                                <p className="text-sm text-gray-500">com {comanda.professionalName}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-bold text-lg text-gray-800">R$ {total.toFixed(2)}</p>
+                                                <p className="text-xs text-gray-500">{new Date(comanda.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }) : <p className="text-center text-gray-500 pt-10">Nenhuma comanda encontrada.</p>
+                        }
+                    </main>
+                    <ComandaDetailModal 
+                        isOpen={!!selectedComanda}
+                        onClose={() => setSelectedComanda(null)}
+                        comanda={selectedComanda}
+                        user={user}
+                        showNotification={showNotification}
+                        onUpdate={handleUpdateComanda}
+                        onReopen={handleReopenRequest}
+                    />
+                    <ConfirmationModal
+                        isOpen={confirmReopenState.isOpen}
+                        onClose={() => setConfirmReopenState({ isOpen: false, comanda: null })}
+                        onConfirm={executeReopen}
+                        title="Reabrir Comanda"
+                        message="Tem a certeza de que deseja reabrir esta comanda? O pagamento será revertido."
+                    />
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                 </div>
             );
         };
@@ -730,13 +996,51 @@
                         {isLoading ? <div className="h-7 bg-gray-200 rounded-md mt-1 w-3/4 mx-auto"></div> : <p className="text-xl font-bold text-indigo-600">{kpis?.mostPopularItem || 'N/A'}</p>}
                     </div>
                     <div className="bg-white p-4 rounded-lg shadow-md">
+<<<<<<< HEAD
                         <h3 className="font-semibold text-gray-800 mb-4">Receita por Mês</h3>
+                        {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <ChartCanvas />}
+                    </div>
+=======
+                        <h3 className="font-semibold text-gray-800 mb-4">Vendas por Mês</h3>
                         {isLoading || !chartData ? <div className="h-48 bg-gray-200 rounded-md"></div> : <ChartCanvas />}
                     </div>
                 </div>
             );
         };
 
+        // --- ECRÃ DE GESTÃO (MENU PRINCIPAL) ---
+        const GestaoScreen = ({ user, onLogout, onNavigate }) => {
+            return (
+                <div className="p-4 space-y-6">
+                    <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+                        <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-3xl">{user.name.charAt(0).toUpperCase()}</div>
+                        <div><h3 className="font-bold text-xl text-gray-900">{user.name}</h3><p className="text-gray-600">{user.email}</p></div>
+                    </div>
+                    <div className="bg-white rounded-lg shadow-md">
+                        <button onClick={() => onNavigate('Servicos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Serviços</button>
+                        <button onClick={() => onNavigate('Produtos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Produtos</button>
+                        <button className="w-full text-left p-4 text-gray-700 hover:bg-gray-50">Gerir Equipa</button>
+                    </div>
+                    <div className="pt-4"><button onClick={onLogout} className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition-colors">Sair</button></div>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
+                </div>
+            );
+        };
+        
+        // --- NOVO: MODAL DE FORMULÁRIO GENÉRICO PARA SERVIÇOS E PRODUTOS ---
+        const ItemFormModal = ({ isOpen, onClose, onSave, itemToEdit, itemType, user, showNotification }) => {
+            if (!isOpen) return null;
+            
+            const isEditing = !!itemToEdit;
+            const [name, setName] = useState(itemToEdit?.name || '');
+            const [price, setPrice] = useState(itemToEdit?.price || '');
+            const [description, setDescription] = useState(itemToEdit?.description || '');
+            const [extraField, setExtraField] = useState(itemToEdit ? (itemType === 'service' ? itemToEdit.duration : itemToEdit.currentStock) : '');
+            const [isSaving, setIsSaving] = useState(false);
+            
+            const isFormValid = name && description && (price !== '' && !isNaN(parseFloat(price))) && (extraField !== '' && !isNaN(parseFloat(extraField)));
+
+<<<<<<< HEAD
         // --- Ecrã de Gestão ---
         const GestaoScreen = ({ user, onLogout, onNavigate }) => {
             return (
@@ -790,6 +1094,11 @@
             const handleSave = async () => {
                 if (!isFormValid) {
                     showNotification('Erro', 'Por favor, preencha todos os campos obrigatórios.');
+=======
+            const handleSubmit = async () => {
+                if (!isFormValid) {
+                    showNotification('Erro', 'Por favor, preencha todos os campos.');
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                     return;
                 }
                 
@@ -797,33 +1106,50 @@
                 const itemData = {
                     name,
                     price: parseFloat(price),
+<<<<<<< HEAD
                     photo: photo,
+=======
+                    description,
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                     establishmentId: user.establishmentId,
                     ...(itemType === 'service' ? { duration: parseInt(extraField) } : { currentStock: parseInt(extraField) }),
                 };
                 
                 try {
+<<<<<<< HEAD
                     const endpoint = isEditing ? `/api/${itemType}s/${itemToEdit.id}` : `/api/${itemType}s`;
                     const method = isEditing ? 'PUT' : 'POST';
 
                     await authenticatedFetch(endpoint, { method, body: JSON.stringify(itemData) }, user);
                     showNotification('Sucesso!', `Item ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
                     onSave();
+=======
+                    await onSave(itemData);
+                    onClose();
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                 } catch (error) {
                     showNotification('Erro', error.message);
                 } finally {
                     setIsSaving(false);
+<<<<<<< HEAD
                     onClose();
+=======
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                 }
             };
             
             return (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+<<<<<<< HEAD
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+=======
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col">
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                         <div className="p-4 border-b flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar' : 'Novo'} {itemType === 'service' ? 'Serviço' : 'Produto'}</h3>
                             <button onClick={onClose} className="text-2xl font-bold">&times;</button>
                         </div>
+<<<<<<< HEAD
                         <div className="p-4 space-y-4 flex-1 overflow-y-auto">
                             <div className="flex flex-col items-center">
                                 <img src={photo || `https://placehold.co/100x100?text=${itemType.charAt(0).toUpperCase()}`} alt="Item" className="w-24 h-24 object-cover rounded-md border-2 border-gray-200 mb-2" />
@@ -832,11 +1158,21 @@
                             </div>
                             <div><label className="text-sm font-medium text-gray-700 block">Nome</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                             <div><label className="text-sm font-medium text-gray-700 block">Preço</label><input type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+=======
+                        <div className="p-4 space-y-4">
+                            <div><label className="text-sm font-medium text-gray-700 block">Nome</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                            <div><label className="text-sm font-medium text-gray-700 block">Preço</label><input type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                            <div><label className="text-sm font-medium text-gray-700 block">Descrição</label><textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md"></textarea></div>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                             <div><label className="text-sm font-medium text-gray-700 block">{itemType === 'service' ? 'Duração (minutos)' : 'Stock Atual'}</label><input type="number" value={extraField} onChange={e => setExtraField(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" /></div>
                         </div>
                         <div className="p-4 bg-gray-50 flex gap-4">
                             <button onClick={onClose} className="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+<<<<<<< HEAD
                             <button onClick={handleSave} disabled={!isFormValid || isSaving} className="flex-1 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
+=======
+                            <button onClick={handleSubmit} disabled={!isFormValid || isSaving} className="flex-1 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                                 {isSaving ? 'A salvar...' : 'Salvar'}
                             </button>
                         </div>
@@ -866,6 +1202,29 @@
             }, [user, showNotification]);
 
             useEffect(() => { fetchServices(); }, [fetchServices]);
+            
+            const handleSaveService = async (serviceData) => {
+                const isEditing = !!serviceToEdit;
+                const endpoint = isEditing ? `/api/services/${serviceToEdit.id}` : `/api/services`;
+                const method = isEditing ? 'PUT' : 'POST';
+                
+                await authenticatedFetch(endpoint, { method, body: JSON.stringify(serviceData) }, user);
+                showNotification('Sucesso!', `Serviço ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                fetchServices();
+                setServiceToEdit(null);
+            };
+
+            const handleDeleteService = async (serviceId) => {
+                try {
+                    await authenticatedFetch(`/api/services/${serviceId}`, { method: 'DELETE' }, user);
+                    showNotification('Sucesso!', 'Serviço apagado com sucesso.');
+                    fetchServices();
+                } catch (error) {
+                    showNotification('Erro', `Não foi possível apagar: ${error.message}`);
+                } finally {
+                    setConfirmState({ isOpen: false, serviceId: null });
+                }
+            };
 
             const handleSaveService = async () => {
                 fetchServices();
@@ -892,6 +1251,7 @@
                     <main className="flex-1 overflow-y-auto p-4 space-y-4">
                         {isLoading ? <p className="text-center text-gray-500">A carregar...</p> : services.length > 0 ? services.map(service => (
                             <div key={service.id} className={`bg-white p-4 rounded-xl shadow-md flex items-center justify-between transition-transform duration-200 transform hover:scale-[1.01] ${service.active ? 'border-l-4 border-blue-500' : 'border-l-4 border-gray-300 opacity-70'}`}>
+<<<<<<< HEAD
                                 <div className="flex items-center space-x-4 flex-1 min-w-0">
                                     <img src={service.photo || 'https://placehold.co/60x60'} alt="Serviço" className="w-12 h-12 rounded-md object-cover" />
                                     <div className="min-w-0">
@@ -902,6 +1262,16 @@
                                 <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
                                     <button onClick={() => { setServiceToEdit(service); setIsModalOpen(true); }} className="p-2 rounded-full hover:bg-blue-100 transition-colors">{icons.edit('rgb(59 130 246)')}</button>
                                     <button onClick={() => setConfirmState({ isOpen: true, serviceId: service.id })} className="p-2 rounded-full hover:bg-red-100 transition-colors">{icons.trash('rgb(239 68 68)')}</button>
+=======
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-gray-800 truncate">{service.name}</p>
+                                    <p className="text-sm text-gray-600 mt-1">Duração: {service.duration} min</p>
+                                    <p className="text-sm text-green-600 font-semibold">R$ {service.price.toFixed(2)}</p>
+                                </div>
+                                <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
+                                    <button onClick={() => { setServiceToEdit(service); setIsModalOpen(true); }} className="p-2 rounded-full text-blue-600 hover:bg-blue-100 transition-colors">{icons.edit()}</button>
+                                    <button onClick={() => setConfirmState({ isOpen: true, serviceId: service.id })} className="p-2 rounded-full text-red-600 hover:bg-red-100 transition-colors">{icons.trash()}</button>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                                 </div>
                             </div>
                         )) : <p className="text-center text-gray-500 pt-10">Nenhum serviço encontrado. Adicione um para começar.</p>}
@@ -909,21 +1279,36 @@
                     <footer className="p-4">
                         <button onClick={() => { setServiceToEdit(null); setIsModalOpen(true); }} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700 transition-colors">+ Novo Serviço</button>
                     </footer>
+<<<<<<< HEAD
                     <ItemFormModal
                         isOpen={isModalOpen}
                         onClose={() => setIsModalOpen(false)}
+=======
+                    <ItemFormModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                         onSave={handleSaveService}
                         itemToEdit={serviceToEdit}
                         itemType="service"
                         user={user}
                         showNotification={showNotification}
                     />
+<<<<<<< HEAD
                     <ConfirmationModal
                         isOpen={confirmState.isOpen}
                         onClose={() => setConfirmState({ isOpen: false, serviceId: null })}
                         onConfirm={() => handleDeleteService(confirmState.serviceId)}
                         title="Apagar Serviço"
                         message="Tem a certeza que deseja apagar este serviço?"
+=======
+                    <ConfirmationModal 
+                        isOpen={confirmState.isOpen} 
+                        onClose={() => setConfirmState({ isOpen: false, serviceId: null })} 
+                        onConfirm={() => handleDeleteService(confirmState.serviceId)} 
+                        title="Apagar Serviço" 
+                        message="Tem a certeza que deseja apagar este serviço?" 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                     />
                 </div>
             );
@@ -936,7 +1321,11 @@
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [productToEdit, setProductToEdit] = useState(null);
             const [confirmState, setConfirmState] = useState({ isOpen: false, productId: null });
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
             const fetchProducts = useCallback(async () => {
                 setIsLoading(true);
                 try {
@@ -951,8 +1340,20 @@
 
             useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
+<<<<<<< HEAD
             const handleSaveProduct = async () => {
                 fetchProducts();
+=======
+            const handleSaveProduct = async (productData) => {
+                const isEditing = !!productToEdit;
+                const endpoint = isEditing ? `/api/products/${productToEdit.id}` : `/api/products`;
+                const method = isEditing ? 'PUT' : 'POST';
+                
+                await authenticatedFetch(endpoint, { method, body: JSON.stringify(productData) }, user);
+                showNotification('Sucesso!', `Produto ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                fetchProducts();
+                setProductToEdit(null);
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
             };
 
             const handleDeleteProduct = async (productId) => {
@@ -982,6 +1383,7 @@
                              
                              return (
                                  <div key={product.id} className="bg-white p-4 rounded-xl shadow-md flex items-center justify-between transition-transform duration-200 transform hover:scale-[1.01]">
+<<<<<<< HEAD
                                     <div className="flex items-center space-x-4 flex-1 min-w-0">
                                          <img src={product.photo || 'https://placehold.co/60x60'} alt="Produto" className="w-12 h-12 rounded-md object-cover" />
                                         <div className="min-w-0">
@@ -991,11 +1393,24 @@
                                                 <div className={`${stockColor} h-1.5 rounded-full`} style={{ width: `${stockLevel}%` }}></div>
                                             </div>
                                             <p className="text-xs text-gray-500 mt-1">{product.currentStock} em stock</p>
+=======
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-gray-800 truncate">{product.name}</p>
+                                        <p className="text-sm text-gray-600 mt-1">R$ {product.price.toFixed(2)}</p>
+                                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                            <div className={`${stockColor} h-1.5 rounded-full`} style={{ width: `${stockLevel}%` }}></div>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                                         </div>
+                                        <p className="text-xs text-gray-500 mt-1">{product.currentStock} em stock</p>
                                     </div>
                                     <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
+<<<<<<< HEAD
                                         <button onClick={() => { setProductToEdit(product); setIsModalOpen(true); }} className="p-2 rounded-full hover:bg-blue-100 transition-colors">{icons.edit('rgb(59 130 246)')}</button>
                                         <button onClick={() => setConfirmState({ isOpen: true, productId: product.id })} className="p-2 rounded-full hover:bg-red-100 transition-colors">{icons.trash('rgb(239 68 68)')}</button>
+=======
+                                        <button onClick={() => { setProductToEdit(product); setIsModalOpen(true); }} className="p-2 rounded-full text-blue-600 hover:bg-blue-100 transition-colors">{icons.edit()}</button>
+                                        <button onClick={() => setConfirmState({ isOpen: true, productId: product.id })} className="p-2 rounded-full text-red-600 hover:bg-red-100 transition-colors">{icons.trash()}</button>
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                                     </div>
                                  </div>
                              );
@@ -1004,9 +1419,15 @@
                     <footer className="p-4">
                         <button onClick={() => { setProductToEdit(null); setIsModalOpen(true); }} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700 transition-colors">+ Novo Produto</button>
                     </footer>
+<<<<<<< HEAD
                     <ItemFormModal
                         isOpen={isModalOpen}
                         onClose={() => setModalOpen(false)}
+=======
+                    <ItemFormModal 
+                        isOpen={isModalOpen} 
+                        onClose={() => setIsModalOpen(false)} 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                         onSave={handleSaveProduct}
                         itemToEdit={productToEdit}
                         itemType="product"
@@ -1030,6 +1451,7 @@
         const MainScreen = ({ user, onLogout, showNotification }) => {
             const [activeTab, setActiveTab] = useState('Agenda');
             const [currentManagementScreen, setCurrentManagementScreen] = useState('menu');
+<<<<<<< HEAD
 
             const tabs = [
                 { name: 'Agenda', icon: 'agenda' },
@@ -1042,12 +1464,30 @@
                 setCurrentManagementScreen(screen);
             };
 
+=======
+            
+            const tabs = [
+                { name: 'Agenda', icon: 'agenda' },
+                { name: 'Comandas', icon: 'comandas' },
+                { name: 'Relatórios', icon: 'relatorios' },
+                { name: 'Gestão', icon: 'gestao' },
+            ];
+
+            const handleManagementNavigation = (screen) => {
+                setCurrentManagementScreen(screen);
+            };
+
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
             const renderContent = () => {
                 switch (activeTab) {
                     case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} />;
                     case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} />;
                     case 'Relatórios': return <RelatoriosScreen user={user} showNotification={showNotification}/>;
+<<<<<<< HEAD
                     case 'Gestão':
+=======
+                    case 'Gestão': 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                         switch (currentManagementScreen) {
                             case 'menu':
                                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
@@ -1106,7 +1546,11 @@
                             const idTokenResult = await user.getIdTokenResult(true);
                             const claims = idTokenResult.claims;
                             if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+<<<<<<< HEAD
                                 const userData = {
+=======
+                                const userData = { 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                                     name: user.displayName, email: user.email, uid: user.uid,
                                     token: idTokenResult.token, establishmentId: claims.establishmentId,
                                     permissions: claims.permissions
@@ -1127,6 +1571,7 @@
 
             return (
                 <React.Fragment>
+<<<<<<< HEAD
                     {loggedInUser ?
                         <MainScreen user={loggedInUser} onLogout={handleLogout} showNotification={showNotification} /> :
                         <LoginScreen onLoginSuccess={handleLoginSuccess} />
@@ -1136,6 +1581,17 @@
                         title={notification.title}
                         message={notification.message}
                         onClose={() => setNotification({ isOpen: false, title: '', message: '' })}
+=======
+                    {loggedInUser ? 
+                        <MainScreen user={loggedInUser} onLogout={handleLogout} showNotification={showNotification} /> : 
+                        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+                    }
+                    <NotificationModal 
+                        isOpen={notification.isOpen} 
+                        title={notification.title} 
+                        message={notification.message} 
+                        onClose={() => setNotification({ isOpen: false, title: '', message: '' })} 
+>>>>>>> 1beab4e638502078b1a97b3567602eea64a57867
                     />
                 </React.Fragment>
             );
