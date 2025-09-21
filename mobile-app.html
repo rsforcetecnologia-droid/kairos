@@ -1,29 +1,40 @@
 <!DOCTYPE html>
-
 <html lang="pt-br">
 <head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>App de Gestão</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/react@17/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- Firebase (expõe no window) -->
-<script type="module">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App de Gestão</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Scripts do Firebase -->
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         window.initializeApp = initializeApp;
     </script>
-<script type="module">
+    <script type="module">
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         window.getAuth = getAuth;
         window.signInWithEmailAndPassword = signInWithEmailAndPassword;
         window.onAuthStateChanged = onAuthStateChanged;
         window.signOut = signOut;
     </script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<style>
+    <script type="module">
+        import { getFirestore, collection, query, where, onSnapshot, orderBy, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        window.getFirestore = getFirestore;
+        window.collection = collection;
+        window.query = query;
+        window.where = where;
+        window.onSnapshot = onSnapshot;
+        window.orderBy = orderBy;
+        window.Timestamp = Timestamp;
+    </script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
         body {
             font-family: 'Inter', sans-serif;
             margin: 0;
@@ -48,15 +59,26 @@
         input:checked + .toggle-bg {
             background-color: #4f46e5;
         }
-        .modal-enter { opacity: 0; }
-        .modal-enter-active { opacity: 1; transition: opacity 200ms ease-in-out; }
-        .modal-content-enter { transform: scale(0.95) translateY(10px); }
-        .modal-content-enter-active { transform: scale(1) translateY(0); transition: transform 200ms ease-in-out; }
+        .modal-enter {
+            opacity: 0;
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transition: opacity 200ms ease-in-out;
+        }
+        .modal-content-enter {
+            transform: scale(0.95) translateY(10px);
+        }
+        .modal-content-enter-active {
+            transform: scale(1) translateY(0);
+            transition: transform 200ms ease-in-out;
+        }
     </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
+    <div id="root"></div>
+
+    <script type="text/babel">
         // --- INÍCIO DA APLICAÇÃO REACT ---
 
         const { useState, useEffect, useCallback, useRef } = React;
@@ -78,69 +100,35 @@
 
         const app = window.initializeApp(firebaseConfig);
         const auth = window.getAuth(app);
+        const db = window.getFirestore(app);
 
         const API_BASE_URL = window.location.origin;
 
-        // >>> REFATORADO: pega SEMPRE o token atual do Firebase (ignora user.token) <<<
-        async function getIdTokenOrLogout() {
-            if (!auth || !auth.currentUser) {
-                await window.signOut(auth).catch(() => {});
+        async function authenticatedFetch(endpoint, options = {}, user) {
+            if (!user || !user.token) {
+                await window.signOut(auth);
                 throw new Error("Utilizador não autenticado.");
             }
-            try {
-                return await auth.currentUser.getIdToken(true); // força renovar se preciso
-            } catch (e) {
-                await window.signOut(auth).catch(() => {});
-                throw new Error("Falha ao obter credenciais. Faça login novamente.");
-            }
-        }
 
-        /**
-         * Realiza uma requisição 'fetch' autenticada para um endpoint da API.
-         * Mantém a assinatura (endpoint, options, user) para não quebrar chamadas existentes;
-         * porém o token é sempre obtido de auth.currentUser.
-         */
-        async function authenticatedFetch(endpoint, options = {}, /* user ignorado */) {
-            const token = await getIdTokenOrLogout();
-
-            const baseHeaders = { 'Authorization': `Bearer ${token}` };
-            const hasContentType =
-                options.headers &&
-                ((options.headers['Content-Type']) ||
-                 (typeof options.headers.get === 'function' && options.headers.get('Content-Type')));
-
-            if (!hasContentType) {
-                baseHeaders['Content-Type'] = 'application/json';
-            }
-
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                ...options,
-                headers: {
-                    ...baseHeaders,
-                    ...(options.headers || {}),
-                },
-            });
+            const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` };
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers: { ...headers, ...options.headers } });
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: response.statusText }));
                 throw new Error(errorData.message || `Erro na API: ${response.status}`);
             }
-
-            if (response.status === 204 ||
-                (response.status === 200 && (response.headers.get('content-length') === '0' || response.headers.get('Content-Length') === '0'))) {
+            
+            if (response.status === 204 || (response.status === 200 && response.headers.get('content-length') === '0')) {
                 return null;
             }
-
-            const ct = response.headers.get('content-type') || '';
-            if (ct.includes('application/json')) return response.json();
-            return response.text();
+            return response.json();
         }
 
         const icons = {
             agenda: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>),
             comandas: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>),
             relatorios: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>),
-            gestao: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94 1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>),
+            gestao: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>),
             plus: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>),
             dots: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M5 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>),
             back: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>),
@@ -195,8 +183,8 @@
                     setIsLoadingData(true);
                     try {
                         const [servicesData, professionalsData] = await Promise.all([
-                            authenticatedFetch(`/api/services/public/${user.establishmentId}`, {}),
-                            authenticatedFetch(`/api/professionals/${user.establishmentId}`, {})
+                            authenticatedFetch(`/api/services/public/${user.establishmentId}`, {}, user),
+                            authenticatedFetch(`/api/professionals/${user.establishmentId}`, {}, user)
                         ]);
                         setAvailableServices(servicesData);
                         setAvailableProfessionals(professionalsData);
@@ -215,7 +203,7 @@
                         setAvailableTimes([]);
                         try {
                             const endpoint = `/api/availability?establishmentId=${user.establishmentId}&professionalId=${professionalId}&serviceIds=${selectedServices.join(',')}&date=${date}`;
-                            const times = await authenticatedFetch(endpoint, {});
+                            const times = await authenticatedFetch(endpoint, {}, user);
                             setAvailableTimes(times);
                         } catch(error) {
                             showNotification("Erro", "Não foi possível buscar horários disponíveis.");
@@ -292,7 +280,7 @@
         const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
                         <h3 className="text-xl font-bold text-gray-800">{title}</h3>
                         <p className="text-gray-600 my-4">{message}</p>
@@ -305,24 +293,30 @@
             );
         };
 
+
         // --- ECRÃ DA AGENDA ---
-        const AgendaScreen = ({ user, showNotification, appointments, isLoading, error, refreshData }) => {
+        const AgendaScreen = ({ user, showNotification, appointments, isLoading, error, refreshData, onNavigateToComanda }) => {
           const [currentDate, setCurrentDate] = useState(new Date());
           const [modalState, setModalState] = useState({ isOpen: false, appointment: null });
           const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
           const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
 
-          useEffect(() => {}, [currentDate]);
+          useEffect(() => {
+              // Quando a data local muda, informa o componente pai para buscar os dados dessa nova data
+              if (refreshData) {
+                  refreshData(currentDate);
+              }
+          }, [currentDate]);
 
           const handleSaveAppointment = async (appointmentData) => {
               const isEditing = !!appointmentData.id;
               const url = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
               const method = isEditing ? 'PUT' : 'POST';
               try {
-                  await authenticatedFetch(url, { method, body: JSON.stringify(appointmentData) });
+                  await authenticatedFetch(url, { method, body: JSON.stringify(appointmentData) }, user);
                   showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
                   setModalState({ isOpen: false, appointment: null });
-                  await refreshData();
+                  await refreshData(currentDate);
               } catch (err) {
                   showNotification("Erro", `Não foi possível salvar o agendamento: ${err.message}`);
               }
@@ -330,9 +324,9 @@
 
           const handleDelete = async (appointmentId) => {
               try {
-                  await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' });
+                  await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
                   showNotification('Sucesso!', 'Agendamento apagado com sucesso.');
-                  await refreshData();
+                  await refreshData(currentDate);
               } catch(err) {
                   showNotification("Erro", `Não foi possível apagar o agendamento: ${err.message}`);
               } finally {
@@ -350,30 +344,26 @@
 
           const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
           
-          const filteredAppointments = appointments.filter(appt => 
-              new Date(appt.startTime).toDateString() === currentDate.toDateString()
-          );
-
           const renderContent = () => {
             if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
             if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
-            if (filteredAppointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento para este dia.</div>;
+            if (appointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento para este dia.</div>;
             
-            return filteredAppointments.map(appt => {
+            return appointments.map(appt => {
                 const serviceName = Array.isArray(appt.services) ? appt.services.map(s => s.name).join(', ') : (appt.serviceName || 'Serviço');
                 return (
-                  <div key={appt.id} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'}`}>
+                  <div key={appt.id} onClick={() => onNavigateToComanda(appt.id)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'} cursor-pointer`}>
                     <div className="flex items-start justify-between">
                       <div>
                         <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
                         <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
                       </div>
                       <div className="relative">
-                        <button onClick={() => setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id)} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
+                        <button onClick={(e) => { e.stopPropagation(); setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id) }} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
                         {actionMenuOpenId === appt.id && (
                           <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
-                            <button onClick={() => { setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
-                            <button onClick={() => { setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
+                            <button onClick={(e) => { e.stopPropagation(); setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
                           </div>
                         )}
                       </div>
@@ -407,8 +397,8 @@
                     setIsLoading(true);
                     try {
                         const [servicesData, productsData] = await Promise.all([
-                            authenticatedFetch(`/api/services/${user.establishmentId}`, {}),
-                            authenticatedFetch(`/api/products/${user.establishmentId}`, {})
+                            authenticatedFetch(`/api/services/${user.establishmentId}`, {}, user),
+                            authenticatedFetch(`/api/products/${user.establishmentId}`, {}, user)
                         ]);
                         setItems({ services: servicesData, products: productsData });
                     } catch (error) {
@@ -495,12 +485,12 @@
         
             const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
             const remainingAmount = total - totalPaid;
-            const change = (currentMethod === 'dinheiro' && amountReceived) ? parseFloat(amountReceived) - remainingAmount : 0;
+            const change = (currentMethod === 'dinheiro' && amountReceived && remainingAmount > 0) ? parseFloat(amountReceived) - remainingAmount : 0;
         
             const handleAddPayment = () => {
                 const value = parseFloat(currentValue);
-                if (!value || value <= 0) {
-                    showNotification('Erro', 'Por favor, insira um valor de pagamento válido.');
+                if (!value || value <= 0 || value > remainingAmount + 0.001) {
+                    showNotification('Valor Inválido', 'Por favor, insira um valor de pagamento válido e que não exceda o valor em falta.');
                     return;
                 }
                 setPayments([...payments, { method: currentMethod, value }]);
@@ -519,7 +509,7 @@
                         totalAmount: total,
                         items: [...(comanda.services || []), ...(comanda.comandaItems || [])],
                     };
-                    await authenticatedFetch(`/api/appointments/${comanda.id}/checkout`, { method: 'POST', body: JSON.stringify(paymentData) });
+                    await authenticatedFetch(`/api/appointments/${comanda.id}/checkout`, { method: 'POST', body: JSON.stringify(paymentData) }, user);
                     showNotification('Sucesso!', 'Pagamento finalizado com sucesso.');
                     onSave();
                 } catch (error) {
@@ -538,7 +528,7 @@
             }, [remainingAmount]);
         
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
                         <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Finalizar Pagamento</h3></div>
                         <div className="p-4 flex-1 overflow-y-auto">
@@ -557,7 +547,7 @@
                             </div>
                             {remainingAmount > 0.001 && (
                                 <div className="flex items-center gap-2 mb-4">
-                                    <select value={currentMethod} onChange={e => setCurrentMethod(e.target.value)} className="p-2 border rounded-md w-1/2"><option value="dinheiro">Dinheiro</option><option value="pix">PIX</option><option value="credito">Crédito</option><option value="debito">Débito</option></select>
+                                    <select value={currentMethod} onChange={e => setCurrentMethod(e.target.value)} className="p-2 border rounded-md w-1/2 bg-white"><option value="dinheiro">Dinheiro</option><option value="pix">PIX</option><option value="credito">Crédito</option><option value="debito">Débito</option></select>
                                     <input type="number" step="0.01" value={currentValue} onChange={e => setCurrentValue(e.target.value)} placeholder="Valor" className="p-2 border rounded-md w-1/2" />
                                     <button onClick={handleAddPayment} className="p-2 bg-blue-500 text-white rounded-md font-bold">+</button>
                                 </div>
@@ -596,21 +586,28 @@
             const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
             const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
             const [isSaving, setIsSaving] = useState(false);
-            const [isConfirmReopenOpen, setIsConfirmReopenOpen] = useState(false);
-            const [isConfirmAwaitingPaymentOpen, setIsConfirmAwaitingPaymentOpen] = useState(false);
+            const [confirmationState, setConfirmationState] = useState({ isOpen: false, action: null });
 
             const allDisplayItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
             const total = allDisplayItems.reduce((acc, item) => acc + (item.price || 0), 0);
             
-            const executeSetAwaitingPayment = async () => {
+            const handleActionConfirm = async () => {
+                const { action } = confirmationState;
                 setIsSaving(true);
-                setIsConfirmAwaitingPaymentOpen(false);
+                setConfirmationState({ isOpen: false, action: null });
+        
                 try {
-                    await authenticatedFetch(`/api/appointments/${comanda.id}/awaiting-payment`, { method: 'POST' });
-                    showNotification('Sucesso!', 'Comanda movida para aguardar pagamento.');
+                    if (action === 'reopen') {
+                        const endpoint = comanda.type === 'appointment' ? `/api/appointments/${comanda.id}/reopen` : `/api/sales/${comanda.id}/reopen`;
+                        await authenticatedFetch(endpoint, { method: 'POST' }, user);
+                        showNotification('Sucesso!', 'Comanda foi reaberta para edição.');
+                    } else if (action === 'awaiting_payment') {
+                        await authenticatedFetch(`/api/appointments/${comanda.id}/awaiting-payment`, { method: 'POST' }, user);
+                        showNotification('Sucesso!', 'Comanda movida para aguardar pagamento.');
+                    }
                     onUpdate();
                 } catch (error) {
-                    showNotification("Erro", `Não foi possível mover a comanda: ${error.message}`);
+                    showNotification("Erro", `A ação falhou: ${error.message}`);
                 } finally {
                     setIsSaving(false);
                 }
@@ -619,7 +616,7 @@
             const handleAddItem = async (newItem) => {
                 const updatedItems = [...(comanda.comandaItems || []), { itemId: newItem.id, name: newItem.name, price: newItem.price, type: newItem.type }];
                 try {
-                    await authenticatedFetch(`/api/appointments/${comanda.id}/comanda`, { method: 'POST', body: JSON.stringify({ items: updatedItems }) });
+                    await authenticatedFetch(`/api/appointments/${comanda.id}/comanda`, { method: 'POST', body: JSON.stringify({ items: updatedItems }) }, user);
                     setIsAddItemModalOpen(false);
                     onUpdate();
                 } catch (error) {
@@ -627,29 +624,11 @@
                 }
             };
             
-            const handleReopen = async () => {
-                setIsSaving(true);
-                try {
-                    const endpoint = comanda.type === 'appointment'
-                        ? `/api/appointments/${comanda.id}/reopen`
-                        : `/api/sales/${comanda.id}/reopen`;
-
-                    await authenticatedFetch(endpoint, { method: 'POST' });
-                    showNotification('Sucesso!', 'Comanda foi reaberta para edição.');
-                    onUpdate();
-                } catch (error) {
-                    showNotification("Erro", `Não foi possível reabrir a comanda: ${error.message}`);
-                } finally {
-                    setIsSaving(false);
-                    setIsConfirmReopenOpen(false);
-                }
-            };
-            
             const renderFooter = () => {
                 if (comanda.status === 'completed') {
                     return (
                         <div className="p-4 bg-gray-50 space-y-2">
-                             <button onClick={() => setIsConfirmReopenOpen(true)} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 disabled:bg-gray-400">
+                             <button onClick={() => setConfirmationState({ isOpen: true, action: 'reopen' })} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 disabled:bg-gray-400">
                                  {isSaving ? 'Aguarde...' : 'Reabrir Comanda'}
                              </button>
                              <button onClick={onClose} className="w-full py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
@@ -675,7 +654,7 @@
                 return (
                     <div className="p-4 bg-gray-50 space-y-2">
                         <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>
-                        <button onClick={() => setIsConfirmAwaitingPaymentOpen(true)} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">
+                        <button onClick={() => setConfirmationState({ isOpen: true, action: 'awaiting_payment' })} disabled={isSaving} className="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">
                             Aguardar Pagamento
                         </button>
                         {commonButtons}
@@ -683,11 +662,22 @@
                 );
             };
 
+            const confirmationDetails = {
+                reopen: { title: 'Reabrir Comanda', message: 'Tem a certeza que deseja reabrir esta comanda? O pagamento será revertido.' },
+                awaiting_payment: { title: 'Mover Comanda', message: 'Deseja mover esta comanda para a lista de "Aguardando Pagamento"? O cliente poderá pagar mais tarde.' }
+            };
+
             return (
                 <>
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
-                            <div className="p-4 border-b"><h3 className="text-xl font-bold text-gray-800">Detalhes da Comanda</h3><p className="text-sm text-gray-600">{comanda.clientName} com {comanda.professionalName}</p></div>
+                            <div className="p-4 border-b">
+                                <h3 className="text-xl font-bold text-gray-800">{comanda.clientName}</h3>
+                                <p className="text-sm text-gray-600">
+                                    {new Date(comanda.startTime).toLocaleString('pt-BR', { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                                <p className="text-sm text-gray-500">com {comanda.professionalName}</p>
+                            </div>
                             <div className="p-4 space-y-2 max-h-64 overflow-y-auto">{allDisplayItems.map((item, index) => (<div key={index} className="flex justify-between items-center"><div><p className="font-semibold text-gray-800">{item.name}</p></div><p className="text-gray-700">R$ {(item.price || 0).toFixed(2)}</p></div>))}</div>
                             <div className="p-4 border-t flex justify-between items-center"><span className="font-bold text-lg">Total</span><span className="font-bold text-xl text-gray-900">R$ {total.toFixed(2)}</span></div>
                             {renderFooter()}
@@ -696,27 +686,32 @@
                     <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onAddItem={handleAddItem} user={user} showNotification={showNotification} />
                     <CheckoutModal isOpen={isCheckoutModalOpen} onClose={() => setIsCheckoutModalOpen(false)} onSave={onUpdate} comanda={comanda} total={total} user={user} showNotification={showNotification} />
                     <ConfirmationModal
-                        isOpen={isConfirmReopenOpen}
-                        onClose={() => setIsConfirmReopenOpen(false)}
-                        onConfirm={handleReopen}
-                        title="Reabrir Comanda"
-                        message="Tem a certeza que deseja reabrir esta comanda? O pagamento será revertido."
-                    />
-                    <ConfirmationModal
-                        isOpen={isConfirmAwaitingPaymentOpen}
-                        onClose={() => setIsConfirmAwaitingPaymentOpen(false)}
-                        onConfirm={executeSetAwaitingPayment}
-                        title="Mover Comanda"
-                        message="Deseja mover esta comanda para a lista de 'Aguardando Pagamento'? O cliente poderá pagar mais tarde."
+                        isOpen={confirmationState.isOpen}
+                        onClose={() => setConfirmationState({ isOpen: false, action: null })}
+                        onConfirm={handleActionConfirm}
+                        title={confirmationState.action ? confirmationDetails[confirmationState.action].title : ''}
+                        message={confirmationState.action ? confirmationDetails[confirmationState.action].message : ''}
                     />
                 </>
             );
         };
 
+
         // --- Ecrã de Comandas ---
-        const ComandasScreen = ({ user, showNotification, comandas, isLoading, error, refreshData }) => {
+        const ComandasScreen = ({ user, showNotification, comandas, isLoading, error, refreshData, selectedComandaId, onComandaOpened }) => {
             const [activeFilter, setActiveFilter] = useState('atendimento');
             const [selectedComanda, setSelectedComanda] = useState(null);
+
+            useEffect(() => {
+                if (selectedComandaId && comandas.length > 0) {
+                    const comandaToOpen = comandas.find(c => c.id === selectedComandaId);
+                    if (comandaToOpen) {
+                        setSelectedComanda(comandaToOpen);
+                        onComandaOpened();
+                    }
+                }
+            }, [selectedComandaId, comandas, onComandaOpened]);
+
 
             const statusMap = {
                 atendimento: { label: 'Em Atendimento', statusValue: 'confirmed' },
@@ -778,7 +773,7 @@
 
                     try {
                         const url = `/api/analytics/${user.establishmentId}?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
-                        const data = await authenticatedFetch(url, {});
+                        const data = await authenticatedFetch(url, {}, user);
 
                         setKpis(data.kpis);
                         setChartData({
@@ -854,11 +849,11 @@
             return (
                 <div className="p-4 space-y-6">
                     <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
-                        <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justifycenter text-white font-bold text-3xl">
-                            {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                        <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-3xl">
+                            {user.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                            <h3 className="font-bold text-xl text-gray-900">{user.name || 'Utilizador'}</h3>
+                            <h3 className="font-bold text-xl text-gray-900">{user.name}</h3>
                             <p className="text-gray-600">{user.email}</p>
                         </div>
                     </div>
@@ -918,7 +913,7 @@
                     const endpoint = isEditing ? `/api/${itemType}s/${itemToEdit.id}` : `/api/${itemType}s`;
                     const method = isEditing ? 'PUT' : 'POST';
 
-                    await authenticatedFetch(endpoint, { method, body: JSON.stringify(itemData) });
+                    await authenticatedFetch(endpoint, { method, body: JSON.stringify(itemData) }, user);
                     showNotification('Sucesso!', `Item ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
                     onSave();
                 } catch (error) {
@@ -968,7 +963,7 @@
             const fetchServices = useCallback(async () => {
                 setIsLoading(true);
                 try {
-                    const data = await authenticatedFetch(`/api/services/${user.establishmentId}`, {});
+                    const data = await authenticatedFetch(`/api/services/${user.establishmentId}`, {}, user);
                     setServices(data);
                 } catch (error) {
                     showNotification('Erro', 'Não foi possível carregar os serviços.');
@@ -985,7 +980,7 @@
 
             const handleDeleteService = async (serviceId) => {
                 try {
-                    await authenticatedFetch(`/api/services/${serviceId}`, { method: 'DELETE' });
+                    await authenticatedFetch(`/api/services/${serviceId}`, { method: 'DELETE' }, user);
                     showNotification('Sucesso!', 'Serviço apagado com sucesso.');
                     fetchServices();
                 } catch (error) {
@@ -1052,7 +1047,7 @@
             const fetchProducts = useCallback(async () => {
                 setIsLoading(true);
                 try {
-                    const data = await authenticatedFetch(`/api/products/${user.establishmentId}`, {});
+                    const data = await authenticatedFetch(`/api/products/${user.establishmentId}`, {}, user);
                     setProducts(data);
                 } catch (error) {
                     showNotification('Erro', 'Não foi possível carregar os produtos.');
@@ -1069,7 +1064,7 @@
 
             const handleDeleteProduct = async (productId) => {
                 try {
-                    await authenticatedFetch(`/api/products/${productId}`, { method: 'DELETE' });
+                    await authenticatedFetch(`/api/products/${productId}`, { method: 'DELETE' }, user);
                     showNotification('Sucesso!', 'Produto apagado com sucesso.');
                     fetchProducts();
                 } catch (error) {
@@ -1141,10 +1136,22 @@
         const MainScreen = ({ user, onLogout, showNotification, appData, isLoading, error, refreshData }) => {
             const [activeTab, setActiveTab] = useState('Agenda');
             const [currentManagementScreen, setCurrentManagementScreen] = useState('menu');
+            const [selectedComandaIdFromAgenda, setSelectedComandaIdFromAgenda] = useState(null);
 
             useEffect(() => {
-                refreshData();
+                if(activeTab === 'Agenda' || activeTab === 'Comandas') {
+                    refreshData();
+                }
             }, [activeTab, refreshData]);
+
+            const handleNavigateToComanda = (appointmentId) => {
+                setSelectedComandaIdFromAgenda(appointmentId);
+                setActiveTab('Comandas');
+            };
+            
+            const handleComandaOpened = () => {
+                setSelectedComandaIdFromAgenda(null);
+            };
 
             const tabs = [
                 { name: 'Agenda', icon: 'agenda' },
@@ -1159,8 +1166,8 @@
 
             const renderContent = () => {
                 switch (activeTab) {
-                    case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} appointments={appData.appointments} isLoading={isLoading} error={error} refreshData={refreshData} />;
-                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} comandas={appData.comandas} isLoading={isLoading} error={error} refreshData={refreshData} />;
+                    case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} appointments={appData.appointments} isLoading={isLoading} error={error} refreshData={refreshData} onNavigateToComanda={handleNavigateToComanda} />;
+                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} comandas={appData.comandas} isLoading={isLoading} error={error} refreshData={refreshData} selectedComandaId={selectedComandaIdFromAgenda} onComandaOpened={handleComandaOpened} />;
                     case 'Relatórios': return <RelatoriosScreen user={user} showNotification={showNotification}/>;
                     case 'Gestão':
                         switch (currentManagementScreen) {
@@ -1208,18 +1215,19 @@
                 setNotification({ isOpen: true, title, message });
             }, []);
             
-            const refreshData = useCallback(async () => {
+            const refreshData = useCallback(async (date = new Date()) => {
                 if (!loggedInUser) return;
                 setAppIsLoading(true);
                 setAppError(null);
                 try {
-                    const today = new Date();
-                    const startOfDay = new Date(today.setHours(0, 0, 0, 0)).toISOString();
-                    const endOfDay = new Date(today.setHours(23, 59, 59, 999)).toISOString();
+                    const startOfDay = new Date(date);
+                    startOfDay.setHours(0, 0, 0, 0);
+                    const endOfDay = new Date(date);
+                    endOfDay.setHours(23, 59, 59, 999);
 
                     const [appointmentsData, comandasData] = await Promise.all([
-                        authenticatedFetch(`/api/appointments/${loggedInUser.establishmentId}?startDate=${startOfDay}&endDate=${endOfDay}`, {}),
-                        authenticatedFetch(`/api/comandas/${loggedInUser.establishmentId}`, {})
+                        authenticatedFetch(`/api/appointments/${loggedInUser.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`, {}, loggedInUser),
+                        authenticatedFetch(`/api/comandas/${loggedInUser.establishmentId}`, {}, loggedInUser)
                     ]);
                     setAppData({ appointments: appointmentsData, comandas: comandasData });
                 } catch (err) {
@@ -1235,6 +1243,26 @@
                     refreshData();
                 }
             }, [loggedInUser, refreshData]);
+            
+            useEffect(() => {
+                if (!loggedInUser) return;
+
+                const notificationsRef = window.collection(db, 'establishments', loggedInUser.establishmentId, 'notifications');
+                const q = window.query(notificationsRef, window.where("timestamp", ">=", window.Timestamp.now()), window.orderBy("timestamp", "desc"));
+
+                const unsubscribe = window.onSnapshot(q, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added") {
+                            const notification = change.doc.data();
+                            showNotification(notification.title, notification.message);
+                            refreshData();
+                        }
+                    });
+                });
+
+                return () => unsubscribe();
+            }, [loggedInUser, refreshData, showNotification]);
+
 
             useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -1270,7 +1298,7 @@
                 setIsLoading(true);
                 setErrorMessage(null);
                 try {
-                    const userCredential = await window.signInWithEmailAndPassword(auth, email, password);
+                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
                     const user = userCredential.user;
                     const idTokenResult = await user.getIdTokenResult();
                     const claims = idTokenResult.claims;
@@ -1286,7 +1314,7 @@
                         onLoginSuccess(userData);
                     } else {
                         setErrorMessage('Acesso negado. Permissões insuficientes.');
-                        await window.signOut(auth);
+                        await signOut(auth);
                     }
                 } catch (error) {
                     if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
@@ -1334,7 +1362,7 @@
             const handleLogout = useCallback(() => {
                 window.signOut(auth);
                 setLoggedInUser(null);
-                setAppData({ appointments: [], comandas: [] });
+                setAppData({ appointments: [], comandas: [] }); // Limpa os dados no logout
             }, []);
 
             return (
@@ -1363,89 +1391,6 @@
 
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const appRoot = document.getElementById("root");
-  if (!appRoot) return;
-
-  // Criar seletor de data
-  const dateSelector = document.createElement("input");
-  dateSelector.type = "date";
-  dateSelector.id = "dateFilter";
-  dateSelector.style.margin = "10px";
-  dateSelector.style.padding = "5px";
-  dateSelector.style.borderRadius = "6px";
-  dateSelector.style.border = "1px solid #ccc";
-  dateSelector.style.fontSize = "16px";
-  dateSelector.valueAsDate = new Date();
-
-  const topBar = document.createElement("div");
-  topBar.style.textAlign = "center";
-  topBar.appendChild(dateSelector);
-  appRoot.prepend(topBar);
-
-  let currentDate = new Date().toISOString().slice(0, 10);
-
-  // Redefinir o render da agenda com base na data selecionada
-  function filterAppointmentsByDate() {
-    if (!window.allAppointments || !Array.isArray(window.allAppointments)) return;
-
-    const selectedDate = new Date(dateSelector.value);
-    const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0);
-    const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59);
-
-    const filtered = window.allAppointments.filter(appt => {
-      const dt = new Date(appt.startTime);
-      return dt >= start && dt <= end;
-    });
-
-    if (typeof setAppData === "function") {
-      setAppData(prev => ({ ...prev, appointments: filtered }));
-    }
-  }
-
-  // Atualizar quando a data for alterada
-  dateSelector.addEventListener("change", () => {
-    currentDate = dateSelector.value;
-    filterAppointmentsByDate();
-  });
-
-  // Hook no listener Firestore para capturar todos os dados
-  const originalSetAppData = window.setAppData;
-  window.setAppData = function (updater) {
-    const result = typeof updater === "function" ? updater(window.appData) : updater;
-    if (result && Array.isArray(result.appointments)) {
-      window.allAppointments = result.appointments;
-      const selectedDate = new Date(document.getElementById("dateFilter").value);
-      const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0);
-      const end = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59);
-      result.appointments = result.appointments.filter(appt => {
-        const dt = new Date(appt.startTime);
-        return dt >= start && dt <= end;
-      });
-    }
-    return originalSetAppData(result);
-  };
-});
-</script>
-
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const interval = setInterval(() => {
-    if (window.allAppointments && Array.isArray(window.allAppointments)) {
-      console.log("🔍 DEBUG - TODOS os agendamentos recebidos do Firebase:");
-      window.allAppointments.forEach((appt, i) => {
-        console.log(`#${i + 1}`, appt);
-        try {
-          console.log("Data interpretada:", new Date(appt.startTime));
-        } catch (e) {
-          console.log("Erro ao converter data:", appt.startTime);
-        }
-      });
-      clearInterval(interval);
-    }
-  }, 2000);
-});
-</script>
 </body>
 </html>
+
