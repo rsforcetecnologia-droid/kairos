@@ -223,10 +223,9 @@
                 if (!isFormValid) return;
                 setIsSaving(true);
 
-                const servicesDataForSave = selectedServices.map(id => {
-                    const service = availableServices.find(s => s.id === id);
-                    return { id: service.id, name: service.name, price: service.price, duration: service.duration };
-                });
+                const servicesDataForSave = availableServices.filter(s => selectedServices.includes(s.id)).map(service => ({
+                    id: service.id, name: service.name, price: service.price, duration: service.duration, bufferTime: service.bufferTime || 0, photo: service.photo || null
+                }));
 
                 const startTimeISO = new Date(`${date}T${time}:00`).toISOString();
 
@@ -237,8 +236,15 @@
                     establishmentId: user.establishmentId,
                 };
 
-                await onSave(appointmentData);
-                setIsSaving(false);
+                try {
+                    await onSave(appointmentData);
+                    showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                    onClose();
+                } catch (error) {
+                    showNotification("Erro", `Não foi possível salvar o agendamento: ${error.message}`);
+                } finally {
+                     setIsSaving(false);
+                }
             };
 
             const handleServiceToggle = (serviceId) => {
@@ -518,6 +524,7 @@
                     await authenticatedFetch(`/api/appointments/${comanda.id}/checkout`, { method: 'POST', body: JSON.stringify(paymentData) }, user);
                     showNotification('Sucesso!', 'Pagamento finalizado com sucesso.');
                     onSave();
+                    onClose();
                 } catch (error) {
                     showNotification("Erro", `Não foi possível finalizar o pagamento: ${error.message}`);
                 } finally {
@@ -587,7 +594,7 @@
 
         // --- Modal de Detalhes da Comanda ---
         const ComandaDetailModal = ({ comanda, isOpen, onClose, onUpdate, user, showNotification }) => {
-            if (!isOpen || !comanda) return null;
+            if (!isOpen) return null;
 
             const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
             const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
@@ -612,6 +619,7 @@
                         showNotification('Sucesso!', 'Comanda movida para aguardar pagamento.');
                     }
                     onUpdate();
+                    onClose();
                 } catch (error) {
                     showNotification("Erro", `Ação falhou: ${error.message}`);
                 } finally {
@@ -704,7 +712,7 @@
 
 
         // --- Ecrã de Comandas ---
-        const ComandasScreen = ({ user, showNotification, comandas, isLoading, error, refreshData, selectedComandaId, onComandaOpened }) => {
+        const ComandasScreen = ({ user, showNotification, comandas, isLoading, error, refreshData, selectedComandaId, onComandaOpened, activeTab }) => {
             const [activeFilter, setActiveFilter] = useState('atendimento');
             const [selectedComanda, setSelectedComanda] = useState(null);
 
@@ -754,7 +762,7 @@
 
             return (
                 <div className="h-full flex flex-col">
-                    <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeTab === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
+                    <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">{renderContent()}</div>
                     <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdate={handleUpdate} user={user} showNotification={showNotification} />
                 </div>
@@ -876,7 +884,7 @@
         };
         
         // --- ECRÃ: SERVIÇOS ---
-        const ServicosScreen = ({ user, showNotification, onBack }) => {
+        const ServicosScreen = ({ user, showNotification, onBack, onUpdate }) => {
             const [services, setServices] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [isModalOpen, setIsModalOpen] = useState(false);
@@ -897,8 +905,9 @@
 
             useEffect(() => { fetchServices(); }, [fetchServices]);
 
-            const handleSaveService = async () => {
+            const handleSaveService = () => {
                 fetchServices();
+                onUpdate(); // Gatilho de atualização para o MainScreen
             };
 
             const handleDeleteService = async (serviceId) => {
@@ -906,6 +915,7 @@
                     await authenticatedFetch(`/api/services/${serviceId}`, { method: 'DELETE' }, user);
                     showNotification('Sucesso!', 'Serviço apagado com sucesso.');
                     fetchServices();
+                    onUpdate(); // Gatilho de atualização para o MainScreen
                 } catch (error) {
                     showNotification('Erro', `Não foi possível apagar: ${error.message}`);
                 } finally {
@@ -1029,6 +1039,7 @@
                         itemType="service"
                         user={user}
                         showNotification={showNotification}
+                        servicesList={services}
                     />
                     <ConfirmationModal
                         isOpen={confirmState.isOpen}
@@ -1042,7 +1053,7 @@
         };
         
         // --- ECRÃ: PRODUTOS ---
-        const ProdutosScreen = ({ user, showNotification, onBack }) => {
+        const ProdutosScreen = ({ user, showNotification, onBack, onUpdate }) => {
             const [products, setProducts] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [isModalOpen, setIsModalOpen] = useState(false);
@@ -1065,6 +1076,7 @@
 
             const handleSaveProduct = async () => {
                 fetchProducts();
+                onUpdate(); // Gatilho de atualização para o MainScreen
             };
 
             const handleDeleteProduct = async (productId) => {
@@ -1072,6 +1084,7 @@
                     await authenticatedFetch(`/api/products/${productId}`, { method: 'DELETE' }, user);
                     showNotification('Sucesso!', 'Produto apagado com sucesso.');
                     fetchProducts();
+                    onUpdate(); // Gatilho de atualização para o MainScreen
                 } catch (error) {
                     showNotification('Erro', `Não foi possível apagar: ${error.message}`);
                 } finally {
@@ -1219,7 +1232,7 @@
         };
         
         // --- ECRÃ DE PROFISSIONAIS ---
-        const ProfessionalsScreen = ({ user, showNotification, onBack }) => {
+        const ProfessionalsScreen = ({ user, showNotification, onBack, onUpdate }) => {
             const [professionals, setProfessionals] = useState([]);
             const [services, setServices] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
@@ -1251,6 +1264,7 @@
             const handleSaveProfessional = () => {
                 fetchProfessionalsAndServices();
                 setIsModalOpen(false);
+                onUpdate(); // Gatilho de atualização para o MainScreen
             };
 
             const handleDeleteProfessional = async (professionalId) => {
@@ -1258,6 +1272,7 @@
                     await authenticatedFetch(`/api/professionals/${professionalId}`, { method: 'DELETE' }, user);
                     showNotification('Sucesso!', 'Profissional apagado com sucesso.');
                     fetchProfessionalsAndServices();
+                    onUpdate(); // Gatilho de atualização para o MainScreen
                 } catch (error) {
                     showNotification('Erro', `Não foi possível apagar: ${error.message}`);
                 } finally {
@@ -1475,7 +1490,7 @@
 
         // --- MODAL DE BLOQUEIOS INDIVIDUAIS ---
         const BlockagesModal = ({ isOpen, onClose, professional, user, showNotification }) => {
-            if (!isOpen || !professional) return null;
+            if (!isOpen) return null;
             
             const [blockages, setBlockages] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
@@ -1608,16 +1623,13 @@
                                         <div className="flex-1">
                                             <label className="text-sm block text-gray-600">Hora de Fim</label>
                                             <input type="time" value={newBlockage.endTime} onChange={e => setNewBlockage({...newBlockage, endTime: e.target.value})} className="w-full p-2 border rounded-md" required />
-                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="text-sm block text-gray-600">Motivo</label>
-                                        <input type="text" value={newBlockage.reason} onChange={e => setNewBlockage({...newBlockage, reason: e.target.value})} className="w-full p-2 border rounded-md" placeholder="Ex: Férias, Folga" />
-                                    </div>
-                                    <button type="submit" disabled={isSaving} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
-                                        {isSaving ? 'A criar...' : 'Adicionar Bloqueio'}
-                                    </button>
-                                </form>
+                                </div>
+                                <div><label className="text-sm block text-gray-600">Motivo</label><input type="text" value={newBlockage.reason} onChange={e => setNewBlockage({...newBlockage, reason: e.target.value})} className="w-full p-2 border rounded-md" placeholder="Ex: Feriado, Evento" /></div>
+                                <button type="submit" disabled={isSaving} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400">
+                                    {isSaving ? 'A criar...' : 'Adicionar Bloqueio'}
+                                </button>
+                            </form>
                             </div>
                             <div className="space-y-2">{renderBlockages()}</div>
                         </div>
@@ -1703,7 +1715,7 @@
                             <form onSubmit={handleCreateBatchBlockage} className="space-y-3">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div><label className="text-sm block text-gray-600">Data de Início</label><input type="date" value={newBlockage.startDate} onChange={e => setNewBlockage({...newBlockage, startDate: e.target.value})} className="w-full p-2 border rounded-md" required /></div>
-                                    <div><label className="text-sm block text-gray-600">Data de Fim (opcional)</label><input type="date" value={newBlockage.endDate} onChange={e => setNewBlockage({...newBlockage, endDate: e.target.value})} className="w-full p-2 border rounded-md" /></div>
+                                    <div><label for="batchBlockageEndDate" class="block text-sm font-medium text-gray-700">Data de Fim (opcional)</label><input type="date" id="batchBlockageEndDate" value={newBlockage.endDate} onChange={e => setNewBlockage({...newBlockage, endDate: e.target.value})} className="w-full p-2 border rounded-md" /></div>
                                 </div>
                                 <div className="flex gap-2">
                                     <div className="flex-1">
@@ -1761,18 +1773,18 @@
             const renderContent = () => {
                 switch (activeTab) {
                     case 'Agenda': return <AgendaScreen user={user} showNotification={showNotification} appointments={appData.appointments} isLoading={isLoading} error={error} refreshData={refreshData} onNavigateToComanda={handleNavigateToComanda} />;
-                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} comandas={appData.comandas} isLoading={isLoading} error={error} refreshData={refreshData} selectedComandaId={selectedComandaIdFromAgenda} onComandaOpened={handleComandaOpened} />;
+                    case 'Comandas': return <ComandasScreen user={user} showNotification={showNotification} comandas={appData.comandas} isLoading={isLoading} error={error} refreshData={refreshData} selectedComandaId={selectedComandaIdFromAgenda} onComandaOpened={handleComandaOpened} activeTab={activeTab} />;
                     case 'Relatórios': return <RelatoriosScreen user={user} showNotification={showNotification}/>;
                     case 'Gestão':
                         switch (currentManagementScreen) {
                             case 'menu':
                                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
                             case 'Servicos':
-                                return <ServicosScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} />;
+                                return <ServicosScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
                             case 'Produtos':
-                                return <ProdutosScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} />;
+                                return <ProdutosScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
                             case 'Profissionais':
-                                return <ProfessionalsScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} />;
+                                return <ProfessionalsScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
                             default:
                                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
                         }
@@ -1802,6 +1814,7 @@
             const [loggedInUser, setLoggedInUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [notification, setNotification] = useState({ isOpen: false, title: '', message: '' });
+            const [updateTrigger, setUpdateTrigger] = useState(0);
 
             const [appData, setAppData] = useState({ appointments: [], comandas: [] });
             const [appIsLoading, setAppIsLoading] = useState(true);
@@ -1811,6 +1824,10 @@
                 setNotification({ isOpen: true, title, message });
             }, []);
             
+            const forceRefresh = useCallback(() => {
+                setUpdateTrigger(prev => prev + 1);
+            }, []);
+
             const refreshData = useCallback(async (date = new Date()) => {
                 if (!loggedInUser) return;
                 setAppIsLoading(true);
@@ -1838,7 +1855,7 @@
                 if (loggedInUser) {
                     refreshData();
                 }
-            }, [loggedInUser, refreshData]);
+            }, [loggedInUser, refreshData, updateTrigger]);
             
             useEffect(() => {
                 if (!loggedInUser) return;
@@ -1851,13 +1868,13 @@
                         if (change.type === "added") {
                             const notification = change.doc.data();
                             showNotification(notification.title, notification.message);
-                            refreshData();
+                            forceRefresh();
                         }
                     });
                 });
 
                 return () => unsubscribe();
-            }, [loggedInUser, refreshData, showNotification]);
+            }, [loggedInUser, forceRefresh, showNotification]);
 
 
             useEffect(() => {
