@@ -18,41 +18,80 @@ async function fetchAndDisplayBlockages(professionalId) {
     blockagesListDiv.innerHTML = '<div class="loader mx-auto"></div>';
 
     try {
-        let blockages = await blockagesApi.getBlockagesByProfessional(professionalId);
-
         const filterStartDate = document.getElementById('filterStartDate')?.value;
         const filterEndDate = document.getElementById('filterEndDate')?.value;
-        const filterReason = document.getElementById('filterReason')?.value.toLowerCase();
+        
+        const blockages = await blockagesApi.getBlockagesByDateRange(
+            state.establishmentId, 
+            filterStartDate || new Date().toISOString().split('T')[0],
+            filterEndDate || new Date().toISOString().split('T')[0],
+            professionalId
+        );
 
-        if (filterStartDate) blockages = blockages.filter(b => new Date(b.endTime) >= new Date(filterStartDate + 'T00:00:00'));
-        if (filterEndDate) blockages = blockages.filter(b => new Date(b.startTime) <= new Date(filterEndDate + 'T23:59:59'));
-        if (filterReason) blockages = blockages.filter(b => b.reason && b.reason.toLowerCase().includes(filterReason));
+        const filterReason = document.getElementById('filterReason')?.value.toLowerCase();
+        const filteredBlockages = filterReason ? blockages.filter(b => b.reason && b.reason.toLowerCase().includes(filterReason)) : blockages;
+
+    // Agrupa os bloqueios por motivo
+    const groupedByReason = filteredBlockages.reduce((acc, b) => {
+        const reason = b.reason || 'Sem motivo';
+        if (!acc[reason]) {
+            acc[reason] = [];
+        }
+        acc[reason].push(b);
+        return acc;
+    }, {});
+
 
         blockagesListDiv.innerHTML = '';
-        if (blockages.length === 0) {
+        if (filteredBlockages.length === 0) {
             blockagesListDiv.innerHTML = '<p class="text-center text-gray-500">Nenhum bloqueio encontrado.</p>';
             return;
         }
 
-        blockages.forEach(blockage => {
-            const startDate = new Date(blockage.startTime);
-            const endDate = new Date(blockage.endTime);
-            const item = document.createElement('div');
-            item.className = 'bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center';
-            const startDateString = startDate.toLocaleDateString('pt-BR');
-            const endDateString = endDate.toLocaleDateString('pt-BR');
-            let dateDisplay = (startDateString === endDateString)
-                ? `${startDateString} | ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-                : `De ${startDateString} às ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}<br>Até ${endDateString} às ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        Object.entries(groupedByReason).forEach(([reason, group]) => {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'bg-gray-100 rounded-lg p-3 my-2 space-y-2';
+            
+            let headerHTML = `<div class="flex justify-between items-center pb-2 border-b border-gray-200">
+                                <h4 class="font-bold text-gray-700">${reason} (${group.length})</h4>`;
+            
+            if (group.length > 1) {
+                const ids = JSON.stringify(group.map(b => b.id));
+                headerHTML += `<button data-action="batch-delete-blockage" data-ids='${ids}' class="text-xs text-red-600 hover:text-red-800 font-semibold flex items-center gap-1">
+                                    Apagar Lote
+                                </button>`;
+            }
 
-            item.innerHTML = `
-                <div>
-                    <p class="font-semibold text-gray-800">${dateDisplay}</p>
-                    <p class="text-sm text-gray-600">${blockage.reason}</p>
-                </div>
-                <button class="text-red-600 hover:text-red-900 font-semibold" data-action="delete-blockage" data-id="${blockage.id}">Apagar</button>`;
-            blockagesListDiv.appendChild(item);
+            headerHTML += '</div>';
+            groupDiv.innerHTML = headerHTML;
+
+            group.forEach(blockage => {
+                const startDate = new Date(blockage.startTime);
+                const endDate = new Date(blockage.endTime);
+                
+                const startDateString = startDate.toLocaleDateString('pt-BR');
+                const endDateString = endDate.toLocaleDateString('pt-BR');
+                
+                const dateDisplay = (startDateString === endDateString)
+                    ? `${startDateString} | ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                    : `De ${startDateString} às ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}<br>Até ${endDateString} às ${endDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+                const itemHTML = `
+                    <div class="bg-white p-3 rounded-md flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="font-medium text-gray-800 text-sm">
+                                ${dateDisplay}
+                            </p>
+                        </div>
+                        <button class="p-1 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-600" data-action="delete-blockage" data-id="${blockage.id}">Apagar</button>
+                    </div>`;
+
+                groupDiv.innerHTML += itemHTML;
+            });
+
+            blockagesListDiv.appendChild(groupDiv);
         });
+
     } catch (error) {
         blockagesListDiv.innerHTML = `<p class="text-center text-red-500">Erro: ${error.message}</p>`;
     }
@@ -159,7 +198,19 @@ function setupEventListeners(professionalId) {
                     showNotification('Erro', `Não foi possível remover o bloqueio: ${error.message}`, 'error');
                 }
             }
-        }
+        } else if (action === 'batch-delete-blockage') {
+             const ids = JSON.parse(button.dataset.ids);
+             const confirmed = await showConfirmation('Apagar Lote de Bloqueios', `Tem certeza que deseja apagar ${ids.length} bloqueios de uma vez?`);
+             if (confirmed) {
+                 try {
+                     await blockagesApi.batchDeleteBlockages(ids);
+                     showNotification('Sucesso', `${ids.length} bloqueios removidos.`, 'success');
+                     fetchAndDisplayBlockages(professionalId);
+                 } catch (error) {
+                     showNotification('Erro', `Não foi possível apagar os bloqueios: ${error.message}`, 'error');
+                 }
+             }
+         }
     });
 }
 

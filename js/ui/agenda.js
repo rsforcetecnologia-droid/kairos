@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Completo com a nova Visão Semanal)
+// js/ui/agenda.js (Completo com a nova Visão Semanal e Bloqueios)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -46,35 +46,45 @@ function getStartOfWeek(date) {
     return new Date(d.setDate(diff));
 }
 
-function renderListView(appointments) {
+function renderListView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
-    appointments.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+    allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
 
-    if (appointments.length === 0) {
-        agendaView.innerHTML = `<div class="text-center p-10 text-gray-500"><svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum agendamento</h3><p class="mt-1 text-sm text-gray-500">Não há agendamentos para o dia e filtros selecionados.</p></div>`;
+    if (allEvents.length === 0) {
+        agendaView.innerHTML = `<div class="text-center p-10 text-gray-500"><svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum agendamento ou bloqueio</h3><p class="mt-1 text-sm text-gray-500">Não há eventos para o dia e filtros selecionados.</p></div>`;
         return;
     }
 
-    const cardsHTML = appointments.map(appt => {
-        const startTime = new Date(appt.startTime);
-        const endTime = new Date(appt.endTime);
+    const cardsHTML = allEvents.map(event => {
+        const startTime = new Date(event.startTime);
+        const endTime = new Date(event.endTime);
         const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const endTimeStr = endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const profColor = state.professionalColors.get(appt.professionalId) || { bg: '#d1d5db' };
-        const isCompleted = appt.status === 'completed';
+        const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
+        
+        if (event.type === 'blockage') {
+            return `
+                <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
+                    <div class="time-info"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
+                    <div class="details-info"><p class="font-bold text-red-800">${event.reason}</p><p class="text-sm text-gray-600">com ${event.professionalName}</p></div>
+                    <div class="status-info"><span class="status-badge bg-red-100 text-red-800">Bloqueio</span></div>
+                </div>`;
+        }
+
+        const isCompleted = event.status === 'completed';
         const statusClass = isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
         const statusText = isCompleted ? 'Finalizado' : 'Aberto';
-        const apptDataString = JSON.stringify(appt).replace(/'/g, "&apos;");
+        const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
 
         return `
             <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
                 <div class="time-info" data-action="open-comanda"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
-                <div class="details-info" data-action="open-comanda"><p class="font-bold text-gray-800">${appt.clientName}</p><p class="text-sm text-gray-600">${appt.serviceName}</p><p class="text-sm text-gray-500 mt-1">com ${appt.professionalName || 'Indefinido'}</p></div>
+                <div class="details-info" data-action="open-comanda"><p class="font-bold text-gray-800">${event.clientName}</p><p class="text-sm text-gray-600">${event.serviceName}</p><p class="text-sm text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}</p></div>
                 <div class="status-info">
                     <span class="status-badge ${statusClass}">${statusText}</span>
                     <div class="card-actions">
                         <button data-action="edit-appointment" class="action-btn" title="Editar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        <button data-action="delete-appointment" data-id="${appt.id}" class="action-btn" title="Apagar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        <button data-action="delete-appointment" data-id="${event.id}" class="action-btn" title="Apagar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                     </div>
                 </div>
             </div>`;
@@ -82,7 +92,7 @@ function renderListView(appointments) {
     agendaView.innerHTML = `<div class="list-view-container">${cardsHTML}</div>`;
 }
 
-function renderWeekView(appointments) {
+function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
     const weekDays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
     const weekStart = getStartOfWeek(localState.currentDate);
@@ -95,30 +105,40 @@ function renderWeekView(appointments) {
         const today = new Date();
         const isCurrentDay = day.toDateString() === today.toDateString();
 
-        const dayAppointments = appointments
-            .filter(appt => new Date(appt.startTime).toDateString() === day.toDateString())
+        const dayEvents = allEvents
+            .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
-        let appointmentsHTML = '<div class="p-2 space-y-2">';
-        if (dayAppointments.length > 0) {
-            appointmentsHTML += dayAppointments.map(appt => {
-                const startTime = new Date(appt.startTime);
+        let eventsHTML = '<div class="p-2 space-y-2">';
+        if (dayEvents.length > 0) {
+            eventsHTML += dayEvents.map(event => {
+                const startTime = new Date(event.startTime);
                 const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                const profColor = state.professionalColors.get(appt.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
-                const apptDataString = JSON.stringify(appt).replace(/'/g, "&apos;");
+                const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
+                
+                if (event.type === 'blockage') {
+                    return `
+                        <div class="p-2 rounded-lg border-l-4 flex flex-col justify-between bg-red-100" style="border-left-color: ${profColor.border};">
+                            <p class="font-bold text-sm text-red-800">${startTimeStr} - ${event.reason}</p>
+                            <p class="text-xs text-gray-600 truncate">com ${event.professionalName}</p>
+                        </div>
+                    `;
+                }
+
+                const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
                 
                 return `
                     <div class="p-2 rounded-lg border-l-4 flex flex-col justify-between" 
                          style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};">
                         <div class="cursor-pointer flex-grow" data-action="open-comanda" data-appointment='${apptDataString}'>
-                            <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${appt.clientName}</p>
-                            <p class="text-xs text-gray-600 truncate">${appt.serviceName}</p>
+                            <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${event.clientName}</p>
+                            <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
                         </div>
                         <div class="flex items-center justify-end gap-2 mt-2 pt-1 border-t border-black border-opacity-10">
                             <button data-action="edit-appointment" data-appointment='${apptDataString}' class="text-gray-600 hover:text-blue-600 p-1" title="Editar">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
                             </button>
-                            <button data-action="delete-appointment" data-id="${appt.id}" class="text-gray-600 hover:text-red-600 p-1" title="Apagar">
+                            <button data-action="delete-appointment" data-id="${event.id}" class="text-gray-600 hover:text-red-600 p-1" title="Apagar">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
@@ -126,9 +146,9 @@ function renderWeekView(appointments) {
                 `;
             }).join('');
         } else {
-            appointmentsHTML += '<div class="text-center text-xs text-gray-400 pt-4">Nenhum agendamento</div>';
+            eventsHTML += '<div class="text-center text-xs text-gray-400 pt-4">Nenhum evento</div>';
         }
-        appointmentsHTML += '</div>';
+        eventsHTML += '</div>';
 
         weekHTML += `
             <div class="flex flex-col">
@@ -136,7 +156,7 @@ function renderWeekView(appointments) {
                     <p class="font-bold">${weekDays[i]}</p>
                     <p class="text-sm">${day.getDate()}/${day.getMonth() + 1}</p>
                 </div>
-                <div class="flex-grow overflow-y-auto">${appointmentsHTML}</div>
+                <div class="flex-grow overflow-y-auto">${eventsHTML}</div>
             </div>
         `;
     }
@@ -149,14 +169,14 @@ function renderAgenda() {
     const profFilter = document.getElementById('profFilter');
     const profFilterValue = profFilter ? profFilter.value : 'all';
 
-    const filteredAppointments = state.appointments.filter(appt => {
-        return profFilterValue === 'all' || appt.professionalId === profFilterValue;
+    const filteredEvents = state.allEvents.filter(event => {
+        return profFilterValue === 'all' || event.professionalId === profFilterValue;
     });
 
     if (localState.currentView === 'list') {
-        renderListView(filteredAppointments);
+        renderListView(filteredEvents);
     } else {
-        renderWeekView(filteredAppointments);
+        renderWeekView(filteredEvents);
     }
 }
 
@@ -184,7 +204,15 @@ async function fetchAndDisplayAgenda() {
 
     try {
         const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(state.establishmentId, start.toISOString(), end.toISOString());
-        state.appointments = appointmentsData;
+        const blockagesData = await blockagesApi.getBlockagesByDateRange(state.establishmentId, start.toISOString(), end.toISOString());
+        
+        // Combina agendamentos e bloqueios numa única lista de eventos
+        const allEvents = [
+            ...appointmentsData.map(a => ({ ...a, type: 'appointment' })),
+            ...blockagesData.map(b => ({ ...b, type: 'blockage' }))
+        ];
+        
+        state.allEvents = allEvents; // Armazena a lista combinada no estado global
         renderAgenda();
     } catch (error) {
         showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
@@ -547,4 +575,3 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
-
