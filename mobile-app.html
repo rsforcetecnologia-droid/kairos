@@ -10,7 +10,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- Scripts do Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         window.initializeApp = initializeApp;
@@ -77,6 +76,50 @@
             opacity: 0.5;
             pointer-events: none;
         }
+        /* Estilos adicionais para a agenda semanal */
+        .agenda-week-view {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr); /* Alterado para 3 colunas */
+            gap: 0.5rem;
+        }
+        .day-column {
+            background-color: #fff;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .day-header {
+            text-align: center;
+            padding: 0.5rem;
+            background-color: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .day-header.current-day {
+            background-color: #eef2ff;
+        }
+        .day-content {
+            flex-grow: 1;
+            padding: 0.5rem;
+            overflow-y: auto;
+            max-height: 50vh; /* Ajuste conforme necessário */
+        }
+        .view-btn {
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: all 0.2s ease-in-out;
+            border: none;
+            background-color: transparent;
+            color: #4b5563;
+            cursor: pointer;
+        }
+        .view-btn.active {
+            background-color: white;
+            color: #111827;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+        }
     </style>
 </head>
 <body>
@@ -140,7 +183,8 @@
             trash: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill={c}><path fillRule="evenodd" d="M9 2a1 1 001-1h2a1 1 001 1v1h3.5a1 1 011 1v1a1 1 01-1-1H2.5a1 1 01-1-1v-1a1 1 011-1H6V2zM10 5H3.25l-.25 13.5A2.75 2.75 0 005.75 21h8.5A2.75 2.75 0 0017 18.5V5H10zm1.5 5.25a.75.75 0 00-1.5 0v5a.75.75 0 001.5 0v-5zm3.25-.75a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5zM6 10a.75.75 0 011.5 0v5a.75.75 0 01-1.5 0v-5z" clipRule="evenodd" /></svg>),
             photo: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill={c} className="h-5 w-5"><path fillRule="evenodd" d="M1 9.5A1.5 1.5 0 012.5 8h15a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 011 15.5v-6zM3.5 10a.5.5 0 00-.5.5v2a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-2a.5.5 0 00-.5-.5h-13z" clipRule="evenodd" /><path d="M16.5 13.5a1 1 0 11-2 0 1 1 0 012 0zM17 17a1 1 0 100-2 1 1 0 000 2zM3 13a1 1 0 100-2 1 1 0 000 2zM3 17a1 1 0 100-2 1 1 0 000 2z" /></svg>),
             absent: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke={c} className="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>),
-            batchDelete: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke={c} className="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.757 6.75m11.129-3.21l-.317-.995a.992.992 0 00-.895-.695H11.5a.992.992 0 00-.895.695l-.317.995m1.528 3.21v-.995m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.757 6.75m11.129-3.21l-.317-.995a.992.992 0 00-.895-.695H11.5a.992.992 0 00-.895.695l-.317.995M15 9V7m0-2v2m1-2v2m-3 4V7m0-2v2m-4 4V7m0-2v2" /></svg>),
+            batchDelete: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke={c} className="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.757 6.75m11.129-3.21l-.317-.995a.992.992 0 00-.895-.695H11.5a.992.992 0 00-.895.695l-.317.995M15 9V7m0-2v2m1-2v2m-3 4V7m0-2v2m-4 4V7m0-2v2" /></svg>),
+            establishment: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>),
         };
 
         // --- 2. COMPONENTES REUTILIZÁVEIS ---
@@ -308,93 +352,213 @@
 
         // --- ECRÃ DA AGENDA ---
         const AgendaScreen = ({ user, showNotification, appointments, isLoading, error, refreshData, onNavigateToComanda }) => {
-          const [currentDate, setCurrentDate] = useState(new Date());
-          const [modalState, setModalState] = useState({ isOpen: false, appointment: null });
-          const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
-          const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [modalState, setModalState] = useState({ isOpen: false, appointment: null });
+            const [confirmState, setConfirmState] = useState({ isOpen: false, appointmentId: null });
+            const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
+            const [view, setView] = useState('list'); // 'list' ou 'week'
+            const [professionals, setProfessionals] = useState([]);
+            const [selectedProfessional, setSelectedProfessional] = useState('all');
+            const [weekOffset, setWeekOffset] = useState(0); // Novo estado para navegação por blocos de 3 dias
 
-          useEffect(() => {
-              // Quando a data local muda, informa o componente pai para buscar os dados dessa nova data
-              if (refreshData) {
-                  refreshData(currentDate);
-              }
-          }, [currentDate]);
+            const fetchProfessionals = useCallback(async () => {
+                try {
+                    const data = await authenticatedFetch(`/api/professionals/${user.establishmentId}`, {}, user);
+                    setProfessionals(data);
+                } catch (error) {
+                    showNotification('Erro', 'Não foi possível carregar a lista de profissionais.');
+                }
+            }, [user, showNotification]);
 
-          const handleSaveAppointment = async (appointmentData) => {
-              const isEditing = !!appointmentData.id;
-              const url = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
-              const method = isEditing ? 'PUT' : 'POST';
-              try {
-                  await authenticatedFetch(url, { method, body: JSON.stringify(appointmentData) }, user);
-                  showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
-                  setModalState({ isOpen: false, appointment: null });
-                  await refreshData(currentDate);
-              } catch (err) {
-                  showNotification("Erro", `Não foi possível salvar o agendamento: ${err.message}`);
-              }
-          };
-
-          const handleDelete = async (appointmentId) => {
-              try {
-                  await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
-                  showNotification('Sucesso!', 'Agendamento apagado com sucesso.');
-                  await refreshData(currentDate);
-              } catch(err) {
-                  showNotification("Erro", `Não foi possível apagar o agendamento: ${err.message}`);
-              } finally {
-                  setConfirmState({ isOpen: false, appointmentId: null });
-              }
-          };
-
-          const changeDate = (amount) => {
-              setCurrentDate(prevDate => {
-                  const newDate = new Date(prevDate);
-                  newDate.setDate(newDate.getDate() + amount);
-                  return newDate;
-              });
-          };
-
-          const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
-          
-          const renderContent = () => {
-            if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
-            if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
-            if (appointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento para este dia.</div>;
+            useEffect(() => {
+                fetchProfessionals();
+            }, [fetchProfessionals]);
             
-            return appointments.map(appt => {
-                const serviceName = Array.isArray(appt.services) ? appt.services.map(s => s.name).join(', ') : (appt.serviceName || 'Serviço');
-                return (
-                  <div key={appt.id} onClick={() => onNavigateToComanda(appt.id)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'} cursor-pointer`}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
-                        <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
-                      </div>
-                      <div className="relative">
-                        <button onClick={(e) => { e.stopPropagation(); setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id) }} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
-                        {actionMenuOpenId === appt.id && (
-                          <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
-                            <button onClick={(e) => { e.stopPropagation(); setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
-                            <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-2"><p className="font-bold text-gray-900">{appt.clientName}</p><p className="text-sm text-gray-600">{serviceName}</p><p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p></div>
-                  </div>
-                )
-            });
-          };
+            useEffect(() => {
+                if (refreshData) {
+                    refreshData(currentDate, view, selectedProfessional);
+                }
+            }, [currentDate, view, selectedProfessional, refreshData]);
 
-          return (
-            <div className="relative h-full flex flex-col">
-              <div className="p-4 bg-white border-b border-gray-200"><div className="flex items-center justify-between"><button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-gray-100">&lt;</button><h3 className="font-semibold text-gray-800">{formatDate(currentDate)}</h3><button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-gray-100">&gt;</button></div></div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">{renderContent()}</div>
-              <button onClick={() => setModalState({ isOpen: true, appointment: null })} className="absolute bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700">{icons.plus('white')}</button>
-              <AppointmentModal isOpen={modalState.isOpen} onClose={() => setModalState({ isOpen: false, appointment: null })} onSave={handleSaveAppointment} appointmentToEdit={modalState.appointment} user={user} showNotification={showNotification} />
-              <ConfirmationModal isOpen={confirmState.isOpen} onClose={() => setConfirmState({ isOpen: false, appointmentId: null })} onConfirm={() => handleDelete(confirmState.appointmentId)} title="Apagar Agendamento" message="Tem a certeza que deseja apagar este agendamento?" />
-            </div>
-          );
+            function getStartOfView(date) {
+                const d = new Date(date);
+                if (view === 'list') {
+                    d.setHours(0, 0, 0, 0);
+                    return d;
+                } else { // 'week'
+                    const displayDays = 3;
+                    const startOfCurrentWeek = new Date(date);
+                    const day = startOfCurrentWeek.getDay();
+                    const diff = startOfCurrentWeek.getDate() - day + (day === 0 ? -6 : 1); // Ajusta para segunda-feira
+                    startOfCurrentWeek.setDate(diff);
+                    
+                    const startOfView = new Date(startOfCurrentWeek);
+                    startOfView.setDate(startOfCurrentWeek.getDate() + weekOffset * displayDays);
+                    startOfView.setHours(0,0,0,0);
+                    return startOfView;
+                }
+            }
+            const getDaysToDisplay = (startOfView) => {
+                const days = [];
+                const numDays = view === 'list' ? 1 : 3;
+                for (let i = 0; i < numDays; i++) {
+                    const day = new Date(startOfView);
+                    day.setDate(startOfView.getDate() + i);
+                    days.push(day);
+                }
+                return days;
+            };
+
+            const handleSaveAppointment = async (appointmentData) => {
+                const isEditing = !!appointmentData.id;
+                const url = isEditing ? `/api/appointments/${appointmentData.id}` : '/api/appointments';
+                const method = isEditing ? 'PUT' : 'POST';
+                try {
+                    await authenticatedFetch(url, { method, body: JSON.stringify(appointmentData) }, user);
+                    showNotification('Sucesso!', `Agendamento ${isEditing ? 'atualizado' : 'criado'} com sucesso.`);
+                    setModalState({ isOpen: false, appointment: null });
+                    await refreshData(currentDate, view, selectedProfessional);
+                } catch (err) {
+                    showNotification("Erro", `Não foi possível salvar o agendamento: ${err.message}`);
+                }
+            };
+
+            const handleDelete = async (appointmentId) => {
+                try {
+                    await authenticatedFetch(`/api/appointments/${appointmentId}`, { method: 'DELETE' }, user);
+                    showNotification('Sucesso!', 'Agendamento apagado com sucesso.');
+                    await refreshData(currentDate, view, selectedProfessional);
+                } catch(err) {
+                    showNotification("Erro", `Não foi possível apagar o agendamento: ${err.message}`);
+                } finally {
+                    setConfirmState({ isOpen: false, appointmentId: null });
+                }
+            };
+
+            const changeDate = (amount) => {
+                if (view === 'list') {
+                    setCurrentDate(prevDate => {
+                        const newDate = new Date(prevDate);
+                        newDate.setDate(newDate.getDate() + amount);
+                        return newDate;
+                    });
+                } else { // view === 'week'
+                    setWeekOffset(prevOffset => prevOffset + amount);
+                }
+            };
+
+            const formatDate = (date) => new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+            
+            const renderContentList = () => {
+                const filteredAppointments = appointments.filter(appt => selectedProfessional === 'all' || appt.professionalId === selectedProfessional);
+                if (isLoading) return <div className="text-center p-10 text-gray-500">A carregar agendamentos...</div>;
+                if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
+                if (filteredAppointments.length === 0) return <div className="text-center p-10 text-gray-500">Nenhum agendamento para este dia.</div>;
+                
+                return filteredAppointments.map(appt => {
+                    const serviceName = Array.isArray(appt.services) ? appt.services.map(s => s.name).join(', ') : (appt.serviceName || 'Serviço');
+                    return (
+                        <div key={appt.id} onClick={() => onNavigateToComanda(appt.id)} className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'} cursor-pointer`}>
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <span className="font-bold text-lg text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span>
+                                    <span className={`ml-2 text-xs font-semibold px-2 py-1 rounded-full ${appt.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{appt.status === 'completed' ? 'Finalizado' : 'Confirmado'}</span>
+                                </div>
+                                <div className="relative">
+                                    <button onClick={(e) => { e.stopPropagation(); setActionMenuOpenId(actionMenuOpenId === appt.id ? null : appt.id) }} className="p-1 rounded-full hover:bg-gray-100">{icons.dots()}</button>
+                                    {actionMenuOpenId === appt.id && (
+                                        <div className="absolute right-0 mt-2 w-32 bg-white rounded-md shadow-lg border z-10">
+                                            <button onClick={(e) => { e.stopPropagation(); setModalState({ isOpen: true, appointment: appt }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Editar</button>
+                                            <button onClick={(e) => { e.stopPropagation(); setConfirmState({ isOpen: true, appointmentId: appt.id }); setActionMenuOpenId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100">Apagar</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mt-2"><p className="font-bold text-gray-900">{appt.clientName}</p><p className="text-sm text-gray-600">{serviceName}</p><p className="text-sm text-gray-500 mt-1">com {appt.professionalName}</p></div>
+                        </div>
+                    )
+                });
+            };
+
+            const renderContentWeek = () => {
+                const filteredAppointments = appointments.filter(appt => selectedProfessional === 'all' || appt.professionalId === selectedProfessional);
+                if (isLoading) return <div className="text-center p-10 text-gray-500 col-span-full">A carregar agendamentos...</div>;
+                if (error) return <div className="text-center p-10 text-red-500 col-span-full">{error}</div>;
+
+                const startOfView = getStartOfView(currentDate);
+                const daysToDisplay = getDaysToDisplay(startOfView);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+
+                return daysToDisplay.map(day => {
+                    const isCurrentDay = day.toDateString() === today.toDateString();
+                    const dayEvents = filteredAppointments.filter(appt => new Date(appt.startTime).toDateString() === day.toDateString());
+                    
+                    return (
+                        <div key={day.toISOString()} className="day-column">
+                            <div className={`day-header ${isCurrentDay ? 'current-day text-indigo-600' : ''}`}>
+                                <p className="font-bold">{day.toLocaleDateString('pt-BR', { weekday: 'short' })}</p>
+                                <p className="text-sm">{day.getDate()}/{day.getMonth() + 1}</p>
+                            </div>
+                            <div className="day-content p-2 space-y-2">
+                                {dayEvents.length > 0 ? dayEvents.map(appt => {
+                                    const serviceName = Array.isArray(appt.services) ? appt.services.map(s => s.name).join(', ') : (appt.serviceName || 'Serviço');
+                                    return (
+                                        <div key={appt.id} onClick={() => onNavigateToComanda(appt.id)} className={`bg-white p-2 rounded-lg shadow-sm border-l-4 ${appt.status === 'completed' ? 'border-green-500 opacity-70' : 'border-blue-500'} cursor-pointer`}>
+                                            <p className="text-xs font-bold text-gray-800">{new Date(appt.startTime).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</p>
+                                            <p className="text-xs text-gray-600">{appt.clientName}</p>
+                                            <p className="text-xs text-gray-500 truncate">{serviceName}</p>
+                                        </div>
+                                    );
+                                }) : <p className="text-xs text-gray-400 text-center">Nenhum evento</p>}
+                            </div>
+                        </div>
+                    );
+                });
+            };
+
+            const getWeekRangeString = () => {
+                const startOfView = getStartOfView(currentDate);
+                const endOfView = new Date(startOfView);
+                endOfView.setDate(startOfView.getDate() + 2);
+                return `${startOfView.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })} - ${endOfView.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}`;
+            };
+
+            return (
+                <div className="relative h-full flex flex-col">
+                    <div className="flex-shrink-0 p-4 bg-white border-b border-gray-200">
+                        <div className="flex justify-center mb-4">
+                            <div className="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
+                                <button onClick={() => setView('list')} className={`view-btn ${view === 'list' ? 'active' : ''}`}>Dia</button>
+                                <button onClick={() => setView('week')} className={`view-btn ${view === 'week' ? 'active' : ''}`}>Semana</button>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between mb-4">
+                            <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-gray-100">&lt;</button>
+                            <h3 className="font-semibold text-gray-800">
+                                {view === 'list' ? formatDate(currentDate) : getWeekRangeString()}
+                            </h3>
+                            <button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-gray-100">&gt;</button>
+                        </div>
+                        <select onChange={e => setSelectedProfessional(e.target.value)} value={selectedProfessional} className="w-full p-2 border border-gray-300 rounded-md bg-white text-sm">
+                            <option value="all">Todos os Profissionais</option>
+                            {professionals.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {view === 'list' ? (
+                            <div className="space-y-4">{renderContentList()}</div>
+                        ) : (
+                            <div className="agenda-week-view h-full">{renderContentWeek()}</div>
+                        )}
+                    </div>
+                    <button onClick={() => setModalState({ isOpen: true, appointment: null })} className="fixed bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700">{icons.plus('white')}</button>
+                    <AppointmentModal isOpen={modalState.isOpen} onClose={() => setModalState({ isOpen: false, appointment: null })} onSave={handleSaveAppointment} appointmentToEdit={modalState.appointment} user={user} showNotification={showNotification} />
+                    <ConfirmationModal isOpen={confirmState.isOpen} onClose={() => setConfirmState({ isOpen: false, appointmentId: null })} onConfirm={() => handleDelete(confirmState.appointmentId)} title="Apagar Agendamento" message="Tem a certeza que deseja apagar este agendamento?" />
+                </div>
+            );
         };
 
         // --- Modal para Adicionar Itens à Comanda ---
@@ -662,7 +826,12 @@
                 );
 
                 if (comanda.status === 'awaiting_payment') {
-                    return <div className="p-4 bg-gray-50 space-y-2">{commonButtons}</div>;
+                    return (
+                        <div className="p-4 bg-gray-50 space-y-2">
+                            <button onClick={() => setIsAddItemModalOpen(true)} className="w-full py-2 px-4 bg-blue-100 text-blue-700 font-semibold rounded-lg hover:bg-blue-200">Adicionar Item</button>
+                            {commonButtons}
+                        </div>
+                    );
                 }
 
                 return (
@@ -703,8 +872,8 @@
                         isOpen={confirmationState.isOpen}
                         onClose={() => setConfirmationState({ isOpen: false, action: null })}
                         onConfirm={handleActionConfirm}
-                        title={confirmationState.action ? confirmationDetails[confirmationState.action].title : ''}
-                        message={confirmationState.action ? confirmationDetails[confirmationState.action].message : ''}
+                        title={confirmationDetails[confirmationState.action] ? confirmationDetails[confirmationState.action].title : ''}
+                        message={confirmationDetails[confirmationState.action] ? confirmationDetails[confirmationState.action].message : ''}
                     />
                 </>
             );
@@ -762,7 +931,7 @@
 
             return (
                 <div className="h-full flex flex-col">
-                    <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeFilter === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
+                    <div className="p-2 bg-white border-b border-gray-200"><div className="flex bg-gray-100 rounded-lg p-1">{Object.keys(statusMap).map(key => (<button key={key} onClick={() => setActiveFilter(key)} className={`flex-1 text-sm font-semibold py-2 rounded-md transition-colors ${activeTab === key ? 'bg-white text-blue-600 shadow' : 'text-gray-600'}`}>{statusMap[key].label}</button>))}</div></div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">{renderContent()}</div>
                     <ComandaDetailModal comanda={selectedComanda} isOpen={!!selectedComanda} onClose={() => setSelectedComanda(null)} onUpdate={handleUpdate} user={user} showNotification={showNotification} />
                 </div>
@@ -874,11 +1043,257 @@
                     <div className="bg-white rounded-lg shadow-md">
                         <button onClick={() => onNavigate('Servicos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Serviços</button>
                         <button onClick={() => onNavigate('Produtos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Produtos</button>
-                        <button onClick={() => onNavigate('Profissionais')} className="w-full text-left p-4 text-gray-700 hover:bg-gray-50">Gerir Equipa</button>
+                        <button onClick={() => onNavigate('Profissionais')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Equipa</button>
+                        <button onClick={() => onNavigate('Estabelecimento')} className="w-full text-left p-4 text-gray-700 hover:bg-gray-50">Dados do Estabelecimento</button>
                     </div>
                     <div className="pt-4">
                          <button onClick={onLogout} className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition-colors">Sair</button>
                     </div>
+                </div>
+            );
+        };
+        
+        // --- ECRÃ: ESTABELECIMENTO ---
+        const EstablishmentScreen = ({ user, showNotification, onBack, onUpdate }) => {
+            const [establishmentData, setEstablishmentData] = useState(null);
+            const [isLoading, setIsLoading] = useState(true);
+            const [isSaving, setIsSaving] = useState(false);
+            const fileInputRef = useRef(null);
+
+            const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
+
+            const fetchEstablishmentData = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    const data = await authenticatedFetch(`/api/establishments/${user.establishmentId}/details`, {}, user);
+                    setEstablishmentData(data);
+                } catch (error) {
+                    showNotification('Erro', 'Não foi possível carregar os dados do estabelecimento.');
+                } finally {
+                    setIsLoading(false);
+                }
+            }, [user, showNotification]);
+
+            useEffect(() => { fetchEstablishmentData(); }, [fetchEstablishmentData]);
+
+            const handleSave = async (e) => {
+                e.preventDefault();
+                setIsSaving(true);
+                
+                const form = e.target;
+                
+                const workingHours = {};
+                Object.keys(daysOfWeek).forEach(dayKey => {
+                    const active = form[`est-${dayKey}-active`]?.checked || false;
+                    workingHours[dayKey] = {
+                        active: active,
+                        start: active ? form[`est-${dayKey}-start`]?.value : null,
+                        end: active ? form[`est-${dayKey}-end`]?.value : null,
+                        breakStart: active ? form[`est-${dayKey}-breakStart`]?.value : null,
+                        breakEnd: active ? form[`est-${dayKey}-breakEnd`]?.value : null,
+                    };
+                });
+                
+                const loyaltyTiers = [];
+                const tierRows = form.querySelectorAll('.loyalty-tier-row');
+                tierRows.forEach(row => {
+                    const points = parseInt(row.querySelector('[name="loyalty-points"]').value, 10);
+                    const reward = row.querySelector('[name="loyalty-reward"]').value;
+                    const discount = parseFloat(row.querySelector('[name="loyalty-discount"]').value);
+                    if (points && reward) {
+                        loyaltyTiers.push({ points, reward, discount });
+                    }
+                });
+
+                const dataToSave = {
+                    name: form.establishmentName.value,
+                    document: form.establishmentCnpjCpf.value,
+                    phone: form.establishmentPhone.value,
+                    email: form.establishmentEmail.value,
+                    address: form.establishmentAddress.value,
+                    website: form.establishmentWebsite.value,
+                    welcomeMessage: form.establishmentWelcomeMessage.value,
+                    logo: form.establishmentLogoBase64.value,
+                    workingHours: workingHours,
+                    loyaltyProgram: {
+                        enabled: form.loyaltyEnabled.checked,
+                        pointsPerCurrency: parseFloat(form.loyaltyPointsPerCurrency.value) || 0,
+                        tiers: loyaltyTiers,
+                    },
+                };
+                
+                try {
+                    await authenticatedFetch(`/api/establishments/${user.establishmentId}/details`, { method: 'PUT', body: JSON.stringify(dataToSave) }, user);
+                    showNotification('Sucesso!', 'Dados do estabelecimento atualizados com sucesso.');
+                    onUpdate();
+                } catch (error) {
+                    showNotification('Erro', `Não foi possível salvar: ${error.message}`);
+                } finally {
+                    setIsSaving(false);
+                }
+            };
+            
+            const handlePhotoUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const photoPreview = document.getElementById('establishmentLogoPreview');
+                        const photoBase64 = document.getElementById('establishmentLogoBase64');
+                        if (photoPreview) photoPreview.src = reader.result;
+                        if (photoBase64) photoBase64.value = reader.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            
+            const addLoyaltyTier = () => {
+                const container = document.getElementById('loyaltyTiersContainer');
+                const newRow = document.createElement('div');
+                newRow.className = "loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2";
+                newRow.innerHTML = `
+                    <input type="number" placeholder="Pontos" name="loyalty-points" class="w-full p-2 border rounded-md text-sm">
+                    <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" class="w-full p-2 border rounded-md text-sm">
+                    <input type="number" placeholder="Valor (R$)" name="loyalty-discount" class="w-full p-2 border rounded-md text-sm">
+                    <button type="button" class="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
+                `;
+                container.appendChild(newRow);
+                newRow.querySelector('.remove-loyalty-tier-btn').onclick = () => newRow.remove();
+            };
+            
+            useEffect(() => {
+                if (establishmentData) {
+                    const container = document.getElementById('loyaltyTiersContainer');
+                    if (container) {
+                        container.innerHTML = '';
+                        (establishmentData.loyaltyProgram?.tiers || []).forEach(tier => {
+                            const newRow = document.createElement('div');
+                            newRow.className = "loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2";
+                            newRow.innerHTML = `
+                                <input type="number" placeholder="Pontos" name="loyalty-points" value="${tier.points}" class="w-full p-2 border rounded-md text-sm">
+                                <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" value="${tier.reward}" class="w-full p-2 border rounded-md text-sm">
+                                <input type="number" placeholder="Valor (R$)" name="loyalty-discount" value="${tier.discount || 0}" class="w-full p-2 border rounded-md text-sm">
+                                <button type="button" class="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
+                            `;
+                            container.appendChild(newRow);
+                            newRow.querySelector('.remove-loyalty-tier-btn').onclick = () => newRow.remove();
+                        });
+                    }
+                }
+            }, [establishmentData]);
+            
+            const renderLoyaltyTiers = () => {
+                if (!establishmentData?.loyaltyProgram?.tiers) return null;
+                return (
+                    <div id="loyaltyTiersContainer">
+                        {establishmentData.loyaltyProgram.tiers.map((tier, index) => (
+                            <div key={index} className="loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2">
+                                <input type="number" placeholder="Pontos" name="loyalty-points" defaultValue={tier.points} className="w-full p-2 border rounded-md text-sm" />
+                                <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" defaultValue={tier.reward} className="w-full p-2 border rounded-md text-sm" />
+                                <input type="number" placeholder="Valor (R$)" name="loyalty-discount" defaultValue={tier.discount || 0} className="w-full p-2 border rounded-md text-sm" />
+                                <button type="button" onClick={(e) => e.target.closest('.loyalty-tier-row').remove()} className="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
+                            </div>
+                        ))}
+                    </div>
+                );
+            };
+
+
+            return (
+                <div className="flex flex-col h-full">
+                    <header className="flex-shrink-0 bg-white p-4 flex items-center shadow-md">
+                        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 mr-2">{icons.back()}</button>
+                        <h2 className="text-xl font-bold text-gray-800">Dados do Estabelecimento</h2>
+                    </header>
+                    {isLoading ? (
+                        <div className="p-4 text-center text-gray-500">A carregar...</div>
+                    ) : (
+                        <main className="flex-1 overflow-y-auto p-4 space-y-4">
+                            <form onSubmit={handleSave} className="bg-white p-4 rounded-xl shadow-md space-y-4">
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold border-b pb-2">Identidade Visual</h3>
+                                    <div className="flex items-center gap-4">
+                                        <img id="establishmentLogoPreview" src={establishmentData?.logo || 'https://placehold.co/80x80'} alt="Logotipo do Estabelecimento" className="w-20 h-20 object-contain rounded-lg border p-1" />
+                                        <div>
+                                            <input type="file" id="establishmentLogoInput" onChange={handlePhotoUpload} className="hidden" />
+                                            <input type="hidden" id="establishmentLogoBase64" name="establishmentLogoBase64" defaultValue={establishmentData?.logo || ''} />
+                                            <button type="button" onClick={() => fileInputRef.current.click()} className="py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm">Alterar Logotipo</button>
+                                        </div>
+                                    </div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">Mensagem de Boas-Vindas</label><input type="text" id="establishmentWelcomeMessage" name="establishmentWelcomeMessage" defaultValue={establishmentData?.welcomeMessage || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                </div>
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold border-b pb-2">Informações Gerais</h3>
+                                    <div><label className="text-sm font-medium text-gray-700 block">Nome</label><input type="text" id="establishmentName" name="establishmentName" defaultValue={establishmentData?.name || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">CNPJ / CPF</label><input type="text" id="establishmentCnpjCpf" name="establishmentCnpjCpf" defaultValue={establishmentData?.document || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">Telefone</label><input type="tel" id="establishmentPhone" name="establishmentPhone" defaultValue={establishmentData?.phone || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">E-mail</label><input type="email" id="establishmentEmail" name="establishmentEmail" defaultValue={establishmentData?.email || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">Endereço</label><input type="text" id="establishmentAddress" name="establishmentAddress" defaultValue={establishmentData?.address || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                    <div><label className="text-sm font-medium text-gray-700 block">Website</label><input type="url" id="establishmentWebsite" name="establishmentWebsite" defaultValue={establishmentData?.website || ''} className="w-full p-2 border border-gray-300 rounded-md" /></div>
+                                </div>
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold border-b pb-2">Programa de Fidelidade</h3>
+                                    <div className="flex items-center space-x-2">
+                                        <input type="checkbox" id="loyaltyEnabled" name="loyaltyEnabled" defaultChecked={establishmentData?.loyaltyProgram?.enabled || false} />
+                                        <label htmlFor="loyaltyEnabled" className="text-sm">Habilitar programa</label>
+                                    </div>
+                                    <div>
+                                        <label className="text-sm font-medium text-gray-700 block">Pontos por Real Gasto</label>
+                                        <input type="number" id="loyaltyPointsPerCurrency" name="loyaltyPointsPerCurrency" defaultValue={establishmentData?.loyaltyProgram?.pointsPerCurrency || 1} className="w-full p-2 border rounded-md text-sm" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-semibold mb-2">Prémios por Pontos</h4>
+                                        <div className="grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
+                                            <span>Pontos</span>
+                                            <span>Descrição</span>
+                                            <span>Valor (R$)</span>
+                                            <span></span>
+                                        </div>
+                                        <div id="loyaltyTiersContainer">
+                                            {establishmentData?.loyaltyProgram?.tiers.map((tier, index) => (
+                                                <div key={index} className="loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2">
+                                                    <input type="number" placeholder="Pontos" name="loyalty-points" defaultValue={tier.points} className="w-full p-2 border rounded-md text-sm" />
+                                                    <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" defaultValue={tier.reward} className="w-full p-2 border rounded-md text-sm" />
+                                                    <input type="number" placeholder="Valor (R$)" name="loyalty-discount" defaultValue={tier.discount || 0} className="w-full p-2 border rounded-md text-sm" />
+                                                    <button type="button" onClick={(e) => e.target.closest('.loyalty-tier-row').remove()} className="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button type="button" onClick={addLoyaltyTier} className="mt-2 text-sm font-semibold text-blue-600">+ Adicionar prémio</button>
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold border-b pb-2">Horário de Funcionamento</h3>
+                                    {Object.entries(daysOfWeek).map(([dayKey, dayName]) => {
+                                        const dayData = establishmentData?.workingHours?.[dayKey] || {};
+                                        const isActive = dayData.active !== false;
+                                        return (
+                                            <div key={dayKey} className={`p-3 rounded-lg border ${isActive ? 'bg-gray-50' : 'bg-gray-100 opacity-70'}`}>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-bold text-gray-800">{dayName}</span>
+                                                    <label className="flex items-center cursor-pointer">
+                                                        <div className="relative">
+                                                            <input type="checkbox" id={`est-${dayKey}-active`} name={`est-${dayKey}-active`} defaultChecked={isActive} className="sr-only" />
+                                                            <div className="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                                                        </div>
+                                                    </label>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                                    <label>Início:<input type="time" name={`est-${dayKey}-start`} defaultValue={dayData.start || ''} className="w-full p-1 border rounded-md" disabled={!isActive} /></label>
+                                                    <label>Fim:<input type="time" name={`est-${dayKey}-end`} defaultValue={dayData.end || ''} className="w-full p-1 border rounded-md" disabled={!isActive} /></label>
+                                                    <label>Int. Início:<input type="time" name={`est-${dayKey}-breakStart`} defaultValue={dayData.breakStart || ''} className="w-full p-1 border rounded-md" disabled={!isActive} /></label>
+                                                    <label>Int. Fim:<input type="time" name={`est-${dayKey}-breakEnd`} defaultValue={dayData.breakEnd || ''} className="w-full p-1 border rounded-md" disabled={!isActive} /></label>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <button type="submit" disabled={isSaving} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 disabled:bg-gray-400">
+                                    {isSaving ? 'A salvar...' : 'Salvar Alterações'}
+                                </button>
+                            </form>
+                        </main>
+                    )}
                 </div>
             );
         };
@@ -1748,7 +2163,7 @@
                 if(activeTab === 'Agenda' || activeTab === 'Comandas') {
                     refreshData();
                 }
-            }, [activeTab, refreshData]);
+            }, [activeTab]);
 
             const handleNavigateToComanda = (appointmentId) => {
                 setSelectedComandaIdFromAgenda(appointmentId);
@@ -1785,6 +2200,8 @@
                                 return <ProdutosScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
                             case 'Profissionais':
                                 return <ProfessionalsScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
+                            case 'Estabelecimento':
+                                return <EstablishmentScreen user={user} showNotification={showNotification} onBack={() => setCurrentManagementScreen('menu')} onUpdate={refreshData} />;
                             default:
                                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
                         }
@@ -1828,18 +2245,34 @@
                 setUpdateTrigger(prev => prev + 1);
             }, []);
 
-            const refreshData = useCallback(async (date = new Date()) => {
+            const refreshData = useCallback(async (date = new Date(), view = 'list', professionalId = 'all') => {
                 if (!loggedInUser) return;
                 setAppIsLoading(true);
                 setAppError(null);
                 try {
-                    const startOfDay = new Date(date);
-                    startOfDay.setHours(0, 0, 0, 0);
-                    const endOfDay = new Date(date);
-                    endOfDay.setHours(23, 59, 59, 999);
+                    let startDate, endDate;
+                    if (view === 'list') {
+                        startDate = new Date(date);
+                        startDate.setHours(0, 0, 0, 0);
+                        endDate = new Date(date);
+                        endDate.setHours(23, 59, 59, 999);
+                    } else { // 'week' view
+                        const startOfView = new Date(date);
+                        startOfView.setHours(0, 0, 0, 0);
+                        const endOfView = new Date(startOfView);
+                        endOfView.setDate(startOfView.getDate() + 2);
+                        endOfView.setHours(23, 59, 59, 999);
+                        startDate = startOfView;
+                        endDate = endOfView;
+                    }
 
+                    let appointmentsEndpoint = `/api/appointments/${loggedInUser.establishmentId}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
+                    if (professionalId !== 'all') {
+                        appointmentsEndpoint += `&professionalId=${professionalId}`;
+                    }
+                    
                     const [appointmentsData, comandasData] = await Promise.all([
-                        authenticatedFetch(`/api/appointments/${loggedInUser.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`, {}, loggedInUser),
+                        authenticatedFetch(appointmentsEndpoint, {}, loggedInUser),
                         authenticatedFetch(`/api/comandas/${loggedInUser.establishmentId}`, {}, loggedInUser)
                     ]);
                     setAppData({ appointments: appointmentsData, comandas: comandasData });
