@@ -184,7 +184,7 @@
             photo: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill={c} className="h-5 w-5"><path fillRule="evenodd" d="M1 9.5A1.5 1.5 0 012.5 8h15a1.5 1.5 0 011.5 1.5v6a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 011 15.5v-6zM3.5 10a.5.5 0 00-.5.5v2a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-2a.5.5 0 00-.5-.5h-13z" clipRule="evenodd" /><path d="M16.5 13.5a1 1 0 11-2 0 1 1 0 012 0zM17 17a1 1 0 100-2 1 1 0 000 2zM3 13a1 1 0 100-2 1 1 0 000 2zM3 17a1 1 0 100-2 1 1 0 000 2z" /></svg>),
             absent: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke={c} className="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>),
             batchDelete: (c = 'currentColor') => (<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke={c} className="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.757 6.75m11.129-3.21l-.317-.995a.992.992 0 00-.895-.695H11.5a.992.992 0 00-.895.695l-.317.995M15 9V7m0-2v2m1-2v2m-3 4V7m0-2v2m-4 4V7m0-2v2" /></svg>),
-            establishment: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>),
+            establishment: (c) => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke={c} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>),
         };
 
         // --- 2. COMPONENTES REUTILIZÁVEIS ---
@@ -199,8 +199,8 @@
         const NotificationModal = ({ isOpen, onClose, title, message }) => {
             if (!isOpen) return null;
             return (
-                <div className="modal-enter fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="modal-content-enter bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
+                <div className="modal-enter fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                    <div className="modal-content-enter bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-gray-800">{title}</h3>
                         <p className="text-gray-600 my-4">{message}</p>
                         <button onClick={onClose} className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">OK</button>
@@ -336,8 +336,8 @@
         const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]" onClick={onClose}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 p-6 text-center" onClick={e => e.stopPropagation()}>
                         <h3 className="text-xl font-bold text-gray-800">{title}</h3>
                         <p className="text-gray-600 my-4">{message}</p>
                         <div className="flex gap-4">
@@ -852,8 +852,8 @@
 
             return (
                 <>
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4">
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4" onClick={e => e.stopPropagation()}>
                             <div className="p-4 border-b">
                                 <h3 className="text-xl font-bold text-gray-800">{comanda.clientName}</h3>
                                 <p className="text-sm text-gray-600">
@@ -1170,10 +1170,10 @@
                             const newRow = document.createElement('div');
                             newRow.className = "loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2";
                             newRow.innerHTML = `
-                                <input type="number" placeholder="Pontos" name="loyalty-points" value="${tier.points}" class="w-full p-2 border rounded-md text-sm">
-                                <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" value="${tier.reward}" class="w-full p-2 border rounded-md text-sm">
-                                <input type="number" placeholder="Valor (R$)" name="loyalty-discount" value="${tier.discount || 0}" class="w-full p-2 border rounded-md text-sm">
-                                <button type="button" class="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
+                                <input type="number" placeholder="Pontos" name="loyalty-points" defaultValue={tier.points} className="w-full p-2 border rounded-md text-sm">
+                                <input type="text" placeholder="Descrição do Prémio" name="loyalty-reward" defaultValue={tier.reward} className="w-full p-2 border rounded-md text-sm">
+                                <input type="number" placeholder="Valor (R$)" name="loyalty-discount" defaultValue={tier.discount || 0} className="w-full p-2 border rounded-md text-sm">
+                                <button type="button" onClick={(e) => e.target.closest('.loyalty-tier-row').remove()} className="remove-loyalty-tier-btn bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 text-sm">&times;</button>
                             `;
                             container.appendChild(newRow);
                             newRow.querySelector('.remove-loyalty-tier-btn').onclick = () => newRow.remove();
@@ -1215,7 +1215,7 @@
                                     <div className="flex items-center gap-4">
                                         <img id="establishmentLogoPreview" src={establishmentData?.logo || 'https://placehold.co/80x80'} alt="Logotipo do Estabelecimento" className="w-20 h-20 object-contain rounded-lg border p-1" />
                                         <div>
-                                            <input type="file" id="establishmentLogoInput" onChange={handlePhotoUpload} className="hidden" />
+                                            <input type="file" id="establishmentLogoInput" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
                                             <input type="hidden" id="establishmentLogoBase64" name="establishmentLogoBase64" defaultValue={establishmentData?.logo || ''} />
                                             <button type="button" onClick={() => fileInputRef.current.click()} className="py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm">Alterar Logotipo</button>
                                         </div>
@@ -1393,8 +1393,8 @@
                 };
                 
                 return (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
                             <div className="p-4 border-b flex justify-between items-center">
                                 <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar' : 'Novo'} {itemType === 'service' ? 'Serviço' : 'Produto'}</h3>
                                 <button onClick={onClose} className="text-2xl font-bold">&times;</button>
@@ -1513,7 +1513,7 @@
                 const isEditing = !!itemToEdit;
                 const [name, setName] = useState(itemToEdit?.name || '');
                 const [price, setPrice] = useState(itemToEdit?.price || '');
-                const [extraField, setExtraField] = useState(itemToEdit ? (itemType === 'service' ? itemToEdit.duration : itemToEdit.currentStock) : '');
+                const [extraField, setExtraField] = useState(itemToEdit ? (itemType === 'service' ? itemTo-edit.duration : itemToEdit.currentStock) : '');
                 const [photo, setPhoto] = useState(itemToEdit?.photo || '');
                 const [isSaving, setIsSaving] = useState(false);
                 const fileInputRef = useRef(null);
@@ -1562,8 +1562,8 @@
                 };
                 
                 return (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm m-4 flex flex-col" style={{maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
                             <div className="p-4 border-b flex justify-between items-center">
                                 <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar' : 'Novo'} {itemType === 'service' ? 'Serviço' : 'Produto'}</h3>
                                 <button onClick={onClose} className="text-2xl font-bold">&times;</button>
@@ -1843,8 +1843,8 @@
             };
             
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-800">{isEditing ? 'Editar Profissional' : 'Novo Profissional'}</h3>
                             <button onClick={onClose} className="text-2xl font-bold">&times;</button>
@@ -1871,7 +1871,7 @@
                                 <h3 className="font-semibold text-gray-800 mb-2">Horário de Trabalho</h3>
                                 <div className="grid grid-cols-1 gap-4">
                                     {Object.entries(daysOfWeek).map(([dayKey, dayName]) => (
-                                        <div key={dayKey} className={`day-schedule-card p-3 rounded-lg border ${workingHours[dayKey]?.active ? 'bg-gray-50' : 'bg-gray-100 disabled'}`}>
+                                        <div key={dayKey} className={`p-3 rounded-lg border ${workingHours[dayKey]?.active ? 'bg-gray-50' : 'bg-gray-100 disabled'}`}>
                                             <div className="flex justify-between items-center mb-2">
                                                 <span className="font-bold text-gray-800">{dayName}</span>
                                                 <label className="flex items-center cursor-pointer">
@@ -2012,8 +2012,8 @@
             };
 
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]" onClick={onClose}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-800">Ausências de {professional.name}</h3>
                             <button onClick={onClose} className="text-2xl font-bold">&times;</button>
@@ -2106,8 +2106,8 @@
             };
 
             return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]">
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}}>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]" onClick={onClose}>
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg m-4 flex flex-col" style={{maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
                          <div className="p-4 border-b flex justify-between items-center">
                             <h3 className="text-xl font-bold text-gray-800">Bloqueio em Lote</h3>
                             <button onClick={onClose} className="text-2xl font-bold">&times;</button>
