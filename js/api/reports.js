@@ -25,6 +25,31 @@ export const getSalesReport = ({ establishmentId, startDate, endDate, cashierSes
 };
 
 /**
+ * Busca os dados detalhados de um mês específico (para drill-down).
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {number} year - O ano.
+ * @param {number} month - O mês (0-11).
+ * @returns {Promise<object>} - Uma promessa que resolve com os dados detalhados do mês.
+ */
+export const getMonthlyAnalytics = (establishmentId, year, month) => {
+    return authenticatedFetch(`/api/analytics/${establishmentId}/monthly-details?year=${year}&month=${month}`);
+};
+
+/**
+ * NOVO: Busca os detalhes de transações de um dia específico (para drill-down).
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {number} year - O ano.
+ * @param {number} month - O mês (0-11).
+ * @param {number} day - O dia do mês.
+ * @returns {Promise<object>} - Uma promessa que resolve com os detalhes das transações do dia.
+ */
+export const getDailyTransactions = (establishmentId, year, month, day) => {
+    const endpoint = `/api/analytics/${establishmentId}/daily-details?year=${year}&month=${month}&day=${day}`;
+    return authenticatedFetch(endpoint);
+};
+
+
+/**
  * Busca os detalhes de atendimentos de um profissional em um mês específico (para drill-down).
  * @param {string} establishmentId - O ID do estabelecimento.
  * @param {number} year - O ano.
@@ -36,15 +61,3 @@ export const getProfessionalMonthlyDetails = (establishmentId, year, month, prof
     const endpoint = `/api/analytics/${establishmentId}/professional-details?year=${year}&month=${month}&professionalId=${professionalId}`;
     return authenticatedFetch(endpoint);
 };
-
-/**
- * Busca os dados detalhados de um mês específico (para drill-down).
- * @param {string} establishmentId - O ID do estabelecimento.
- * @param {number} year - O ano.
- * @param {number} month - O mês (0-11).
- * @returns {Promise<object>} - Uma promessa que resolve com os dados detalhados do mês.
- */
-export const getMonthlyAnalytics = (establishmentId, year, month) => {
-    return authenticatedFetch(`/api/analytics/${establishmentId}/monthly-details?year=${year}&month=${month}`);
-};
-

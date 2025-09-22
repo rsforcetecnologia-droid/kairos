@@ -103,6 +103,8 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
         let salesByProfessional = {};
         let itemsCount = {};
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, { id: doc.id, name: doc.data().name }]));
+        let revenueByTransactionType = { appointment: 0, sales: 0 };
+        let totalSalesRevenue = 0; // Adicionando esta variável para rastrear a receita de vendas avulsas
 
         const processDoc = (doc, type) => {
             const data = doc.data();
@@ -111,6 +113,13 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
             const revenue = data.transaction?.totalAmount || data.totalAmount || 0;
             
             revenueByDay[day] = (revenueByDay[day] || 0) + revenue;
+            
+            // Adiciona o valor à contagem por tipo
+            if (type === 'appointment') {
+                revenueByTransactionType.appointment += revenue;
+            } else {
+                revenueByTransactionType.sales += revenue;
+            }
 
             const prof = professionalsMap.get(data.professionalId);
             const profName = data.professionalName || (prof ? prof.name : 'N/A');
@@ -128,8 +137,8 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
             });
         };
 
-        appointmentsSnapshot.forEach(doc => processDoc(doc, 'appointment'));
-        salesSnapshot.forEach(doc => processDoc(doc, 'sale'));
+        appointmentsSnapshot.docs.forEach(doc => processDoc(doc, 'appointment'));
+        salesSnapshot.docs.forEach(doc => processDoc(doc, 'sale'));
 
         const daysInMonth = new Date(year, parseInt(month) + 1, 0).getDate();
         const revenueByDayArray = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, revenue: revenueByDay[i + 1] || 0 }));
@@ -139,14 +148,91 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
         res.status(200).json({
             revenueByDay: revenueByDayArray,
             salesByProfessional: Object.entries(salesByProfessional).map(([name, data]) => ({ name, count: data.count, id: data.id })),
-            topItems
+            topItems,
+            revenueByTransactionType
         });
-
     } catch (error) {
         handleFirestoreError(res, error);
     }
 });
 
+// NOVO ENDPOINT: Detalhes de um dia específico
+router.get('/:establishmentId/daily-details', async (req, res) => {
+    const { establishmentId } = req.params;
+    const { year, month, day, professionalId } = req.query;
+
+    if (!year || !month || !day) {
+        return res.status(400).json({ message: 'Ano, mês e dia são obrigatórios.' });
+    }
+
+    try {
+        const { db } = req;
+        const startDate = new Date(year, month, day);
+        const endDate = new Date(year, month, day, 23, 59, 59);
+
+        let appointmentsQuery = db.collection('appointments')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '==', 'completed')
+            .where('startTime', '>=', startDate)
+            .where('startTime', '<=', endDate);
+            
+        let salesQuery = db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('startTime', '>=', startDate)
+            .where('startTime', '<=', endDate);
+            
+        if (professionalId) {
+            appointmentsQuery = appointmentsQuery.where('professionalId', '==', professionalId);
+            salesQuery = salesQuery.where('professionalId', '==', professionalId);
+        }
+
+        const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
+            appointmentsQuery.get(),
+            salesQuery.get()
+        ]);
+        
+        let allTransactions = [];
+        let totalRevenue = 0;
+
+        appointmentsSnapshot.forEach(doc => {
+            const data = doc.data();
+            const value = data.transaction?.totalAmount || 0;
+            totalRevenue += value;
+            allTransactions.push({
+                date: data.startTime.toDate(),
+                client: data.clientName,
+                items: [...(data.services || []), ...(data.comandaItems || [])].map(i => i.name).join(', '),
+                value: value,
+                type: 'Agendamento'
+            });
+        });
+        
+        salesSnapshot.forEach(doc => {
+            const data = doc.data();
+            const value = data.totalAmount || 0;
+            totalRevenue += value;
+            allTransactions.push({
+                date: data.startTime.toDate(),
+                client: data.clientName,
+                items: data.items.map(i => i.name).join(', '),
+                value: value,
+                type: 'Venda Avulsa'
+            });
+        });
+        
+        allTransactions.sort((a, b) => a.date - b.date);
+        
+        res.status(200).json({
+            transactions: allTransactions,
+            summary: {
+                totalRevenue,
+                totalTransactions: allTransactions.length
+            }
+        });
+    } catch (error) {
+        handleFirestoreError(res, error);
+    }
+});
 
 // Detalhes de um profissional específico em um mês
 router.get('/:establishmentId/professional-details', async (req, res) => {
@@ -210,5 +296,5 @@ router.get('/:establishmentId/professional-details', async (req, res) => {
     }
 });
 
-module.exports = router;
 
+module.exports = router;
