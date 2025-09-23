@@ -1,5 +1,3 @@
-// routes/financial.js
-
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -20,7 +18,8 @@ router.post('/receivables', async (req, res) => {
             establishmentId,
             description,
             amount: Number(amount),
-            dueDate: admin.firestore.Timestamp.fromDate(new Date(dueDate)),
+            // CORREÇÃO: Salva a data como string no formato 'YYYY-MM-DD' para evitar problemas de fuso horário.
+            dueDate: dueDate, 
             status: 'pending',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
@@ -39,10 +38,38 @@ router.get('/receivables', async (req, res) => {
             .where('establishmentId', '==', establishmentId)
             .orderBy('dueDate', 'asc')
             .get();
-        const receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const receivables = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                // Não é mais necessário converter, pois a data já está em string.
+                dueDate: data.dueDate,
+            };
+        });
         res.status(200).json(receivables);
     } catch (error) {
         console.error("Erro ao listar contas a receber:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+router.delete('/receivables/:id', async (req, res) => {
+    const { id } = req.params;
+    const { establishmentId } = req.user;
+    try {
+        const docRef = req.db.collection('financial_receivables').doc(id);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Lançamento não encontrado.' });
+        }
+        if (doc.data().establishmentId !== establishmentId) {
+            return res.status(403).json({ message: 'Acesso negado.' });
+        }
+        await docRef.delete();
+        res.status(200).json({ message: 'Lançamento excluído com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao excluir conta a receber:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
@@ -59,7 +86,8 @@ router.post('/payables', async (req, res) => {
             establishmentId,
             description,
             amount: Number(amount),
-            dueDate: admin.firestore.Timestamp.fromDate(new Date(dueDate)),
+            // CORREÇÃO: Salva a data como string no formato 'YYYY-MM-DD' para evitar problemas de fuso horário.
+            dueDate: dueDate,
             status: 'pending',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
@@ -78,10 +106,38 @@ router.get('/payables', async (req, res) => {
             .where('establishmentId', '==', establishmentId)
             .orderBy('dueDate', 'asc')
             .get();
-        const payables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const payables = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                // Não é mais necessário converter, pois a data já está em string.
+                dueDate: data.dueDate,
+            };
+        });
         res.status(200).json(payables);
     } catch (error) {
         console.error("Erro ao listar contas a pagar:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+router.delete('/payables/:id', async (req, res) => {
+    const { id } = req.params;
+    const { establishmentId } = req.user;
+    try {
+        const docRef = req.db.collection('financial_payables').doc(id);
+        const doc = await docRef.get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Lançamento não encontrado.' });
+        }
+        if (doc.data().establishmentId !== establishmentId) {
+            return res.status(403).json({ message: 'Acesso negado.' });
+        }
+        await docRef.delete();
+        res.status(200).json({ message: 'Lançamento excluído com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao excluir conta a pagar:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });

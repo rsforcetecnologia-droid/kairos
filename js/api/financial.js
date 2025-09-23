@@ -26,6 +26,17 @@ export const getPayables = () => {
     return authenticatedFetch('/api/financial/payables');
 };
 
+/**
+ * Exclui uma conta a pagar específica.
+ * @param {string} id - O ID da conta a pagar a ser excluída.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ */
+export const deletePayable = (id) => {
+    return authenticatedFetch(`/api/financial/payables/${id}`, {
+        method: 'DELETE',
+    });
+};
+
 // --- Contas a Receber ---
 /**
  * Cria uma nova conta a receber.
@@ -45,4 +56,15 @@ export const createReceivable = (receivableData) => {
  */
 export const getReceivables = () => {
     return authenticatedFetch('/api/financial/receivables');
+};
+
+/**
+ * Exclui uma conta a receber específica.
+ * @param {string} id - O ID da conta a receber a ser excluída.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ */
+export const deleteReceivable = (id) => {
+    return authenticatedFetch(`/api/financial/receivables/${id}`, {
+        method: 'DELETE',
+    });
 };

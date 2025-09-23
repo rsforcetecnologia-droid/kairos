@@ -1,6 +1,6 @@
 import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
-import { showNotification } from '../components/modal.js';
+import { showNotification, showConfirmation } from '../components/modal.js';
 
 const contentDiv = document.getElementById('content');
 
@@ -24,29 +24,55 @@ async function fetchAndDisplayFinancialData() {
     }
 }
 
+// Esta função agora recebe uma string ISO e a formata
+function formatReadableDate(dateString) {
+    if (!dateString) {
+        return 'Data Inválida';
+    }
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+        return 'Data Inválida';
+    }
+    
+    // CORREÇÃO: Pega a data local e formata sem considerar o fuso horário
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
 function renderFinancialPageContent() {
     const payablesList = document.getElementById('payables-list');
     const receivablesList = document.getElementById('receivables-list');
 
     if (!payablesList || !receivablesList) return;
 
+    // Renderiza a lista de contas a pagar
     payablesList.innerHTML = localState.payables.map(item => `
         <div class="bg-white p-3 rounded-lg shadow-sm border-l-4 border-red-400 flex justify-between items-center">
             <div>
                 <p class="font-bold">${item.description}</p>
-                <p class="text-sm text-gray-500">${new Date(item.dueDate.seconds * 1000).toLocaleDateString('pt-BR')}</p>
+                <p class="text-sm text-gray-500">${formatReadableDate(item.dueDate)}</p>
             </div>
-            <p class="font-bold text-lg text-red-600">R$ ${item.amount.toFixed(2)}</p>
+            <div class="flex items-center gap-4">
+                <p class="font-bold text-lg text-red-600">R$ ${item.amount.toFixed(2)}</p>
+                <button data-action="delete-payable" data-id="${item.id}" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            </div>
         </div>
     `).join('') || '<p class="text-center text-gray-500">Nenhuma conta a pagar.</p>';
 
+    // Renderiza a lista de contas a receber
     receivablesList.innerHTML = localState.receivables.map(item => `
         <div class="bg-white p-3 rounded-lg shadow-sm border-l-4 border-green-400 flex justify-between items-center">
             <div>
                 <p class="font-bold">${item.description}</p>
-                <p class="text-sm text-gray-500">${new Date(item.dueDate.seconds * 1000).toLocaleDateString('pt-BR')}</p>
+                <p class="text-sm text-gray-500">${formatReadableDate(item.dueDate)}</p>
             </div>
-            <p class="font-bold text-lg text-green-600">R$ ${item.amount.toFixed(2)}</p>
+            <div class="flex items-center gap-4">
+                <p class="font-bold text-lg text-green-600">R$ ${item.amount.toFixed(2)}</p>
+                <button data-action="delete-receivable" data-id="${item.id}" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+            </div>
         </div>
     `).join('') || '<p class="text-center text-gray-500">Nenhuma conta a receber.</p>';
 }
@@ -76,6 +102,24 @@ async function handleFormSubmit(e) {
         await fetchAndDisplayFinancialData();
     } catch (error) {
         showNotification('Erro', `Não foi possível salvar: ${error.message}`, 'error');
+    }
+}
+
+async function handleDelete(type, id) {
+    const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita.');
+    if (confirmed) {
+        try {
+            if (type === 'payable') {
+                await financialApi.deletePayable(id);
+                showNotification('Sucesso', 'Lançamento excluído!', 'success');
+            } else {
+                await financialApi.deleteReceivable(id);
+                showNotification('Sucesso', 'Lançamento excluído!', 'success');
+            }
+            await fetchAndDisplayFinancialData();
+        } catch (error) {
+            showNotification('Erro', `Não foi possível excluir o lançamento: ${error.message}`, 'error');
+        }
     }
 }
 
@@ -122,6 +166,19 @@ export async function loadFinancialPage() {
 
     contentDiv.querySelector('#payable-form').addEventListener('submit', handleFormSubmit);
     contentDiv.querySelector('#receivable-form').addEventListener('submit', handleFormSubmit);
+
+    contentDiv.addEventListener('click', (e) => {
+        const target = e.target.closest('button[data-action]');
+        if (target) {
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            if (action === 'delete-payable') {
+                handleDelete('payable', id);
+            } else if (action === 'delete-receivable') {
+                handleDelete('receivable', id);
+            }
+        }
+    });
 
     await fetchAndDisplayFinancialData();
 }
