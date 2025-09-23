@@ -122,11 +122,23 @@ function setupRealtimeListeners(establishmentId) {
 
 // --- 5. FUNÇÃO DE NAVEGAÇÃO PRINCIPAL ---
 export function navigateTo(sectionId, params = {}) {
-    if (state.userPermissions && !state.userPermissions[sectionId]?.view) {
-        contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar esta secção.</p></div>`;
+    // **LÓGICA DE PERMISSÃO ATUALIZADA**
+    const moduleKey = sectionId.replace('-section', '');
+
+    // Verifica se o módulo está habilitado para o estabelecimento.
+    // Se a propriedade for `false`, o módulo está explicitamente desativado. `undefined` (para estabelecimentos antigos) conta como ativo.
+    const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
+
+    // Verifica se o usuário (se for funcionário) tem permissão para ver a seção. Donos (null) sempre têm.
+    const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
+    
+    // O acesso é negado se o módulo estiver desativado OU se for um funcionário sem permissão
+    if (!isModuleEnabled || !hasEmployeePermission) {
+        contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
         document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
         return;
     }
+    
     const loadPage = pageLoader[sectionId];
     if (loadPage) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -186,6 +198,11 @@ function initialize() {
                 const idTokenResult = await user.getIdTokenResult(true);
                 const claims = idTokenResult.claims;
                 if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+                    
+                    // **PASSO CRUCIAL: Buscar detalhes do estabelecimento, incluindo os módulos ativos**
+                    const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
+                    state.enabledModules = establishmentDetails.modules; // Salva os módulos no estado global
+
                     let userPermissions = null;
                     let userName = user.displayName; 
 
@@ -205,14 +222,13 @@ function initialize() {
                     setGlobalState(claims.establishmentId, finalUserName, userPermissions);
 
                     try {
-                        const details = await getEstablishmentDetails(claims.establishmentId);
                         const nameEl = document.getElementById('panelEstablishmentName');
                         const logoEl = document.getElementById('panelEstablishmentLogo');
                         const logoContainer = document.getElementById('panelLogoContainer');
-                        nameEl.innerHTML = `<span class="truncate">${details.name || finalUserName || 'Meu Painel'}</span>`;
-                        if (details.logo) {
+                        nameEl.innerHTML = `<span class="truncate">${establishmentDetails.name || finalUserName || 'Meu Painel'}</span>`;
+                        if (establishmentDetails.logo) {
                             logoContainer.classList.remove('bg-gray-700', 'animate-pulse');
-                            logoEl.src = details.logo;
+                            logoEl.src = establishmentDetails.logo;
                             logoEl.classList.remove('opacity-0');
                         } else {
                             logoContainer.classList.remove('animate-pulse');
@@ -235,7 +251,8 @@ function initialize() {
                         handleLogout();
                     });
 
-                    initializeNavigation(navigateTo, userPermissions);
+                    // Passa os módulos habilitados para a função de navegação
+                    initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
                     loadingScreen.style.display = 'none';
@@ -267,3 +284,4 @@ function initialize() {
 }
 
 initialize();
+

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Administrador</title>
+    <title>Painel Super Admin - Kairos</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -11,64 +11,57 @@
             font-family: 'Inter', sans-serif;
             display: none; /* Esconde o conteúdo até a autenticação ser verificada */
         }
-        /* Estilos para o link ativo na barra lateral */
-        .sidebar-link.active {
-            background-color: #4f46e5;
-            color: #ffffff;
-            font-weight: 600;
-        }
-        .sidebar-link.active svg {
-            color: #ffffff;
-        }
-        /* Estilos para o modal de notificação */
         .modal {
             display: none;
-            position: fixed;
-            z-index: 100;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.6);
-            align-items: center;
-            justify-content: center;
+            transition: opacity 0.3s ease;
         }
-        .modal-content {
-            background-color: #fefefe;
-            padding: 2rem;
+        .modal.flex {
+            display: flex;
+        }
+        .kpi-card {
+            background-color: white;
             border-radius: 0.75rem;
-            width: 90%;
-            max-width: 400px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            text-align: center;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-left: 4px solid #4f46e5;
+        }
+        .toggle-bg:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background: white;
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 9999px;
+            transition: transform 0.2s ease-in-out;
+        }
+        input:checked + .toggle-bg:after {
+            transform: translateX(100%);
+        }
+        input:checked + .toggle-bg {
+            background-color: #22c55e;
         }
     </style>
 </head>
 <body class="bg-gray-100">
 
     <div class="flex h-screen">
-        <!-- Barra Lateral de Navegação -->
         <aside class="w-64 bg-gray-900 text-gray-300 flex flex-col">
             <div class="p-6 text-center border-b border-gray-800">
                 <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
             </div>
             <nav class="flex-1 p-4 space-y-2">
-                <button class="tab-button w-full flex items-center gap-3 py-2 px-4 rounded-lg transition-colors hover:bg-gray-800" data-target="establishments-section">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                    <span>Estabelecimentos</span>
-                </button>
-                <button class="tab-button w-full flex items-center gap-3 py-2 px-4 rounded-lg transition-colors hover:bg-gray-800 text-gray-400" data-target="users-section">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21v-2a6 6 0 00-5.173-5.972M9 21a6 6 0 01-6-6v-1a6 6 0 016-6h6a6 6 0 016 6v1a6 6 0 01-6 6H9z" /></svg>
-                    <span>Utilizadores</span>
-                </button>
+                 <a href="#" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg bg-gray-700 text-white font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
+                    <span>Dashboard</span>
+                </a>
             </nav>
         </aside>
 
-        <!-- Conteúdo Principal -->
         <div class="flex-1 flex flex-col">
             <header class="bg-white shadow-sm p-4 flex justify-between items-center">
-                <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Gestão de Estabelecimentos</h2>
+                <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Dashboard</h2>
                 <div class="flex items-center gap-4">
                     <span id="userDisplayEmail" class="text-sm text-gray-600"></span>
                     <button id="logoutButton" class="text-sm font-semibold text-red-600 hover:text-red-800">Sair</button>
@@ -76,79 +69,89 @@
             </header>
 
             <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
-                <!-- Secção de Estabelecimentos -->
-                <div id="establishments-section" class="tab-content space-y-10">
-                    <section class="bg-white rounded-lg shadow-md p-6">
-                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Criar Novo Estabelecimento</h2>
-                        <form id="createEstablishmentForm">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="form-group">
-                                    <label for="establishmentName" class="block mb-2 text-sm font-medium text-gray-900">Nome do Estabelecimento</label>
-                                    <input type="text" id="establishmentName" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="establishmentId" class="block mb-2 text-sm font-medium text-gray-900">ID Único (ex: barbearia-do-ze)</label>
-                                    <input type="text" id="establishmentId" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="ownerEmail" class="block mb-2 text-sm font-medium text-gray-900">E-mail do Dono</label>
-                                    <input type="email" id="ownerEmail" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="ownerPassword" class="block mb-2 text-sm font-medium text-gray-900">Senha Provisória do Dono</label>
-                                    <input type="password" id="ownerPassword" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="w-full mt-6 bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Criar Estabelecimento</button>
-                        </form>
-                    </section>
-                    <section class="bg-white rounded-lg shadow-md p-6">
-                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Estabelecimentos Registados</h2>
-                        <div id="establishmentsList" class="overflow-x-auto"></div>
-                    </section>
-                </div>
+                <section id="kpi-dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="kpi-card">
+                        <h3 class="text-gray-500 font-semibold">Total de Estabelecimentos</h3>
+                        <p id="kpi-total" class="text-4xl font-bold text-gray-800 mt-2">...</p>
+                    </div>
+                    <div class="kpi-card border-green-500">
+                        <h3 class="text-gray-500 font-semibold">Ativos</h3>
+                        <p id="kpi-active" class="text-4xl font-bold text-gray-800 mt-2">...</p>
+                    </div>
+                    <div class="kpi-card border-red-500">
+                        <h3 class="text-gray-500 font-semibold">Inativos</h3>
+                        <p id="kpi-inactive" class="text-4xl font-bold text-gray-800 mt-2">...</p>
+                    </div>
+                </section>
 
-                <!-- Secção de Utilizadores -->
-                <div id="users-section" class="tab-content hidden space-y-10">
-                    <section class="bg-white rounded-lg shadow-md p-6">
-                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Criar Novo Utilizador Administrador</h2>
-                        <form id="createUserForm">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div class="form-group">
-                                    <label for="userEmail" class="block mb-2 text-sm font-medium text-gray-900">E-mail do Utilizador</label>
-                                    <input type="email" id="userEmail" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="userPassword" class="block mb-2 text-sm font-medium text-gray-900">Senha Provisória</label>
-                                    <input type="password" id="userPassword" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" required>
-                                </div>
-                            </div>
-                            <button type="submit" class="w-full mt-6 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition">Criar Utilizador</button>
-                        </form>
-                    </section>
-                    <section class="bg-white rounded-lg shadow-md p-6">
-                        <h2 class="text-2xl font-semibold mb-6 text-gray-700 border-b pb-4">Utilizadores Administradores</h2>
-                        <div id="usersList" class="overflow-x-auto"></div>
-                    </section>
-                </div>
+                <section id="establishments-section" class="bg-white rounded-lg shadow-md p-6">
+                     <div class="flex flex-wrap justify-between items-center mb-6 border-b pb-4">
+                        <h2 class="text-2xl font-semibold text-gray-700">Estabelecimentos</h2>
+                        <div class="flex items-center gap-4 mt-4 md:mt-0">
+                            <input type="text" id="searchInput" placeholder="Pesquisar por nome ou ID..." class="p-2 border rounded-md">
+                            <button id="openCreateModalBtn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                                + Novo
+                            </button>
+                        </div>
+                    </div>
+                    <div id="establishmentsList" class="overflow-x-auto"></div>
+                </section>
             </main>
         </div>
     </div>
 
-    <!-- Modal genérico para notificações e confirmações -->
-    <div id="genericModal" class="modal">
-        <div class="modal-content">
-             <h3 id="genericModalTitle" class="text-xl font-bold mb-4"></h3>
-             <p id="genericModalMessage" class="text-gray-600 mb-6"></p>
-             <div id="genericModalButtons" class="flex justify-center gap-4"></div>
+    <div id="establishmentModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <h2 id="modalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Estabelecimento</h2>
+            <form id="establishmentForm" class="p-6 space-y-6 overflow-y-auto">
+                <input type="hidden" id="editEstablishmentId">
+                
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Informações Básicas</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome</label>
+                        <input type="text" id="establishmentName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="establishmentId" class="block text-sm font-medium text-gray-700">ID Único (URL)</label>
+                        <input type="text" id="establishmentId" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                </div>
+                
+                <div id="owner-credentials-container">
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Credenciais do Dono</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                         <div>
+                            <label for="ownerEmail" class="block text-sm font-medium text-gray-700">E-mail do Dono</label>
+                            <input type="email" id="ownerEmail" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                        </div>
+                        <div>
+                            <label for="ownerPassword" class="block text-sm font-medium text-gray-700">Senha Provisória</label>
+                            <input type="password" id="ownerPassword" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Módulos do Sistema</h3>
+                <div id="modulesContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    </div>
+
+            </form>
+            <div class="mt-auto p-6 border-t flex justify-end gap-4 bg-gray-50">
+                <button type="button" id="closeModalBtn" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="submit" form="establishmentForm" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
+            </div>
         </div>
     </div>
+    
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] space-y-2"></div>
 
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
+        // --- CONFIGURAÇÃO ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
             authDomain: "kairos-system.firebaseapp.com",
@@ -158,26 +161,20 @@
             appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
             measurementId: "G-SVHFXKV5EC"
         };
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         
         let idToken = null;
+        let allEstablishments = []; // Cache dos estabelecimentos
 
-        function getAuthHeaders() {
-            if (!idToken) {
-                console.error("Token de autenticação não encontrado.");
-                signOut(auth).then(() => {
-                    window.location.href = '/admin-login';
-                });
-                return { 'Content-Type': 'application/json' };
-            }
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
-            };
-        }
+        const modulesDefinition = {
+            'agenda': 'Agenda', 'comandas': 'Comandas (PDV)', 'relatorios': 'Dashboard Analytics',
+            'sales-report': 'Relatório de Vendas', 'financial': 'Financeiro', 'servicos': 'Serviços',
+            'produtos': 'Produtos', 'profissionais': 'Profissionais', 'clientes': 'Clientes',
+            'estabelecimento': 'Configurações', 'users': 'Usuários Internos', 'mobileApp': 'Acesso App Mobile'
+        };
 
+        // --- AUTENTICAÇÃO E INICIALIZAÇÃO ---
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 try {
@@ -187,15 +184,11 @@
                         window.location.href = '/admin-login';
                         return;
                     }
-                    
                     idToken = await user.getIdToken();
-                    
                     document.body.style.display = 'flex';
                     document.getElementById('userDisplayEmail').textContent = user.email;
                     initializePage();
-
                 } catch (error) {
-                    console.error("Erro ao verificar permissões:", error);
                     await signOut(auth);
                     window.location.href = '/admin-login';
                 }
@@ -205,263 +198,225 @@
         });
 
         function initializePage() {
-            const API_BASE_URL = window.location.origin;
-
-            document.getElementById('logoutButton').addEventListener('click', () => {
-                signOut(auth).then(() => {
-                    window.location.href = '/admin-login';
-                });
-            });
-
-            // --- LÓGICA DO MODAL GENÉRICO ---
-            const genericModal = document.getElementById('genericModal');
-            const genericModalTitle = document.getElementById('genericModalTitle');
-            const genericModalMessage = document.getElementById('genericModalMessage');
-            const genericModalButtons = document.getElementById('genericModalButtons');
-
-            function showNotification(title, message) {
-                genericModalTitle.textContent = title;
-                genericModalMessage.textContent = message;
-                genericModalButtons.innerHTML = `<button class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg" onclick="closeModal()">OK</button>`;
-                genericModal.style.display = 'flex';
-            }
-
-            function showConfirmation(message) {
-                return new Promise((resolve) => {
-                    genericModalTitle.textContent = 'Confirmação';
-                    genericModalMessage.textContent = message;
-                    genericModalButtons.innerHTML = `
-                        <button class="w-full py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg" onclick="resolveConfirmation(false)">Cancelar</button>
-                        <button class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg" onclick="resolveConfirmation(true)">Confirmar</button>
-                    `;
-                    genericModal.style.display = 'flex';
-                    window.resolveConfirmation = (value) => {
-                        closeModal();
-                        resolve(value);
-                    };
-                });
-            }
-
-            window.closeModal = function() {
-                genericModal.style.display = 'none';
-            }
-
-            // --- LÓGICA DE NAVEGAÇÃO POR ABAS ---
-            const tabButtons = document.querySelectorAll('.tab-button');
-            const tabContents = document.querySelectorAll('.tab-content');
-            const pageTitle = document.getElementById('pageTitle');
-
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    tabButtons.forEach(btn => btn.classList.remove('active', 'sidebar-link'));
-                    button.classList.add('active', 'sidebar-link');
-                    
-                    pageTitle.textContent = button.textContent.trim();
-
-                    const targetId = button.dataset.target;
-                    tabContents.forEach(content => {
-                        content.id === targetId ? content.classList.remove('hidden') : content.classList.add('hidden');
-                    });
-                });
-            });
-            // Ativa o primeiro tab por defeito
-            document.querySelector('.tab-button').click();
-
-            // --- LÓGICA DE GESTÃO DE ESTABELECIMENTOS ---
-            const createEstablishmentForm = document.getElementById('createEstablishmentForm');
-            const establishmentsListDiv = document.getElementById('establishmentsList');
-
-            createEstablishmentForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const data = {
-                    establishmentId: document.getElementById('establishmentId').value,
-                    name: document.getElementById('establishmentName').value,
-                    ownerEmail: document.getElementById('ownerEmail').value,
-                    ownerPassword: document.getElementById('ownerPassword').value,
-                };
-                try {
-                    const res = await fetch(`${API_BASE_URL}/api/admin/establishments`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
-                    const result = await res.json();
-                    if (!res.ok) throw new Error(result.message);
-                    showNotification('Sucesso!', 'Estabelecimento criado com sucesso!');
-                    createEstablishmentForm.reset();
-                    loadEstablishments();
-                } catch (error) {
-                    showNotification('Erro', `Erro: ${error.message}`);
-                }
-            });
-
-            async function loadEstablishments() {
-                establishmentsListDiv.innerHTML = '<p>A carregar...</p>';
-                try {
-                    const res = await fetch(`${API_BASE_URL}/api/admin/establishments`, { headers: getAuthHeaders() });
-                    const establishments = await res.json();
-
-                    let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
-                            <th scope="col" class="px-6 py-3">Nome</th>
-                            <th scope="col" class="px-6 py-3">ID</th>
-                            <th scope="col" class="px-6 py-3">Estado</th>
-                            <th scope="col" class="px-6 py-3">Links</th>
-                            <th scope="col" class="px-6 py-3">Ações</th>
-                        </tr></thead><tbody>`;
-                    if (establishments.length > 0) {
-                        establishments.forEach(est => {
-                            const managementLink = `/?id=${est.id}`;
-                            const bookingLink = `/agendar?id=${est.id}`;
-                            const isActive = est.status === 'active';
-                            const statusClass = isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                            const actionText = isActive ? 'Inativar' : 'Ativar';
-                            const actionClass = isActive ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-500 hover:bg-green-600';
-                            const hasMobileAccess = est.mobileAccessEnabled === true;
-                            const mobileAccessActionText = hasMobileAccess ? 'Bloquear App' : 'Liberar App';
-                            const mobileAccessActionClass = hasMobileAccess ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700';
-
-                            tableHTML += `
-                                <tr class="bg-white border-b hover:bg-gray-50">
-                                    <td class="px-6 py-4 font-medium text-gray-900">${est.name}</td>
-                                    <td class="px-6 py-4 font-mono">${est.id}</td>
-                                    <td class="px-6 py-4"><span class="px-2 py-1 font-semibold leading-tight rounded-full ${statusClass}">${isActive ? 'Ativo' : 'Inativo'}</span></td>
-                                    <td class="px-6 py-4 space-x-2">
-                                        <a href="${managementLink}" target="_blank" class="font-medium text-blue-600 hover:underline">Painel</a>
-                                        <a href="${bookingLink}" target="_blank" class="font-medium text-blue-600 hover:underline">Cliente</a>
-                                    </td>
-                                    <td class="px-6 py-4 flex gap-2">
-                                        <button data-id="${est.id}" data-status="${isActive ? 'inactive' : 'active'}" class="toggle-status-btn text-white text-xs font-bold py-1 px-2 rounded ${actionClass}">${actionText}</button>
-                                        <button data-id="${est.id}" data-enabled="${!hasMobileAccess}" class="toggle-mobile-access-btn text-white text-xs font-bold py-1 px-2 rounded ${mobileAccessActionClass}">${mobileAccessActionText}</button>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                    } else {
-                        tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento registado.</td></tr>`;
-                    }
-                    tableHTML += '</tbody></table>';
-                    establishmentsListDiv.innerHTML = tableHTML;
-                } catch (error) {
-                    establishmentsListDiv.innerHTML = '<p class="text-red-500">Erro ao carregar.</p>';
-                }
-            }
-
-            establishmentsListDiv.addEventListener('click', async (e) => {
-                const button = e.target;
-                if (button && button.classList.contains('toggle-status-btn')) {
-                    const establishmentId = button.dataset.id;
-                    const newStatus = button.dataset.status;
-
-                    const confirmed = await showConfirmation(`Tem a certeza de que deseja ${newStatus === 'active' ? 'ativar' : 'inativar'} este estabelecimento?`);
-                    if (confirmed) {
-                        try {
-                            const response = await fetch(`${API_BASE_URL}/api/admin/establishments/${establishmentId}/status`, {
-                                method: 'PATCH',
-                                headers: getAuthHeaders(),
-                                body: JSON.stringify({ status: newStatus }),
-                            });
-                            if (!response.ok) throw new Error('Falha ao atualizar o estado.');
-                            loadEstablishments();
-                        } catch (error) {
-                            showNotification('Erro', 'Erro ao atualizar o estado.');
-                        }
-                    }
-                }
-                
-                if (button && button.classList.contains('toggle-mobile-access-btn')) {
-                    const establishmentId = button.dataset.id;
-                    const newEnabledStatus = button.dataset.enabled === 'true';
-
-                    const confirmed = await showConfirmation(`Tem a certeza que deseja ${newEnabledStatus ? 'LIBERAR' : 'BLOQUEAR'} o acesso ao app para este estabelecimento?`);
-                    if (confirmed) {
-                        try {
-                            const response = await fetch(`${API_BASE_URL}/api/admin/establishments/${establishmentId}/mobile-access`, {
-                                method: 'PATCH',
-                                headers: getAuthHeaders(),
-                                body: JSON.stringify({ enabled: newEnabledStatus }),
-                            });
-                            if (!response.ok) throw new Error('Falha ao atualizar o acesso.');
-                            loadEstablishments();
-                        } catch (error) {
-                            showNotification('Erro', 'Erro ao atualizar o acesso ao app.');
-                        }
-                    }
-                }
-            });
-
-            // --- LÓGICA DE GESTÃO DE UTILIZADORES ---
-            const createUserForm = document.getElementById('createUserForm');
-            const usersListDiv = document.getElementById('usersList');
-
-            createUserForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const data = {
-                    email: document.getElementById('userEmail').value,
-                    password: document.getElementById('userPassword').value,
-                };
-                try {
-                    const res = await fetch(`${API_BASE_URL}/api/admin/users`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) });
-                    const result = await res.json();
-                    if (!res.ok) throw new Error(result.message);
-                    showNotification('Sucesso!', 'Utilizador criado com sucesso!');
-                    createUserForm.reset();
-                    loadAdminUsers();
-                } catch (error) {
-                    showNotification('Erro', `Erro: ${error.message}`);
-                }
-            });
-
-            async function loadAdminUsers() {
-                usersListDiv.innerHTML = '<p>A carregar...</p>';
-                try {
-                    const res = await fetch(`${API_BASE_URL}/api/admin/users`, { headers: getAuthHeaders() });
-                    const users = await res.json();
-
-                    let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
-                            <th scope="col" class="px-6 py-3">E-mail</th>
-                            <th scope="col" class="px-6 py-3">Função</th>
-                            <th scope="col" class="px-6 py-3">Ações</th>
-                        </tr></thead><tbody>`;
-                    if (users.length > 0) {
-                        users.forEach(user => {
-                            tableHTML += `
-                                <tr class="bg-white border-b hover:bg-gray-50">
-                                    <td class="px-6 py-4">${user.email}</td>
-                                    <td class="px-6 py-4">${user.role}</td>
-                                    <td class="px-6 py-4">
-                                        <button data-uid="${user.uid}" class="delete-user-btn font-medium text-red-600 hover:underline">Apagar</button>
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                    } else {
-                        tableHTML += `<tr><td colspan="3" class="text-center p-4">Nenhum utilizador encontrado.</td></tr>`;
-                    }
-                    tableHTML += `</tbody></table>`;
-                    usersListDiv.innerHTML = tableHTML;
-                } catch (error) {
-                    usersListDiv.innerHTML = '<p class="text-red-500">Erro ao carregar.</p>';
-                }
-            }
-
-            usersListDiv.addEventListener('click', async (e) => {
-                if (e.target && e.target.classList.contains('delete-user-btn')) {
-                    const uid = e.target.dataset.uid;
-                    const confirmed = await showConfirmation('Tem a certeza? Esta ação é irreversível.');
-                    if (confirmed) {
-                        try {
-                            await fetch(`${API_BASE_URL}/api/admin/users/${uid}`, { method: 'DELETE', headers: getAuthHeaders() });
-                            loadAdminUsers();
-                        } catch (error) {
-                            showNotification('Erro', 'Erro ao apagar utilizador.');
-                        }
-                    }
-                }
-            });
-
-            // Carrega os dados iniciais
+            document.getElementById('logoutButton').addEventListener('click', () => signOut(auth));
+            document.getElementById('openCreateModalBtn').addEventListener('click', () => openModal());
+            document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+            document.getElementById('establishmentForm').addEventListener('submit', handleFormSubmit);
+            document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
+            document.getElementById('establishmentsList').addEventListener('click', handleTableActions);
+            loadDashboardData();
             loadEstablishments();
-            loadAdminUsers();
         }
+
+        // --- FUNÇÕES DE API ---
+        const API_BASE_URL = window.location.origin;
+        const getAuthHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` });
+
+        async function apiCall(endpoint, options = {}) {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers: getAuthHeaders(), ...options });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Ocorreu um erro.');
+            return result;
+        }
+
+        // --- LÓGICA DO DASHBOARD ---
+        async function loadDashboardData() {
+             try {
+                const stats = await apiCall('/api/admin/dashboard-stats');
+                document.getElementById('kpi-total').textContent = stats.total;
+                document.getElementById('kpi-active').textContent = stats.active;
+                document.getElementById('kpi-inactive').textContent = stats.inactive;
+            } catch (error) {
+                 console.error("Erro ao carregar dados do dashboard:", error);
+            }
+        }
+
+        // --- LÓGICA DO MODAL E FORMULÁRIO ---
+        const establishmentModal = document.getElementById('establishmentModal');
+        
+        function openModal(establishment = null) {
+            const form = document.getElementById('establishmentForm');
+            form.reset();
+            const isEditing = !!establishment;
+
+            document.getElementById('modalTitle').textContent = isEditing ? "Editar Estabelecimento" : "Novo Estabelecimento";
+            document.getElementById('editEstablishmentId').value = establishment?.id || '';
+            document.getElementById('establishmentName').value = establishment?.name || '';
+            document.getElementById('establishmentId').value = establishment?.id || '';
+            document.getElementById('establishmentId').disabled = isEditing;
+            document.getElementById('ownerEmail').value = establishment?.ownerEmail || '';
+            document.getElementById('ownerEmail').disabled = isEditing;
+            document.getElementById('owner-credentials-container').style.display = isEditing ? 'none' : 'block';
+
+            const modulesContainer = document.getElementById('modulesContainer');
+            modulesContainer.innerHTML = Object.entries(modulesDefinition).map(([key, label]) => `
+                <label for="module-${key}" class="flex items-center space-x-2 cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="module-${key}" name="modules" value="${key}" class="sr-only" ${establishment?.modules?.[key] ? 'checked' : !isEditing ? 'checked' : ''}>
+                        <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">${label}</span>
+                </label>
+            `).join('');
+
+            establishmentModal.classList.add('flex');
+            setTimeout(() => establishmentModal.style.opacity = "1", 10);
+        }
+        
+        function closeModal() {
+            establishmentModal.style.opacity = "0";
+            setTimeout(() => establishmentModal.classList.remove('flex'), 300);
+        }
+
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            const editId = document.getElementById('editEstablishmentId').value;
+            const isEditing = !!editId;
+
+            const modules = {};
+            document.querySelectorAll('input[name="modules"]').forEach(checkbox => {
+                modules[checkbox.value] = checkbox.checked;
+            });
+
+            const data = {
+                establishmentId: document.getElementById('establishmentId').value,
+                name: document.getElementById('establishmentName').value,
+                ownerEmail: document.getElementById('ownerEmail').value,
+                modules: modules
+            };
+
+            if (!isEditing) {
+                data.ownerPassword = document.getElementById('ownerPassword').value;
+            }
+
+            try {
+                if (isEditing) {
+                    await apiCall(`/api/admin/establishments/${editId}/modules`, { method: 'PATCH', body: JSON.stringify({ modules: data.modules }) });
+                     await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
+                    showToast('Estabelecimento atualizado com sucesso!', 'success');
+                } else {
+                    await apiCall('/api/admin/establishments', { method: 'POST', body: JSON.stringify(data) });
+                    showToast('Estabelecimento criado com sucesso!', 'success');
+                }
+                closeModal();
+                loadEstablishments();
+                loadDashboardData();
+            } catch (error) {
+                showToast(`Erro: ${error.message}`, 'error');
+            }
+        }
+        
+        // --- LÓGICA DA TABELA ---
+        async function loadEstablishments() {
+            const listDiv = document.getElementById('establishmentsList');
+            listDiv.innerHTML = '<p>A carregar...</p>';
+            try {
+                allEstablishments = await apiCall('/api/admin/establishments');
+                renderEstablishmentsTable();
+            } catch (error) {
+                listDiv.innerHTML = '<p class="text-red-500">Erro ao carregar estabelecimentos.</p>';
+            }
+        }
+        
+        function renderEstablishmentsTable() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allEstablishments.filter(est => 
+                est.name.toLowerCase().includes(searchTerm) || est.id.toLowerCase().includes(searchTerm)
+            );
+
+            let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
+                    <th class="px-6 py-3">Nome / ID</th>
+                    <th class="px-6 py-3">Dono</th>
+                    <th class="px-6 py-3">Criado em</th>
+                    <th class="px-6 py-3">Estado</th>
+                    <th class="px-6 py-3">Ações</th>
+                </tr></thead><tbody>`;
+            
+            if (filtered.length > 0) {
+                filtered.forEach(est => {
+                    const isActive = est.status === 'active';
+                    tableHTML += `
+                        <tr class="bg-white border-b hover:bg-gray-50">
+                            <td class="px-6 py-4 font-medium text-gray-900">
+                                ${est.name}<br>
+                                <span class="font-mono text-xs text-gray-500">${est.id}</span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600">${est.ownerEmail || 'N/A'}</td>
+                            <td class="px-6 py-4 text-gray-600">${new Date(est.createdAt._seconds * 1000).toLocaleDateString()}</td>
+                            <td class="px-6 py-4">
+                                <label class="flex items-center cursor-pointer">
+                                  <div class="relative">
+                                    <input type="checkbox" data-id="${est.id}" class="toggle-status-btn sr-only" ${isActive ? 'checked' : ''}>
+                                    <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
+                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                                  </div>
+                                </label>
+                            </td>
+                             <td class="px-6 py-4 flex gap-4">
+                                <button data-action="edit" data-id="${est.id}" class="font-medium text-indigo-600 hover:underline">Gerir</button>
+                                <a href="/?id=${est.id}" target="_blank" class="font-medium text-blue-600 hover:underline">Painel</a>
+                                <a href="/agendar?id=${est.id}" target="_blank" class="font-medium text-blue-600 hover:underline">Cliente</a>
+                            </td>
+                        </tr>`;
+                });
+            } else {
+                tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
+            }
+            tableHTML += '</tbody></table>';
+            document.getElementById('establishmentsList').innerHTML = tableHTML;
+        }
+
+        async function handleTableActions(e) {
+            const target = e.target;
+            if (target.classList.contains('toggle-status-btn')) {
+                const establishmentId = target.dataset.id;
+                const newStatus = target.checked ? 'active' : 'inactive';
+                try {
+                    await apiCall(`/api/admin/establishments/${establishmentId}/status`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: newStatus }),
+                    });
+                    showToast(`Status de ${establishmentId} atualizado.`, 'success');
+                    // Atualiza o cache local para refletir a mudança imediatamente
+                    const index = allEstablishments.findIndex(e => e.id === establishmentId);
+                    if (index > -1) allEstablishments[index].status = newStatus;
+                    loadDashboardData(); // Atualiza KPIs
+                } catch (error) {
+                    showToast(`Erro ao atualizar status: ${error.message}`, 'error');
+                    target.checked = !target.checked;
+                }
+            } else if (target.closest('[data-action="edit"]')) {
+                 const establishmentId = target.closest('[data-action="edit"]').dataset.id;
+                const establishment = allEstablishments.find(est => est.id === establishmentId);
+                if (establishment) openModal(establishment);
+            }
+        }
+        
+        // --- LÓGICA DE NOTIFICAÇÃO (TOAST) ---
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
+            toast.className = `px-4 py-2 text-white rounded-md shadow-lg ${colors[type]} animate-fade-in-out`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
     </script>
+    <style>
+        .dot { transition: transform .2s ease-in-out; }
+        input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
+        input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
+        @keyframes fade-in-out {
+            0% { opacity: 0; transform: translateY(20px); } 10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); }
+        }
+        .animate-fade-in-out {
+            animation: fade-in-out 3s ease-in-out forwards;
+        }
+    </style>
 </body>
 </html>
-

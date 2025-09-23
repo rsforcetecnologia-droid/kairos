@@ -2,9 +2,51 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// Criar estabelecimento e dono
+// --- MÓDULOS PADRÃO PARA NOVOS ESTABELECIMENTOS ---
+// Define todos os módulos disponíveis e os ativa por defeito ao criar um novo cliente.
+const defaultModules = {
+    agenda: true,
+    comandas: true,
+    relatorios: true,
+    'sales-report': true,
+    financial: true,
+    servicos: true,
+    produtos: true,
+    profissionais: true,
+    clientes: true,
+    estabelecimento: true,
+    users: true,
+    mobileApp: true
+};
+
+// NOVO: Endpoint para estatísticas do Dashboard
+router.get('/dashboard-stats', async (req, res) => {
+    try {
+        const { db } = req;
+        const establishmentsSnapshot = await db.collection('establishments').get();
+        
+        let activeCount = 0;
+        establishmentsSnapshot.forEach(doc => {
+            if (doc.data().status === 'active') {
+                activeCount++;
+            }
+        });
+
+        res.status(200).json({
+            total: establishmentsSnapshot.size,
+            active: activeCount,
+            inactive: establishmentsSnapshot.size - activeCount
+        });
+    } catch (error) {
+        console.error("Erro ao buscar estatísticas do dashboard:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+
+// ATUALIZADO: Criar estabelecimento e dono, agora com módulos
 router.post('/establishments', async (req, res) => {
-    const { establishmentId, name, ownerEmail, ownerPassword } = req.body;
+    const { establishmentId, name, ownerEmail, ownerPassword, modules } = req.body;
     if (!establishmentId || !name || !ownerEmail || !ownerPassword) {
         return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
     }
@@ -15,14 +57,19 @@ router.post('/establishments', async (req, res) => {
             password: ownerPassword,
             displayName: name,
         });
+
         const establishmentRef = db.collection('establishments').doc(establishmentId);
         await establishmentRef.set({
             name: name,
             ownerUid: userRecord.uid,
+            ownerEmail: ownerEmail, // Salva o email para fácil referência
             status: 'active',
+            modules: modules || defaultModules, // Salva os módulos
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
+        
         await auth.setCustomUserClaims(userRecord.uid, { role: 'owner', establishmentId: establishmentId });
+
         res.status(201).json({ message: 'Estabelecimento e dono criados com sucesso!', uid: userRecord.uid });
     } catch (error) {
         console.error("Erro ao criar estabelecimento:", error);
@@ -33,18 +80,59 @@ router.post('/establishments', async (req, res) => {
     }
 });
 
-// Listar todos os estabelecimentos
+// ATUALIZADO: Listar todos os estabelecimentos com mais detalhes
 router.get('/establishments', async (req, res) => {
     try {
         const { db } = req;
-        const snapshot = await db.collection('establishments').get();
-        if (snapshot.empty) {
-            return res.status(200).json([]);
-        }
-        const establishments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const snapshot = await db.collection('establishments').orderBy('createdAt', 'desc').get();
+        if (snapshot.empty) return res.status(200).json([]);
+        
+        const establishments = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return { 
+                id: doc.id, 
+                ...data,
+                // Garante que o campo `modules` exista para compatibilidade
+                modules: data.modules || defaultModules 
+            };
+        });
         res.status(200).json(establishments);
     } catch (error) {
         console.error("Erro ao listar estabelecimentos:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// NOVO: Rota para atualizar apenas o nome do estabelecimento
+router.put('/establishments/:id/details', async (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "O nome é obrigatório." });
+
+    try {
+        const { db } = req;
+        await db.collection('establishments').doc(id).update({ name });
+        res.status(200).json({ message: 'Nome do estabelecimento atualizado.' });
+    } catch (error) {
+        console.error("Erro ao atualizar nome:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+
+// NOVO: Rota para atualizar os módulos de um estabelecimento
+router.patch('/establishments/:id/modules', async (req, res) => {
+    const { id } = req.params;
+    const { modules } = req.body;
+    if (!modules || typeof modules !== 'object') {
+        return res.status(400).json({ message: "O campo 'modules' deve ser um objeto." });
+    }
+    try {
+        const { db } = req;
+        await db.collection('establishments').doc(id).update({ modules });
+        res.status(200).json({ message: `Módulos para ${id} foram atualizados.` });
+    } catch (error) {
+        console.error("Erro ao atualizar módulos:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
@@ -58,8 +146,7 @@ router.patch('/establishments/:id/status', async (req, res) => {
     }
     try {
         const { db } = req;
-        const establishmentRef = db.collection('establishments').doc(id);
-        await establishmentRef.update({ status: status });
+        await db.collection('establishments').doc(id).update({ status: status });
         res.status(200).json({ message: `Estabelecimento ${id} foi atualizado para ${status}.` });
     } catch (error) {
         console.error("Erro ao atualizar status:", error);
@@ -67,24 +154,8 @@ router.patch('/establishments/:id/status', async (req, res) => {
     }
 });
 
-// Habilitar/desabilitar acesso mobile para o estabelecimento
-router.patch('/establishments/:id/mobile-access', async (req, res) => {
-    const { id } = req.params;
-    const { enabled } = req.body;
-    if (typeof enabled !== 'boolean') {
-        return res.status(400).json({ message: "O campo 'enabled' deve ser um valor booleano (true ou false)." });
-    }
-    try {
-        const { db } = req;
-        const establishmentRef = db.collection('establishments').doc(id);
-        await establishmentRef.update({ mobileAccessEnabled: enabled });
-        const statusText = enabled ? 'habilitado' : 'desabilitado';
-        res.status(200).json({ message: `Acesso ao aplicativo mobile para ${id} foi ${statusText}.` });
-    } catch (error) {
-        console.error("Erro ao atualizar acesso ao app mobile:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
+
+// --- Rotas de gestão de utilizadores (mantidas como estavam) ---
 
 // Criar novo super admin
 router.post('/users', async (req, res) => {
@@ -145,5 +216,5 @@ router.delete('/users/:uid', async (req, res) => {
     }
 });
 
-// ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;
+

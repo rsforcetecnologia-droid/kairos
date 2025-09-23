@@ -17,9 +17,10 @@ function toggleSidebar() {
 /**
  * Inicializa todos os event listeners para a navegação.
  * @param {function} navigateCallback - A função a ser chamada quando um link de navegação é clicado.
- * @param {object|null} permissions - O objeto de permissões do usuário. Se for null (owner), todos os links são mostrados.
+ * @param {object|null} userPermissions - O objeto de permissões do funcionário. Se for null (dono), tem acesso a tudo.
+ * @param {object|null} enabledModules - O objeto de módulos habilitados para o estabelecimento.
  */
-export function initializeNavigation(navigateCallback, permissions) {
+export function initializeNavigation(navigateCallback, userPermissions, enabledModules) {
     sidebarToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleSidebar();
@@ -48,12 +49,25 @@ export function initializeNavigation(navigateCallback, permissions) {
 
     sidebarLinks.forEach(link => {
         const targetId = link.getAttribute('data-target');
-        const canView = permissions === null || (permissions[targetId] && permissions[targetId].view);
+        
+        // Converte 'agenda-section' para 'agenda' para verificar no objeto de módulos
+        const moduleKey = targetId.replace('-section', '');
 
-        if (!canView) {
-            link.style.display = 'none';
+        // Verifica se o módulo está habilitado para o estabelecimento.
+        // Se a propriedade for `false`, o módulo está explicitamente desativado.
+        const isModuleEnabled = enabledModules?.[moduleKey] !== false;
+
+        // Verifica permissões específicas do funcionário. Donos (null) têm acesso a tudo.
+        const hasEmployeePermission = userPermissions === null || userPermissions[targetId]?.view === true;
+
+        // O link só será exibido se o módulo estiver habilitado E o funcionário tiver permissão.
+        if (!isModuleEnabled || !hasEmployeePermission) {
+            link.style.display = 'none'; // Oculta o link
             return;
         }
+
+        // Garante que o link esteja visível caso a permissão seja válida (útil para re-logins)
+        link.style.display = 'flex';
 
         link.addEventListener('click', (e) => {
             e.preventDefault();
@@ -63,3 +77,4 @@ export function initializeNavigation(navigateCallback, permissions) {
         });
     });
 }
+
