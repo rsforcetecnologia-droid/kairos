@@ -6,7 +6,7 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 // Middleware para garantir que apenas usuários autorizados tenham acesso
 router.use(verifyToken, hasAccess);
 
-// --- Contas a Pagar ---
+// --- Contas a Receber ---
 router.post('/receivables', async (req, res) => {
     const { establishmentId } = req.user;
     const { description, amount, dueDate } = req.body;
@@ -74,7 +74,7 @@ router.delete('/receivables/:id', async (req, res) => {
     }
 });
 
-// --- Contas a Receber ---
+// --- Contas a Pagar ---
 router.post('/payables', async (req, res) => {
     const { establishmentId } = req.user;
     const { description, amount, dueDate } = req.body;
