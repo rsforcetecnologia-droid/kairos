@@ -20,6 +20,7 @@ import { loadEstablishmentPage } from './ui/establishment.js';
 import { loadAusenciasPage } from './ui/ausencias.js';
 import { loadUsersPage } from './ui/users.js';
 import { loadSalesReportPage } from './ui/salesReport.js';
+import { loadFinancialPage } from './ui/financial.js'; // <-- NOVA LINHA
 
 // --- 2. REFERÊNCIAS AO DOM ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -52,6 +53,7 @@ const pageLoader = {
     'ausencias-section': loadAusenciasPage,
     'users-section': loadUsersPage,
     'sales-report-section': loadSalesReportPage,
+    'financial-section': loadFinancialPage, // <-- NOVA LINHA
 };
 
 // --- 4. LÓGICA DE NOTIFICAÇÕES ---
@@ -265,4 +267,3 @@ function initialize() {
 }
 
 initialize();
-

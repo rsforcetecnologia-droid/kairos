@@ -55,6 +55,9 @@ const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/users');
 const comandasRoutes = require('./routes/comandas'); // <-- ROTA ADICIONADA
 const clientPortalRoutes = require('./routes/clientPortal'); // <-- NOVA ROTA
+// NOVO: Importação das rotas de financeiro
+const financialRoutes = require('./routes/financial');
+
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
@@ -71,6 +74,9 @@ app.use('/api/products', verifyToken, hasAccess, productRoutes);
 app.use('/api/reports', verifyToken, hasAccess, reportRoutes);
 app.use('/api/sales', verifyToken, hasAccess, saleRoutes);
 app.use('/api/comandas', verifyToken, hasAccess, comandasRoutes); // <-- ROTA MONTADA
+// NOVO: Montagem das rotas de financeiro
+app.use('/api/financial', verifyToken, hasAccess, financialRoutes);
+
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
 app.use('/api/appointments', appointmentRoutes);
@@ -104,4 +110,3 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
-
