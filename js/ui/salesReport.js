@@ -228,8 +228,7 @@ export async function loadSalesReportPage() {
                 </div>
             </div>
             <div id="main-reports-view">
-                <!-- O conteúdo dinâmico será carregado aqui -->
-            </div>
+                </div>
         </section>`;
     
     document.getElementById('generateReportBtn').addEventListener('click', handleGenerateReport);
@@ -247,10 +246,11 @@ export async function loadSalesReportPage() {
             const closeDate = new Date(session.closeTime).toLocaleDateString('pt-BR');
             sessionFilter.innerHTML += `<option value="${session.id}">Caixa de ${closeDate} (${session.closedByName})</option>`;
         });
-        await handleGenerateReport();
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar o histórico de caixas para o filtro.', 'error');
-        await handleGenerateReport();
+        // O fluxo continua, pois a lista de sessões é opcional para gerar o relatório principal
     }
+    
+    // CORREÇÃO: Chama handleGenerateReport fora do bloco try/catch para garantir que o relatório principal seja sempre gerado
+    await handleGenerateReport();
 }
-

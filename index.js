@@ -53,14 +53,15 @@ const reportRoutes = require('./routes/reports');
 const saleRoutes = require('./routes/sales');
 const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/users');
-const comandasRoutes = require('./routes/comandas'); // <-- ROTA ADICIONADA
-const clientPortalRoutes = require('./routes/clientPortal'); // <-- NOVA ROTA
-// NOVO: Importação das rotas de financeiro
+const comandasRoutes = require('./routes/comandas');
+const clientPortalRoutes = require('./routes/clientPortal');
 const financialRoutes = require('./routes/financial');
+const subscriptionsRoutes = require('./routes/subscriptions'); // NOVO: Rota de assinaturas
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
+app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes); // NOVO: Montagem da rota de assinaturas
 
 // 2. Rotas de Dono (só acessíveis pelo dono do estabelecimento)
 app.use('/api/users', verifyToken, isOwner, userRoutes);
@@ -73,8 +74,7 @@ app.use('/api/clients', verifyToken, hasAccess, clientRoutes);
 app.use('/api/products', verifyToken, hasAccess, productRoutes);
 app.use('/api/reports', verifyToken, hasAccess, reportRoutes);
 app.use('/api/sales', verifyToken, hasAccess, saleRoutes);
-app.use('/api/comandas', verifyToken, hasAccess, comandasRoutes); // <-- ROTA MONTADA
-// NOVO: Montagem das rotas de financeiro
+app.use('/api/comandas', verifyToken, hasAccess, comandasRoutes);
 app.use('/api/financial', verifyToken, hasAccess, financialRoutes);
 
 
@@ -86,7 +86,7 @@ app.use('/api/services', serviceRoutes);
 
 // 5. Rotas Públicas (não precisam de verificação)
 app.use('/api/availability', availabilityRoutes);
-app.use('/api/client-portal', addFirebaseInstances, clientPortalRoutes); // <-- NOVA ROTA MONTADA
+app.use('/api/client-portal', addFirebaseInstances, clientPortalRoutes);
 
 
 // --- ROTAS PARA SERVIR AS PÁGINAS HTML ---

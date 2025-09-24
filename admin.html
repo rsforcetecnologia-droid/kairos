@@ -42,19 +42,62 @@
         input:checked + .toggle-bg {
             background-color: #22c55e;
         }
+
+        /* --- Estilos do menu retrátil --- */
+        #sidebar {
+            width: 18rem;
+            transition: width 0.3s ease-in-out;
+        }
+        #sidebar.collapsed {
+            width: 4.5rem;
+        }
+        #sidebar.collapsed .sidebar-text,
+        #sidebar.collapsed .sidebar-header {
+            opacity: 0;
+            pointer-events: none;
+            width: 0;
+            overflow: hidden;
+        }
+        #sidebar.collapsed .sidebar-link {
+            justify-content: center;
+        }
+        #sidebar.collapsed .sidebar-link span {
+            display: none;
+        }
+        .dot { transition: transform .2s ease-in-out; }
+        input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
+        input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
+        @keyframes fade-in-out {
+            0% { opacity: 0; transform: translateY(20px); } 10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); }
+        }
+        .animate-fade-in-out {
+            animation: fade-in-out 3s ease-in-out forwards;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
 
     <div class="flex h-screen">
-        <aside class="w-64 bg-gray-900 text-gray-300 flex flex-col">
-            <div class="p-6 text-center border-b border-gray-800">
-                <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
+        <aside id="sidebar" class="w-72 bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 ease-in-out">
+            <div class="p-6 text-center border-b border-gray-800 flex justify-between items-center relative">
+                <div class="sidebar-header overflow-hidden transition-all duration-300 ease-in-out flex-1">
+                    <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
+                </div>
+                <button id="sidebarToggle" class="absolute right-0 p-3 rounded-full hover:bg-gray-700 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
             </div>
             <nav class="flex-1 p-4 space-y-2">
-                 <a href="#" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg bg-gray-700 text-white font-semibold">
+                 <a href="#dashboard" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-white font-semibold active">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
-                    <span>Dashboard</span>
+                    <span class="sidebar-text">Dashboard</span>
+                </a>
+                <a href="#plans" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-gray-300 hover:bg-gray-700 font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.25-10.75a.75.75 0 000 1.5h7.5a.75.75 0 000-1.5h-7.5zM6 8.5h8a1 1 0 100-2H6a1 1 0 000 2z" clip-rule="evenodd" /></svg>
+                    <span class="sidebar-text">Gerir Planos</span>
                 </a>
             </nav>
         </aside>
@@ -69,7 +112,8 @@
             </header>
 
             <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
-                <section id="kpi-dashboard" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- Conteúdo do Dashboard -->
+                <section id="dashboard-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <div class="kpi-card">
                         <h3 class="text-gray-500 font-semibold">Total de Estabelecimentos</h3>
                         <p id="kpi-total" class="text-4xl font-bold text-gray-800 mt-2">...</p>
@@ -96,10 +140,24 @@
                     </div>
                     <div id="establishmentsList" class="overflow-x-auto"></div>
                 </section>
+
+                <!-- NOVO: Secção para Gerir Planos de Assinatura -->
+                <section id="plans-section" class="hidden">
+                    <div class="bg-white rounded-lg shadow-md p-6">
+                        <div class="flex flex-wrap justify-between items-center mb-6 border-b pb-4">
+                           <h2 class="text-2xl font-semibold text-gray-700">Planos de Assinatura</h2>
+                           <button id="openPlanModalBtn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300">
+                                + Novo Plano
+                            </button>
+                        </div>
+                        <div id="plansList" class="overflow-x-auto"></div>
+                    </div>
+                </section>
             </main>
         </div>
     </div>
 
+    <!-- Modal para Estabelecimentos (Modificado) -->
     <div id="establishmentModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
         <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <h2 id="modalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Estabelecimento</h2>
@@ -123,12 +181,24 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                          <div>
                             <label for="ownerEmail" class="block text-sm font-medium text-gray-700">E-mail do Dono</label>
-                            <input type="email" id="ownerEmail" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                            <input type="email" id="ownerEmail" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
                         </div>
                         <div>
                             <label for="ownerPassword" class="block text-sm font-medium text-gray-700">Senha Provisória</label>
-                            <input type="password" id="ownerPassword" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                            <input type="password" id="ownerPassword" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
                         </div>
+                    </div>
+                </div>
+
+                <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Plano de Assinatura</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div>
+                        <label for="subscriptionPlan" class="block text-sm font-medium text-gray-700">Plano</label>
+                        <select id="subscriptionPlan" class="mt-1 w-full p-2 border border-gray-300 rounded-md bg-white"></select>
+                    </div>
+                    <div>
+                        <label for="subscriptionExpiry" class="block text-sm font-medium text-gray-700">Expira em</label>
+                        <input type="date" id="subscriptionExpiry" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
                     </div>
                 </div>
 
@@ -144,13 +214,47 @@
         </div>
     </div>
     
+    <!-- Novo Modal para Planos de Assinatura -->
+    <div id="planModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <h2 id="planModalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Plano</h2>
+             <form id="planForm" class="p-6 space-y-6 overflow-y-auto">
+                 <input type="hidden" id="editPlanId">
+                 <div>
+                    <label for="planName" class="block text-sm font-medium text-gray-700">Nome do Plano</label>
+                    <input type="text" id="planName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                 </div>
+                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div>
+                        <label for="planPrice" class="block text-sm font-medium text-gray-700">Preço (R$)</label>
+                        <input type="number" id="planPrice" step="0.01" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="planMaxProfessionals" class="block text-sm font-medium text-gray-700">Máx. Profissionais</label>
+                        <input type="number" id="planMaxProfessionals" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                     <div>
+                        <label for="planMaxUsers" class="block text-sm font-medium text-gray-700">Máx. Usuários</label>
+                        <input type="number" id="planMaxUsers" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                 </div>
+                 <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Módulos Permitidos</h3>
+                 <div id="planModulesContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
+             </form>
+            <div class="mt-auto p-6 border-t flex justify-end gap-4 bg-gray-50">
+                <button type="button" id="closePlanModalBtn" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="submit" form="planForm" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Plano</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] space-y-2"></div>
 
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
+        
         // --- CONFIGURAÇÃO ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
@@ -165,13 +269,19 @@
         const auth = getAuth(app);
         
         let idToken = null;
-        let allEstablishments = []; // Cache dos estabelecimentos
+        let allEstablishments = [];
+        let allPlans = [];
 
-        const modulesDefinition = {
-            'agenda': 'Agenda', 'comandas': 'Comandas (PDV)', 'relatorios': 'Dashboard Analytics',
+        // NOVO: Adicionado um novo módulo para controlar os módulos que podem ser adicionados manualmente.
+        const additionalModulesDefinition = {
             'sales-report': 'Relatório de Vendas', 'financial': 'Financeiro', 'servicos': 'Serviços',
             'produtos': 'Produtos', 'profissionais': 'Profissionais', 'clientes': 'Clientes',
             'estabelecimento': 'Configurações', 'users': 'Usuários Internos', 'mobileApp': 'Acesso App Mobile'
+        };
+
+        const modulesDefinition = {
+            'dashboard': 'Dashboard', 'establishments': 'Gerir Estabelecimentos',
+            'plans': 'Gerir Planos'
         };
 
         // --- AUTENTICAÇÃO E INICIALIZAÇÃO ---
@@ -204,8 +314,88 @@
             document.getElementById('establishmentForm').addEventListener('submit', handleFormSubmit);
             document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
             document.getElementById('establishmentsList').addEventListener('click', handleTableActions);
+            
+            // NOVO: Listeners para a nova secção de planos
+            document.getElementById('openPlanModalBtn').addEventListener('click', () => openPlanModal());
+            document.getElementById('closePlanModalBtn').addEventListener('click', closePlanModal);
+            document.getElementById('planForm').addEventListener('submit', handlePlanFormSubmit);
+            document.getElementById('plansList').addEventListener('click', handlePlanTableActions);
+
+            // NOVO: Lógica de menu retrátil e de navegação
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const navLinks = document.querySelectorAll('.sidebar-link');
+            const dashboardSection = document.getElementById('dashboard-section');
+            const establishmentsSection = document.getElementById('establishments-section');
+
+            sidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+            });
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    navLinks.forEach(l => l.classList.remove('bg-gray-700', 'text-white'));
+                    link.classList.add('bg-gray-700', 'text-white');
+                    
+                    const targetId = link.getAttribute('href').substring(1);
+                    document.querySelectorAll('section').forEach(section => {
+                        if (section.id === 'establishments-section' || section.id === 'plans-section') {
+                            section.classList.add('hidden');
+                        }
+                    });
+                    
+                    if (targetId === 'dashboard') {
+                        document.getElementById('pageTitle').textContent = 'Dashboard';
+                        dashboardSection.classList.remove('hidden');
+                        establishmentsSection.classList.remove('hidden');
+                    } else {
+                        document.getElementById('pageTitle').textContent = link.querySelector('span').textContent;
+                        document.getElementById(targetId + '-section').classList.remove('hidden');
+                    }
+                });
+            });
+            
+            // NOVO: Adiciona um listener para a mudança do select de planos
+            document.getElementById('subscriptionPlan').addEventListener('change', updateModuleCheckboxes);
+
             loadDashboardData();
             loadEstablishments();
+            loadPlans();
+            
+            // Carrega o dashboard e a lista de estabelecimentos por padrão
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            document.getElementById('establishments-section').classList.remove('hidden');
+            
+        }
+        
+        function updateModuleCheckboxes() {
+            const planId = document.getElementById('subscriptionPlan').value;
+            const selectedPlan = allPlans.find(p => p.id === planId);
+            const modulesContainer = document.getElementById('modulesContainer');
+            const establishmentModules = JSON.parse(modulesContainer.dataset.modules || '{}');
+            
+            modulesContainer.innerHTML = ''; // Limpa os checkboxes existentes
+            const allModules = { ...modulesDefinition, ...additionalModulesDefinition };
+            
+            Object.entries(allModules).forEach(([key, label]) => {
+                const isFromPlan = selectedPlan?.allowedModules?.[key] === true;
+                const isManuallyAdded = establishmentModules?.[key] === true;
+                
+                const isChecked = isFromPlan || isManuallyAdded;
+                
+                const moduleHtml = `
+                    <label for="module-${key}" class="flex items-center space-x-2 cursor-pointer ${isFromPlan ? 'bg-indigo-50 p-2 rounded-md' : ''}">
+                        <div class="relative">
+                            <input type="checkbox" id="module-${key}" name="modules" value="${key}" class="sr-only" ${isChecked ? 'checked' : ''} ${isFromPlan ? 'disabled' : ''}>
+                            <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">${label}</span>
+                    </label>
+                `;
+                modulesContainer.innerHTML += moduleHtml;
+            });
         }
 
         // --- FUNÇÕES DE API ---
@@ -234,31 +424,54 @@
         // --- LÓGICA DO MODAL E FORMULÁRIO ---
         const establishmentModal = document.getElementById('establishmentModal');
         
-        function openModal(establishment = null) {
+        async function openModal(establishment = null) {
             const form = document.getElementById('establishmentForm');
             form.reset();
             const isEditing = !!establishment;
+            
+            // NOVO: Adiciona a lista de módulos do estabelecimento ao dataset do container para referência futura
+            const modulesContainer = document.getElementById('modulesContainer');
+            modulesContainer.dataset.modules = JSON.stringify(establishment?.modules || {});
+
 
             document.getElementById('modalTitle').textContent = isEditing ? "Editar Estabelecimento" : "Novo Estabelecimento";
             document.getElementById('editEstablishmentId').value = establishment?.id || '';
             document.getElementById('establishmentName').value = establishment?.name || '';
             document.getElementById('establishmentId').value = establishment?.id || '';
             document.getElementById('establishmentId').disabled = isEditing;
-            document.getElementById('ownerEmail').value = establishment?.ownerEmail || '';
-            document.getElementById('ownerEmail').disabled = isEditing;
-            document.getElementById('owner-credentials-container').style.display = isEditing ? 'none' : 'block';
+            
+            // Campos de credenciais
+            const ownerEmailInput = document.getElementById('ownerEmail');
+            const ownerPasswordInput = document.getElementById('ownerPassword');
+            const credentialsContainer = document.getElementById('owner-credentials-container');
+            
+            ownerEmailInput.value = establishment?.ownerEmail || '';
+            
+            credentialsContainer.style.display = isEditing ? 'none' : 'block';
 
-            const modulesContainer = document.getElementById('modulesContainer');
-            modulesContainer.innerHTML = Object.entries(modulesDefinition).map(([key, label]) => `
-                <label for="module-${key}" class="flex items-center space-x-2 cursor-pointer">
-                    <div class="relative">
-                        <input type="checkbox" id="module-${key}" name="modules" value="${key}" class="sr-only" ${establishment?.modules?.[key] ? 'checked' : !isEditing ? 'checked' : ''}>
-                        <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
-                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
-                    </div>
-                    <span class="text-sm font-medium text-gray-700">${label}</span>
-                </label>
-            `).join('');
+            if (isEditing) {
+                ownerEmailInput.removeAttribute('required');
+                ownerPasswordInput.removeAttribute('required');
+                ownerEmailInput.disabled = true;
+                ownerPasswordInput.disabled = true;
+                document.getElementById('subscriptionPlan').value = establishment?.subscription?.planId || '';
+                document.getElementById('subscriptionExpiry').value = establishment?.subscription?.expiryDate?.toDate().toISOString().split('T')[0] || '';
+            } else {
+                ownerEmailInput.setAttribute('required', 'required');
+                ownerPasswordInput.setAttribute('required', 'required');
+                ownerEmailInput.disabled = false;
+                ownerPasswordInput.disabled = false;
+            }
+            
+            const planSelect = document.getElementById('subscriptionPlan');
+            planSelect.innerHTML = allPlans.map(plan => `<option value="${plan.id}">${plan.name}</option>`).join('');
+            if (establishment?.subscription?.planId) {
+                planSelect.value = establishment.subscription.planId;
+            } else if (allPlans.length > 0) {
+                 planSelect.value = allPlans[0].id;
+            }
+            
+            updateModuleCheckboxes(); // NOVO: Chama a função para renderizar os módulos
 
             establishmentModal.classList.add('flex');
             setTimeout(() => establishmentModal.style.opacity = "1", 10);
@@ -273,27 +486,41 @@
             e.preventDefault();
             const editId = document.getElementById('editEstablishmentId').value;
             const isEditing = !!editId;
-
+        
             const modules = {};
             document.querySelectorAll('input[name="modules"]').forEach(checkbox => {
                 modules[checkbox.value] = checkbox.checked;
             });
-
+        
             const data = {
                 establishmentId: document.getElementById('establishmentId').value,
                 name: document.getElementById('establishmentName').value,
                 ownerEmail: document.getElementById('ownerEmail').value,
                 modules: modules
             };
-
+        
             if (!isEditing) {
                 data.ownerPassword = document.getElementById('ownerPassword').value;
+                const planId = document.getElementById('subscriptionPlan').value;
+                const expiryDate = document.getElementById('subscriptionExpiry').value;
+                if (planId && expiryDate) {
+                    data.subscription = { planId, expiryDate };
+                }
             }
-
+        
             try {
                 if (isEditing) {
                     await apiCall(`/api/admin/establishments/${editId}/modules`, { method: 'PATCH', body: JSON.stringify({ modules: data.modules }) });
-                     await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
+                    await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
+                    
+                    const planId = document.getElementById('subscriptionPlan').value;
+                    const expiryDate = document.getElementById('subscriptionExpiry').value;
+                    
+                    // CORREÇÃO: Só chama a rota de atribuição de plano se os campos estiverem preenchidos
+                    if (planId && expiryDate) {
+                         await apiCall(`/api/subscriptions/assign/${editId}`, { method: 'PATCH', body: JSON.stringify({ planId, expiryDate }) });
+                    }
+                    
                     showToast('Estabelecimento atualizado com sucesso!', 'success');
                 } else {
                     await apiCall('/api/admin/establishments', { method: 'POST', body: JSON.stringify(data) });
@@ -328,8 +555,8 @@
             let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
                     <th class="px-6 py-3">Nome / ID</th>
-                    <th class="px-6 py-3">Dono</th>
-                    <th class="px-6 py-3">Criado em</th>
+                    <th class="px-6 py-3">Plano</th>
+                    <th class="px-6 py-3">Expira em</th>
                     <th class="px-6 py-3">Estado</th>
                     <th class="px-6 py-3">Ações</th>
                 </tr></thead><tbody>`;
@@ -337,14 +564,17 @@
             if (filtered.length > 0) {
                 filtered.forEach(est => {
                     const isActive = est.status === 'active';
+                    const planName = allPlans.find(p => p.id === est.subscription?.planId)?.name || 'N/A';
+                    const expiryDate = est.subscription?.expiryDate ? new Date(est.subscription.expiryDate._seconds * 1000).toLocaleDateString() : 'N/A';
+
                     tableHTML += `
                         <tr class="bg-white border-b hover:bg-gray-50">
                             <td class="px-6 py-4 font-medium text-gray-900">
                                 ${est.name}<br>
                                 <span class="font-mono text-xs text-gray-500">${est.id}</span>
                             </td>
-                            <td class="px-6 py-4 text-gray-600">${est.ownerEmail || 'N/A'}</td>
-                            <td class="px-6 py-4 text-gray-600">${new Date(est.createdAt._seconds * 1000).toLocaleDateString()}</td>
+                             <td class="px-6 py-4 text-gray-600">${planName}</td>
+                            <td class="px-6 py-4 text-gray-600">${expiryDate}</td>
                             <td class="px-6 py-4">
                                 <label class="flex items-center cursor-pointer">
                                   <div class="relative">
@@ -379,10 +609,9 @@
                         body: JSON.stringify({ status: newStatus }),
                     });
                     showToast(`Status de ${establishmentId} atualizado.`, 'success');
-                    // Atualiza o cache local para refletir a mudança imediatamente
                     const index = allEstablishments.findIndex(e => e.id === establishmentId);
                     if (index > -1) allEstablishments[index].status = newStatus;
-                    loadDashboardData(); // Atualiza KPIs
+                    loadDashboardData();
                 } catch (error) {
                     showToast(`Erro ao atualizar status: ${error.message}`, 'error');
                     target.checked = !target.checked;
@@ -391,6 +620,146 @@
                  const establishmentId = target.closest('[data-action="edit"]').dataset.id;
                 const establishment = allEstablishments.find(est => est.id === establishmentId);
                 if (establishment) openModal(establishment);
+            }
+        }
+        
+        // --- LÓGICA DE PLANOS ---
+        const planModal = document.getElementById('planModal');
+
+        async function loadPlans() {
+            const listDiv = document.getElementById('plansList');
+            listDiv.innerHTML = '<p>A carregar planos...</p>';
+            try {
+                allPlans = await apiCall('/api/subscriptions/plans');
+                renderPlansTable();
+            } catch (error) {
+                 listDiv.innerHTML = '<p class="text-red-500">Erro ao carregar planos de assinatura.</p>';
+            }
+        }
+        
+        function renderPlansTable() {
+            const listDiv = document.getElementById('plansList');
+            let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
+                    <th class="px-6 py-3">Nome do Plano</th>
+                    <th class="px-6 py-3">Preço</th>
+                    <th class="px-6 py-3">Limites</th>
+                    <th class="px-6 py-3">Módulos</th>
+                    <th class="px-6 py-3">Ações</th>
+                </tr></thead><tbody>`;
+            
+            if (allPlans.length > 0) {
+                allPlans.forEach(plan => {
+                    const modulesCount = Object.values(plan.allowedModules).filter(v => v).length;
+                    tableHTML += `
+                        <tr class="bg-white border-b hover:bg-gray-50">
+                            <td class="px-6 py-4 font-medium text-gray-900">${plan.name}</td>
+                            <td class="px-6 py-4 text-gray-600">R$ ${plan.price.toFixed(2)}</td>
+                            <td class="px-6 py-4 text-gray-600">
+                                Profs: ${plan.maxProfessionals}<br>
+                                Users: ${plan.maxUsers}
+                            </td>
+                            <td class="px-6 py-4 text-gray-600">${modulesCount} módulos</td>
+                            <td class="px-6 py-4 flex gap-4">
+                                <button data-action="edit-plan" data-id="${plan.id}" class="font-medium text-indigo-600 hover:underline">Gerir</button>
+                                <button data-action="delete-plan" data-id="${plan.id}" class="font-medium text-red-600 hover:underline">Apagar</button>
+                            </td>
+                        </tr>`;
+                });
+            } else {
+                tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum plano de assinatura criado.</td></tr>`;
+            }
+            tableHTML += '</tbody></table>';
+            listDiv.innerHTML = tableHTML;
+        }
+
+        function openPlanModal(plan = null) {
+            const form = document.getElementById('planForm');
+            form.reset();
+            const isEditing = !!plan;
+
+            document.getElementById('planModalTitle').textContent = isEditing ? "Editar Plano" : "Novo Plano";
+            document.getElementById('editPlanId').value = plan?.id || '';
+            document.getElementById('planName').value = plan?.name || '';
+            document.getElementById('planPrice').value = plan?.price || '';
+            document.getElementById('planMaxProfessionals').value = plan?.maxProfessionals || '';
+            document.getElementById('planMaxUsers').value = plan?.maxUsers || '';
+            
+            const modulesContainer = document.getElementById('planModulesContainer');
+            modulesContainer.innerHTML = Object.entries(modulesDefinition).map(([key, label]) => `
+                <label for="plan-module-${key}" class="flex items-center space-x-2 cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="plan-module-${key}" name="plan-modules" value="${key}" class="sr-only" ${plan?.allowedModules?.[key] ? 'checked' : ''}>
+                        <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
+                    </div>
+                    <span class="text-sm font-medium text-gray-700">${label}</span>
+                </label>
+            `).join('');
+            
+            planModal.classList.add('flex');
+            setTimeout(() => planModal.style.opacity = "1", 10);
+        }
+
+        function closePlanModal() {
+             planModal.style.opacity = "0";
+            setTimeout(() => planModal.classList.remove('flex'), 300);
+        }
+
+        async function handlePlanFormSubmit(e) {
+            e.preventDefault();
+            const editPlanId = document.getElementById('editPlanId').value;
+            const isEditing = !!editPlanId;
+
+            const allowedModules = {};
+            document.querySelectorAll('input[name="plan-modules"]').forEach(checkbox => {
+                allowedModules[checkbox.value] = checkbox.checked;
+            });
+
+            const data = {
+                name: document.getElementById('planName').value,
+                price: parseFloat(document.getElementById('planPrice').value),
+                maxProfessionals: parseInt(document.getElementById('planMaxProfessionals').value),
+                maxUsers: parseInt(document.getElementById('planMaxUsers').value),
+                allowedModules
+            };
+
+            try {
+                if (isEditing) {
+                    await apiCall(`/api/subscriptions/plans/${editPlanId}`, { method: 'PUT', body: JSON.stringify(data) });
+                    showToast('Plano atualizado com sucesso!', 'success');
+                } else {
+                    await apiCall('/api/subscriptions/plans', { method: 'POST', body: JSON.stringify(data) });
+                    showToast('Plano criado com sucesso!', 'success');
+                }
+                closePlanModal();
+                loadPlans();
+            } catch (error) {
+                showToast(`Erro: ${error.message}`, 'error');
+            }
+        }
+
+        async function handlePlanTableActions(e) {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+
+            const action = target.dataset.action;
+            const planId = target.dataset.id;
+
+            if (action === 'edit-plan') {
+                const plan = allPlans.find(p => p.id === planId);
+                if (plan) openPlanModal(plan);
+            } else if (action === 'delete-plan') {
+                const confirmed = confirm('Tem a certeza que deseja apagar este plano? Esta ação é irreversível.');
+                if (confirmed) {
+                    try {
+                        await apiCall(`/api/subscriptions/plans/${planId}`, { method: 'DELETE' });
+                        showToast('Plano apagado com sucesso!', 'success');
+                        loadPlans();
+                    } catch (error) {
+                        showToast(`Erro: ${error.message}`, 'error');
+                    }
+                }
             }
         }
         

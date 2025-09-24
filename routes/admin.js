@@ -1,3 +1,4 @@
+// rsforcetecnologia-droid/kairos/kairos-811fe58112b31559881f3b56a0d30afb240f49fc/routes/admin.js
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -107,6 +108,7 @@ router.get('/establishments', async (req, res) => {
 router.put('/establishments/:id/details', async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
+    console.log(`[ADMIN-UPDATE] PUT /establishments/${id}/details - Received name: ${name}`); // LOG DE DEBUG
     if (!name) return res.status(400).json({ message: "O nome é obrigatório." });
 
     try {
@@ -124,6 +126,8 @@ router.put('/establishments/:id/details', async (req, res) => {
 router.patch('/establishments/:id/modules', async (req, res) => {
     const { id } = req.params;
     const { modules } = req.body;
+    console.log(`[ADMIN-UPDATE] PATCH /establishments/${id}/modules - Received module keys: ${Object.keys(modules || {}).join(', ')}`); // LOG DE DEBUG
+
     if (!modules || typeof modules !== 'object') {
         return res.status(400).json({ message: "O campo 'modules' deve ser um objeto." });
     }
@@ -217,4 +221,3 @@ router.delete('/users/:uid', async (req, res) => {
 });
 
 module.exports = router;
-

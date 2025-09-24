@@ -11,6 +11,7 @@ const modules = {
     'agenda-section': 'Agenda',
     'comandas-section': 'Comandas',
     'relatorios-section': 'Relatórios',
+    'financial-section': 'Financeiro', // <-- LINHA ADICIONADA
     'servicos-section': 'Serviços',
     'produtos-section': 'Produtos',
     'profissionais-section': 'Profissionais',
@@ -111,7 +112,6 @@ async function showUserFormView(user = null) {
             </div>
             ` : ''}
 
-            <!-- NOVO: Secção para alterar senha, apenas no modo de edição -->
             ${isEditing ? `
             <div class="border-t pt-6">
                 <h3 class="text-lg font-medium leading-6 text-gray-900">Segurança</h3>
