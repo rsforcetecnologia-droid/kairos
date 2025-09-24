@@ -51,10 +51,73 @@ const hasAccess = (req, res, next) => {
     return res.status(403).json({ message: 'Acesso negado. Permissões insuficientes.' });
 };
 
+// 5. NOVO MIDDLEWARE: Verifica se a assinatura está ativa ou dentro do período de carência
+const checkSubscription = async (req, res, next) => {
+    // Apenas aplica a lógica se for um usuário de estabelecimento (Owner ou Employee)
+    if (!req.user || !req.user.establishmentId) {
+        return next();
+    }
+    
+    // Usuários sem permissões (proprietários de novos estabelecimentos) também devem passar.
+    if (req.user.role === 'owner' || req.user.role === 'employee') {
+        
+        const { establishmentId } = req.user;
+        const GRACE_PERIOD_DAYS = 5; // Período de carência
+        const currentDate = new Date();
+        
+        try {
+            const db = admin.firestore();
+            const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+
+            if (!establishmentDoc.exists) {
+                return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+            }
+
+            const subscription = establishmentDoc.data().subscription;
+
+            // Se não houver plano ou data de expiração, bloqueia o acesso (ou usa o módulo de teste)
+            if (!subscription || !subscription.expiryDate) {
+                return res.status(403).json({ message: 'Acesso negado. O estabelecimento não possui um plano de assinatura ativo.' });
+            }
+
+            const expiryTimestamp = subscription.expiryDate;
+            const expiryDate = expiryTimestamp.toDate();
+            
+            // Calcula a data limite (expiração + carência)
+            const gracePeriodEnd = new Date(expiryDate);
+            gracePeriodEnd.setDate(gracePeriodEnd.getDate() + GRACE_PERIOD_DAYS);
+
+            if (currentDate > gracePeriodEnd) {
+                // Acesso bloqueado (expirado + carência)
+                return res.status(403).json({ 
+                    message: `Assinatura expirada. Contacte o administrador para regularizar a situação.` 
+                });
+            }
+            
+            // Aviso (opcional, mas bom para o fluxo) para o frontend
+            if (currentDate > expiryDate && currentDate <= gracePeriodEnd) {
+                res.setHeader('X-Subscription-Status', 'grace_period');
+            } else if (currentDate <= expiryDate) {
+                res.setHeader('X-Subscription-Status', 'active');
+            }
+
+            next();
+
+        } catch (error) {
+            console.error("Erro no middleware de assinatura:", error);
+            return res.status(500).json({ message: 'Erro interno ao verificar a assinatura.' });
+        }
+    } else {
+        // Para outros tipos de usuário (e.g., Super Admin), apenas segue
+        next();
+    }
+};
+
 module.exports = {
     addFirebaseInstances,
     verifyToken,
     isSuperAdmin,
     isOwner,
-    hasAccess
+    hasAccess,
+    checkSubscription
 };

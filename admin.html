@@ -112,7 +112,6 @@
             </header>
 
             <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
-                <!-- Conteúdo do Dashboard -->
                 <section id="dashboard-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <div class="kpi-card">
                         <h3 class="text-gray-500 font-semibold">Total de Estabelecimentos</h3>
@@ -141,7 +140,6 @@
                     <div id="establishmentsList" class="overflow-x-auto"></div>
                 </section>
 
-                <!-- NOVO: Secção para Gerir Planos de Assinatura -->
                 <section id="plans-section" class="hidden">
                     <div class="bg-white rounded-lg shadow-md p-6">
                         <div class="flex flex-wrap justify-between items-center mb-6 border-b pb-4">
@@ -157,7 +155,6 @@
         </div>
     </div>
 
-    <!-- Modal para Estabelecimentos (Modificado) -->
     <div id="establishmentModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
         <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <h2 id="modalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Estabelecimento</h2>
@@ -214,7 +211,6 @@
         </div>
     </div>
     
-    <!-- Novo Modal para Planos de Assinatura -->
     <div id="planModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
         <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <h2 id="planModalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Plano</h2>
@@ -265,6 +261,10 @@
             appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
             measurementId: "G-SVHFXKV5EC"
         };
+        
+        // Período de carência em dias (deve ser o mesmo do backend)
+        const GRACE_PERIOD_DAYS = 5; 
+        
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         
@@ -454,8 +454,9 @@
                 ownerPasswordInput.removeAttribute('required');
                 ownerEmailInput.disabled = true;
                 ownerPasswordInput.disabled = true;
-                document.getElementById('subscriptionPlan').value = establishment?.subscription?.planId || '';
-                document.getElementById('subscriptionExpiry').value = establishment?.subscription?.expiryDate?.toDate().toISOString().split('T')[0] || '';
+                // Converte Firestore Timestamp para Date
+                const expiryDate = establishment?.subscription?.expiryDate?.toDate();
+                document.getElementById('subscriptionExpiry').value = expiryDate ? expiryDate.toISOString().split('T')[0] : '';
             } else {
                 ownerEmailInput.setAttribute('required', 'required');
                 ownerPasswordInput.setAttribute('required', 'required');
@@ -501,11 +502,13 @@
         
             if (!isEditing) {
                 data.ownerPassword = document.getElementById('ownerPassword').value;
-                const planId = document.getElementById('subscriptionPlan').value;
-                const expiryDate = document.getElementById('subscriptionExpiry').value;
-                if (planId && expiryDate) {
-                    data.subscription = { planId, expiryDate };
-                }
+            }
+            
+            // Sempre enviar dados de plano e expiração, se existirem nos inputs do modal
+            const planId = document.getElementById('subscriptionPlan').value;
+            const expiryDate = document.getElementById('subscriptionExpiry').value;
+            if (planId && expiryDate) {
+                 data.subscription = { planId, expiryDate };
             }
         
             try {
@@ -513,10 +516,7 @@
                     await apiCall(`/api/admin/establishments/${editId}/modules`, { method: 'PATCH', body: JSON.stringify({ modules: data.modules }) });
                     await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
                     
-                    const planId = document.getElementById('subscriptionPlan').value;
-                    const expiryDate = document.getElementById('subscriptionExpiry').value;
-                    
-                    // CORREÇÃO: Só chama a rota de atribuição de plano se os campos estiverem preenchidos
+                    // Chama a rota de atribuição de plano (que agora tem a lógica de prorrogação)
                     if (planId && expiryDate) {
                          await apiCall(`/api/subscriptions/assign/${editId}`, { method: 'PATCH', body: JSON.stringify({ planId, expiryDate }) });
                     }
@@ -557,6 +557,7 @@
                     <th class="px-6 py-3">Nome / ID</th>
                     <th class="px-6 py-3">Plano</th>
                     <th class="px-6 py-3">Expira em</th>
+                    <th class="px-6 py-3">Status Assinatura</th>
                     <th class="px-6 py-3">Estado</th>
                     <th class="px-6 py-3">Ações</th>
                 </tr></thead><tbody>`;
@@ -565,7 +566,29 @@
                 filtered.forEach(est => {
                     const isActive = est.status === 'active';
                     const planName = allPlans.find(p => p.id === est.subscription?.planId)?.name || 'N/A';
-                    const expiryDate = est.subscription?.expiryDate ? new Date(est.subscription.expiryDate._seconds * 1000).toLocaleDateString() : 'N/A';
+                    
+                    const expiryDateRaw = est.subscription?.expiryDate ? new Date(est.subscription.expiryDate._seconds * 1000) : null;
+                    const expiryDate = expiryDateRaw ? expiryDateRaw.toLocaleDateString() : 'N/A';
+                    
+                    let subStatus = 'N/A';
+                    let subStatusClass = 'bg-gray-200 text-gray-800';
+                    
+                    if (expiryDateRaw) {
+                        const today = new Date();
+                        const gracePeriodEnd = new Date(expiryDateRaw);
+                        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + GRACE_PERIOD_DAYS); // Usa a constante GRACE_PERIOD_DAYS
+
+                        if (today > gracePeriodEnd) {
+                            subStatus = 'BLOQUEADO';
+                            subStatusClass = 'bg-red-500 text-white';
+                        } else if (today > expiryDateRaw) {
+                            subStatus = 'CARÊNCIA';
+                            subStatusClass = 'bg-yellow-500 text-black';
+                        } else {
+                            subStatus = 'ATIVO';
+                            subStatusClass = 'bg-green-500 text-white';
+                        }
+                    }
 
                     tableHTML += `
                         <tr class="bg-white border-b hover:bg-gray-50">
@@ -575,6 +598,9 @@
                             </td>
                              <td class="px-6 py-4 text-gray-600">${planName}</td>
                             <td class="px-6 py-4 text-gray-600">${expiryDate}</td>
+                            <td class="px-6 py-4">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${subStatusClass}">${subStatus}</span>
+                            </td>
                             <td class="px-6 py-4">
                                 <label class="flex items-center cursor-pointer">
                                   <div class="relative">
@@ -592,7 +618,7 @@
                         </tr>`;
                 });
             } else {
-                tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
+                tableHTML += `<tr><td colspan="6" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
             }
             tableHTML += '</tbody></table>';
             document.getElementById('establishmentsList').innerHTML = tableHTML;
@@ -600,6 +626,9 @@
 
         async function handleTableActions(e) {
             const target = e.target;
+            // Tenta encontrar o botão de editar primeiro
+            const editButton = target.closest('[data-action="edit"]');
+
             if (target.classList.contains('toggle-status-btn')) {
                 const establishmentId = target.dataset.id;
                 const newStatus = target.checked ? 'active' : 'inactive';
@@ -616,8 +645,8 @@
                     showToast(`Erro ao atualizar status: ${error.message}`, 'error');
                     target.checked = !target.checked;
                 }
-            } else if (target.closest('[data-action="edit"]')) {
-                 const establishmentId = target.closest('[data-action="edit"]').dataset.id;
+            } else if (editButton) {
+                 const establishmentId = editButton.dataset.id;
                 const establishment = allEstablishments.find(est => est.id === establishmentId);
                 if (establishment) openModal(establishment);
             }
@@ -670,7 +699,7 @@
                 tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum plano de assinatura criado.</td></tr>`;
             }
             tableHTML += '</tbody></table>';
-            listDiv.innerHTML = tableHTML;
+            document.getElementById('plansList').innerHTML = tableHTML;
         }
 
         function openPlanModal(plan = null) {

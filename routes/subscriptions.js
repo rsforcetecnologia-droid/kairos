@@ -82,25 +82,77 @@ router.delete('/plans/:planId', async (req, res) => {
     }
 });
 
-// Rota para atribuir um plano a um estabelecimento
+// ROTA ATUALIZADA: Atribuir ou prorrogar um plano a um estabelecimento
 router.patch('/assign/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { planId, expiryDate } = req.body;
-    if (!planId || !expiryDate) {
-        return res.status(400).json({ message: 'ID do plano e data de expiração são obrigatórios.' });
+    const { planId, paymentDate } = req.body; // paymentDate é opcional para pagamentos confirmados
+    
+    if (!planId) {
+        return res.status(400).json({ message: 'O ID do plano é obrigatório.' });
     }
+
     try {
         const { db } = req;
         const establishmentRef = db.collection('establishments').doc(establishmentId);
-        await establishmentRef.update({
+        const doc = await establishmentRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+
+        const subscription = doc.data().subscription || {};
+        let currentExpiryDate = subscription.expiryDate ? subscription.expiryDate.toDate() : new Date();
+
+        // 1. Determina a data de início da prorrogação
+        let startDateForExtension = new Date();
+        
+        // Se já existe uma data de expiração e ela for FUTURA, a prorrogação deve começar a partir dela.
+        if (subscription.expiryDate && currentExpiryDate > startDateForExtension) {
+            startDateForExtension = currentExpiryDate;
+        }
+
+        // 2. Calcula a nova data de expiração (+ 30 dias)
+        // Usa-se 30 dias para uma prorrogação padrão de "um mês"
+        let newExpiryDate = new Date(startDateForExtension);
+        newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+        
+        // Se uma data específica for fornecida (apenas no formulário admin, se paymentDate for passado)
+        // Aqui, estou usando paymentDate como um nome genérico para a data que vem do formulário,
+        // mas na prática, o formulário admin usa 'subscriptionExpiry', que é o que deve ser salvo diretamente.
+        // Vou assumir que para a prorrogação automática, só precisamos do 'planId' no corpo da requisição.
+        
+        // No contexto da interface SuperAdmin, a data do formulário 'subscriptionExpiry' é o campo 'expiryDate'
+        // No contexto da rotina de pagamento, um POST para esta rota sem 'paymentDate' no corpo
+        // mas com o 'planId' é considerado uma prorrogação de 30 dias.
+
+        // Se o request body tiver o campo 'expiryDate', usa ele (para o formulário admin).
+        let finalDate = req.body.expiryDate ? new Date(req.body.expiryDate) : newExpiryDate;
+
+        const updatedData = {
             subscription: {
                 planId,
-                expiryDate: admin.firestore.Timestamp.fromDate(new Date(expiryDate))
+                expiryDate: admin.firestore.Timestamp.fromDate(finalDate)
             }
+        };
+
+        // Adiciona um registro de prorrogação no histórico (opcional)
+        // await db.collection('subscriptionHistory').add({
+        //     establishmentId,
+        //     action: 'prorrogação',
+        //     newExpiryDate: finalDate,
+        //     timestamp: admin.firestore.FieldValue.serverTimestamp()
+        // });
+
+
+        await establishmentRef.update(updatedData);
+
+        res.status(200).json({ 
+            message: 'Plano de assinatura atribuído/prorrogado com sucesso!', 
+            newExpiryDate: finalDate.toISOString() 
         });
-        res.status(200).json({ message: 'Plano de assinatura atribuído com sucesso!' });
+
     } catch (error) {
-        console.error("Erro ao atribuir plano:", error);
+        console.error("Erro ao atribuir/prorrogar plano:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });

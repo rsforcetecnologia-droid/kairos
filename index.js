@@ -29,7 +29,8 @@ const {
     verifyToken,
     isSuperAdmin,
     isOwner,
-    hasAccess
+    hasAccess,
+    checkSubscription // <-- IMPORTADO O NOVO MIDDLEWARE
 } = require('./middlewares/auth');
 
 // Aplica o middleware que adiciona instâncias do Firebase a todas as rotas da API
@@ -56,35 +57,37 @@ const userRoutes = require('./routes/users');
 const comandasRoutes = require('./routes/comandas');
 const clientPortalRoutes = require('./routes/clientPortal');
 const financialRoutes = require('./routes/financial');
-const subscriptionsRoutes = require('./routes/subscriptions'); // NOVO: Rota de assinaturas
+const subscriptionsRoutes = require('./routes/subscriptions');
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
-app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes); // NOVO: Montagem da rota de assinaturas
+app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
 
 // 2. Rotas de Dono (só acessíveis pelo dono do estabelecimento)
-app.use('/api/users', verifyToken, isOwner, userRoutes);
+app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes); 
 
 // 3. Rotas de Acesso Geral (acessíveis por dono e funcionários)
-app.use('/api/analytics', verifyToken, hasAccess, analyticsRoutes);
-app.use('/api/blockages', verifyToken, hasAccess, blockageRoutes);
-app.use('/api/cashier', verifyToken, hasAccess, cashierRoutes);
-app.use('/api/clients', verifyToken, hasAccess, clientRoutes);
-app.use('/api/products', verifyToken, hasAccess, productRoutes);
-app.use('/api/reports', verifyToken, hasAccess, reportRoutes);
-app.use('/api/sales', verifyToken, hasAccess, saleRoutes);
-app.use('/api/comandas', verifyToken, hasAccess, comandasRoutes);
-app.use('/api/financial', verifyToken, hasAccess, financialRoutes);
 
+// APLICAÇÃO DO checkSubscription em TODAS as rotas protegidas:
+app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
+app.use('/api/blockages', verifyToken, checkSubscription, hasAccess, blockageRoutes);
+app.use('/api/cashier', verifyToken, checkSubscription, hasAccess, cashierRoutes);
+app.use('/api/clients', verifyToken, checkSubscription, hasAccess, clientRoutes);
+app.use('/api/products', verifyToken, checkSubscription, hasAccess, productRoutes);
+app.use('/api/reports', verifyToken, checkSubscription, hasAccess, reportRoutes);
+app.use('/api/sales', verifyToken, checkSubscription, hasAccess, saleRoutes);
+app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRoutes);
+app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
-app.use('/api/appointments', appointmentRoutes);
-app.use('/api/establishments', establishmentRoutes);
-app.use('/api/professionals', professionalRoutes);
-app.use('/api/services', serviceRoutes);
+// As rotas internas com verifyToken/hasAccess também terão a checagem de assinatura
+app.use('/api/appointments', verifyToken, checkSubscription, appointmentRoutes); 
+app.use('/api/establishments', verifyToken, checkSubscription, establishmentRoutes);
+app.use('/api/professionals', verifyToken, checkSubscription, professionalRoutes);
+app.use('/api/services', verifyToken, checkSubscription, serviceRoutes);
 
-// 5. Rotas Públicas (não precisam de verificação)
+// 5. Rotas Públicas (não precisam de verificação de token, mas a disponibilidade sim)
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/client-portal', addFirebaseInstances, clientPortalRoutes);
 
