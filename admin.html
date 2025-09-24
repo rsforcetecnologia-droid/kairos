@@ -43,27 +43,41 @@
             background-color: #22c55e;
         }
 
-        /* --- Estilos do menu retrátil --- */
+        /* --- ESTILOS CORRIGIDOS PARA BARRA RETRÁTIL AUTOMÁTICA --- */
+        
+        /* Define a largura padrão como a recolhida (4.5rem) */
         #sidebar {
-            width: 18rem;
+            width: 4.5rem; 
             transition: width 0.3s ease-in-out;
         }
-        #sidebar.collapsed {
-            width: 4.5rem;
+        /* Estado expandido ao passar o mouse ou ao ser clicado */
+        #sidebar.expanded {
+            width: 18rem; /* 288px */
         }
-        #sidebar.collapsed .sidebar-text,
-        #sidebar.collapsed .sidebar-header {
+        
+        /* Esconde texto e alinha ao centro na largura padrão (4.5rem) */
+        #sidebar:not(.expanded) .sidebar-text,
+        #sidebar:not(.expanded) .sidebar-header {
             opacity: 0;
             pointer-events: none;
             width: 0;
             overflow: hidden;
         }
-        #sidebar.collapsed .sidebar-link {
+        
+        #sidebar:not(.expanded) .sidebar-link {
             justify-content: center;
         }
-        #sidebar.collapsed .sidebar-link span {
+        #sidebar:not(.expanded) .sidebar-link span {
             display: none;
         }
+        
+        /* Ajusta o toggle button no estado recolhido */
+        #sidebarToggle.rotated {
+            transform: rotate(180deg);
+        }
+
+        /* --- FIM DOS ESTILOS CORRIGIDOS --- */
+
         .dot { transition: transform .2s ease-in-out; }
         input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
         input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
@@ -79,7 +93,8 @@
 <body class="bg-gray-100">
 
     <div class="flex h-screen">
-        <aside id="sidebar" class="w-72 bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 ease-in-out">
+        <!-- HTML CORRIGIDO: Removida a classe w-72 para que o CSS controle a largura -->
+        <aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 ease-in-out">
             <div class="p-6 text-center border-b border-gray-800 flex justify-between items-center relative">
                 <div class="sidebar-header overflow-hidden transition-all duration-300 ease-in-out flex-1">
                     <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
@@ -137,7 +152,23 @@
                             </button>
                         </div>
                     </div>
-                    <div id="establishmentsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+                    <!-- NOVO HTML: Estrutura de Tabela -->
+                    <div class="overflow-x-auto shadow-md rounded-lg">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome/ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plano</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiração</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Assinatura</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ativo (App)</th>
+                                </tr>
+                            </thead>
+                            <!-- O tbody é o alvo da injeção de dados via JS -->
+                            <tbody id="establishmentsList" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
 
                 <section id="plans-section" class="hidden">
@@ -313,6 +344,7 @@
             document.getElementById('closeModalBtn').addEventListener('click', closeModal);
             document.getElementById('establishmentForm').addEventListener('submit', handleFormSubmit);
             document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
+            // CORRIGIDO: Adiciona o listener principal à lista de estabelecimentos
             document.getElementById('establishmentsList').addEventListener('click', handleTableActions);
             
             // NOVO: Listeners para a nova secção de planos
@@ -321,16 +353,50 @@
             document.getElementById('planForm').addEventListener('submit', handlePlanFormSubmit);
             document.getElementById('plansList').addEventListener('click', handlePlanTableActions);
 
-            // NOVO: Lógica de menu retrátil e de navegação
+            // CORRIGIDO: Lógica de menu retrátil e de navegação
             const sidebar = document.getElementById('sidebar');
             const sidebarToggle = document.getElementById('sidebarToggle');
             const navLinks = document.querySelectorAll('.sidebar-link');
             const dashboardSection = document.getElementById('dashboard-section');
             const establishmentsSection = document.getElementById('establishments-section');
+            
+            // Variável para rastrear se o usuário clicou para expandir/recolher manualmente
+            let isManuallyExpanded = false;
 
-            sidebarToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('collapsed');
+            // Função para expandir e girar o ícone
+            const updateSidebarState = (expanded) => {
+                sidebar.classList.toggle('expanded', expanded);
+                sidebarToggle.classList.toggle('rotated', !expanded);
+            };
+            
+            // 1. Lógica de Interação com o Mouse (Automática em Desktop)
+            sidebar.addEventListener('mouseenter', () => {
+                if (!isManuallyExpanded && window.innerWidth >= 1024) {
+                    updateSidebarState(true);
+                }
             });
+
+            sidebar.addEventListener('mouseleave', () => {
+                if (!isManuallyExpanded && window.innerWidth >= 1024) {
+                    updateSidebarState(false);
+                }
+            });
+
+            // 2. Lógica do Botão (Clique manual) - Permite o toggle fixo
+            sidebarToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                if (sidebar.classList.contains('expanded')) {
+                    isManuallyExpanded = false; 
+                    updateSidebarState(false);
+                } else {
+                    isManuallyExpanded = true; 
+                    updateSidebarState(true);
+                }
+            });
+
+            // Estado inicial: Recolhido
+            updateSidebarState(false);
 
             navLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
@@ -460,8 +526,8 @@
             } else {
                 ownerEmailInput.setAttribute('required', 'required');
                 ownerPasswordInput.setAttribute('required', 'required');
-                ownerEmailInput.disabled = false;
                 ownerPasswordInput.disabled = false;
+                ownerEmailInput.disabled = false;
             }
             
             const planSelect = document.getElementById('subscriptionPlan');
@@ -537,12 +603,12 @@
         // --- LÓGICA DA TABELA ---
         async function loadEstablishments() {
             const listDiv = document.getElementById('establishmentsList');
-            listDiv.innerHTML = '<p>A carregar...</p>';
+            listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><p>A carregar...</p></td></tr>';
             try {
                 allEstablishments = await apiCall('/api/admin/establishments');
                 renderEstablishmentsTable();
             } catch (error) {
-                listDiv.innerHTML = '<p class="text-red-500">Erro ao carregar estabelecimentos.</p>';
+                listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><p class="text-red-500">Erro ao carregar estabelecimentos.</p></td></tr>';
             }
         }
         
@@ -582,58 +648,76 @@
                     }
 
                     return `
-                        <div class="bg-white rounded-lg shadow p-4 flex flex-col cursor-pointer transition-transform hover:scale-105" data-action="edit" data-id="${est.id}">
-                            <div class="flex-grow">
-                                <h3 class="font-bold text-gray-900">${est.name}</h3>
-                                <p class="text-xs text-gray-500 font-mono">${est.id}</p>
-                                <div class="mt-3 pt-3 border-t">
-                                    <p class="text-sm"><span class="font-semibold">Plano:</span> ${planName}</p>
-                                    <p class="text-sm"><span class="font-semibold">Expira em:</span> ${expiryDate}</p>
-                                </div>
-                            </div>
-                            <div class="mt-4 flex justify-between items-center">
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${subStatusClass}">${subStatus}</span>
-                                <label class="flex items-center cursor-pointer" onclick="event.stopPropagation();">
+                        <!-- NOVO HTML: Linha de Tabela (clicável para edição) -->
+                        <tr class="hover:bg-indigo-50 cursor-pointer establishment-row" data-action="edit" data-id="${est.id}">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">${est.name}</div>
+                                <div class="text-xs text-gray-500 font-mono">${est.id}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${planName}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${expiryDate}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${subStatusClass}">${subStatus}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <!-- Toggle de Status (a área de clique é o label) -->
+                                <label class="flex items-center justify-end cursor-pointer toggle-label" data-id="${est.id}">
                                   <div class="relative">
                                     <input type="checkbox" data-id="${est.id}" class="toggle-status-btn sr-only" ${isActive ? 'checked' : ''}>
                                     <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
                                     <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
                                   </div>
                                 </label>
-                            </div>
-                        </div>
+                            </td>
+                        </tr>
                     `;
                 }).join('');
             } else {
-                listDiv.innerHTML = `<p class="col-span-full text-center p-4">Nenhum estabelecimento encontrado.</p>`;
+                listDiv.innerHTML = `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
             }
         }
 
         async function handleTableActions(e) {
             const target = e.target;
-            const card = target.closest('[data-action="edit"]');
-            const toggle = target.closest('.toggle-status-btn');
+            const toggleInput = target.closest('.toggle-status-btn');
+            const editRow = target.closest('tr[data-action="edit"]');
 
-            if (toggle) {
-                const establishmentId = toggle.dataset.id;
-                const newStatus = toggle.checked ? 'active' : 'inactive';
+            if (toggleInput) {
+                // Clique no toggle.
+                // Evita que o clique na linha também seja processado.
+                e.stopPropagation();
+
+                const establishmentId = toggleInput.dataset.id;
+                const statusToSubmit = toggleInput.checked ? 'inactive' : 'active';
+                
+                // Mantenha o estado visual atual até a resposta da API
+                toggleInput.checked = !toggleInput.checked; 
+
                 try {
                     await apiCall(`/api/admin/establishments/${establishmentId}/status`, {
                         method: 'PATCH',
-                        body: JSON.stringify({ status: newStatus }),
+                        body: JSON.stringify({ status: statusToSubmit }),
                     });
-                    showToast(`Status de ${establishmentId} atualizado.`, 'success');
-                    const index = allEstablishments.findIndex(e => e.id === establishmentId);
-                    if (index > -1) allEstablishments[index].status = newStatus;
-                    loadDashboardData();
+                    
+                    showToast(`Status de ${establishmentId} atualizado para ${statusToSubmit}.`, 'success');
+                    // A recarga é vital para que a lista seja a fonte da verdade
+                    loadEstablishments(); 
                 } catch (error) {
+                    // Reverte o estado visual em caso de falha
+                    toggleInput.checked = !toggleInput.checked; 
                     showToast(`Erro ao atualizar status: ${error.message}`, 'error');
-                    target.checked = !target.checked;
+                    loadEstablishments(); 
                 }
-            } else if (card) {
-                const establishmentId = card.dataset.id;
+            } else if (editRow) {
+                // Clique na linha inteira.
+                const establishmentId = editRow.dataset.id;
                 const establishment = allEstablishments.find(est => est.id === establishmentId);
-                if (establishment) openModal(establishment);
+                
+                if (establishment) {
+                    openModal(establishment);
+                } else {
+                    showToast('Erro: Estabelecimento não encontrado.', 'error');
+                }
             }
         }
         
@@ -789,17 +873,5 @@
         }
 
     </script>
-    <style>
-        .dot { transition: transform .2s ease-in-out; }
-        input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
-        input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
-        @keyframes fade-in-out {
-            0% { opacity: 0; transform: translateY(20px); } 10% { opacity: 1; transform: translateY(0); }
-            90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); }
-        }
-        .animate-fade-in-out {
-            animation: fade-in-out 3s ease-in-out forwards;
-        }
-    </style>
 </body>
 </html>

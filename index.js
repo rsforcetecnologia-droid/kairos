@@ -81,15 +81,17 @@ app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRout
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
-// As rotas internas com verifyToken/hasAccess também terão a checagem de assinatura
-app.use('/api/appointments', verifyToken, checkSubscription, appointmentRoutes); 
-app.use('/api/establishments', verifyToken, checkSubscription, establishmentRoutes);
-app.use('/api/professionals', verifyToken, checkSubscription, professionalRoutes);
-app.use('/api/services', verifyToken, checkSubscription, serviceRoutes);
+// **CORRIGIDO:** Remoção de 'verifyToken' e 'checkSubscription' para permitir que rotas públicas funcionem.
+// A proteção deve ser aplicada DENTRO de cada arquivo de rota.
+app.use('/api/appointments', appointmentRoutes); 
+app.use('/api/establishments', establishmentRoutes);
+app.use('/api/professionals', professionalRoutes);
+app.use('/api/services', serviceRoutes);
 
 // 5. Rotas Públicas (não precisam de verificação de token, mas a disponibilidade sim)
+// **CORRIGIDO:** Remoção de 'addFirebaseInstances' duplicado.
 app.use('/api/availability', availabilityRoutes);
-app.use('/api/client-portal', addFirebaseInstances, clientPortalRoutes);
+app.use('/api/client-portal', clientPortalRoutes);
 
 
 // --- ROTAS PARA SERVIR AS PÁGINAS HTML ---
