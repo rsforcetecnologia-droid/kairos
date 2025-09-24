@@ -137,7 +137,7 @@
                             </button>
                         </div>
                     </div>
-                    <div id="establishmentsList" class="overflow-x-auto"></div>
+                    <div id="establishmentsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
                 </section>
 
                 <section id="plans-section" class="hidden">
@@ -547,23 +547,14 @@
         }
         
         function renderEstablishmentsTable() {
+            const listDiv = document.getElementById('establishmentsList');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const filtered = allEstablishments.filter(est => 
                 est.name.toLowerCase().includes(searchTerm) || est.id.toLowerCase().includes(searchTerm)
             );
-
-            let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
-                    <th class="px-6 py-3">Nome / ID</th>
-                    <th class="px-6 py-3">Plano</th>
-                    <th class="px-6 py-3">Expira em</th>
-                    <th class="px-6 py-3">Status Assinatura</th>
-                    <th class="px-6 py-3">Estado</th>
-                    <th class="px-6 py-3">Ações</th>
-                </tr></thead><tbody>`;
-            
+        
             if (filtered.length > 0) {
-                filtered.forEach(est => {
+                listDiv.innerHTML = filtered.map(est => {
                     const isActive = est.status === 'active';
                     const planName = allPlans.find(p => p.id === est.subscription?.planId)?.name || 'N/A';
                     
@@ -576,7 +567,7 @@
                     if (expiryDateRaw) {
                         const today = new Date();
                         const gracePeriodEnd = new Date(expiryDateRaw);
-                        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + GRACE_PERIOD_DAYS); // Usa a constante GRACE_PERIOD_DAYS
+                        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + GRACE_PERIOD_DAYS);
 
                         if (today > gracePeriodEnd) {
                             subStatus = 'BLOQUEADO';
@@ -590,48 +581,42 @@
                         }
                     }
 
-                    tableHTML += `
-                        <tr class="bg-white border-b hover:bg-gray-50">
-                            <td class="px-6 py-4 font-medium text-gray-900">
-                                ${est.name}<br>
-                                <span class="font-mono text-xs text-gray-500">${est.id}</span>
-                            </td>
-                             <td class="px-6 py-4 text-gray-600">${planName}</td>
-                            <td class="px-6 py-4 text-gray-600">${expiryDate}</td>
-                            <td class="px-6 py-4">
+                    return `
+                        <div class="bg-white rounded-lg shadow p-4 flex flex-col cursor-pointer transition-transform hover:scale-105" data-action="edit" data-id="${est.id}">
+                            <div class="flex-grow">
+                                <h3 class="font-bold text-gray-900">${est.name}</h3>
+                                <p class="text-xs text-gray-500 font-mono">${est.id}</p>
+                                <div class="mt-3 pt-3 border-t">
+                                    <p class="text-sm"><span class="font-semibold">Plano:</span> ${planName}</p>
+                                    <p class="text-sm"><span class="font-semibold">Expira em:</span> ${expiryDate}</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 flex justify-between items-center">
                                 <span class="px-2 py-1 text-xs font-semibold rounded-full ${subStatusClass}">${subStatus}</span>
-                            </td>
-                            <td class="px-6 py-4">
-                                <label class="flex items-center cursor-pointer">
+                                <label class="flex items-center cursor-pointer" onclick="event.stopPropagation();">
                                   <div class="relative">
                                     <input type="checkbox" data-id="${est.id}" class="toggle-status-btn sr-only" ${isActive ? 'checked' : ''}>
                                     <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
                                     <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
                                   </div>
                                 </label>
-                            </td>
-                             <td class="px-6 py-4 flex gap-4">
-                                <button data-action="edit" data-id="${est.id}" class="font-medium text-indigo-600 hover:underline">Gerir</button>
-                                <a href="/?id=${est.id}" target="_blank" class="font-medium text-blue-600 hover:underline">Painel</a>
-                                <a href="/agendar?id=${est.id}" target="_blank" class="font-medium text-blue-600 hover:underline">Cliente</a>
-                            </td>
-                        </tr>`;
-                });
+                            </div>
+                        </div>
+                    `;
+                }).join('');
             } else {
-                tableHTML += `<tr><td colspan="6" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
+                listDiv.innerHTML = `<p class="col-span-full text-center p-4">Nenhum estabelecimento encontrado.</p>`;
             }
-            tableHTML += '</tbody></table>';
-            document.getElementById('establishmentsList').innerHTML = tableHTML;
         }
 
         async function handleTableActions(e) {
             const target = e.target;
-            // Tenta encontrar o botão de editar primeiro
-            const editButton = target.closest('[data-action="edit"]');
+            const card = target.closest('[data-action="edit"]');
+            const toggle = target.closest('.toggle-status-btn');
 
-            if (target.classList.contains('toggle-status-btn')) {
-                const establishmentId = target.dataset.id;
-                const newStatus = target.checked ? 'active' : 'inactive';
+            if (toggle) {
+                const establishmentId = toggle.dataset.id;
+                const newStatus = toggle.checked ? 'active' : 'inactive';
                 try {
                     await apiCall(`/api/admin/establishments/${establishmentId}/status`, {
                         method: 'PATCH',
@@ -645,8 +630,8 @@
                     showToast(`Erro ao atualizar status: ${error.message}`, 'error');
                     target.checked = !target.checked;
                 }
-            } else if (editButton) {
-                 const establishmentId = editButton.dataset.id;
+            } else if (card) {
+                const establishmentId = card.dataset.id;
                 const establishment = allEstablishments.find(est => est.id === establishmentId);
                 if (establishment) openModal(establishment);
             }
