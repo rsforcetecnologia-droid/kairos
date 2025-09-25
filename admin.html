@@ -86,6 +86,12 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
                     <span class="sidebar-text">Estabelecimentos</span>
                 </a>
+                <a href="#trash" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-gray-300 hover:bg-gray-700 font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m-7-10V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span class="sidebar-text">Lixeira</span>
+                </a>
                 <a href="#plans" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-gray-300 hover:bg-gray-700 font-semibold">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.25-10.75a.75.75 0 000 1.5h7.5a.75.75 0 000-1.5h-7.5zM6 8.5h8a1 1 0 100-2H6a1 1 0 000 2z" clip-rule="evenodd" /></svg>
                     <span class="sidebar-text">Gerir Planos</span>
@@ -123,9 +129,29 @@
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiração</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Assinatura</th>
                                         <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ativo (App)</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="establishmentsList" class="bg-white divide-y divide-gray-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="trash-section" class="hidden">
+                    <h2 class="text-2xl font-semibold text-gray-700 mb-4">Lixeira</h2>
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome/ID</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data de Exclusão</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trashList" class="bg-white divide-y divide-gray-200">
                                 </tbody>
                             </table>
                         </div>
@@ -270,10 +296,9 @@
         
         let idToken = null;
         let allEstablishments = [];
+        let trashedEstablishments = [];
         let allPlans = [];
 
-        // ### ATUALIZAÇÃO IMPORTANTE ###
-        // Adicionando os módulos que faltavam à definição
         const additionalModulesDefinition = {
             'agenda': 'Agenda / Calendário',
             'comandas': 'Comandas / PDV',
@@ -367,6 +392,10 @@
                     
                     document.getElementById('pageTitle').textContent = link.querySelector('.sidebar-text').textContent;
                     document.getElementById(targetId + '-section').classList.remove('hidden');
+
+                    if (targetId === 'trash') {
+                        loadTrash();
+                    }
                 });
             });
         }
@@ -407,7 +436,7 @@
                 const result = await response.json().catch(() => ({ message: response.statusText }));
                 throw new Error(result.message || 'Ocorreu um erro.');
             }
-            if (response.status === 204) return null;
+            if (response.status === 204 || response.headers.get('content-length') === '0') return null;
             return response.json();
         }
         
@@ -533,15 +562,15 @@
         
         async function loadEstablishments() {
             const listDiv = document.getElementById('establishmentsList');
-            listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
+            listDiv.innerHTML = '<tr><td colspan="6" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
             try {
                 allEstablishments = await apiCall('/api/admin/establishments');
                 renderEstablishmentsTable();
             } catch (error) {
-                listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><p class="text-red-500">Erro ao carregar estabelecimentos.</p></td></tr>';
+                listDiv.innerHTML = '<tr><td colspan="6" class="text-center p-4"><p class="text-red-500">Erro ao carregar estabelecimentos.</p></td></tr>';
             }
         }
-        
+
         function renderEstablishmentsTable() {
             const listDiv = document.getElementById('establishmentsList');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
@@ -578,8 +607,8 @@
                     }
 
                     return `
-                        <tr class="hover:bg-indigo-50 cursor-pointer" data-action="edit-establishment" data-id="${est.id}">
-                            <td class="px-6 py-4 whitespace-nowrap">
+                        <tr class="hover:bg-indigo-50">
+                            <td class="px-6 py-4 whitespace-nowrap cursor-pointer" data-action="edit-establishment" data-id="${est.id}">
                                 <div class="text-sm font-medium text-gray-900">${est.name}</div>
                                 <div class="text-xs text-gray-500 font-mono">${est.id}</div>
                             </td>
@@ -597,11 +626,48 @@
                                   </div>
                                 </label>
                             </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button data-action="delete-establishment" data-id="${est.id}" class="text-red-600 hover:text-red-900">Lixeira</button>
+                            </td>
                         </tr>
                     `;
                 }).join('');
             } else {
-                listDiv.innerHTML = `<tr><td colspan="5" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
+                listDiv.innerHTML = `<tr><td colspan="6" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
+            }
+        }
+        
+        async function loadTrash() {
+            const trashList = document.getElementById('trashList');
+            trashList.innerHTML = '<tr><td colspan="3" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
+            try {
+                trashedEstablishments = await apiCall('/api/admin/establishments?includeDeleted=true');
+                renderTrashTable();
+            } catch (error) {
+                trashList.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-red-500">Erro ao carregar lixeira.</td></tr>';
+            }
+        }
+
+        function renderTrashTable() {
+            const trashList = document.getElementById('trashList');
+            if (trashedEstablishments.length > 0) {
+                trashList.innerHTML = trashedEstablishments.map(est => {
+                    const deletedDate = est.deletedAt ? new Date(est.deletedAt._seconds * 1000).toLocaleDateString('pt-BR') : 'N/A';
+                    return `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">${est.name}</div>
+                                <div class="text-xs text-gray-500 font-mono">${est.id}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${deletedDate}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-4">
+                                <button data-action="restore-establishment" data-id="${est.id}" class="text-green-600 hover:text-green-900">Restaurar</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                trashList.innerHTML = `<tr><td colspan="3" class="text-center p-4">Lixeira vazia.</td></tr>`;
             }
         }
 
@@ -643,6 +709,31 @@
                     } catch (error) {
                         showToast(`Erro ao atualizar status: ${error.message}`, 'error');
                         loadEstablishments(); 
+                    }
+                    break;
+                }
+                case 'delete-establishment': {
+                    if (confirm('Tem certeza que deseja mover este estabelecimento para a lixeira?')) {
+                        try {
+                            await apiCall(`/api/admin/establishments/${id}`, { method: 'DELETE' });
+                            showToast('Estabelecimento movido para a lixeira!', 'success');
+                            loadEstablishments();
+                        } catch (error) {
+                            showToast(`Erro: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
+                }
+                case 'restore-establishment': {
+                    if (confirm('Tem certeza que deseja restaurar este estabelecimento?')) {
+                        try {
+                            await apiCall(`/api/admin/establishments/${id}/restore`, { method: 'POST' });
+                            showToast('Estabelecimento restaurado!', 'success');
+                            loadTrash();
+                            loadEstablishments();
+                        } catch (error) {
+                            showToast(`Erro: ${error.message}`, 'error');
+                        }
                     }
                     break;
                 }

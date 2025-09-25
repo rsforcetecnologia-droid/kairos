@@ -184,7 +184,6 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // ### NOVO: Paleta de cores espelhada do painel de gestão ###
             const colorThemes = {
                 indigo: { main: '#4f46e5', light: '#e0e7ff', dark: '#4338ca', text: '#ffffff' },
                 rose: { main: '#e11d48', light: '#ffe4e6', dark: '#be123c', text: '#ffffff' },
@@ -193,7 +192,6 @@
                 amber: { main: '#d97706', light: '#fef3c7', dark: '#b45309', text: '#1f2937' },
             };
 
-            // ### NOVA FUNÇÃO ###
             function applyTheme(themeKey) {
                 const theme = colorThemes[themeKey] || colorThemes.indigo;
                 const root = document.documentElement;
@@ -207,39 +205,6 @@
             const API_BASE_URL = window.location.origin;
             const urlParams = new URLSearchParams(window.location.search);
             const ESTABLISHMENT_ID = urlParams.get('id');
-            // ... resto do seu código JavaScript existente ...
-            
-            // ### DENTRO da função `loadEstablishmentDetails` ###
-            const loadEstablishmentDetails = async () => {
-                try {
-                    const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}/details`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || `HTTP error! status: ${response.status}`);
-                    }
-                    const data = await response.json();
-
-                    // ### NOVO: Aplica o tema aqui ###
-                    applyTheme(data.themeColor); 
-
-                    establishmentNameEl.innerHTML = data.name || 'Nome do Estabelecimento';
-                    establishmentNameEl.querySelector('div')?.remove();
-                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Simples, rápido e à sua medida.';
-                    if (data.logo) {
-                        logoContainer.classList.remove('bg-gray-200', 'animate-pulse');
-                        establishmentLogoEl.src = data.logo;
-                        establishmentLogoEl.classList.remove('opacity-0');
-                    } else {
-                        logoContainer.classList.remove('animate-pulse');
-                    }
-                } catch(error) {
-                    // ... resto do seu catch block ...
-                }
-            };
-            
-            // O restante do seu código JavaScript permanece o mesmo.
-            // Apenas a função `loadEstablishmentDetails` precisa da adição da linha `applyTheme(data.themeColor);`
-            // e as novas definições (colorThemes, applyTheme) no início do script.
             
             let currentWeekStart = getStartOfWeek(new Date());
             let allServicesData = [];
@@ -475,6 +440,32 @@
                     }
                 }
             });
+            
+            const loadEstablishmentDetails = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}/details`);
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.message || `HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+
+                    applyTheme(data.themeColor); 
+
+                    establishmentNameEl.innerHTML = data.name || 'Nome do Estabelecimento';
+                    establishmentNameEl.querySelector('div')?.remove();
+                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Simples, rápido e à sua medida.';
+                    if (data.logo) {
+                        logoContainer.classList.remove('bg-gray-200', 'animate-pulse');
+                        establishmentLogoEl.src = data.logo;
+                        establishmentLogoEl.classList.remove('opacity-0');
+                    } else {
+                        logoContainer.classList.remove('animate-pulse');
+                    }
+                } catch(error) {
+                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-lg"><h2 class="text-2xl font-bold text-red-600 mb-2">Ops! Algo deu errado.</h2><p class="text-gray-700">${error.message || 'Não foi possível carregar os dados do estabelecimento.'}</p></div></div>`;
+                }
+            };
             
             const loadServices = async () => {
                 servicesContainer.innerHTML = '<p class="col-span-full text-gray-500">A carregar serviços...</p>';
@@ -731,8 +722,10 @@
                 timeSlotsContainer.innerHTML = '<p class="col-span-full text-gray-500 text-center">Selecione um dia para ver os horários.</p>';
             });
 
-            loadEstablishmentDetails();
-            loadServices();
+            loadEstablishmentDetails().then(() => {
+                // Só carrega os serviços se os detalhes do estabelecimento foram carregados com sucesso
+                loadServices();
+            });
         });
     </script>
 </body>

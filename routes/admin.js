@@ -40,8 +40,6 @@ router.get('/dashboard-stats', async (req, res) => {
     }
 });
 
-// ### ROTA ATUALIZADA E CORRIGIDA ###
-// Adiciona um período de cortesia de 7 dias se nenhuma assinatura for definida.
 router.post('/establishments', async (req, res) => {
     const { establishmentId, name, ownerEmail, ownerPassword, modules, subscription } = req.body;
     if (!establishmentId || !name || !ownerEmail || !ownerPassword) {
@@ -64,20 +62,18 @@ router.post('/establishments', async (req, res) => {
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
-        // Verifica se uma assinatura foi enviada; caso contrário, cria uma de cortesia
         if (subscription && subscription.planId && subscription.expiryDate) {
             establishmentData.subscription = {
                 planId: subscription.planId,
                 expiryDate: admin.firestore.Timestamp.fromDate(new Date(subscription.expiryDate))
             };
         } else {
-            // Cria um período de cortesia de 7 dias por padrão
             const trialDays = 7;
             const expiryDate = new Date();
             expiryDate.setDate(expiryDate.getDate() + trialDays);
             
             establishmentData.subscription = {
-                planId: 'trial', // Identifica como um período de cortesia
+                planId: 'trial',
                 expiryDate: admin.firestore.Timestamp.fromDate(expiryDate)
             };
         }
@@ -99,7 +95,17 @@ router.post('/establishments', async (req, res) => {
 router.get('/establishments', async (req, res) => {
     try {
         const { db } = req;
-        const snapshot = await db.collection('establishments').orderBy('createdAt', 'desc').get();
+        const { includeDeleted } = req.query;
+
+        let query = db.collection('establishments');
+
+        if (includeDeleted === 'true') {
+            query = query.where('status', '==', 'deleted');
+        } else {
+            query = query.where('status', 'in', ['active', 'inactive']);
+        }
+
+        const snapshot = await query.orderBy('createdAt', 'desc').get();
         if (snapshot.empty) return res.status(200).json([]);
         
         const establishments = snapshot.docs.map(doc => {
@@ -116,6 +122,60 @@ router.get('/establishments', async (req, res) => {
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+
+router.delete('/establishments/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { db, auth } = req;
+        const establishmentRef = db.collection('establishments').doc(id);
+        const doc = await establishmentRef.get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+
+        const establishment = doc.data();
+        if (establishment.ownerUid) {
+            await auth.updateUser(establishment.ownerUid, { disabled: true });
+        }
+
+        await establishmentRef.update({
+            status: 'deleted',
+            deletedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        res.status(200).json({ message: 'Estabelecimento movido para a lixeira.' });
+    } catch (error) {
+        console.error("Erro ao mover para lixeira:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+router.post('/establishments/:id/restore', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { db, auth } = req;
+        const establishmentRef = db.collection('establishments').doc(id);
+        const doc = await establishmentRef.get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+
+        const establishment = doc.data();
+        if (establishment.ownerUid) {
+            await auth.updateUser(establishment.ownerUid, { disabled: false });
+        }
+
+        await establishmentRef.update({
+            status: 'active',
+            deletedAt: admin.firestore.FieldValue.delete()
+        });
+        res.status(200).json({ message: 'Estabelecimento restaurado com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao restaurar estabelecimento:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
 
 router.put('/establishments/:id/details', async (req, res) => {
     const { id } = req.params;
@@ -166,16 +226,28 @@ router.patch('/establishments/:id/status', async (req, res) => {
         
         const establishment = doc.data();
         const shouldBeDisabled = status === 'inactive';
-
-        if (establishment.ownerUid) {
-            await auth.updateUser(establishment.ownerUid, {
-                disabled: shouldBeDisabled
-            });
-        }
         
+        const allUsersToUpdate = [];
+
+        // Adiciona o dono à lista de usuários para atualizar
+        if (establishment.ownerUid) {
+            allUsersToUpdate.push(establishment.ownerUid);
+        }
+
+        // Busca todos os funcionários do estabelecimento
+        const employeesSnapshot = await db.collection('users').where('establishmentId', '==', id).get();
+        employeesSnapshot.forEach(employeeDoc => {
+            allUsersToUpdate.push(employeeDoc.id);
+        });
+
+        // Atualiza todos os usuários (dono e funcionários) em paralelo
+        const userUpdatePromises = allUsersToUpdate.map(uid => auth.updateUser(uid, { disabled: shouldBeDisabled }));
+        await Promise.all(userUpdatePromises);
+        
+        // Atualiza o status do estabelecimento
         await establishmentRef.update({ status: status });
         
-        res.status(200).json({ message: `Estabelecimento ${id} foi atualizado para ${status} e o acesso do dono foi ${shouldBeDisabled ? 'bloqueado' : 'liberado'}.` });
+        res.status(200).json({ message: `Estabelecimento ${id} e todos os seus ${allUsersToUpdate.length} usuários foram ${status === 'active' ? 'ativados' : 'inativados'}.` });
     } catch (error) {
         console.error("Erro ao atualizar status:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
@@ -195,7 +267,7 @@ router.post('/users', async (req, res) => {
     } catch (error) {
         console.error("Erro ao criar utilizador:", error);
         if (error.code === 'auth/email-already-exists') {
-            return res.status(409).json({ message: 'Este e-mail já está em uso.' });
+            return res.status(409).json({ message: 'Este e-mail já está sendo utilizado.' });
         }
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }

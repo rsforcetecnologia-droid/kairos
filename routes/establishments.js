@@ -11,7 +11,16 @@ router.get('/:establishmentId/details', async (req, res) => {
         if (!doc.exists) {
             return res.status(404).json({ message: "Estabelecimento não encontrado." });
         }
-        res.status(200).json(doc.data());
+        
+        const establishmentData = doc.data();
+
+        // NOVO: Verificação de status
+        // Se o estabelecimento não estiver ativo, bloqueia o acesso público.
+        if (establishmentData.status !== 'active') {
+            return res.status(403).json({ message: "Este estabelecimento não está disponível no momento." });
+        }
+
+        res.status(200).json(establishmentData);
     } catch (error) {
         console.error("Erro ao buscar detalhes do estabelecimento:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
@@ -25,7 +34,6 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
         const data = req.body;
         const { db } = req;
         
-        // Garante que um dono só pode editar o seu próprio estabelecimento
         if (req.user.establishmentId !== establishmentId) {
             return res.status(403).json({ message: 'Acesso negado. Você não tem permissão para editar este estabelecimento.' });
         }
@@ -39,5 +47,4 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
     }
 });
 
-// ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;
