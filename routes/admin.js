@@ -1,10 +1,7 @@
-// rsforcetecnologia-droid/kairos/kairos-811fe58112b31559881f3b56a0d30afb240f49fc/routes/admin.js
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// --- MÓDULOS PADRÃO PARA NOVOS ESTABELECIMENTOS ---
-// Define todos os módulos disponíveis e os ativa por defeito ao criar um novo cliente.
 const defaultModules = {
     agenda: true,
     comandas: true,
@@ -20,7 +17,6 @@ const defaultModules = {
     mobileApp: true
 };
 
-// NOVO: Endpoint para estatísticas do Dashboard
 router.get('/dashboard-stats', async (req, res) => {
     try {
         const { db } = req;
@@ -44,10 +40,10 @@ router.get('/dashboard-stats', async (req, res) => {
     }
 });
 
-
-// ATUALIZADO: Criar estabelecimento e dono, agora com módulos
+// ### ROTA ATUALIZADA E CORRIGIDA ###
+// Adiciona um período de cortesia de 7 dias se nenhuma assinatura for definida.
 router.post('/establishments', async (req, res) => {
-    const { establishmentId, name, ownerEmail, ownerPassword, modules } = req.body;
+    const { establishmentId, name, ownerEmail, ownerPassword, modules, subscription } = req.body;
     if (!establishmentId || !name || !ownerEmail || !ownerPassword) {
         return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
     }
@@ -59,15 +55,34 @@ router.post('/establishments', async (req, res) => {
             displayName: name,
         });
 
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        await establishmentRef.set({
+        const establishmentData = {
             name: name,
             ownerUid: userRecord.uid,
-            ownerEmail: ownerEmail, // Salva o email para fácil referência
+            ownerEmail: ownerEmail,
             status: 'active',
-            modules: modules || defaultModules, // Salva os módulos
+            modules: modules || defaultModules,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
+
+        // Verifica se uma assinatura foi enviada; caso contrário, cria uma de cortesia
+        if (subscription && subscription.planId && subscription.expiryDate) {
+            establishmentData.subscription = {
+                planId: subscription.planId,
+                expiryDate: admin.firestore.Timestamp.fromDate(new Date(subscription.expiryDate))
+            };
+        } else {
+            // Cria um período de cortesia de 7 dias por padrão
+            const trialDays = 7;
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + trialDays);
+            
+            establishmentData.subscription = {
+                planId: 'trial', // Identifica como um período de cortesia
+                expiryDate: admin.firestore.Timestamp.fromDate(expiryDate)
+            };
+        }
+        
+        await db.collection('establishments').doc(establishmentId).set(establishmentData);
         
         await auth.setCustomUserClaims(userRecord.uid, { role: 'owner', establishmentId: establishmentId });
 
@@ -81,7 +96,6 @@ router.post('/establishments', async (req, res) => {
     }
 });
 
-// ATUALIZADO: Listar todos os estabelecimentos com mais detalhes
 router.get('/establishments', async (req, res) => {
     try {
         const { db } = req;
@@ -93,7 +107,6 @@ router.get('/establishments', async (req, res) => {
             return { 
                 id: doc.id, 
                 ...data,
-                // Garante que o campo `modules` exista para compatibilidade
                 modules: data.modules || defaultModules 
             };
         });
@@ -104,11 +117,9 @@ router.get('/establishments', async (req, res) => {
     }
 });
 
-// NOVO: Rota para atualizar apenas o nome do estabelecimento
 router.put('/establishments/:id/details', async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
-    console.log(`[ADMIN-UPDATE] PUT /establishments/${id}/details - Received name: ${name}`); // LOG DE DEBUG
     if (!name) return res.status(400).json({ message: "O nome é obrigatório." });
 
     try {
@@ -122,11 +133,9 @@ router.put('/establishments/:id/details', async (req, res) => {
 });
 
 
-// NOVO: Rota para atualizar os módulos de um estabelecimento
 router.patch('/establishments/:id/modules', async (req, res) => {
     const { id } = req.params;
     const { modules } = req.body;
-    console.log(`[ADMIN-UPDATE] PATCH /establishments/${id}/modules - Received module keys: ${Object.keys(modules || {}).join(', ')}`); // LOG DE DEBUG
 
     if (!modules || typeof modules !== 'object') {
         return res.status(400).json({ message: "O campo 'modules' deve ser um objeto." });
@@ -141,7 +150,6 @@ router.patch('/establishments/:id/modules', async (req, res) => {
     }
 });
 
-// Atualizar status do estabelecimento (active/inactive)
 router.patch('/establishments/:id/status', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
@@ -149,19 +157,31 @@ router.patch('/establishments/:id/status', async (req, res) => {
         return res.status(400).json({ message: "O status deve ser 'active' ou 'inactive'." });
     }
     try {
-        const { db } = req;
-        await db.collection('establishments').doc(id).update({ status: status });
-        res.status(200).json({ message: `Estabelecimento ${id} foi atualizado para ${status}.` });
+        const { db, auth } = req;
+        const establishmentRef = db.collection('establishments').doc(id);
+        const doc = await establishmentRef.get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+        
+        const establishment = doc.data();
+        const shouldBeDisabled = status === 'inactive';
+
+        if (establishment.ownerUid) {
+            await auth.updateUser(establishment.ownerUid, {
+                disabled: shouldBeDisabled
+            });
+        }
+        
+        await establishmentRef.update({ status: status });
+        
+        res.status(200).json({ message: `Estabelecimento ${id} foi atualizado para ${status} e o acesso do dono foi ${shouldBeDisabled ? 'bloqueado' : 'liberado'}.` });
     } catch (error) {
         console.error("Erro ao atualizar status:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
-
-// --- Rotas de gestão de utilizadores (mantidas como estavam) ---
-
-// Criar novo super admin
 router.post('/users', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -181,7 +201,6 @@ router.post('/users', async (req, res) => {
     }
 });
 
-// Listar super admins
 router.get('/users', async (req, res) => {
     try {
         const { auth } = req;
@@ -200,7 +219,6 @@ router.get('/users', async (req, res) => {
     }
 });
 
-// Deletar super admin
 router.delete('/users/:uid', async (req, res) => {
     const { uid } = req.params;
     const requestingUserUid = req.user.uid;

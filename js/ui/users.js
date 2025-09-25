@@ -1,17 +1,15 @@
 // js/ui/users.js
 
-// --- 1. IMPORTAÇÕES ---
 import * as usersApi from '../api/users.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 
-// --- 2. CONSTANTES E VARIÁVEIS ---
 const contentDiv = document.getElementById('content');
 const modules = {
     'agenda-section': 'Agenda',
     'comandas-section': 'Comandas',
     'relatorios-section': 'Relatórios',
-    'financial-section': 'Financeiro', // <-- LINHA ADICIONADA
+    'financial-section': 'Financeiro',
     'servicos-section': 'Serviços',
     'produtos-section': 'Produtos',
     'profissionais-section': 'Profissionais',
@@ -25,23 +23,30 @@ const permissions = {
     edit: 'Editar'
 };
 
-// --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
+// ### CORREÇÃO: Variáveis para guardar a referência dos listeners ###
+let usersPageClickListener = null;
+let usersPageChangeListener = null;
 
 function renderUsersList(users) {
     const listContainer = document.getElementById('usersListContainer');
     if (!listContainer) return;
 
+    const showAll = document.getElementById('showInactiveUsersToggle')?.checked;
     if (users.length === 0) {
-        listContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Nenhum usuário cadastrado.</p>';
+        const message = showAll ? 'Nenhum usuário encontrado.' : 'Nenhum usuário ativo cadastrado.';
+        listContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">${message}</p>`;
         return;
     }
+
+    users.sort((a, b) => (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1));
 
     listContainer.innerHTML = users.map(user => {
         const permissionCount = user.permissions ? Object.values(user.permissions).filter(p => p.view).length : 0;
         const userDataString = JSON.stringify(user).replace(/'/g, "&apos;");
+        const isActive = user.status === 'active';
 
         return `
-        <div class="bg-white rounded-lg shadow-md p-4 flex flex-col text-center transition-transform hover:scale-105">
+        <div class="bg-white rounded-lg shadow-md p-4 flex flex-col text-center transition-opacity ${!isActive ? 'opacity-60' : ''}">
             <div class="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto mb-3">
                 ${user.name.charAt(0).toUpperCase()}
             </div>
@@ -51,6 +56,12 @@ function renderUsersList(users) {
                 <p class="text-xs text-gray-400 mt-2 pt-2 border-t">Acesso a ${permissionCount} módulos</p>
             </div>
             <div class="mt-4 flex items-center justify-center gap-2">
+                <label class="flex items-center cursor-pointer" title="${isActive ? 'Ativo' : 'Inativo'}">
+                    <div class="relative">
+                        <input type="checkbox" data-action="toggle-user-status" data-user-id="${user.id}" class="sr-only" ${isActive ? 'checked' : ''}>
+                        <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                    </div>
+                </label>
                 <button data-action="edit-user" data-user='${userDataString}' class="text-gray-500 hover:text-blue-600 p-2 rounded-full transition-colors" title="Editar Permissões">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
                 </button>
@@ -60,6 +71,19 @@ function renderUsersList(users) {
             </div>
         </div>
     `}).join('');
+}
+
+function filterAndRenderUsers() {
+    const showAll = document.getElementById('showInactiveUsersToggle')?.checked;
+    
+    let filteredUsers;
+    if (showAll) {
+        filteredUsers = state.users;
+    } else {
+        filteredUsers = state.users.filter(user => user.status === 'active');
+    }
+    
+    renderUsersList(filteredUsers);
 }
 
 function renderPermissionsForm(currentPermissions = {}) {
@@ -145,7 +169,6 @@ async function showUserFormView(user = null) {
         </div>
     `;
 
-    // Listener para o formulário principal (nome e permissões)
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const permissions = {};
@@ -171,13 +194,12 @@ async function showUserFormView(user = null) {
                 await usersApi.createUser(userData);
                 showNotification('Usuário criado com sucesso!', 'success');
             }
-            loadUsersPage(); // Volta para a lista
+            loadUsersPage();
         } catch (error) {
             showNotification(`Erro: ${error.message}`, 'error');
         }
     });
 
-    // NOVO: Listeners para a secção de alteração de senha
     if (isEditing) {
         const passwordChangeContainer = form.querySelector('#password-change-container');
         const showPasswordBtn = passwordChangeContainer.querySelector('[data-action="show-password-form"]');
@@ -232,23 +254,28 @@ async function fetchAndRenderUsers() {
     try {
         const users = await usersApi.getUsers(state.establishmentId);
         state.users = users;
-        renderUsersList(users);
+        filterAndRenderUsers();
     } catch (error) {
         showNotification('Erro ao carregar usuários.', 'error');
         listContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Não foi possível carregar os usuários.</p>';
     }
 }
 
-// --- 4. FUNÇÃO PRINCIPAL ---
 export async function loadUsersPage() {
     contentDiv.innerHTML = `
         <div id="user-list-view">
             <section>
-                <div class="flex justify-between items-center mb-6">
+                <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
                     <h2 class="text-3xl font-bold text-gray-800">Usuários e Acessos</h2>
-                    <button data-action="new-user" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                        Novo Usuário
-                    </button>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" id="showInactiveUsersToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700">Mostrar Todos (inclui inativos)</span>
+                        </label>
+                        <button data-action="new-user" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                            Novo Usuário
+                        </button>
+                    </div>
                 </div>
                 <div id="usersListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
             </section>
@@ -264,12 +291,19 @@ export async function loadUsersPage() {
         </div>
     `;
 
-    contentDiv.addEventListener('click', async (e) => {
+    // ### CORREÇÃO: Gestão dos event listeners para evitar duplicação ###
+    if (usersPageClickListener) {
+        contentDiv.removeEventListener('click', usersPageClickListener);
+    }
+    if (usersPageChangeListener) {
+        contentDiv.removeEventListener('change', usersPageChangeListener);
+    }
+
+    usersPageClickListener = async (e) => {
         const button = e.target.closest('button[data-action]');
         if (!button) return;
 
         const action = button.dataset.action;
-
         switch (action) {
             case 'new-user':
                 showUserFormView();
@@ -296,7 +330,33 @@ export async function loadUsersPage() {
                 break;
             }
         }
-    });
+    };
+
+    usersPageChangeListener = async (e) => {
+        const toggle = e.target.closest('input[data-action="toggle-user-status"]');
+        if (e.target.id === 'showInactiveUsersToggle') {
+            filterAndRenderUsers();
+        } else if (toggle) {
+            const userId = toggle.dataset.userId;
+            const newStatus = toggle.checked ? 'active' : 'inactive';
+            
+            try {
+                await usersApi.updateUserStatus(userId, newStatus);
+                showNotification(`Usuário ${newStatus === 'active' ? 'ativado' : 'inativado'} com sucesso.`, 'success');
+                const userIndex = state.users.findIndex(u => u.id === userId);
+                if (userIndex > -1) {
+                    state.users[userIndex].status = newStatus;
+                    filterAndRenderUsers();
+                }
+            } catch (error) {
+                showNotification(`Erro ao atualizar status: ${error.message}`, 'error');
+                toggle.checked = !toggle.checked;
+            }
+        }
+    };
+    
+    contentDiv.addEventListener('click', usersPageClickListener);
+    contentDiv.addEventListener('change', usersPageChangeListener);
 
     await fetchAndRenderUsers();
 }

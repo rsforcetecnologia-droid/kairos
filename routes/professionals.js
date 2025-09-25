@@ -3,25 +3,74 @@ const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess } = require('../middlewares/auth');
 
-// Criar novo profissional (Rota Privada)
 router.post('/', verifyToken, hasAccess, async (req, res) => {
+    const { db } = req;
+    const { establishmentId } = req.user;
+    const { name, specialty, dob, cpf, services, workingHours, photo } = req.body;
+
+    if (!establishmentId || !name || !specialty) {
+        return res.status(400).json({ message: 'Os campos establishmentId, name e specialty são obrigatórios.' });
+    }
+
     try {
-        const { establishmentId, name, specialty, dob, cpf, services, workingHours, photo } = req.body;
-        if (!establishmentId || !name || !specialty) {
-            return res.status(400).json({ message: 'Os campos establishmentId, name e specialty são obrigatórios.' });
-        }
-        const { db } = req;
-        const newProfessional = {
-            establishmentId, name, specialty,
-            dob: dob || null, cpf: cpf || null, services: services || [],
-            workingHours: workingHours || {}, photo: photo || null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-        const docRef = await db.collection('professionals').add(newProfessional);
-        res.status(201).json({ message: 'Profissional criado com sucesso!', professionalId: docRef.id, data: newProfessional });
+        const establishmentRef = db.collection('establishments').doc(establishmentId);
+        // ### CORREÇÃO APLICADA AQUI ###
+        // A consulta agora considera ativos todos que NÃO são 'inactive'.
+        const professionalsRef = db.collection('professionals')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '!=', 'inactive');
+
+        await db.runTransaction(async (transaction) => {
+            const establishmentDoc = await transaction.get(establishmentRef);
+            if (!establishmentDoc.exists) {
+                throw new Error('Estabelecimento não encontrado.');
+            }
+
+            const subscription = establishmentDoc.data().subscription;
+            if (!subscription || !subscription.planId) {
+                throw new Error('Nenhum plano de assinatura ativo encontrado para este estabelecimento.');
+            }
+            
+            let planDoc;
+            if (subscription.planId === 'trial') {
+                planDoc = {
+                    exists: true,
+                    data: () => ({ maxProfessionals: 1, maxUsers: 1 })
+                };
+            } else {
+                planDoc = await transaction.get(db.collection('subscriptionPlans').doc(subscription.planId));
+            }
+            
+            if (!planDoc.exists) {
+                throw new Error('Plano de assinatura não encontrado ou inválido.');
+            }
+
+            const planLimits = planDoc.data();
+            const maxProfessionals = planLimits.maxProfessionals || 0;
+
+            const currentActiveProfessionalsSnapshot = await transaction.get(professionalsRef);
+            
+            if (currentActiveProfessionalsSnapshot.size >= maxProfessionals) {
+                throw new Error('Limite de profissionais ativos atingido para o seu plano.');
+            }
+            
+            const newProfessionalData = {
+                establishmentId, name, specialty,
+                dob: dob || null, cpf: cpf || null, services: services || [],
+                workingHours: workingHours || {}, photo: photo || null,
+                status: 'active',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            const newProfessionalRef = db.collection('professionals').doc();
+            transaction.set(newProfessionalRef, newProfessionalData);
+        });
+
+        res.status(201).json({ message: 'Profissional criado com sucesso!' });
+
     } catch (error) {
         console.error("Erro ao criar profissional:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(403).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
 
@@ -68,5 +117,4 @@ router.put('/:professionalId', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;

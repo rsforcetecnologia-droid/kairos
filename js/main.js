@@ -3,7 +3,6 @@ import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, query, where, onSnapshot, doc, getDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { state, setGlobalState } from './state.js';
-// NOVO: Importa a nova função do modal
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js'; 
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
@@ -20,9 +19,9 @@ import { loadEstablishmentPage } from './ui/establishment.js';
 import { loadAusenciasPage } from './ui/ausencias.js';
 import { loadUsersPage } from './ui/users.js';
 import { loadSalesReportPage } from './ui/salesReport.js';
-import { loadFinancialPage } from './ui/financial.js'; // <-- NOVA LINHA
+import { loadFinancialPage } from './ui/financial.js';
 
-// --- 2. REFERÊNCIAS AO DOM ---
+// --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
 const contentDiv = document.getElementById('content');
@@ -35,7 +34,15 @@ const profileDropdown = document.getElementById('profileDropdown');
 const profileName = document.getElementById('profileName');
 const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
-const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn'); // NOVO
+const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
+
+const colorThemes = {
+    indigo: { main: '#4f46e5', light: '#e0e7ff', text: 'white', hover: '#4338ca' },
+    rose: { main: '#e11d48', light: '#ffe4e6', text: 'white', hover: '#be123c' },
+    green: { main: '#16a34a', light: '#d1fae5', text: 'white', hover: '#15803d' },
+    sky: { main: '#0284c7', light: '#e0f2fe', text: 'white', hover: '#0369a1' },
+    amber: { main: '#d97706', light: '#fef3c7', text: '#1f2937', hover: '#b45309' },
+};
 
 let unsubscribeNotificationsListener = null;
 let notifications = [];
@@ -53,10 +60,40 @@ const pageLoader = {
     'ausencias-section': loadAusenciasPage,
     'users-section': loadUsersPage,
     'sales-report-section': loadSalesReportPage,
-    'financial-section': loadFinancialPage, // <-- NOVA LINHA
+    'financial-section': loadFinancialPage,
 };
 
-// --- 4. LÓGICA DE NOTIFICAÇÕES ---
+// --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
+
+// ### FUNÇÃO ATUALIZADA E CORRIGIDA ###
+function applyTheme(themeKey) {
+    const theme = colorThemes[themeKey] || colorThemes.indigo;
+    const styleSheet = document.getElementById('dynamic-theme-styles');
+    
+    // Converte a cor principal para RGBA para usar com transparência
+    const hexToRgb = (hex) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
+    };
+
+    const mainRgb = hexToRgb(theme.main);
+
+    // Garante que a cor do texto no link ativo seja legível
+    const activeLinkTextColor = (themeKey === 'amber') ? '#1f2937' : 'white';
+
+    // Gera o novo CSS com um estilo mais subtil
+    styleSheet.innerHTML = `
+        .sidebar-link.active { 
+            background-color: ${theme.main}; 
+            color: ${activeLinkTextColor}; 
+        }
+        .sidebar-link:not(.active):hover { 
+            background-color: rgba(${mainRgb}, 0.2); /* Cor principal com 20% de opacidade */
+        }
+    `;
+}
+
+
 function renderNotificationPanel() {
     const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -122,17 +159,11 @@ function setupRealtimeListeners(establishmentId) {
 
 // --- 5. FUNÇÃO DE NAVEGAÇÃO PRINCIPAL ---
 export function navigateTo(sectionId, params = {}) {
-    // **LÓGICA DE PERMISSÃO ATUALIZADA**
     const moduleKey = sectionId.replace('-section', '');
 
-    // Verifica se o módulo está habilitado para o estabelecimento.
-    // Se a propriedade for `false`, o módulo está explicitamente desativado. `undefined` (para estabelecimentos antigos) conta como ativo.
     const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
-
-    // Verifica se o usuário (se for funcionário) tem permissão para ver a seção. Donos (null) sempre têm.
     const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
     
-    // O acesso é negado se o módulo estiver desativado OU se for um funcionário sem permissão
     if (!isModuleEnabled || !hasEmployeePermission) {
         contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
         document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
@@ -165,7 +196,6 @@ function initialize() {
         }
     });
 
-    // NOVO: Listener para o botão de histórico de cancelamentos
     cancellationHistoryBtn.addEventListener('click', () => {
         openCancellationHistoryModal();
     });
@@ -199,9 +229,10 @@ function initialize() {
                 const claims = idTokenResult.claims;
                 if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
                     
-                    // **PASSO CRUCIAL: Buscar detalhes do estabelecimento, incluindo os módulos ativos**
                     const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
-                    state.enabledModules = establishmentDetails.modules; // Salva os módulos no estado global
+                    state.enabledModules = establishmentDetails.modules;
+                    
+                    applyTheme(establishmentDetails.themeColor);
 
                     let userPermissions = null;
                     let userName = user.displayName; 
@@ -251,7 +282,6 @@ function initialize() {
                         handleLogout();
                     });
 
-                    // Passa os módulos habilitados para a função de navegação
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
@@ -284,4 +314,3 @@ function initialize() {
 }
 
 initialize();
-

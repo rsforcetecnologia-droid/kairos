@@ -48,7 +48,7 @@ export const deleteUser = (userId) => {
 };
 
 /**
- * NOVO: Altera a senha de um usuário.
+ * Altera a senha de um usuário.
  * @param {string} userId - O ID do usuário.
  * @param {string} newPassword - A nova senha para o usuário.
  * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
@@ -57,5 +57,18 @@ export const changeUserPassword = (userId, newPassword) => {
     return authenticatedFetch(`/api/users/${userId}/password`, {
         method: 'PUT',
         body: JSON.stringify({ password: newPassword }),
+    });
+};
+
+/**
+ * ATUALIZADO: Atualiza o status (ativo/inativo) de um usuário.
+ * @param {string} userId - O ID do usuário.
+ * @param {string} status - O novo status ('active' ou 'inactive').
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ */
+export const updateUserStatus = (userId, status) => {
+    return authenticatedFetch(`/api/users/${userId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
     });
 };

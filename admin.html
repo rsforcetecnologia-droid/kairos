@@ -9,22 +9,40 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            display: none; /* Esconde o conteúdo até a autenticação ser verificada */
+            display: none; 
         }
-        .modal {
+        .modal { display: none; transition: opacity 0.3s ease; }
+        .modal.flex { display: flex; }
+
+        #sidebar {
+            width: 4.5rem; 
+            transition: width 0.3s ease-in-out;
+        }
+        #sidebar.expanded {
+            width: 16rem;
+        }
+        #sidebar:not(.expanded) .sidebar-text,
+        #sidebar:not(.expanded) .sidebar-header-text {
+            opacity: 0;
+            pointer-events: none;
+            width: 0;
+            overflow: hidden;
+        }
+        #sidebar:not(.expanded) .sidebar-link {
+            justify-content: center;
+        }
+        #sidebar:not(.expanded) .sidebar-link span {
             display: none;
-            transition: opacity 0.3s ease;
         }
-        .modal.flex {
-            display: flex;
+        #sidebarToggle {
+            transition: transform 0.3s ease-in-out;
         }
-        .kpi-card {
-            background-color: white;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border-left: 4px solid #4f46e5;
+        #sidebar.expanded #sidebarToggle {
+            transform: rotate(180deg);
         }
+        .dot { transition: transform .2s ease-in-out; }
+        input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
+        input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
         .toggle-bg:after {
             content: '';
             position: absolute;
@@ -42,45 +60,6 @@
         input:checked + .toggle-bg {
             background-color: #22c55e;
         }
-
-        /* --- ESTILOS CORRIGIDOS PARA BARRA RETRÁTIL AUTOMÁTICA --- */
-        
-        /* Define a largura padrão como a recolhida (4.5rem) */
-        #sidebar {
-            width: 4.5rem; 
-            transition: width 0.3s ease-in-out;
-        }
-        /* Estado expandido ao passar o mouse ou ao ser clicado */
-        #sidebar.expanded {
-            width: 18rem; /* 288px */
-        }
-        
-        /* Esconde texto e alinha ao centro na largura padrão (4.5rem) */
-        #sidebar:not(.expanded) .sidebar-text,
-        #sidebar:not(.expanded) .sidebar-header {
-            opacity: 0;
-            pointer-events: none;
-            width: 0;
-            overflow: hidden;
-        }
-        
-        #sidebar:not(.expanded) .sidebar-link {
-            justify-content: center;
-        }
-        #sidebar:not(.expanded) .sidebar-link span {
-            display: none;
-        }
-        
-        /* Ajusta o toggle button no estado recolhido */
-        #sidebarToggle.rotated {
-            transform: rotate(180deg);
-        }
-
-        /* --- FIM DOS ESTILOS CORRIGIDOS --- */
-
-        .dot { transition: transform .2s ease-in-out; }
-        input[type="checkbox"]:checked ~ .dot { transform: translateX(100%); }
-        input[type="checkbox"]:checked ~ .toggle-bg { background-color: #22c55e; }
         @keyframes fade-in-out {
             0% { opacity: 0; transform: translateY(20px); } 10% { opacity: 1; transform: translateY(0); }
             90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); }
@@ -93,22 +72,19 @@
 <body class="bg-gray-100">
 
     <div class="flex h-screen">
-        <!-- HTML CORRIGIDO: Removida a classe w-72 para que o CSS controle a largura -->
-        <aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col transition-all duration-300 ease-in-out">
-            <div class="p-6 text-center border-b border-gray-800 flex justify-between items-center relative">
-                <div class="sidebar-header overflow-hidden transition-all duration-300 ease-in-out flex-1">
-                    <h1 class="text-2xl font-bold text-white">KAIROS ADMIN</h1>
+        <aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col">
+            <div class="p-4 flex items-center justify-between border-b border-gray-800 h-16">
+                <div class="sidebar-header-text overflow-hidden transition-all duration-300 ease-in-out">
+                    <h1 class="text-xl font-bold text-white">KAIROS</h1>
                 </div>
-                <button id="sidebarToggle" class="absolute right-0 p-3 rounded-full hover:bg-gray-700 transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
+                <button id="sidebarToggle" class="p-2 rounded-full hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
                 </button>
             </div>
             <nav class="flex-1 p-4 space-y-2">
-                 <a href="#dashboard" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-white font-semibold active">
+                 <a href="#establishments" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-white font-semibold active">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
-                    <span class="sidebar-text">Dashboard</span>
+                    <span class="sidebar-text">Estabelecimentos</span>
                 </a>
                 <a href="#plans" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-gray-300 hover:bg-gray-700 font-semibold">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.25-10.75a.75.75 0 000 1.5h7.5a.75.75 0 000-1.5h-7.5zM6 8.5h8a1 1 0 100-2H6a1 1 0 000 2z" clip-rule="evenodd" /></svg>
@@ -118,69 +94,52 @@
         </aside>
 
         <div class="flex-1 flex flex-col">
-            <header class="bg-white shadow-sm p-4 flex justify-between items-center">
-                <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Dashboard</h2>
+            <header class="bg-white shadow-sm p-4 flex justify-between items-center h-16">
+                <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Estabelecimentos</h2>
                 <div class="flex items-center gap-4">
                     <span id="userDisplayEmail" class="text-sm text-gray-600"></span>
                     <button id="logoutButton" class="text-sm font-semibold text-red-600 hover:text-red-800">Sair</button>
                 </div>
             </header>
 
-            <main class="flex-1 p-6 sm:p-8 lg:p-10 overflow-y-auto">
-                <section id="dashboard-section" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div class="kpi-card">
-                        <h3 class="text-gray-500 font-semibold">Total de Estabelecimentos</h3>
-                        <p id="kpi-total" class="text-4xl font-bold text-gray-800 mt-2">...</p>
-                    </div>
-                    <div class="kpi-card border-green-500">
-                        <h3 class="text-gray-500 font-semibold">Ativos</h3>
-                        <p id="kpi-active" class="text-4xl font-bold text-gray-800 mt-2">...</p>
-                    </div>
-                    <div class="kpi-card border-red-500">
-                        <h3 class="text-gray-500 font-semibold">Inativos</h3>
-                        <p id="kpi-inactive" class="text-4xl font-bold text-gray-800 mt-2">...</p>
-                    </div>
-                </section>
-
-                <section id="establishments-section" class="bg-white rounded-lg shadow-md p-6">
-                     <div class="flex flex-wrap justify-between items-center mb-6 border-b pb-4">
-                        <h2 class="text-2xl font-semibold text-gray-700">Estabelecimentos</h2>
+            <main class="flex-1 p-6 sm:p-8 overflow-y-auto">
+                <section id="establishments-section">
+                     <div class="flex flex-wrap justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold text-gray-700">Gerir Estabelecimentos</h2>
                         <div class="flex items-center gap-4 mt-4 md:mt-0">
                             <input type="text" id="searchInput" placeholder="Pesquisar por nome ou ID..." class="p-2 border rounded-md">
-                            <button id="openCreateModalBtn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                            <button data-action="open-create-modal" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
                                 + Novo
                             </button>
                         </div>
                     </div>
-                    <!-- NOVO HTML: Estrutura de Tabela -->
-                    <div class="overflow-x-auto shadow-md rounded-lg">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome/ID</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plano</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiração</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Assinatura</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ativo (App)</th>
-                                </tr>
-                            </thead>
-                            <!-- O tbody é o alvo da injeção de dados via JS -->
-                            <tbody id="establishmentsList" class="bg-white divide-y divide-gray-200">
-                            </tbody>
-                        </table>
+                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome/ID</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plano</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiração</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status Assinatura</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ativo (App)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="establishmentsList" class="bg-white divide-y divide-gray-200">
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
                 <section id="plans-section" class="hidden">
-                    <div class="bg-white rounded-lg shadow-md p-6">
-                        <div class="flex flex-wrap justify-between items-center mb-6 border-b pb-4">
-                           <h2 class="text-2xl font-semibold text-gray-700">Planos de Assinatura</h2>
-                           <button id="openPlanModalBtn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300">
-                                + Novo Plano
-                            </button>
-                        </div>
-                        <div id="plansList" class="overflow-x-auto"></div>
+                    <div class="flex flex-wrap justify-between items-center mb-4">
+                        <h2 class="text-2xl font-semibold text-gray-700">Planos de Assinatura</h2>
+                        <button data-action="open-plan-modal" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300">
+                            + Novo Plano
+                        </button>
                     </div>
+                    <div id="plansList" class="bg-white rounded-lg shadow-md overflow-hidden"></div>
                 </section>
             </main>
         </div>
@@ -192,6 +151,20 @@
             <form id="establishmentForm" class="p-6 space-y-6 overflow-y-auto">
                 <input type="hidden" id="editEstablishmentId">
                 
+                <div id="access-links-container" class="hidden">
+                    <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Links de Acesso</h3>
+                    <div class="space-y-3 mt-4">
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="schedulingLink" readonly class="w-full p-2 border bg-gray-100 rounded-md text-sm">
+                            <button type="button" data-action="copy-link" data-target="schedulingLink" class="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm">Copiar</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="adminLink" readonly class="w-full p-2 border bg-gray-100 rounded-md text-sm">
+                            <button type="button" data-action="copy-link" data-target="adminLink" class="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm">Copiar</button>
+                        </div>
+                    </div>
+                </div>
+
                 <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Informações Básicas</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -231,12 +204,10 @@
                 </div>
 
                 <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Módulos do Sistema</h3>
-                <div id="modulesContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    </div>
-
+                <div id="modulesContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
             </form>
             <div class="mt-auto p-6 border-t flex justify-end gap-4 bg-gray-50">
-                <button type="button" id="closeModalBtn" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="button" data-action="close-modal" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
                 <button type="submit" form="establishmentForm" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
             </div>
         </div>
@@ -269,7 +240,7 @@
                  <div id="planModulesContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4"></div>
              </form>
             <div class="mt-auto p-6 border-t flex justify-end gap-4 bg-gray-50">
-                <button type="button" id="closePlanModalBtn" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="button" data-action="close-plan-modal" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
                 <button type="submit" form="planForm" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Plano</button>
             </div>
         </div>
@@ -282,7 +253,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         
-        // --- CONFIGURAÇÃO ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
             authDomain: "kairos-system.firebaseapp.com",
@@ -293,7 +263,6 @@
             measurementId: "G-SVHFXKV5EC"
         };
         
-        // Período de carência em dias (deve ser o mesmo do backend)
         const GRACE_PERIOD_DAYS = 5; 
         
         const app = initializeApp(firebaseConfig);
@@ -303,19 +272,23 @@
         let allEstablishments = [];
         let allPlans = [];
 
-        // NOVO: Adicionado um novo módulo para controlar os módulos que podem ser adicionados manualmente.
+        // ### ATUALIZAÇÃO IMPORTANTE ###
+        // Adicionando os módulos que faltavam à definição
         const additionalModulesDefinition = {
-            'sales-report': 'Relatório de Vendas', 'financial': 'Financeiro', 'servicos': 'Serviços',
-            'produtos': 'Produtos', 'profissionais': 'Profissionais', 'clientes': 'Clientes',
-            'estabelecimento': 'Configurações', 'users': 'Usuários Internos', 'mobileApp': 'Acesso App Mobile'
+            'agenda': 'Agenda / Calendário',
+            'comandas': 'Comandas / PDV',
+            'relatorios': 'Relatórios (Analytics)',
+            'sales-report': 'Relatório de Vendas', 
+            'financial': 'Financeiro', 
+            'servicos': 'Serviços',
+            'produtos': 'Produtos', 
+            'profissionais': 'Profissionais', 
+            'clientes': 'Clientes',
+            'estabelecimento': 'Configurações', 
+            'users': 'Usuários Internos', 
+            'mobileApp': 'Acesso App Mobile'
         };
 
-        const modulesDefinition = {
-            'dashboard': 'Dashboard', 'establishments': 'Gerir Estabelecimentos',
-            'plans': 'Gerir Planos'
-        };
-
-        // --- AUTENTICAÇÃO E INICIALIZAÇÃO ---
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 try {
@@ -340,99 +313,62 @@
 
         function initializePage() {
             document.getElementById('logoutButton').addEventListener('click', () => signOut(auth));
-            document.getElementById('openCreateModalBtn').addEventListener('click', () => openModal());
-            document.getElementById('closeModalBtn').addEventListener('click', closeModal);
             document.getElementById('establishmentForm').addEventListener('submit', handleFormSubmit);
-            document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
-            // CORRIGIDO: Adiciona o listener principal à lista de estabelecimentos
-            document.getElementById('establishmentsList').addEventListener('click', handleTableActions);
-            
-            // NOVO: Listeners para a nova secção de planos
-            document.getElementById('openPlanModalBtn').addEventListener('click', () => openPlanModal());
-            document.getElementById('closePlanModalBtn').addEventListener('click', closePlanModal);
             document.getElementById('planForm').addEventListener('submit', handlePlanFormSubmit);
-            document.getElementById('plansList').addEventListener('click', handlePlanTableActions);
+            document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
+            
+            document.body.addEventListener('click', handlePageClick);
+            
+            setupSidebar();
+            setupNavigation();
 
-            // CORRIGIDO: Lógica de menu retrátil e de navegação
+            loadEstablishments();
+            loadPlans();
+        }
+
+        function setupSidebar() {
             const sidebar = document.getElementById('sidebar');
             const sidebarToggle = document.getElementById('sidebarToggle');
-            const navLinks = document.querySelectorAll('.sidebar-link');
-            const dashboardSection = document.getElementById('dashboard-section');
-            const establishmentsSection = document.getElementById('establishments-section');
-            
-            // Variável para rastrear se o usuário clicou para expandir/recolher manualmente
             let isManuallyExpanded = false;
 
-            // Função para expandir e girar o ícone
             const updateSidebarState = (expanded) => {
                 sidebar.classList.toggle('expanded', expanded);
-                sidebarToggle.classList.toggle('rotated', !expanded);
             };
             
-            // 1. Lógica de Interação com o Mouse (Automática em Desktop)
             sidebar.addEventListener('mouseenter', () => {
-                if (!isManuallyExpanded && window.innerWidth >= 1024) {
-                    updateSidebarState(true);
-                }
+                if (!isManuallyExpanded && window.innerWidth >= 1024) updateSidebarState(true);
             });
 
             sidebar.addEventListener('mouseleave', () => {
-                if (!isManuallyExpanded && window.innerWidth >= 1024) {
-                    updateSidebarState(false);
-                }
+                if (!isManuallyExpanded && window.innerWidth >= 1024) updateSidebarState(false);
             });
 
-            // 2. Lógica do Botão (Clique manual) - Permite o toggle fixo
             sidebarToggle.addEventListener('click', (e) => {
                 e.preventDefault();
-                
-                if (sidebar.classList.contains('expanded')) {
-                    isManuallyExpanded = false; 
-                    updateSidebarState(false);
-                } else {
-                    isManuallyExpanded = true; 
-                    updateSidebarState(true);
-                }
+                isManuallyExpanded = !sidebar.classList.contains('expanded');
+                updateSidebarState(isManuallyExpanded);
             });
 
-            // Estado inicial: Recolhido
             updateSidebarState(false);
+        }
 
+        function setupNavigation() {
+            const navLinks = document.querySelectorAll('.sidebar-link');
             navLinks.forEach(link => {
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
-                    navLinks.forEach(l => l.classList.remove('bg-gray-700', 'text-white'));
-                    link.classList.add('bg-gray-700', 'text-white');
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    link.classList.add('active');
                     
                     const targetId = link.getAttribute('href').substring(1);
-                    document.querySelectorAll('section').forEach(section => {
-                        if (section.id === 'establishments-section' || section.id === 'plans-section') {
-                            section.classList.add('hidden');
-                        }
+                    document.querySelectorAll('main > section').forEach(section => {
+                        section.classList.add('hidden');
                     });
                     
-                    if (targetId === 'dashboard') {
-                        document.getElementById('pageTitle').textContent = 'Dashboard';
-                        dashboardSection.classList.remove('hidden');
-                        establishmentsSection.classList.remove('hidden');
-                    } else {
-                        document.getElementById('pageTitle').textContent = link.querySelector('span').textContent;
-                        document.getElementById(targetId + '-section').classList.remove('hidden');
-                    }
+                    document.getElementById('pageTitle').textContent = link.querySelector('.sidebar-text').textContent;
+                    document.getElementById(targetId + '-section').classList.remove('hidden');
                 });
             });
-            
-            // NOVO: Adiciona um listener para a mudança do select de planos
-            document.getElementById('subscriptionPlan').addEventListener('change', updateModuleCheckboxes);
-
-            loadDashboardData();
-            loadEstablishments();
-            loadPlans();
-            
-            // Carrega o dashboard e a lista de estabelecimentos por padrão
-            document.getElementById('dashboard-section').classList.remove('hidden');
-            document.getElementById('establishments-section').classList.remove('hidden');
-            
         }
         
         function updateModuleCheckboxes() {
@@ -441,13 +377,11 @@
             const modulesContainer = document.getElementById('modulesContainer');
             const establishmentModules = JSON.parse(modulesContainer.dataset.modules || '{}');
             
-            modulesContainer.innerHTML = ''; // Limpa os checkboxes existentes
-            const allModules = { ...modulesDefinition, ...additionalModulesDefinition };
+            modulesContainer.innerHTML = '';
             
-            Object.entries(allModules).forEach(([key, label]) => {
+            Object.entries(additionalModulesDefinition).forEach(([key, label]) => {
                 const isFromPlan = selectedPlan?.allowedModules?.[key] === true;
                 const isManuallyAdded = establishmentModules?.[key] === true;
-                
                 const isChecked = isFromPlan || isManuallyAdded;
                 
                 const moduleHtml = `
@@ -464,41 +398,37 @@
             });
         }
 
-        // --- FUNÇÕES DE API ---
         const API_BASE_URL = window.location.origin;
         const getAuthHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` });
 
         async function apiCall(endpoint, options = {}) {
             const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers: getAuthHeaders(), ...options });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || 'Ocorreu um erro.');
-            return result;
-        }
-
-        // --- LÓGICA DO DASHBOARD ---
-        async function loadDashboardData() {
-             try {
-                const stats = await apiCall('/api/admin/dashboard-stats');
-                document.getElementById('kpi-total').textContent = stats.total;
-                document.getElementById('kpi-active').textContent = stats.active;
-                document.getElementById('kpi-inactive').textContent = stats.inactive;
-            } catch (error) {
-                 console.error("Erro ao carregar dados do dashboard:", error);
+            if (!response.ok) {
+                const result = await response.json().catch(() => ({ message: response.statusText }));
+                throw new Error(result.message || 'Ocorreu um erro.');
             }
+            if (response.status === 204) return null;
+            return response.json();
         }
-
-        // --- LÓGICA DO MODAL E FORMULÁRIO ---
+        
         const establishmentModal = document.getElementById('establishmentModal');
+        const planModal = document.getElementById('planModal');
         
         async function openModal(establishment = null) {
             const form = document.getElementById('establishmentForm');
             form.reset();
             const isEditing = !!establishment;
             
-            // NOVO: Adiciona a lista de módulos do estabelecimento ao dataset do container para referência futura
             const modulesContainer = document.getElementById('modulesContainer');
             modulesContainer.dataset.modules = JSON.stringify(establishment?.modules || {});
-
+            
+            document.getElementById('access-links-container').classList.toggle('hidden', !isEditing);
+            if (isEditing) {
+                const schedulingLink = `${window.location.origin}/agendar?id=${establishment.id}`;
+                const adminLink = `${window.location.origin}/login`;
+                document.getElementById('schedulingLink').value = schedulingLink;
+                document.getElementById('adminLink').value = adminLink;
+            }
 
             document.getElementById('modalTitle').textContent = isEditing ? "Editar Estabelecimento" : "Novo Estabelecimento";
             document.getElementById('editEstablishmentId').value = establishment?.id || '';
@@ -506,13 +436,11 @@
             document.getElementById('establishmentId').value = establishment?.id || '';
             document.getElementById('establishmentId').disabled = isEditing;
             
-            // Campos de credenciais
             const ownerEmailInput = document.getElementById('ownerEmail');
             const ownerPasswordInput = document.getElementById('ownerPassword');
             const credentialsContainer = document.getElementById('owner-credentials-container');
             
             ownerEmailInput.value = establishment?.ownerEmail || '';
-            
             credentialsContainer.style.display = isEditing ? 'none' : 'block';
 
             if (isEditing) {
@@ -520,9 +448,15 @@
                 ownerPasswordInput.removeAttribute('required');
                 ownerEmailInput.disabled = true;
                 ownerPasswordInput.disabled = true;
-                // Converte Firestore Timestamp para Date
-                const expiryDate = establishment?.subscription?.expiryDate?.toDate();
-                document.getElementById('subscriptionExpiry').value = expiryDate ? expiryDate.toISOString().split('T')[0] : '';
+
+                const expiryDateRaw = establishment?.subscription?.expiryDate;
+                if (expiryDateRaw && expiryDateRaw._seconds) {
+                    const expiryDate = new Date(expiryDateRaw._seconds * 1000);
+                    document.getElementById('subscriptionExpiry').value = expiryDate.toISOString().split('T')[0];
+                } else {
+                    document.getElementById('subscriptionExpiry').value = '';
+                }
+
             } else {
                 ownerEmailInput.setAttribute('required', 'required');
                 ownerPasswordInput.setAttribute('required', 'required');
@@ -538,7 +472,7 @@
                  planSelect.value = allPlans[0].id;
             }
             
-            updateModuleCheckboxes(); // NOVO: Chama a função para renderizar os módulos
+            updateModuleCheckboxes();
 
             establishmentModal.classList.add('flex');
             setTimeout(() => establishmentModal.style.opacity = "1", 10);
@@ -570,7 +504,6 @@
                 data.ownerPassword = document.getElementById('ownerPassword').value;
             }
             
-            // Sempre enviar dados de plano e expiração, se existirem nos inputs do modal
             const planId = document.getElementById('subscriptionPlan').value;
             const expiryDate = document.getElementById('subscriptionExpiry').value;
             if (planId && expiryDate) {
@@ -582,7 +515,6 @@
                     await apiCall(`/api/admin/establishments/${editId}/modules`, { method: 'PATCH', body: JSON.stringify({ modules: data.modules }) });
                     await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
                     
-                    // Chama a rota de atribuição de plano (que agora tem a lógica de prorrogação)
                     if (planId && expiryDate) {
                          await apiCall(`/api/subscriptions/assign/${editId}`, { method: 'PATCH', body: JSON.stringify({ planId, expiryDate }) });
                     }
@@ -594,16 +526,14 @@
                 }
                 closeModal();
                 loadEstablishments();
-                loadDashboardData();
             } catch (error) {
                 showToast(`Erro: ${error.message}`, 'error');
             }
         }
         
-        // --- LÓGICA DA TABELA ---
         async function loadEstablishments() {
             const listDiv = document.getElementById('establishmentsList');
-            listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><p>A carregar...</p></td></tr>';
+            listDiv.innerHTML = '<tr><td colspan="5" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
             try {
                 allEstablishments = await apiCall('/api/admin/establishments');
                 renderEstablishmentsTable();
@@ -625,7 +555,7 @@
                     const planName = allPlans.find(p => p.id === est.subscription?.planId)?.name || 'N/A';
                     
                     const expiryDateRaw = est.subscription?.expiryDate ? new Date(est.subscription.expiryDate._seconds * 1000) : null;
-                    const expiryDate = expiryDateRaw ? expiryDateRaw.toLocaleDateString() : 'N/A';
+                    const expiryDate = expiryDateRaw ? expiryDateRaw.toLocaleDateString('pt-BR') : 'N/A';
                     
                     let subStatus = 'N/A';
                     let subStatusClass = 'bg-gray-200 text-gray-800';
@@ -648,8 +578,7 @@
                     }
 
                     return `
-                        <!-- NOVO HTML: Linha de Tabela (clicável para edição) -->
-                        <tr class="hover:bg-indigo-50 cursor-pointer establishment-row" data-action="edit" data-id="${est.id}">
+                        <tr class="hover:bg-indigo-50 cursor-pointer" data-action="edit-establishment" data-id="${est.id}">
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-gray-900">${est.name}</div>
                                 <div class="text-xs text-gray-500 font-mono">${est.id}</div>
@@ -660,10 +589,9 @@
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${subStatusClass}">${subStatus}</span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <!-- Toggle de Status (a área de clique é o label) -->
-                                <label class="flex items-center justify-end cursor-pointer toggle-label" data-id="${est.id}">
+                                <label class="flex items-center justify-end cursor-pointer" data-action="toggle-status" data-id="${est.id}">
                                   <div class="relative">
-                                    <input type="checkbox" data-id="${est.id}" class="toggle-status-btn sr-only" ${isActive ? 'checked' : ''}>
+                                    <input type="checkbox" class="sr-only" ${isActive ? 'checked' : ''}>
                                     <div class="toggle-bg block bg-gray-400 w-10 h-6 rounded-full"></div>
                                     <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
                                   </div>
@@ -677,67 +605,89 @@
             }
         }
 
-        async function handleTableActions(e) {
-            const target = e.target;
-            const toggleInput = target.closest('.toggle-status-btn');
-            const editRow = target.closest('tr[data-action="edit"]');
+        async function handlePageClick(e) {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
 
-            if (toggleInput) {
-                // Clique no toggle.
-                // Evita que o clique na linha também seja processado.
-                e.stopPropagation();
-
-                const establishmentId = toggleInput.dataset.id;
-                const statusToSubmit = toggleInput.checked ? 'inactive' : 'active';
-                
-                // Mantenha o estado visual atual até a resposta da API
-                toggleInput.checked = !toggleInput.checked; 
-
-                try {
-                    await apiCall(`/api/admin/establishments/${establishmentId}/status`, {
-                        method: 'PATCH',
-                        body: JSON.stringify({ status: statusToSubmit }),
-                    });
-                    
-                    showToast(`Status de ${establishmentId} atualizado para ${statusToSubmit}.`, 'success');
-                    // A recarga é vital para que a lista seja a fonte da verdade
-                    loadEstablishments(); 
-                } catch (error) {
-                    // Reverte o estado visual em caso de falha
-                    toggleInput.checked = !toggleInput.checked; 
-                    showToast(`Erro ao atualizar status: ${error.message}`, 'error');
-                    loadEstablishments(); 
+            e.stopPropagation();
+            const action = target.dataset.action;
+            const id = target.dataset.id;
+            
+            switch(action) {
+                case 'open-create-modal':
+                    openModal();
+                    break;
+                case 'close-modal':
+                    closeModal();
+                    break;
+                case 'open-plan-modal':
+                    openPlanModal();
+                    break;
+                case 'close-plan-modal':
+                    closePlanModal();
+                    break;
+                case 'edit-establishment': {
+                    const establishment = allEstablishments.find(est => est.id === id);
+                    if (establishment) openModal(establishment);
+                    break;
                 }
-            } else if (editRow) {
-                // Clique na linha inteira.
-                const establishmentId = editRow.dataset.id;
-                const establishment = allEstablishments.find(est => est.id === establishmentId);
-                
-                if (establishment) {
-                    openModal(establishment);
-                } else {
-                    showToast('Erro: Estabelecimento não encontrado.', 'error');
+                case 'toggle-status': {
+                    const toggleInput = target.querySelector('input[type="checkbox"]');
+                    const statusToSubmit = !toggleInput.checked ? 'active' : 'inactive';
+                    try {
+                        await apiCall(`/api/admin/establishments/${id}/status`, {
+                            method: 'PATCH', body: JSON.stringify({ status: statusToSubmit }),
+                        });
+                        showToast(`Status atualizado para ${statusToSubmit}.`, 'success');
+                        loadEstablishments(); 
+                    } catch (error) {
+                        showToast(`Erro ao atualizar status: ${error.message}`, 'error');
+                        loadEstablishments(); 
+                    }
+                    break;
+                }
+                case 'edit-plan': {
+                    const plan = allPlans.find(p => p.id === id);
+                    if (plan) openPlanModal(plan);
+                    break;
+                }
+                case 'delete-plan': {
+                    if (confirm('Tem a certeza que deseja apagar este plano?')) {
+                        try {
+                            await apiCall(`/api/subscriptions/plans/${id}`, { method: 'DELETE' });
+                            showToast('Plano apagado com sucesso!', 'success');
+                            loadPlans();
+                        } catch (error) {
+                            showToast(`Erro: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
+                }
+                case 'copy-link': {
+                    const targetInputId = target.dataset.target;
+                    const inputToCopy = document.getElementById(targetInputId);
+                    inputToCopy.select();
+                    document.execCommand('copy');
+                    showToast('Link copiado!', 'success');
+                    break;
                 }
             }
         }
         
-        // --- LÓGICA DE PLANOS ---
-        const planModal = document.getElementById('planModal');
-
         async function loadPlans() {
             const listDiv = document.getElementById('plansList');
-            listDiv.innerHTML = '<p>A carregar planos...</p>';
+            listDiv.innerHTML = '<div class="p-4 text-center">A carregar planos...</div>';
             try {
                 allPlans = await apiCall('/api/subscriptions/plans');
                 renderPlansTable();
             } catch (error) {
-                 listDiv.innerHTML = '<p class="text-red-500">Erro ao carregar planos de assinatura.</p>';
+                 listDiv.innerHTML = '<div class="p-4 text-center text-red-500">Erro ao carregar planos.</div>';
             }
         }
         
         function renderPlansTable() {
             const listDiv = document.getElementById('plansList');
-            let tableHTML = `<table class="w-full text-sm text-left text-gray-500">
+            let tableHTML = `<div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-500">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
                     <th class="px-6 py-3">Nome do Plano</th>
                     <th class="px-6 py-3">Preço</th>
@@ -748,15 +698,12 @@
             
             if (allPlans.length > 0) {
                 allPlans.forEach(plan => {
-                    const modulesCount = Object.values(plan.allowedModules).filter(v => v).length;
+                    const modulesCount = plan.allowedModules ? Object.values(plan.allowedModules).filter(v => v).length : 0;
                     tableHTML += `
                         <tr class="bg-white border-b hover:bg-gray-50">
                             <td class="px-6 py-4 font-medium text-gray-900">${plan.name}</td>
                             <td class="px-6 py-4 text-gray-600">R$ ${plan.price.toFixed(2)}</td>
-                            <td class="px-6 py-4 text-gray-600">
-                                Profs: ${plan.maxProfessionals}<br>
-                                Users: ${plan.maxUsers}
-                            </td>
+                            <td class="px-6 py-4 text-gray-600">Profs: ${plan.maxProfessionals} / Users: ${plan.maxUsers}</td>
                             <td class="px-6 py-4 text-gray-600">${modulesCount} módulos</td>
                             <td class="px-6 py-4 flex gap-4">
                                 <button data-action="edit-plan" data-id="${plan.id}" class="font-medium text-indigo-600 hover:underline">Gerir</button>
@@ -765,10 +712,10 @@
                         </tr>`;
                 });
             } else {
-                tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum plano de assinatura criado.</td></tr>`;
+                tableHTML += `<tr><td colspan="5" class="text-center p-4">Nenhum plano criado.</td></tr>`;
             }
-            tableHTML += '</tbody></table>';
-            document.getElementById('plansList').innerHTML = tableHTML;
+            tableHTML += '</tbody></table></div>';
+            listDiv.innerHTML = tableHTML;
         }
 
         function openPlanModal(plan = null) {
@@ -784,7 +731,7 @@
             document.getElementById('planMaxUsers').value = plan?.maxUsers || '';
             
             const modulesContainer = document.getElementById('planModulesContainer');
-            modulesContainer.innerHTML = Object.entries(modulesDefinition).map(([key, label]) => `
+            modulesContainer.innerHTML = Object.entries(additionalModulesDefinition).map(([key, label]) => `
                 <label for="plan-module-${key}" class="flex items-center space-x-2 cursor-pointer">
                     <div class="relative">
                         <input type="checkbox" id="plan-module-${key}" name="plan-modules" value="${key}" class="sr-only" ${plan?.allowedModules?.[key] ? 'checked' : ''}>
@@ -836,32 +783,7 @@
                 showToast(`Erro: ${error.message}`, 'error');
             }
         }
-
-        async function handlePlanTableActions(e) {
-            const target = e.target.closest('[data-action]');
-            if (!target) return;
-
-            const action = target.dataset.action;
-            const planId = target.dataset.id;
-
-            if (action === 'edit-plan') {
-                const plan = allPlans.find(p => p.id === planId);
-                if (plan) openPlanModal(plan);
-            } else if (action === 'delete-plan') {
-                const confirmed = confirm('Tem a certeza que deseja apagar este plano? Esta ação é irreversível.');
-                if (confirmed) {
-                    try {
-                        await apiCall(`/api/subscriptions/plans/${planId}`, { method: 'DELETE' });
-                        showToast('Plano apagado com sucesso!', 'success');
-                        loadPlans();
-                    } catch (error) {
-                        showToast(`Erro: ${error.message}`, 'error');
-                    }
-                }
-            }
-        }
         
-        // --- LÓGICA DE NOTIFICAÇÃO (TOAST) ---
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');

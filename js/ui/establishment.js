@@ -1,15 +1,20 @@
 // js/ui/establishment.js
 
-// --- 1. IMPORTAÇÕES ---
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 
-// --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
 
-// --- 3. FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
+// ### NOVO: Paleta de cores definida ###
+const colorThemes = {
+    indigo: { name: 'Padrão (Índigo)', main: '#4f46e5', light: '#e0e7ff', text: '#ffffff' },
+    rose: { name: 'Rosa', main: '#e11d48', light: '#ffe4e6', text: '#ffffff' },
+    green: { name: 'Verde', main: '#16a34a', light: '#d1fae5', text: '#ffffff' },
+    sky: { name: 'Azul Céu', main: '#0284c7', light: '#e0f2fe', text: '#ffffff' },
+    amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
+};
 
 async function handleEstablishmentFormSubmit(e) {
     e.preventDefault();
@@ -38,9 +43,10 @@ async function handleEstablishmentFormSubmit(e) {
         email: form.querySelector('#establishmentEmail').value,
         address: form.querySelector('#establishmentAddress').value,
         website: form.querySelector('#establishmentWebsite').value,
-        welcomeMessage: form.querySelector('#establishmentWelcomeMessage').value, // ✅ NOVO CAMPO ADICIONADO
+        welcomeMessage: form.querySelector('#establishmentWelcomeMessage').value,
         workingHours: workingHours,
         logo: form.querySelector('#establishmentLogoBase64').value,
+        themeColor: form.querySelector('#establishmentThemeColor').value, // ### NOVO: Captura a cor do tema
         loyaltyProgram: {
             enabled: form.querySelector('#loyaltyEnabled').checked,
             pointsPerCurrency: parseFloat(form.querySelector('#loyaltyPointsPerCurrency').value) || 1,
@@ -72,6 +78,31 @@ function renderLoyaltyTiers(tiers = []) {
     `).join('');
 }
 
+// ### NOVA FUNÇÃO ###
+function renderColorPalette(currentThemeKey = 'indigo') {
+    const container = document.getElementById('color-palette-container');
+    const themeInput = document.getElementById('establishmentThemeColor');
+    container.innerHTML = '';
+    
+    Object.entries(colorThemes).forEach(([key, theme]) => {
+        const isSelected = key === currentThemeKey;
+        const swatch = document.createElement('div');
+        swatch.className = `w-24 text-center cursor-pointer`;
+        swatch.innerHTML = `
+            <div class="w-16 h-16 mx-auto rounded-full border-4 ${isSelected ? 'border-blue-500' : 'border-transparent'} p-1">
+                <div class="w-full h-full rounded-full" style="background-color: ${theme.main};"></div>
+            </div>
+            <p class="text-xs mt-2 font-medium ${isSelected ? 'text-blue-600' : 'text-gray-600'}">${theme.name}</p>
+        `;
+        swatch.addEventListener('click', () => {
+            themeInput.value = key;
+            renderColorPalette(key); // Re-renderiza para mostrar a seleção
+        });
+        container.appendChild(swatch);
+    });
+}
+
+
 async function fetchAndDisplayEstablishmentSettings() {
     try {
         const data = await establishmentApi.getEstablishmentDetails(state.establishmentId);
@@ -82,7 +113,13 @@ async function fetchAndDisplayEstablishmentSettings() {
         document.getElementById('establishmentEmail').value = data.email || '';
         document.getElementById('establishmentAddress').value = data.address || '';
         document.getElementById('establishmentWebsite').value = data.website || '';
-        document.getElementById('establishmentWelcomeMessage').value = data.welcomeMessage || ''; // ✅ POPULA O NOVO CAMPO
+        document.getElementById('establishmentWelcomeMessage').value = data.welcomeMessage || '';
+        
+        // ### NOVO: Renderiza a paleta de cores com o valor guardado ###
+        const currentTheme = data.themeColor || 'indigo';
+        document.getElementById('establishmentThemeColor').value = currentTheme;
+        renderColorPalette(currentTheme);
+
 
         if (data.logo) {
             document.getElementById('establishmentLogoPreview').src = data.logo;
@@ -128,8 +165,6 @@ async function fetchAndDisplayEstablishmentSettings() {
         showNotification('Não foi possível carregar os dados do estabelecimento.', 'error');
     }
 }
-
-// --- 4. EVENT LISTENERS E INICIALIZAÇÃO DA PÁGINA ---
 
 function setupEventListeners() {
     contentDiv.addEventListener('submit', e => {
@@ -207,33 +242,40 @@ function setupEventListeners() {
     }
 }
 
-// --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
-
 export async function loadEstablishmentPage() {
     contentDiv.innerHTML = `
         <section>
             <h2 class="text-3xl font-bold text-gray-800 mb-6">Dados do Estabelecimento</h2>
-            <form id="establishmentForm" class="bg-white p-8 rounded-lg shadow-md space-y-6">
+            <form id="establishmentForm" class="bg-white p-8 rounded-lg shadow-md space-y-8">
 
                 <div>
                     <h3 class="text-xl font-semibold mb-4 border-b pb-2">Identidade Visual</h3>
-                    <div class="flex items-center gap-6 mb-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Logotipo</label>
-                            <img id="establishmentLogoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Logo" class="mt-2 h-24 w-24 rounded-lg object-contain border p-1 bg-gray-50">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="flex items-center gap-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Logotipo</label>
+                                <img id="establishmentLogoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Logo" class="mt-2 h-24 w-24 rounded-lg object-contain border p-1 bg-gray-50">
+                            </div>
+                            <div class="flex-grow">
+                                <input type="file" id="establishmentLogoInput" class="hidden" accept="image/*">
+                                <input type="hidden" id="establishmentLogoBase64">
+                                <button type="button" id="establishmentLogoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Logotipo</button>
+                                <p class="text-xs text-gray-500 mt-2">Recomendado: PNG com fundo transparente.</p>
+                            </div>
                         </div>
-                        <div class="flex-grow">
-                            <input type="file" id="establishmentLogoInput" class="hidden" accept="image/*">
-                            <input type="hidden" id="establishmentLogoBase64">
-                            <button type="button" id="establishmentLogoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50">Alterar Logotipo</button>
-                            <p class="text-xs text-gray-500 mt-2">Recomendado: PNG com fundo transparente.</p>
+                         <div>
+                            <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
+                            <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida.">
+                            <p class="text-xs text-gray-500 mt-1">Esta mensagem aparece abaixo do nome na página de agendamento do cliente.</p>
                         </div>
                     </div>
-                     <div>
-                        <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
-                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida.">
-                        <p class="text-xs text-gray-500 mt-1">Esta mensagem aparece abaixo do nome na página de agendamento do cliente.</p>
-                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Tema e Cores</h3>
+                    <p class="text-sm text-gray-600 mb-4">Escolha a cor principal que representará sua marca no sistema e na página de agendamento do cliente.</p>
+                    <div id="color-palette-container" class="flex flex-wrap gap-4"></div>
+                    <input type="hidden" id="establishmentThemeColor">
                 </div>
 
                 <div>
@@ -241,20 +283,8 @@ export async function loadEstablishmentPage() {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div><label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome do Estabelecimento</label><input type="text" id="establishmentName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                         <div><label for="establishmentCnpjCpf" class="block text-sm font-medium text-gray-700">CNPJ / CPF</label><input type="text" id="establishmentCnpjCpf" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                    </div>
-                </div>
-
-                <div>
-                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Contacto</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div><label for="establishmentPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="establishmentPhone" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                         <div><label for="establishmentEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="establishmentEmail" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                    </div>
-                </div>
-
-                <div>
-                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Endereço</h3>
-                    <div class="grid grid-cols-1 gap-6">
                         <div><label for="establishmentAddress" class="block text-sm font-medium text-gray-700">Endereço Completo</label><input type="text" id="establishmentAddress" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                         <div><label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label><input type="url" id="establishmentWebsite" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                     </div>
