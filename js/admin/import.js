@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { loadSidebar, setupCommonUI } from "./admin-common.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
@@ -18,22 +19,31 @@ let idToken = null;
 const API_BASE_URL = window.location.origin;
 
 async function apiCall(endpoint, options = {}) {
+    if (!idToken) throw new Error("Usuário não autenticado.");
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        headers: { 'Authorization': `Bearer ${idToken}` },
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}` 
+        },
         ...options
     });
+    const result = await response.json().catch(() => ({ message: response.statusText }));
     if (!response.ok) {
-        const result = await response.json().catch(() => ({ message: response.statusText }));
         throw new Error(result.message || 'Ocorreu um erro.');
     }
-    if (response.status === 204 || response.headers.get('content-length') === '0') return null;
-    return response.json();
+    return result;
 }
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         idToken = await user.getIdToken();
-        document.getElementById('userDisplayEmail').textContent = user.email;
+        const idTokenResult = await user.getIdTokenResult();
+        if (idTokenResult.claims.role !== 'super-admin') {
+            window.location.href = '/admin-login.html';
+            return;
+        }
+        loadSidebar('import');
+        setupCommonUI(user);
         loadEstablishments();
     } else {
         window.location.href = '/admin-login.html';

@@ -59,12 +59,14 @@ const clientPortalRoutes = require('./routes/clientPortal');
 const financialRoutes = require('./routes/financial');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
+const dbexplorerRoutes = require('./routes/dbexplorer');
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 
 
 // 2. Rotas de Dono (só acessíveis pelo dono do estabelecimento)
@@ -105,6 +107,8 @@ app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'login.html'
 app.get('/admin-login', (req, res) => { res.sendFile(path.join(__dirname, 'admin-login.html')); });
 app.get('/mobile-app', (req, res) => { res.sendFile(path.join(__dirname, 'mobile-app.html')); });
 app.get('/import', (req, res) => { res.sendFile(path.join(__dirname, 'import.html')); });
+app.get('/dbexplorer', (req, res) => { res.sendFile(path.join(__dirname, 'dbexplorer.html')); });
+app.get('/datadictionary', (req, res) => { res.sendFile(path.join(__dirname, 'datadictionary.html')); });
 
 
 
