@@ -8,16 +8,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../css/styles.css">
     <style>
-        /* Estilo para o editor de JSON e resultados */
-        #queryEditor, #queryResult {
-            font-family: 'Courier New', Courier, monospace;
-            font-size: 14px;
+        /* Estilos adicionais para a tabela e modal */
+        #resultsTable th, #resultsTable td {
+            padding: 12px 15px;
+        }
+        #resultsTable tbody tr:hover {
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        #editModal {
+            display: none;
         }
     </style>
 </head>
 <body class="bg-gray-100">
     <div class="flex h-screen">
         <aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col">
+            <!-- O conteúdo da barra lateral será carregado via JS -->
         </aside>
 
         <div class="flex-1 flex flex-col">
@@ -31,50 +37,44 @@
 
             <main class="flex-1 p-6 sm:p-8 overflow-y-auto">
                 <section id="db-explorer-section">
-                    <div class="max-w-6xl mx-auto">
+                    <div class="max-w-7xl mx-auto">
                         <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-md">
                             <h3 class="font-bold text-yellow-800">Atenção: Ação Perigosa</h3>
                             <p class="text-sm text-yellow-700">As operações executadas aqui afetam diretamente o banco de dados. Use com extrema cautela.</p>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="bg-white p-6 rounded-lg shadow-md">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">Editor de Comando (JSON)</h3>
-                                <textarea id="queryEditor" class="w-full h-80 p-3 border border-gray-300 rounded-md bg-gray-50" spellcheck="false"></textarea>
-                                <button id="executeQueryBtn" class="w-full mt-4 bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
-                                    Executar Comando
-                                </button>
-                            </div>
-
-                            <div class="bg-white p-6 rounded-lg shadow-md">
-                                <h3 class="text-lg font-semibold text-gray-800 mb-4">Resultado</h3>
-                                <pre id="queryResult" class="w-full h-96 p-3 border bg-gray-900 text-green-400 rounded-md overflow-auto text-xs"></pre>
+                        <!-- Painel de Controlo -->
+                        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="collectionName" class="block text-sm font-medium text-gray-700">Nome da Coleção</label>
+                                    <input type="text" id="collectionName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="Ex: users, products">
+                                </div>
+                                <div>
+                                    <label for="docId" class="block text-sm font-medium text-gray-700">ID do Documento (Opcional)</label>
+                                    <input type="text" id="docId" class="mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="Deixe em branco para buscar todos">
+                                </div>
+                                <div class="self-end">
+                                    <button id="executeQueryBtn" class="w-full bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
+                                        Buscar Dados
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="bg-white p-6 rounded-lg shadow-md mt-6">
-                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Exemplos de Comandos</h3>
-                            <div class="space-y-4 text-sm">
-                                <div>
-                                    <h4 class="font-semibold text-gray-700">Buscar todos os documentos de uma coleção (SELECT *)</h4>
-                                    <pre class="bg-gray-100 p-2 rounded-md mt-1 text-xs"><code>{ "action": "get", "collection": "products" }</code></pre>
-                                </div>
-                                <div>
-                                    <h4 class="font-semibold text-gray-700">Buscar um documento por ID (SELECT ... WHERE ID=)</h4>
-                                    <pre class="bg-gray-100 p-2 rounded-md mt-1 text-xs"><code>{ "action": "get", "collection": "users", "docId": "uid_do_usuario" }</code></pre>
-                                </div>
-                                 <div>
-                                    <h4 class="font-semibold text-gray-700">Buscar com filtros (SELECT ... WHERE)</h4>
-                                    <pre class="bg-gray-100 p-2 rounded-md mt-1 text-xs"><code>{ "action": "get", "collection": "professionals", "where": [["status", "==", "inactive"]] }</code></pre>
-                                </div>
-                                <div>
-                                    <h4 class="font-semibold text-gray-700">Atualizar um documento (UPDATE)</h4>
-                                    <pre class="bg-gray-100 p-2 rounded-md mt-1 text-xs"><code>{ "action": "update", "collection": "services", "docId": "id_do_servico", "data": { "price": 99.90, "active": false } }</code></pre>
-                                </div>
-                                <div>
-                                    <h4 class="font-semibold text-gray-700">Apagar um documento (DELETE)</h4>
-                                    <pre class="bg-gray-100 p-2 rounded-md mt-1 text-xs"><code>{ "action": "delete", "collection": "appointments", "docId": "id_do_agendamento" }</code></pre>
-                                </div>
+                        <!-- Área de Resultados -->
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-4">Resultados</h3>
+                            <div id="result-status" class="text-center p-4 text-gray-500">Nenhuma busca foi realizada ainda.</div>
+                            <div id="result-container" class="overflow-x-auto hidden">
+                                <table id="resultsTable" class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <!-- O cabeçalho da tabela será gerado dinamicamente -->
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <!-- As linhas da tabela serão geradas dinamicamente -->
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -83,7 +83,19 @@
         </div>
     </div>
     
-    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] space-y-2"></div>
+    <!-- Modal de Edição -->
+    <div id="editModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <h2 class="text-2xl font-semibold text-gray-800 p-6 border-b">Editar Documento</h2>
+            <div id="editFormContainer" class="p-6 space-y-4 overflow-y-auto">
+                <!-- O formulário de edição será gerado aqui -->
+            </div>
+            <div class="mt-auto p-6 border-t flex justify-end gap-4 bg-gray-50">
+                <button id="cancelEditBtn" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="saveChangesBtn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="../js/admin/dbexplorer.js"></script>
 </body>
