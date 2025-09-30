@@ -1,0 +1,120 @@
+const express = require('express');
+const router = express.Router();
+const admin = require('firebase-admin');
+const { verifyToken, hasAccess } = require('../middlewares/auth');
+
+router.post('/', verifyToken, hasAccess, async (req, res) => {
+    const { db } = req;
+    const { establishmentId } = req.user;
+    const { name, specialty, dob, cpf, services, workingHours, photo } = req.body;
+
+    if (!establishmentId || !name || !specialty) {
+        return res.status(400).json({ message: 'Os campos establishmentId, name e specialty são obrigatórios.' });
+    }
+
+    try {
+        const establishmentRef = db.collection('establishments').doc(establishmentId);
+        // ### CORREÇÃO APLICADA AQUI ###
+        // A consulta agora considera ativos todos que NÃO são 'inactive'.
+        const professionalsRef = db.collection('professionals')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '!=', 'inactive');
+
+        await db.runTransaction(async (transaction) => {
+            const establishmentDoc = await transaction.get(establishmentRef);
+            if (!establishmentDoc.exists) {
+                throw new Error('Estabelecimento não encontrado.');
+            }
+
+            const subscription = establishmentDoc.data().subscription;
+            if (!subscription || !subscription.planId) {
+                throw new Error('Nenhum plano de assinatura ativo encontrado para este estabelecimento.');
+            }
+            
+            let planDoc;
+            if (subscription.planId === 'trial') {
+                planDoc = {
+                    exists: true,
+                    data: () => ({ maxProfessionals: 1, maxUsers: 1 })
+                };
+            } else {
+                planDoc = await transaction.get(db.collection('subscriptionPlans').doc(subscription.planId));
+            }
+            
+            if (!planDoc.exists) {
+                throw new Error('Plano de assinatura não encontrado ou inválido.');
+            }
+
+            const planLimits = planDoc.data();
+            const maxProfessionals = planLimits.maxProfessionals || 0;
+
+            const currentActiveProfessionalsSnapshot = await transaction.get(professionalsRef);
+            
+            if (currentActiveProfessionalsSnapshot.size >= maxProfessionals) {
+                throw new Error('Limite de profissionais ativos atingido para o seu plano.');
+            }
+            
+            const newProfessionalData = {
+                establishmentId, name, specialty,
+                dob: dob || null, cpf: cpf || null, services: services || [],
+                workingHours: workingHours || {}, photo: photo || null,
+                status: 'active',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            const newProfessionalRef = db.collection('professionals').doc();
+            transaction.set(newProfessionalRef, newProfessionalData);
+        });
+
+        res.status(201).json({ message: 'Profissional criado com sucesso!' });
+
+    } catch (error) {
+        console.error("Erro ao criar profissional:", error);
+        res.status(403).json({ message: error.message || 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// Listar profissionais (Rota Pública)
+router.get('/:establishmentId', async (req, res) => {
+    try {
+        const { establishmentId } = req.params;
+        const { db } = req;
+        const snapshot = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
+        if (snapshot.empty) return res.status(200).json([]);
+        const professionalsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(professionalsList);
+    } catch (error) {
+        console.error("Erro ao listar profissionais:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// Deletar profissional (Rota Privada)
+router.delete('/:professionalId', verifyToken, hasAccess, async (req, res) => {
+    const { professionalId } = req.params;
+    try {
+        const { db } = req;
+        if (!professionalId) return res.status(400).json({ message: 'O ID do profissional é obrigatório.' });
+        await db.collection('professionals').doc(professionalId).delete();
+        res.status(200).json({ message: 'Profissional removido com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao remover profissional:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// Atualizar dados do profissional (Rota Privada)
+router.put('/:professionalId', verifyToken, hasAccess, async (req, res) => {
+    const { professionalId } = req.params;
+    const data = req.body;
+    try {
+        const { db } = req;
+        await db.collection('professionals').doc(professionalId).update(data);
+        res.status(200).json({ message: 'Dados do profissional atualizados com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao atualizar profissional:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+module.exports = router;

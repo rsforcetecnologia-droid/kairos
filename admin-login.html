@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Painel Super Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 flex items-center justify-center h-screen text-gray-200">
+
+    <div class="w-full max-w-sm">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-white">KAIROS</h1>
+            <p class="text-gray-400 mt-2">Painel de Super-Administrador</p>
+        </header>
+
+        <form id="loginForm" class="bg-gray-800 rounded-lg shadow-xl p-8">
+            <div class="mb-4">
+                <label for="email" class="block mb-2 text-sm font-medium">E-mail</label>
+                <input type="email" id="email" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+            </div>
+            <div class="mb-6">
+                <label for="password" class="block mb-2 text-sm font-medium">Senha</label>
+                <input type="password" id="password" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+            </div>
+
+            <div id="errorMessage" class="hidden text-center text-red-400 text-sm mb-4 h-5"></div>
+
+            <button type="submit" id="loginButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 disabled:bg-indigo-400">
+                <span>Entrar</span>
+            </button>
+        </form>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
+            authDomain: "kairos-system.firebaseapp.com",
+            projectId: "kairos-system",
+            storageBucket: "kairos-system.firebasestorage.app",
+            messagingSenderId: "603994960586",
+            appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
+            measurementId: "G-SVHFXKV5EC"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        const loginForm = document.getElementById('loginForm');
+        const loginButton = document.getElementById('loginButton');
+        const loginButtonText = loginButton.querySelector('span');
+        const errorMessageDiv = document.getElementById('errorMessage');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            loginButton.disabled = true;
+            loginButtonText.textContent = 'A entrar...';
+            errorMessageDiv.classList.add('hidden');
+
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+                const idTokenResult = await user.getIdTokenResult(true);
+
+                if (idTokenResult.claims.role === 'super-admin') {
+                    window.location.href = '/admin'; 
+                } else {
+                    errorMessageDiv.textContent = 'Acesso negado. Permissões insuficientes.';
+                    errorMessageDiv.classList.remove('hidden');
+                    auth.signOut();
+                }
+
+            } catch (error) {
+                errorMessageDiv.textContent = 'E-mail ou senha inválidos.';
+                errorMessageDiv.classList.remove('hidden');
+            } finally {
+                loginButton.disabled = false;
+                loginButtonText.textContent = 'Entrar';
+            }
+        });
+    </script>
+</body>
+</html>
