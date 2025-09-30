@@ -38,8 +38,20 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
             return res.status(403).json({ message: 'Acesso negado. Você não tem permissão para editar este estabelecimento.' });
         }
         
+        // --- NOVO: Lógica de Salvamento da Integração Financeira ---
+        const { financialIntegration, ...otherData } = data;
+        const updateData = { ...otherData };
+
+        if (financialIntegration) {
+            updateData.financialIntegration = {
+                defaultNaturezaId: financialIntegration.defaultNaturezaId || null,
+                defaultCentroDeCustoId: financialIntegration.defaultCentroDeCustoId || null,
+            };
+        }
+        // Fim da Lógica de Salvamento da Integração Financeira
+
         const establishmentRef = db.collection('establishments').doc(establishmentId);
-        await establishmentRef.update(data);
+        await establishmentRef.update(updateData);
         res.status(200).json({ message: "Dados do estabelecimento atualizados com sucesso." });
     } catch (error) {
         console.error("Erro ao atualizar detalhes do estabelecimento:", error);

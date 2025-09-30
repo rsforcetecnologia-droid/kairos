@@ -41,21 +41,21 @@ let localState = {
  * Gera a URL do WhatsApp com a mensagem de confirmação pré-preenchida.
  * @param {string} phone - O número de telefone do cliente.
  * @param {string} clientName - Nome do cliente.
- * @param {string} serviceName - Nome do serviço.
+ * @param {string} serviceName - Nome do serviço (pode ser múltiplos).
  * @param {string} professionalName - Nome do profissional.
  * @param {Date} startTime - Data e hora do agendamento.
  * @returns {string} - O link completo do WhatsApp.
  */
 function createWhatsAppLink(phone, clientName, serviceName, professionalName, startTime) {
     // Remove caracteres não numéricos do telefone. Assume que o código do país está no número.
-    const cleanedPhone = phone.replace(/\D/g, '');
+    const cleanedPhone = (phone || '').replace(/\D/g, '');
     
     // Formato da data e hora
     const date = new Date(startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const time = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     // Monta a mensagem de confirmação
-    const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} hoje ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
+    const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} para o dia ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
 
     // Codifica a mensagem para a URL
     const encodedMessage = encodeURIComponent(message);
@@ -177,7 +177,7 @@ function renderWeekView(allEvents) {
                         </div>
                         <div class="flex items-center justify-end gap-2 mt-2 pt-1 border-t border-black border-opacity-10">
                             ${!isCompleted ? `
-                                <a href="${whatsappLink}" target="_blank" class="text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
+                                <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
                                 </a>
                             ` : ''}
@@ -419,7 +419,7 @@ async function openAppointmentModal(appointment = null) {
                 try {
                     const clientDetails = await clientsApi.getClientDetails(state.establishmentId, clientName, clientPhone);
                     const points = clientDetails.loyaltyPoints || 0;
-                    const availableRewards = loyaltySettingsForModal.tiers.filter(tier => tier.points <= points);
+                    const availableRewards = loyaltySettingsForModal.tiers.filter(t => t.points <= points);
 
                     if (availableRewards.length > 0) {
                         rewardsContainer.innerHTML = `

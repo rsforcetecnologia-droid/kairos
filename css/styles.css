@@ -212,6 +212,7 @@ transition: all 0.2s ease-in-out;
 border: none;
 background-color: transparent;
 color: #4b5563; /* gray-600 */
+cursor: pointer;
 }
 .view-btn.active {
 background-color: white;
@@ -588,6 +589,7 @@ background-color: #eff6ff; /* blue-50 */
     pointer-events: auto;
 }
 
-
-
-
+/* ESTILO WHATSAPP */
+.text-whatsapp {
+    color: #25D366;
+}

@@ -1,6 +1,5 @@
-// js/ui/establishment.js
-
 import * as establishmentApi from '../api/establishments.js';
+import * as financialApi from '../api/financial.js'; // Importação adicionada
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 
@@ -15,6 +14,40 @@ const colorThemes = {
     sky: { name: 'Azul Céu', main: '#0284c7', light: '#e0f2fe', text: '#ffffff' },
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
+
+// Função auxiliar para construir o dropdown hierárquico
+function buildHierarchyOptions(items, currentId = null) {
+    let optionsHTML = '<option value="">-- Selecione (Opcional) --</option>';
+    
+    // Auxiliar recursivo para renderizar as opções
+    const renderOption = (item, prefix = '') => {
+        const isSelected = item.id === currentId ? 'selected' : '';
+        optionsHTML += `<option value="${item.id}" ${isSelected}>${prefix}${item.name}</option>`;
+        item.children.forEach(child => renderOption(child, prefix + '— '));
+    };
+
+    // Função para construir a estrutura de árvore (reutilizada do financial.js)
+    const buildHierarchy = (list) => {
+        const map = new Map();
+        const roots = [];
+        if (!list) return roots;
+        list.forEach(item => map.set(item.id, { ...item, children: [] }));
+        map.forEach(item => {
+            if (item.parentId && map.has(item.parentId)) {
+                map.get(item.parentId).children.push(item);
+            } else {
+                roots.push(item);
+            }
+        });
+        return roots;
+    };
+
+    const hierarchy = buildHierarchy(items);
+    hierarchy.forEach(root => renderOption(root));
+    
+    return optionsHTML;
+}
+
 
 async function handleEstablishmentFormSubmit(e) {
     e.preventDefault();
@@ -46,12 +79,18 @@ async function handleEstablishmentFormSubmit(e) {
         welcomeMessage: form.querySelector('#establishmentWelcomeMessage').value,
         workingHours: workingHours,
         logo: form.querySelector('#establishmentLogoBase64').value,
-        themeColor: form.querySelector('#establishmentThemeColor').value, // ### NOVO: Captura a cor do tema
+        themeColor: form.querySelector('#establishmentThemeColor').value, // Captura a cor do tema
         loyaltyProgram: {
             enabled: form.querySelector('#loyaltyEnabled').checked,
             pointsPerCurrency: parseFloat(form.querySelector('#loyaltyPointsPerCurrency').value) || 1,
             tiers: loyaltyTiers
+        },
+        // --- NOVO: Captura os campos de integração financeira ---
+        financialIntegration: {
+            defaultNaturezaId: form.querySelector('#financialNatureId').value || null,
+            defaultCentroDeCustoId: form.querySelector('#financialCostCenterId').value || null,
         }
+        // --- FIM NOVO ---
     };
 
     try {
@@ -78,7 +117,6 @@ function renderLoyaltyTiers(tiers = []) {
     `).join('');
 }
 
-// ### NOVA FUNÇÃO ###
 function renderColorPalette(currentThemeKey = 'indigo') {
     const container = document.getElementById('color-palette-container');
     const themeInput = document.getElementById('establishmentThemeColor');
@@ -105,7 +143,11 @@ function renderColorPalette(currentThemeKey = 'indigo') {
 
 async function fetchAndDisplayEstablishmentSettings() {
     try {
-        const data = await establishmentApi.getEstablishmentDetails(state.establishmentId);
+        const [data, natures, costCenters] = await Promise.all([
+            establishmentApi.getEstablishmentDetails(state.establishmentId),
+            financialApi.getNatures(),
+            financialApi.getCostCenters()
+        ]);
 
         document.getElementById('establishmentName').value = data.name || '';
         document.getElementById('establishmentCnpjCpf').value = data.document || '';
@@ -115,7 +157,7 @@ async function fetchAndDisplayEstablishmentSettings() {
         document.getElementById('establishmentWebsite').value = data.website || '';
         document.getElementById('establishmentWelcomeMessage').value = data.welcomeMessage || '';
         
-        // ### NOVO: Renderiza a paleta de cores com o valor guardado ###
+        // Renderiza a paleta de cores com o valor guardado
         const currentTheme = data.themeColor || 'indigo';
         document.getElementById('establishmentThemeColor').value = currentTheme;
         renderColorPalette(currentTheme);
@@ -130,6 +172,13 @@ async function fetchAndDisplayEstablishmentSettings() {
         document.getElementById('loyaltyEnabled').checked = loyaltyProgram.enabled || false;
         document.getElementById('loyaltyPointsPerCurrency').value = loyaltyProgram.pointsPerCurrency || 10;
         renderLoyaltyTiers(loyaltyProgram.tiers || []);
+        
+        // --- NOVO: Renderiza os dropdowns de Integração Financeira ---
+        const financialIntegration = data.financialIntegration || {};
+        document.getElementById('financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
+        document.getElementById('financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
+        // --- FIM NOVO ---
+
 
         const workingHoursContainer = document.getElementById('establishmentWorkingHoursContainer');
         workingHoursContainer.innerHTML = '';
@@ -289,6 +338,28 @@ export async function loadEstablishmentPage() {
                         <div><label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label><input type="url" id="establishmentWebsite" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                     </div>
                 </div>
+                
+                <!-- NOVO: INTEGRAÇÃO FINANCEIRA PADRÃO -->
+                <div>
+                    <h3 class="text-xl font-semibold mb-4 border-b pb-2">Integração Financeira Padrão</h3>
+                    <p class="text-sm text-gray-600 mb-4">Selecione as Naturezas e Centros de Custo padrões para serem aplicados automaticamente em todas as vendas (Contas a Receber).</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="financialNatureId" class="block text-sm font-medium text-gray-700">Natureza Padrão (Receita)</label>
+                            <select id="financialNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="financialCostCenterId" class="block text-sm font-medium text-gray-700">Centro de Custo Padrão</label>
+                            <select id="financialCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <!-- FIM NOVO -->
+
 
                 <div>
                     <h3 class="text-xl font-semibold mb-4 border-b pb-2">Plano de Fidelidade</h3>

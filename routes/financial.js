@@ -100,17 +100,78 @@ const createEntry = (collectionName) => async (req, res) => {
     }
 };
 
+// ATUALIZADO: Lógica de filtro que busca todos os lançamentos do período e filtra em memória (para Natureza/C.Custo)
 const getEntries = (collectionName) => async (req, res) => {
     const { establishmentId } = req.user;
+    // Captura os filtros de data, natureza e centro de custo
+    const { startDate, endDate, natureId, costCenterId } = req.query; 
+    const db = req.db;
+    
+    let entries = [];
+    let previousBalance = 0; 
+
     try {
-        const snapshot = await req.db.collection(collectionName)
+        // --- 1. Calcular Saldo Anterior (Apenas Lançamentos PAGOS/REALIZADOS antes do startDate) ---
+        if (startDate) {
+            // Filtra pela data de pagamento anterior ao início do período
+            const paidQuery = db.collection(collectionName)
+                .where('establishmentId', '==', establishmentId)
+                .where('status', '==', 'paid')
+                .where('paymentDate', '<', startDate); 
+
+            const paidSnapshot = await paidQuery.get();
+            
+            paidSnapshot.docs.forEach(doc => {
+                const amount = doc.data().amount || 0;
+                // Se for 'receivables', soma. Se for 'payables', subtrai.
+                if (collectionName.includes('receivables')) {
+                    previousBalance += amount;
+                } else if (collectionName.includes('payables')) {
+                    previousBalance -= amount;
+                }
+            });
+        }
+
+        // --- 2. Buscar Lançamentos DENTRO do Período Filtrado (Previstos e Realizados) ---
+        // A consulta do Firestore é feita APENAS por data para evitar erros de índice/documentos nulos
+        let query = db.collection(collectionName)
             .where('establishmentId', '==', establishmentId)
-            .orderBy('dueDate', 'asc')
-            .get();
-        const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        res.status(200).json(entries);
+            .orderBy('dueDate', 'asc'); 
+
+        // Filtro Principal de Data (Vencimento)
+        if (startDate && endDate) {
+            query = query
+                .where('dueDate', '>=', startDate)
+                .where('dueDate', '<=', endDate);
+        }
+        
+        const snapshot = await query.get();
+        let fetchedEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // --- 3. Filtrar em Memória por Natureza e Centro de Custo (para lidar com valores null/ausentes) ---
+        entries = fetchedEntries.filter(entry => {
+            let passNature = true;
+            let passCostCenter = true;
+
+            // Aplica filtro de Natureza se um ID específico foi selecionado
+            if (natureId && natureId !== 'all') {
+                // Passa se a natureza for exatamente a selecionada
+                passNature = entry.naturezaId === natureId;
+            }
+
+            // Aplica filtro de Centro de Custo se um ID específico foi selecionado
+            if (costCenterId && costCenterId !== 'all') {
+                // Passa se o centro de custo for exatamente o selecionado
+                passCostCenter = entry.centroDeCustoId === costCenterId;
+            }
+
+            return passNature && passCostCenter;
+        });
+        
+        // Retorna a lista de lançamentos filtrados e o saldo anterior
+        res.status(200).json({ entries, previousBalance });
     } catch (error) {
-        handleFirestoreError(res, error, 'lançamentos');
+        handleFirestoreError(res, error, 'lançamentos com filtro de data');
     }
 };
 
@@ -195,6 +256,7 @@ router.get('/cash-flow', async (req, res) => {
         const start = new Date(startDate);
         const end = new Date(endDate + 'T23:59:59.999Z');
 
+        // AQUI ESTÁ O BUG DE ÍNDICE MENCIONADO NOS COMENTÁRIOS, QUE O FIREBASE PRECISA.
         const [payablesSnapshot, receivablesSnapshot] = await Promise.all([
             db.collection('financial_payables')
                 .where('establishmentId', '==', establishmentId)
@@ -222,12 +284,26 @@ router.get('/cash-flow', async (req, res) => {
 
         financialData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+        // --- CALCULAR SALDO INICIAL ANTES DO PERÍODO ---
         let initialBalance = 0;
-        const previousPayablesSnapshot = await db.collection('financial_payables').where('establishmentId', '==', establishmentId).where('dueDate', '<', startDate).where('status', '==', 'paid').get();
-        const previousReceivablesSnapshot = await db.collection('financial_receivables').where('establishmentId', '==', establishmentId).where('dueDate', '<', startDate).where('status', '==', 'paid').get();
+
+        // Query para pagamentos realizados ANTES da data de início do gráfico
+        const previousPayablesSnapshot = await db.collection('financial_payables')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '==', 'paid')
+            .where('paymentDate', '<', startDate)
+            .get();
+            
+        // Query para recebíveis realizados ANTES da data de início do gráfico
+        const previousReceivablesSnapshot = await db.collection('financial_receivables')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '==', 'paid')
+            .where('paymentDate', '<', startDate)
+            .get();
         
         previousPayablesSnapshot.docs.forEach(doc => { initialBalance -= doc.data().amount; });
         previousReceivablesSnapshot.docs.forEach(doc => { initialBalance += doc.data().amount; });
+        // --- FIM CALCULAR SALDO INICIAL ---
 
         const dailySummary = {};
         let currentBalance = initialBalance;
@@ -241,6 +317,7 @@ router.get('/cash-flow', async (req, res) => {
             currentDate.setDate(currentDate.getDate() + 1);
         }
 
+        // Distribui os lançamentos pela data de vencimento (ou pagamento se pago)
         financialData.forEach(entry => {
             const dateKey = entry.status === 'paid' && entry.paymentDate ? entry.paymentDate : entry.date; 
             if (dailySummary[dateKey]) {
