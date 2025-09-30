@@ -348,16 +348,14 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             
             // --- Obtém as configurações financeiras padrão ---
             const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
-            const { naturezaId: defaultNaturezaId, centroDeCustoId: defaultCentroDeCustoId } = financialIntegration;
-
+            // ### CORREÇÃO APLICADA AQUI ###
+            const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
 
             const originalServiceIDs = new Set( (appointmentData.services || []).map(s => s.id) );
             
-            // Filtra para encontrar apenas os itens que NÃO estavam no agendamento original
             const comandaItemsPayload = items.filter(item => {
-                if (item.type === 'product') return true; // Produtos são sempre extras
+                if (item.type === 'product') return true;
                 if (item.type === 'service') {
-                    // Serviços são extras apenas se não estavam no agendamento original
                     return !originalServiceIDs.has(item.id);
                 }
                 return false;
@@ -367,7 +365,7 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
-                comandaItems: comandaItemsPayload, // Salva apenas os itens extras
+                comandaItems: comandaItemsPayload,
                 transaction: {
                     payments: payments,
                     totalAmount: Number(totalAmount),
@@ -396,22 +394,60 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             transaction.set(saleRef, saleData);
 
             // 3. INTEGRAÇÃO FINANCEIRA: Criar Contas a Receber (financial_receivables)
-            const paidDate = new Date().toISOString().split('T')[0];
             payments.forEach(payment => {
-                // A data de vencimento (dueDate) é a data de pagamento, pois já foi liquidada
-                const financialRef = db.collection('financial_receivables').doc();
-                transaction.set(financialRef, {
-                    establishmentId,
-                    description: `Venda Agendamento: ${appointmentData.clientName} (Método: ${payment.method})`,
-                    amount: payment.value,
-                    dueDate: paidDate, 
-                    paymentDate: paidDate, 
-                    status: 'paid', // Já está pago
-                    transactionId: saleRef.id,
-                    createdAt: paidAtTimestamp,
-                    naturezaId: defaultNaturezaId || null, // USANDO NATUREZA PADRÃO
-                    centroDeCustoId: defaultCentroDeCustoId || null, // USANDO CENTRO DE CUSTO PADRÃO
-                });
+                const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
+                const isInstallmentPayment = installmentCount > 1;
+
+                // Se for um pagamento único e não for crediário, o status é 'paid'.
+                if (!isInstallmentPayment && payment.method !== 'crediario') {
+                    const financialRef = db.collection('financial_receivables').doc();
+                    const paidDate = new Date().toISOString().split('T')[0];
+                    transaction.set(financialRef, {
+                        establishmentId,
+                        description: `Venda Agendamento: ${appointmentData.clientName} (Método: ${payment.method})`,
+                        amount: payment.value,
+                        dueDate: paidDate,
+                        paymentDate: paidDate,
+                        status: 'paid',
+                        transactionId: saleRef.id,
+                        createdAt: paidAtTimestamp,
+                        naturezaId: defaultNaturezaId || null,
+                        centroDeCustoId: defaultCentroDeCustoId || null,
+                    });
+                    return; // continue
+                }
+
+                const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
+                let totalButLast = installmentValue * (installmentCount - 1);
+
+                for (let i = 1; i <= installmentCount; i++) {
+                    const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
+                    const dueDate = new Date();
+                     if (i > 1) {
+                        dueDate.setMonth(dueDate.getMonth() + (i - 1));
+                    }
+                    const dueDateString = dueDate.toISOString().split('T')[0];
+                    
+                    const description = `Venda Agendamento: ${appointmentData.clientName} (Parcela ${i}/${installmentCount} - ${payment.method})`;
+
+                    const financialRef = db.collection('financial_receivables').doc();
+                    
+                    const status = 'pending';
+                    const paymentDate = null;
+
+                    transaction.set(financialRef, {
+                        establishmentId,
+                        description,
+                        amount: currentInstallmentValue,
+                        dueDate: dueDateString,
+                        paymentDate: paymentDate,
+                        status: status,
+                        transactionId: saleRef.id,
+                        createdAt: paidAtTimestamp,
+                        naturezaId: defaultNaturezaId || null,
+                        centroDeCustoId: defaultCentroDeCustoId || null,
+                    });
+                }
             });
 
             // 4. Fidelidade

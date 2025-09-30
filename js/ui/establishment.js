@@ -252,26 +252,6 @@ function setupEventListeners() {
             container.appendChild(newTier);
         } else if (button.dataset.action === 'remove-loyalty-tier') {
             button.closest('.loyalty-tier-row').remove();
-        } else if (button.dataset.action === 'clear-appointments') {
-            const confirmed = await showConfirmation('Limpar Agendamentos', 'Tem a certeza ABSOLUTA? Todos os agendamentos, comandas e transações serão permanentemente apagados.');
-            if (confirmed) {
-                try {
-                    await establishmentApi.clearAllAppointments(state.establishmentId);
-                    showNotification('Todos os agendamentos foram limpos.', 'success');
-                } catch (error) {
-                    showNotification(`Não foi possível limpar os agendamentos: ${error.message}`, 'error');
-                }
-            }
-        } else if (button.dataset.action === 'cleanup-invalid-appointments') { 
-            const confirmed = await showConfirmation('Limpar Dados Inválidos', 'Isto irá procurar e apagar permanentemente todos os agendamentos que não têm uma data válida. Deseja continuar?');
-            if (confirmed) {
-                try {
-                    const result = await establishmentApi.cleanupInvalidAppointments();
-                    showNotification('Limpeza Concluída', result.message, 'success');
-                } catch (error) {
-                    showNotification(`Não foi possível concluir a limpeza: ${error.message}`, 'error');
-                }
-            }
         }
     });
 
@@ -339,7 +319,6 @@ export async function loadEstablishmentPage() {
                     </div>
                 </div>
                 
-                <!-- NOVO: INTEGRAÇÃO FINANCEIRA PADRÃO -->
                 <div>
                     <h3 class="text-xl font-semibold mb-4 border-b pb-2">Integração Financeira Padrão</h3>
                     <p class="text-sm text-gray-600 mb-4">Selecione as Naturezas e Centros de Custo padrões para serem aplicados automaticamente em todas as vendas (Contas a Receber).</p>
@@ -358,9 +337,6 @@ export async function loadEstablishmentPage() {
                         </div>
                     </div>
                 </div>
-                <!-- FIM NOVO -->
-
-
                 <div>
                     <h3 class="text-xl font-semibold mb-4 border-b pb-2">Plano de Fidelidade</h3>
                     <div class="space-y-4">
@@ -402,20 +378,6 @@ export async function loadEstablishmentPage() {
                     <button type="submit" class="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Salvar Alterações</button>
                 </div>
 
-                <div class="pt-6 border-t border-red-200">
-                    <h3 class="text-xl font-semibold text-red-700">Ações Perigosas</h3>
-                    <p class="text-sm text-gray-600 my-2">Use estas ações com cuidado para manutenção.</p>
-                    <div class="space-y-4">
-                        <div>
-                            <button type="button" data-action="cleanup-invalid-appointments" class="w-full py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Limpar Agendamentos Inválidos (com 'Invalid Date')</button>
-                            <p class="text-xs text-gray-500 mt-1">Remove apenas os registos corrompidos que aparecem com data inválida.</p>
-                        </div>
-                        <div>
-                            <button type="button" data-action="clear-appointments" class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">Limpar TODOS os Agendamentos</button>
-                            <p class="text-xs text-gray-500 mt-1">Esta ação apaga TUDO. É irreversível.</p>
-                        </div>
-                    </div>
-                </div>
             </form>
         </section>`;
 

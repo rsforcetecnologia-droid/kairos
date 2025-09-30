@@ -14,12 +14,20 @@ export const deleteCostCenter = (id) => authenticatedFetch(`/api/financial/cost-
 // --- Funções Genéricas para Lançamentos ---
 const createEntry = (type, data) => authenticatedFetch(`/api/financial/${type}`, { method: 'POST', body: JSON.stringify(data) });
 
-// ATUALIZADO: Aceita filtros de data e envia para a API
-const getEntries = (type, startDate, endDate) => {
+// ATUALIZADO: Aceita um objeto de filtros e constrói a query string
+const getEntries = (type, filters = {}) => {
     let endpoint = `/api/financial/${type}`;
-    if (startDate && endDate) {
-        endpoint += `?startDate=${startDate}&endDate=${endDate}`;
+    const params = new URLSearchParams();
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.natureId) params.append('natureId', filters.natureId);
+    if (filters.costCenterId) params.append('costCenterId', filters.costCenterId);
+
+    const queryString = params.toString();
+    if (queryString) {
+        endpoint += `?${queryString}`;
     }
+    
     return authenticatedFetch(endpoint);
 };
 
@@ -29,16 +37,16 @@ const markAsPaid = (type, id, paymentDate) => authenticatedFetch(`/api/financial
 
 // --- Contas a Pagar ---
 export const createPayable = (data) => createEntry('payables', data);
-// ATUALIZADO: Inclui filtros de data
-export const getPayables = (startDate, endDate) => getEntries('payables', startDate, endDate);
+// ATUALIZADO: Inclui filtros
+export const getPayables = (filters) => getEntries('payables', filters);
 export const updatePayable = (id, data) => updateEntry('payables', id, data);
 export const deletePayable = (id) => deleteEntry('payables', id);
 export const markAsPaidPayable = (id, paymentDate) => markAsPaid('payables', id, paymentDate);
 
 // --- Contas a Receber ---
 export const createReceivable = (data) => createEntry('receivables', data);
-// ATUALIZADO: Inclui filtros de data
-export const getReceivables = (startDate, endDate) => getEntries('receivables', startDate, endDate);
+// ATUALIZADO: Inclui filtros
+export const getReceivables = (filters) => getEntries('receivables', filters);
 export const updateReceivable = (id, data) => updateEntry('receivables', id, data);
 export const deleteReceivable = (id) => deleteEntry('receivables', id);
 export const markAsPaidReceivable = (id, paymentDate) => markAsPaid('receivables', id, paymentDate);
@@ -51,4 +59,12 @@ export const markAsPaidReceivable = (id, paymentDate) => markAsPaid('receivables
  */
 export const getCashFlowData = (startDate, endDate) => {
     return authenticatedFetch(`/api/financial/cash-flow?startDate=${startDate}&endDate=${endDate}`);
+};
+
+/**
+ * NOVO: Busca o resumo de contas a pagar e receber para o dia atual.
+ * @returns {Promise<object>} - Uma promessa que resolve com os totais.
+ */
+export const getTodaySummary = () => {
+    return authenticatedFetch('/api/financial/today-summary');
 };

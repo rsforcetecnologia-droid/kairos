@@ -368,6 +368,7 @@ async function handleFormSubmit(e, type, itemId = null) {
     const isChecked = form.querySelector('[name="status"]').checked;
     const paymentDateValue = form.querySelector('[name="paymentDate"]').value;
     const amountValue = parseFloat(form.querySelector('[name="amount"]').value);
+    const installments = parseInt(form.querySelector('[name="installments"]')?.value, 10) || 1;
 
     if (isNaN(amountValue)) {
         showNotification('Erro de Validação', 'O valor inserido é inválido.', 'error');
@@ -387,6 +388,7 @@ async function handleFormSubmit(e, type, itemId = null) {
         notes: form.querySelector('[name="notes"]').value,
         status: isChecked ? 'paid' : 'pending',
         paymentDate: isChecked ? paymentDateValue : null,
+        installments: itemId ? 1 : installments, // Parcelamento só na criação
     };
 
     try {
@@ -534,14 +536,23 @@ function openFinancialModal(type, item = null) {
     const natureOptions = buildOptions(localState.natures);
     const costCenterOptions = buildOptions(localState.costCenters);
 
+    // Mostra o campo de parcelas apenas se for uma NOVA entrada
+    const installmentsHTML = !item ? `
+        <div>
+            <label>Número de Parcelas</label>
+            <input type="number" name="installments" class="w-full p-2 border rounded-md" value="1" min="1" max="36">
+        </div>
+    ` : '';
+
     modal.innerHTML = `
         <div class="modal-content max-w-lg">
             <h2 class="text-2xl font-bold mb-6">${title}</h2>
             <form id="financial-form" class="space-y-4">
                 <div><label>Descrição</label><input type="text" name="description" required class="w-full p-2 border rounded-md" value="${item?.description || ''}"></div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div><label>Valor (R$)</label><input type="number" step="0.01" name="amount" required class="w-full p-2 border rounded-md" value="${item?.amount || ''}"></div>
-                    <div><label>Data de Vencimento</label><input type="date" name="dueDate" required class="w-full p-2 border rounded-md" value="${item?.dueDate || ''}"></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-1"><label>Valor Total (R$)</label><input type="number" step="0.01" name="amount" required class="w-full p-2 border rounded-md" value="${item?.amount || ''}"></div>
+                    <div class="md:col-span-1"><label>1º Vencimento</label><input type="date" name="dueDate" required class="w-full p-2 border rounded-md" value="${item?.dueDate || ''}"></div>
+                    <div class="md:col-span-1">${installmentsHTML}</div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div><label>Natureza</label><select name="naturezaId" class="w-full p-2 border rounded-md bg-white">${natureOptions}</select></div>
@@ -614,7 +625,17 @@ export async function loadFinancialPage() {
             </div>
 
             <div id="financial-content">
-                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg shadow">
+                        <p class="text-gray-500 font-semibold">A Pagar Hoje (Pendente)</p>
+                        <p id="summary-today-payables" class="text-3xl font-bold text-red-600">R$ 0,00</p>
+                    </div>
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg shadow">
+                        <p class="text-gray-500 font-semibold">A Receber Hoje (Pendente)</p>
+                        <p id="summary-today-receivables" class="text-3xl font-bold text-green-600">R$ 0,00</p>
+                    </div>
+                </div>
+
                 <div class="bg-white p-4 rounded-lg shadow-md mb-6">
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Filtrar Período e Critérios</h3>
                     <div class="flex flex-wrap items-end gap-4 mb-4">
@@ -786,6 +807,14 @@ export async function loadFinancialPage() {
         initialFilterButton.classList.add('bg-blue-100', 'text-blue-800');
     }
     
-    // O primeiro fetch carrega os dados de suporte (natures/cc) e lança o fetch principal
+    // Carrega os dados do dia e os dados filtrados
+    try {
+        const todaySummary = await financialApi.getTodaySummary();
+        document.getElementById('summary-today-payables').textContent = `R$ ${todaySummary.totalPayables.toFixed(2)}`;
+        document.getElementById('summary-today-receivables').textContent = `R$ ${todaySummary.totalReceivables.toFixed(2)}`;
+    } catch (error) {
+        showNotification('Erro', 'Não foi possível carregar o resumo do dia.', 'error');
+    }
+    
     await fetchAndDisplayData();
 }

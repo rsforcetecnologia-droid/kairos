@@ -387,9 +387,13 @@ function openCheckoutModal(sale, total) {
     const renderPaymentsAndChange = () => {
         const paymentsList = modal.querySelector('#paymentsList');
         const remainingAmountEl = modal.querySelector('#remainingAmount');
+        const addPaymentSection = modal.querySelector('#addPaymentSection');
+        const installmentsSection = modal.querySelector('#installments-details');
+        const paymentMethodSelect = modal.querySelector('#paymentMethod');
+        
         const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
         const remaining = total - totalPaid;
-        
+
         remainingAmountEl.textContent = `Faltam R$ ${remaining.toFixed(2)}`;
         remainingAmountEl.className = `text-xl font-bold text-center mb-4 ${remaining > 0.001 ? 'text-red-600' : 'text-green-600'}`;
         if (remaining <= 0.001) { remainingAmountEl.textContent = 'Total Pago!'; }
@@ -401,12 +405,20 @@ function openCheckoutModal(sale, total) {
             paymentValueInput.value = remaining > 0 ? remaining.toFixed(2) : '0.00';
         }
 
-        modal.querySelector('#confirmPaymentBtn').disabled = remaining > 0.001;
+        const isInstallmentMethod = paymentMethodSelect.value === 'credito' || paymentMethodSelect.value === 'crediario';
+        if (isInstallmentMethod && payments.length === 0) {
+            installmentsSection.classList.remove('hidden');
+            addPaymentSection.classList.add('hidden'); // Esconde a adição de múltiplos pagamentos
+        } else {
+            installmentsSection.classList.add('hidden');
+            addPaymentSection.classList.remove('hidden');
+        }
+
+        modal.querySelector('#confirmPaymentBtn').disabled = remaining > 0.001 && !isInstallmentMethod;
         
         // Lógica para mostrar/esconder o cálculo de troco
         const cashPaymentDetails = modal.querySelector('#cash-payment-details');
-        const paymentMethodSelect = modal.querySelector('#paymentMethod');
-        if (paymentMethodSelect && cashPaymentDetails) {
+        if (cashPaymentDetails) {
             if (paymentMethodSelect.value === 'dinheiro') {
                 cashPaymentDetails.classList.remove('hidden');
                 const amountReceivedInput = modal.querySelector('#amountReceived');
@@ -427,13 +439,32 @@ function openCheckoutModal(sale, total) {
             <div class="border-t pt-4">
                 <div id="paymentsList" class="space-y-2 mb-4"></div>
                 <div class="flex items-center gap-2 mb-4">
-                    <select id="paymentMethod" class="p-2 border rounded-md w-1/2"><option value="dinheiro">Dinheiro</option><option value="pix">PIX</option><option value="credito">Crédito</option><option value="debito">Débito</option></select>
-                    <input type="number" step="0.01" id="paymentValue" placeholder="Valor" class="p-2 border rounded-md w-1/2">
-                    <button id="addPaymentBtn" class="action-btn-primary p-2">+</button>
+                    <select id="paymentMethod" class="p-2 border rounded-md w-full bg-white">
+                        <option value="dinheiro">Dinheiro</option>
+                        <option value="pix">PIX</option>
+                        <option value="credito">Crédito</option>
+                        <option value="debito">Débito</option>
+                        <option value="crediario">Crediário (Fiado)</option>
+                    </select>
                 </div>
+
+                <div id="addPaymentSection">
+                    <div class="flex items-center gap-2 mb-4">
+                        <input type="number" step="0.01" id="paymentValue" placeholder="Valor" class="p-2 border rounded-md w-full">
+                        <button id="addPaymentBtn" class="action-btn-primary p-2">+</button>
+                    </div>
+                </div>
+
+                <div id="installments-details" class="hidden mt-4 p-4 bg-gray-50 rounded-lg space-y-2">
+                    <div class="flex items-center justify-center gap-4">
+                        <label for="installmentsCount" class="block text-sm font-medium text-gray-700">Número de Parcelas:</label>
+                        <input type="number" id="installmentsCount" min="1" max="12" value="1" class="p-2 border rounded-md w-24 text-center">
+                    </div>
+                    <p class="text-center font-semibold text-indigo-600" id="installmentsValue"></p>
+                </div>
+                
                 <div id="remainingAmount"></div>
                 
-                <!-- NOVA SECÇÃO PARA CÁLCULO DE TROCO -->
                 <div id="cash-payment-details" class="hidden mt-4 p-4 bg-blue-50 rounded-lg space-y-2">
                     <div>
                         <label for="amountReceived" class="block text-sm font-medium text-gray-700">Valor Recebido (Dinheiro)</label>
@@ -444,13 +475,14 @@ function openCheckoutModal(sale, total) {
                         <strong id="changeDue" class="text-blue-600">R$ 0.00</strong>
                     </p>
                 </div>
-
             </div>
             <div class="flex gap-4 pt-4 border-t"><button type="button" data-action="close-modal" data-target="checkoutModal" class="action-btn-secondary w-full">Cancelar</button><button id="confirmPaymentBtn" class="action-btn-primary w-full" disabled>Confirmar Pagamento</button></div>
         </div>`;
     modal.style.display = 'flex';
     
     renderPaymentsAndChange();
+
+    modal.querySelector('#paymentMethod').addEventListener('change', renderPaymentsAndChange);
 
     modal.querySelector('#addPaymentBtn').onclick = () => {
         const method = modal.querySelector('#paymentMethod').value;
@@ -469,18 +501,47 @@ function openCheckoutModal(sale, total) {
         }
     };
 
-    // Adiciona listeners para atualizar o troco dinamicamente
-    modal.querySelector('#paymentMethod').addEventListener('change', renderPaymentsAndChange);
+    modal.querySelector('#installmentsCount').addEventListener('input', (e) => {
+        const count = parseInt(e.target.value, 10) || 1;
+        const installmentValue = total / count;
+        modal.querySelector('#installmentsValue').textContent = `${count}x de R$ ${installmentValue.toFixed(2)}`;
+    });
+    // Trigger initial calculation for installments
+    modal.querySelector('#installmentsCount').dispatchEvent(new Event('input'));
+
+
     modal.querySelector('#amountReceived').addEventListener('input', renderPaymentsAndChange);
 
     modal.querySelector('#confirmPaymentBtn').onclick = async () => {
         const btn = modal.querySelector('#confirmPaymentBtn');
         btn.disabled = true;
         btn.textContent = 'Aguarde...';
+
+        const installmentsCountInput = document.getElementById('installmentsCount');
+        const paymentMethodSelect = document.getElementById('paymentMethod');
+        const isInstallmentMethod = paymentMethodSelect && (paymentMethodSelect.value === 'credito' || paymentMethodSelect.value === 'crediario');
+        
+        let finalPayments = payments;
+
+        if (payments.length === 0 && isInstallmentMethod) {
+            const installments = parseInt(installmentsCountInput.value, 10) || 1;
+            finalPayments = [{
+                method: paymentMethodSelect.value,
+                value: total,
+                installments: installments
+            }];
+        } else if (payments.length === 0) {
+             finalPayments = [{
+                method: paymentMethodSelect.value,
+                value: total,
+                installments: 1
+            }];
+        }
+        
         try {
             if (sale.type === 'appointment') {
                 await appointmentsApi.checkoutAppointment(sale.id, { 
-                    payments, 
+                    payments: finalPayments, 
                     totalAmount: total, 
                     cashierSessionId: localState.cashierSession?.id,
                     items: sale.items
@@ -488,10 +549,18 @@ function openCheckoutModal(sale, total) {
                 const index = localState.allComandas.findIndex(c => c.id === sale.id);
                 if (index !== -1) {
                     localState.allComandas[index].status = 'completed';
-                    localState.allComandas[index].transaction = { paidAt: new Date().toISOString(), payments, totalAmount: total };
+                    localState.allComandas[index].transaction = { paidAt: new Date().toISOString(), payments: finalPayments, totalAmount: total };
                 }
             } else {
-                const newSaleData = await salesApi.createSale({ items: sale.items, totalAmount: total, payments: payments, clientName: sale.clientName, clientPhone: sale.clientPhone, professionalId: sale.professionalId, cashierSessionId: localState.cashierSession.id });
+                const newSaleData = await salesApi.createSale({ 
+                    items: sale.items, 
+                    totalAmount: total, 
+                    payments: finalPayments, 
+                    clientName: sale.clientName, 
+                    clientPhone: sale.clientPhone, 
+                    professionalId: sale.professionalId, 
+                    cashierSessionId: localState.cashierSession.id 
+                });
                 localState.allComandas.push({
                     ...newSaleData,
                     id: newSaleData.id,
@@ -499,7 +568,7 @@ function openCheckoutModal(sale, total) {
                     professionalName: sale.professionalName,
                     startTime: newSaleData.createdAt,
                     status: 'completed',
-                    transaction: { paidAt: new Date().toISOString(), payments, totalAmount: total }
+                    transaction: { paidAt: new Date().toISOString(), payments: finalPayments, totalAmount: total }
                 });
             }
             localState.currentSale = null;
@@ -713,4 +782,3 @@ export async function loadComandasPage(params = {}) {
     
     await initializeData(params);
 }
-

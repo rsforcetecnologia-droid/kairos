@@ -76,25 +76,61 @@ router.delete('/cost-centers/:id', deleteHierarchicalEntry('financial_cost_cente
 
 const createEntry = (collectionName) => async (req, res) => {
     const { establishmentId } = req.user;
-    const { description, amount, dueDate, naturezaId, centroDeCustoId, notes, status, paymentDate } = req.body;
+    const { description, amount, dueDate, naturezaId, centroDeCustoId, notes, status, paymentDate, installments } = req.body;
     if (!description || amount === undefined || !dueDate) {
         return res.status(400).json({ message: 'Descrição, valor e data de vencimento são obrigatórios.' });
     }
+
     try {
-        const newEntry = {
-            establishmentId,
-            description,
-            amount: Number(amount),
-            dueDate,
-            naturezaId: naturezaId || null,
-            centroDeCustoId: centroDeCustoId || null,
-            notes: notes || null,
-            status: status || 'pending',
-            paymentDate: status === 'paid' ? paymentDate : null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-        const docRef = await req.db.collection(collectionName).add(newEntry);
-        res.status(201).json({ message: 'Lançamento criado com sucesso.', id: docRef.id });
+        const batch = req.db.batch();
+        const installmentCount = installments && installments > 1 ? installments : 1;
+
+        if (installmentCount > 1) {
+            const installmentValue = parseFloat((amount / installmentCount).toFixed(2));
+            let totalButLast = installmentValue * (installmentCount - 1);
+
+            for (let i = 1; i <= installmentCount; i++) {
+                const currentInstallmentValue = (i === installmentCount) ? amount - totalButLast : installmentValue;
+                const newDueDate = new Date(dueDate);
+                newDueDate.setMonth(newDueDate.getMonth() + (i - 1));
+                const dueDateString = newDueDate.toISOString().split('T')[0];
+                
+                const installmentDescription = `${description} (Parcela ${i}/${installmentCount})`;
+                const docRef = req.db.collection(collectionName).doc();
+
+                batch.set(docRef, {
+                    establishmentId,
+                    description: installmentDescription,
+                    amount: currentInstallmentValue,
+                    dueDate: dueDateString,
+                    naturezaId: naturezaId || null,
+                    centroDeCustoId: centroDeCustoId || null,
+                    notes: notes || null,
+                    status: 'pending', // Parcelamentos são sempre pendentes
+                    paymentDate: null,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        } else {
+            // Lançamento único
+            const newEntry = {
+                establishmentId,
+                description,
+                amount: Number(amount),
+                dueDate,
+                naturezaId: naturezaId || null,
+                centroDeCustoId: centroDeCustoId || null,
+                notes: notes || null,
+                status: status || 'pending',
+                paymentDate: status === 'paid' ? paymentDate : null,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            const docRef = req.db.collection(collectionName).doc();
+            batch.set(docRef, newEntry);
+        }
+
+        await batch.commit();
+        res.status(201).json({ message: 'Lançamento(s) criado(s) com sucesso.' });
     } catch (error) {
         handleFirestoreError(res, error, 'lançamentos');
     }
@@ -123,12 +159,7 @@ const getEntries = (collectionName) => async (req, res) => {
             
             paidSnapshot.docs.forEach(doc => {
                 const amount = doc.data().amount || 0;
-                // Se for 'receivables', soma. Se for 'payables', subtrai.
-                if (collectionName.includes('receivables')) {
-                    previousBalance += amount;
-                } else if (collectionName.includes('payables')) {
-                    previousBalance -= amount;
-                }
+                previousBalance += amount;
             });
         }
 
@@ -355,5 +386,39 @@ router.get('/cash-flow', async (req, res) => {
     }
 });
 
+
+// ROTA PARA O RESUMO DO DIA
+router.get('/today-summary', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { db } = req;
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+        // CORREÇÃO: Busca todos com vencimento hoje e filtra o status na aplicação
+        const payablesQuery = await db.collection('financial_payables')
+            .where('establishmentId', '==', establishmentId)
+            .where('dueDate', '==', today)
+            .get();
+
+        const receivablesQuery = await db.collection('financial_receivables')
+            .where('establishmentId', '==', establishmentId)
+            .where('dueDate', '==', today)
+            .get();
+
+        const [payablesSnapshot, receivablesSnapshot] = await Promise.all([payablesQuery, receivablesQuery]);
+
+        const totalPayables = payablesSnapshot.docs
+            .filter(doc => doc.data().status === 'pending')
+            .reduce((sum, doc) => sum + doc.data().amount, 0);
+            
+        const totalReceivables = receivablesSnapshot.docs
+            .filter(doc => doc.data().status === 'pending')
+            .reduce((sum, doc) => sum + doc.data().amount, 0);
+
+        res.status(200).json({ totalPayables, totalReceivables });
+    } catch (error) {
+        handleFirestoreError(res, error, 'today summary');
+    }
+});
 
 module.exports = router;
