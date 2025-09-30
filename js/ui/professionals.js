@@ -108,9 +108,10 @@ async function showProfessionalFormView(professional = null) {
                 <div class="sm:col-span-4">
                     <label for="profName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
                     <input type="text" id="profName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" required>
-                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2 mt-4">
+                    <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-3 mt-4">
                         <div><label for="profRegistrationNumber" class="block text-sm font-medium text-gray-700">Nº de Matrícula</label><input type="text" id="profRegistrationNumber" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                         <div><label for="profCpf" class="block text-sm font-medium text-gray-700">CPF</label><input type="text" id="profCpf" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
+                        <div><label for="profCommission" class="block text-sm font-medium text-gray-700">Comissão Padrão (%)</label><input type="number" id="profCommission" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: 10"></div>
                     </div>
                 </div>
             </div>
@@ -148,6 +149,7 @@ async function showProfessionalFormView(professional = null) {
     form.querySelector('#profRegistrationNumber').value = professional?.registrationNumber || '';
     form.querySelector('#profCpf').value = professional?.cpf || '';
     form.querySelector('#profSpecialty').value = professional?.specialty || '';
+    form.querySelector('#profCommission').value = professional?.commissionRate || ''; // NOVO
 
     const photoPreview = form.querySelector('#profPhotoPreview');
     const photoBase64Input = form.querySelector('#profPhotoBase64');
@@ -195,6 +197,7 @@ async function handleProfessionalFormSubmit(e) {
         registrationNumber: form.querySelector('#profRegistrationNumber').value,
         cpf: form.querySelector('#profCpf').value,
         specialty: form.querySelector('#profSpecialty').value,
+        commissionRate: parseFloat(form.querySelector('#profCommission').value) || 0, // NOVO
         services: selectedServices,
         workingHours: professionalScheduleState,
         photo: form.querySelector('#profPhotoBase64').value,

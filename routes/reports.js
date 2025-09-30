@@ -171,5 +171,36 @@ router.get('/work-journal/:establishmentId', async (req, res) => {
     }
 });
 
+// NOVA ROTA: Relatório de Comissões
+router.get('/commissions/:establishmentId', async (req, res) => {
+    const { establishmentId } = req.params;
+    const { year, month, professionalId } = req.query;
+
+    if (!year || !month) {
+        return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
+    }
+
+    try {
+        const { db } = req;
+        let query = db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId)
+            .where('year', '==', year)
+            .where('month', '==', month);
+        
+        if (professionalId && professionalId !== 'all') {
+            query = query.where('professionalId', '==', professionalId);
+        }
+
+        const snapshot = await query.get();
+        const reports = snapshot.docs.map(doc => doc.data());
+        
+        res.status(200).json(reports);
+
+    } catch(error) {
+        console.error("Erro ao gerar relatório de comissões:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
 
 module.exports = router;

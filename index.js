@@ -67,6 +67,7 @@ const financialRoutes = require('./routes/financial');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
 const dbexplorerRoutes = require('./routes/dbexplorer');
+const commissionsRoutes = require('./routes/commissions'); // NOVO
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
@@ -77,7 +78,7 @@ app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 
 
 // 2. Rotas de Dono (só acessíveis pelo dono do estabelecimento)
-app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes); 
+app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 
 // 3. Rotas de Acesso Geral (acessíveis por dono e funcionários)
 
@@ -91,11 +92,13 @@ app.use('/api/reports', verifyToken, checkSubscription, hasAccess, reportRoutes)
 app.use('/api/sales', verifyToken, checkSubscription, hasAccess, saleRoutes);
 app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRoutes);
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
+app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); // NOVO
+
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
 // **CORRIGIDO:** Remoção de 'verifyToken' e 'checkSubscription' para permitir que rotas públicas funcionem.
 // A proteção deve ser aplicada DENTRO de cada arquivo de rota.
-app.use('/api/appointments', appointmentRoutes); 
+app.use('/api/appointments', appointmentRoutes);
 app.use('/api/establishments', establishmentRoutes);
 app.use('/api/professionals', professionalRoutes);
 app.use('/api/services', serviceRoutes);

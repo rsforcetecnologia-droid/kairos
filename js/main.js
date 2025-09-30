@@ -3,7 +3,7 @@ import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, query, where, onSnapshot, doc, getDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { state, setGlobalState } from './state.js';
-import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js'; 
+import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
 
@@ -20,6 +20,7 @@ import { loadAusenciasPage } from './ui/ausencias.js';
 import { loadUsersPage } from './ui/users.js';
 import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
+import { loadCommissionsPage } from './ui/commissions.js'; // NOVO
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -61,6 +62,7 @@ const pageLoader = {
     'users-section': loadUsersPage,
     'sales-report-section': loadSalesReportPage,
     'financial-section': loadFinancialPage,
+    'commissions-section': loadCommissionsPage, // NOVO
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---

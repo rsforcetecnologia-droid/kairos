@@ -61,3 +61,15 @@ export const getProfessionalMonthlyDetails = (establishmentId, year, month, prof
     const endpoint = `/api/analytics/${establishmentId}/professional-details?year=${year}&month=${month}&professionalId=${professionalId}`;
     return authenticatedFetch(endpoint);
 };
+
+/**
+ * NOVO: Busca o relatório de comissões.
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {string} year - O ano.
+ * @param {string} month - O mês.
+ * @param {string} professionalId - O ID do profissional ('all' para todos).
+ * @returns {Promise<Array>} - Uma promessa que resolve com a lista de relatórios de comissão.
+ */
+export const getCommissionReport = (establishmentId, year, month, professionalId) => {
+    return authenticatedFetch(`/api/reports/commissions/${establishmentId}?year=${year}&month=${month}&professionalId=${professionalId}`);
+};
