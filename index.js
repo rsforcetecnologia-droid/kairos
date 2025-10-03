@@ -110,7 +110,19 @@ app.use('/api/client-portal', clientPortalRoutes);
 
 
 // --- ROTAS PARA SERVIR AS PÁGINAS HTML ---
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+
+// ** Rota Principal (/) agora serve o site institucional (home.html) **
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'home.html')); }); 
+
+// ** Páginas do Site Institucional **
+app.get('/funcionalidades.html', (req, res) => { res.sendFile(path.join(__dirname, 'funcionalidades.html')); });
+app.get('/precos.html', (req, res) => { res.sendFile(path.join(__dirname, 'precos.html')); });
+app.get('/contato_kairos.html', (req, res) => { res.sendFile(path.join(__dirname, 'contato_kairos.html')); });
+
+// ** Páginas da Aplicação de Gestão **
+// A sua aplicação original (index.html) agora é servida pela rota /painel
+app.get('/painel', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+
 app.get('/agendar', (req, res) => { res.sendFile(path.join(__dirname, 'cliente.html')); });
 app.get('/admin', (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
 app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'login.html')); });

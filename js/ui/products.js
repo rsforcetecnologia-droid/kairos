@@ -247,40 +247,36 @@ function renderProductsList() {
             }
             const category = state.categories.find(c => c.id === p.categoryId);
             const photoSrc = p.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(p.name.charAt(0))}`;
-            card.className = `product-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden border-t-4 ${borderColorClass}`;
             const productDataString = JSON.stringify(p).replace(/'/g, "&apos;");
 
-            // --- CORREÇÃO DE LAYOUT E FONTE ---
+            // --- ALTERAÇÕES APLICADAS AQUI ---
+            card.className = `product-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300`;
             card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${p.name}" class="w-full h-24 object-cover">
+                <img src="${photoSrc}" alt="Imagem de ${p.name}" class="w-full h-20 object-cover">
                 <div class="p-2 flex flex-col flex-grow">
                     <div class="flex-grow">
-                        ${category ? `<p class="text-xs font-semibold text-indigo-600 uppercase mb-1">${category.name}</p>` : ''}
-                        <div class="flex justify-between items-start gap-2">
-                            <h3 class="text-sm font-bold text-gray-900 mb-1 text-left flex-1">${p.name}</h3>
+                        ${category ? `<p class="text-[10px] font-semibold text-indigo-600 uppercase mb-1">${category.name}</p>` : ''}
+                        <div class="flex justify-between items-start gap-1">
+                            <h3 class="text-xs font-bold text-gray-900 text-left flex-1 leading-tight">${p.name}</h3>
                             <span class="text-sm font-bold text-blue-600 whitespace-nowrap">R$ ${p.price.toFixed(2)}</span>
                         </div>
                         <div class="text-center my-1">
-                            <p class="text-2xl font-bold text-gray-800">${p.currentStock}</p>
-                            <p class="text-xs text-gray-500">em stock</p>
-                        </div>
-                        <div class="text-xs text-gray-500 flex justify-between">
-                            <span>Mín: ${p.minStock}</span>
-                            <span class="px-2 py-0.5 text-xs font-semibold rounded-full ${stockColorClass}">${stockStatusText}</span>
-                            <span>Máx: ${p.maxStock}</span>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
-                            <div class="${progressBgClass} h-1.5 rounded-full" style="width: ${Math.min((p.currentStock / (p.maxStock || 1)) * 100, 100)}%"></div>
+                            <p class="text-lg font-bold text-gray-800">${p.currentStock}</p>
+                            <div class="text-xs text-gray-500 flex justify-between items-center">
+                                <span>Mín: ${p.minStock}</span>
+                                <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${stockColorClass}">${stockStatusText}</span>
+                                <span>Máx: ${p.maxStock}</span>
+                            </div>
                         </div>
                     </div>
-                    <div class="mt-2 pt-2 border-t flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-1">
-                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="-1" class="h-7 w-7 bg-red-100 text-red-700 rounded-full font-bold text-md hover:bg-red-200">-</button>
-                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="1" class="h-7 w-7 bg-green-100 text-green-700 rounded-full font-bold text-md hover:bg-green-200">+</button>
+                    <div class="mt-2 pt-2 border-t space-y-1">
+                        <div class="grid grid-cols-2 gap-1">
+                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="-1" class="text-xs font-semibold bg-red-100 text-red-700 rounded py-1 px-2 hover:bg-red-200">Saída</button>
+                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="1" class="text-xs font-semibold bg-green-100 text-green-700 rounded py-1 px-2 hover:bg-green-200">Entrada</button>
                         </div>
-                        <div class="flex items-center gap-1">
-                            <button data-action="edit-product" data-product='${productDataString}' class="text-gray-500 hover:text-blue-600 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                            <button data-action="delete-product" data-id="${p.id}" class="text-gray-500 hover:text-red-600 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        <div class="flex items-center justify-end gap-1">
+                            <button data-action="edit-product" data-product='${productDataString}' class="text-gray-500 hover:text-blue-600 p-1" title="Editar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                            <button data-action="delete-product" data-id="${p.id}" class="text-gray-500 hover:text-red-600 p-1" title="Apagar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                         </div>
                     </div>
                 </div>`;
@@ -290,6 +286,7 @@ function renderProductsList() {
         listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum produto encontrado.</p>`;
     }
 }
+
 
 async function fetchProductsAndCategories() {
     const listDiv = document.getElementById('productsList');
@@ -391,7 +388,7 @@ export async function loadProductsPage() {
                     </select>
                 </div>
             </div>
-            <div id="productsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4"></div>
+            <div id="productsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4"></div>
         </section>`;
 
     setupEventListeners();
