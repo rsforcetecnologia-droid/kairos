@@ -167,9 +167,7 @@ router.get('/cancelled/:establishmentId', verifyToken, hasAccess, async (req, re
             .where('startTime', '<=', end)
             .orderBy('startTime', 'desc')
             .get();
-        if (snapshot.empty) {
-            return res.status(200).json([]);
-        }
+        if (snapshot.empty) return res.status(200).json([]);
         const cancelledAppointments = snapshot.docs.map(doc => {
             const data = doc.data();
             return {
@@ -200,10 +198,7 @@ router.delete('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
             const comandaItems = appointmentDoc.data().comandaItems || [];
             const productsToRestock = comandaItems.filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                const productUpdates = productsToRestock.reduce((acc, item) => {
-                    acc[item.itemId] = (acc[item.itemId] || 0) + 1;
-                    return acc;
-                }, {});
+                const productUpdates = productsToRestock.reduce((acc, item) => { acc[item.itemId] = (acc[item.itemId] || 0) + 1; return acc; }, {});
                 for (const [productId, quantity] of Object.entries(productUpdates)) {
                     const productRef = db.collection('products').doc(productId);
                     transaction.update(productRef, { currentStock: admin.firestore.FieldValue.increment(quantity) });
@@ -554,6 +549,35 @@ router.post('/:appointmentId/awaiting-payment', verifyToken, hasAccess, async (r
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+// ✅ NOVA ROTA: Atualizar apenas o status do agendamento (usado para check-in)
+router.patch('/:appointmentId/status', verifyToken, hasAccess, async (req, res) => {
+    const { appointmentId } = req.params;
+    const { status } = req.body; // Status esperado: 'confirmed'
+    
+    if (!status) {
+        return res.status(400).json({ message: 'O novo status é obrigatório.' });
+    }
+    
+    try {
+        const { db } = req;
+        const appointmentRef = db.collection('appointments').doc(appointmentId);
+        const doc = await appointmentRef.get();
+        
+        if (!doc.exists || doc.data().establishmentId !== req.user.establishmentId) {
+            return res.status(403).json({ message: 'Acesso negado ou agendamento não encontrado.' });
+        }
+        
+        // Atualiza apenas o campo 'status'
+        await appointmentRef.update({ status: status });
+        
+        res.status(200).json({ message: `Status do agendamento ${appointmentId} atualizado para ${status}.` });
+    } catch (error) {
+        console.error("Erro ao atualizar status do agendamento:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao atualizar o status.' });
+    }
+});
+
 
 // Limpar todos os agendamentos (Rota Privada - Owner)
 router.post('/clear-all/:establishmentId', verifyToken, isOwner, async (req, res) => {
