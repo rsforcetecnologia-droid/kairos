@@ -89,13 +89,14 @@ padding: 1.5rem; /* Ajustado para ser mais compacto */
 border: 1px solid #888;
 width: 90%;
 max-width: 700px;
-border-radius: 0.75rem; /* Garantido arredondamento */
-box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+/* PADRONIZAÇÃO DE ESTILO: Aumento do arredondamento e sombra suave */
+border-radius: 1rem; /* Aumentado para 1rem (16px) */
+box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.05); /* Sombra mais suave */
 animation: fadeIn 0.3s;
 }
 
 @keyframes fadeIn {
-from { opacity: 0; transform: scale(0.95); }
+from { opacity: 0; transform: scale(0.98); } /* Ajustado o scale para transição mais suave */
 to { opacity: 1; transform: scale(1); }
 }
 
@@ -592,4 +593,81 @@ background-color: #eff6ff; /* blue-50 */
 /* ESTILO WHATSAPP */
 .text-whatsapp {
     color: #25D366;
+}
+
+/* --- NOVOS ESTILOS PARA O FILTRO DE PROFISSIONAIS (Mobile-like) --- */
+.prof-selector-container {
+    overflow-x: auto; /* Permite rolagem horizontal */
+    white-space: nowrap; /* Impede quebra de linha */
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch; /* Melhora a rolagem em iOS */
+    scrollbar-width: none; /* Esconde a barra de rolagem no Firefox */
+    position: relative; /* Para posicionar o campo de busca */
+}
+.prof-selector-container::-webkit-scrollbar {
+    display: none; /* Esconde a barra de rolagem no Chrome/Safari */
+}
+
+.prof-card {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    margin-right: 1.5rem;
+    cursor: pointer;
+    padding: 4px;
+    transition: all 0.2s ease-in-out;
+    border-radius: 9999px;
+    position: relative;
+    user-select: none;
+}
+
+.prof-card-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 9999px;
+    object-fit: cover;
+    border: 3px solid transparent;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.prof-card.selected .prof-card-photo {
+    /* Usa a cor principal do sistema (indigo-600) para o anel de seleção */
+    border-color: var(--theme-main, #4f46e5); 
+    box-shadow: 0 0 0 2px var(--theme-main, #4f46e5);
+}
+
+.prof-card-name {
+    font-size: 0.75rem; /* text-xs */
+    font-weight: 600;
+    color: #4b5563; /* gray-600 */
+    white-space: nowrap;
+    margin-top: 4px;
+}
+
+.prof-card-all-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 9999px;
+    background-color: #e0e7ff; /* indigo-100 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4f46e5; /* indigo-600 */
+    border: 3px solid transparent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Garante que o campo de busca fique bem visível acima da barra de rolagem */
+.prof-search-bar {
+    padding: 0.5rem 0;
+}
+/*
+* Adiciona variáveis CSS para o tema dinâmico para ser usado pelo JavaScript.
+* O JS deve definir --theme-main
+*/
+body {
+    --theme-main: #4f46e5; /* Padrão: indigo-600 */
 }

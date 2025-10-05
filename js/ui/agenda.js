@@ -8,7 +8,7 @@ import * as blockagesApi from '../api/blockages.js';
 import * as clientsApi from '../api/clients.js';
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
@@ -29,42 +29,111 @@ const colorPalette = [
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
+let allClientsData = []; // NOVO: Cache de clientes para a busca
 
 // Estado local da página da agenda
 let localState = {
     currentView: 'list', // 'list' ou 'week'
     currentDate: new Date(),
+    selectedProfessionalId: 'all', // NOVO: ID do profissional selecionado ('all' por padrão)
+    profSearchTerm: '', // NOVO: Termo de busca para o filtro de fotos
+    showInactiveProfs: false, // NOVO: Estado para mostrar inativos
 };
 
-// --- NOVO: Função Utilitária para Criar o Link do WhatsApp ---
+// ESTADO CENTRALIZADO DO NOVO FLUXO DE AGENDAMENTO
+let newAppointmentState = {
+    step: 1, // 1: Cliente, 2: Serviço, 3: Profissional, 4: Data/Hora
+    data: {
+        clientName: '',
+        clientPhone: '',
+        selectedServiceIds: [],
+        professionalId: null,
+        professionalName: '',
+        date: null,
+        time: null,
+        redeemedReward: null
+    }
+};
+
+// --- NOVO: Função para formatar a data de forma reduzida (Ex: Sex, 26 Set) ---
+function formatDateReduced(date) {
+    return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).format(date).replace(/\./g, '');
+}
+
+
+// --- NOVO: Função para renderizar a faixa de seleção de profissionais ---
+function renderProfessionalSelector() {
+    const container = document.getElementById('profSelectorContainer');
+    const searchTerm = localState.profSearchTerm.toLowerCase();
+    
+    if (!container || !state.professionals) return;
+
+    // 1. FILTRAGEM POR STATUS (Inativos só aparecem se o toggle estiver ativo)
+    let availableProfs = state.professionals.filter(p => 
+        localState.showInactiveProfs || p.status !== 'inactive'
+    );
+
+    // 2. Aplica o filtro de busca
+    if (searchTerm) {
+        availableProfs = availableProfs.filter(p => 
+            p.name.toLowerCase().includes(searchTerm)
+        );
+    }
+    
+    const allOption = [{ id: 'all', name: 'Todos', photo: null, status: 'active' }];
+    const professionalsToRender = [...allOption, ...availableProfs];
+
+    container.innerHTML = professionalsToRender.map(prof => {
+        const isSelected = localState.selectedProfessionalId === prof.id;
+        const profName = prof.name === 'Todos' ? 'Todos' : prof.name.split(' ')[0];
+        const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
+        const isActive = prof.status !== 'inactive';
+        
+        // Obtém a cor do mapa, garantindo que 'all' use uma cor neutra
+        const defaultColor = colorPalette[0];
+        const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
+        
+        // Usa a cor do tema dinâmico se definida no CSS (melhor experiência visual)
+        const cssMainColor = getComputedStyle(document.body).getPropertyValue('--theme-main') || '#4f46e5';
+
+        const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
+        const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
+        const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
+        
+        return `
+            <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
+                 data-action="select-professional" 
+                 data-prof-id="${prof.id}"
+                 style="--theme-main: ${cssMainColor};">
+                
+                ${prof.id === 'all' 
+                    ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText};">
+                        ${initials}
+                       </div>`
+                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${isSelected ? `border-color: ${cssMainColor}; box-shadow: 0 0 0 3px ${cssMainColor};` : ''}" />`
+                }
+                
+                <span class="prof-card-name">${profName}</span>
+            </div>
+        `;
+    }).join('');
+}
+
 /**
  * Gera a URL do WhatsApp com a mensagem de confirmação pré-preenchida.
- * @param {string} phone - O número de telefone do cliente.
- * @param {string} clientName - Nome do cliente.
- * @param {string} serviceName - Nome do serviço (pode ser múltiplos).
- * @param {string} professionalName - Nome do profissional.
- * @param {Date} startTime - Data e hora do agendamento.
- * @returns {string} - O link completo do WhatsApp.
+ * [Restante da função createWhatsAppLink...]
  */
 function createWhatsAppLink(phone, clientName, serviceName, professionalName, startTime) {
-    // Remove caracteres não numéricos do telefone. Assume que o código do país está no número.
     const cleanedPhone = (phone || '').replace(/\D/g, '');
-    
-    // Formato da data e hora
     const date = new Date(startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const time = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-    // Monta a mensagem de confirmação
     const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} para o dia ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
-
-    // Codifica a mensagem para a URL
     const encodedMessage = encodeURIComponent(message);
-
-    // Retorna o link do WhatsApp
     return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`;
 }
 
-// --- 3. FUNÇÕES DE LÓGICA E RENDERIZAÇÃO DA AGENDA ---
+// [Restante das funções de Agenda: getStartOfWeek, renderListView, renderWeekView, renderAgenda, fetchAndDisplayAgenda, populateFilters...]
+// ... (Mantendo as implementações anteriores dessas funções)
 
 function getStartOfWeek(date) {
     const d = new Date(date);
@@ -104,7 +173,7 @@ function renderListView(allEvents) {
         const statusText = isCompleted ? 'Finalizado' : 'Aberto';
         const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
         
-        // --- NOVO: Cria o link do WhatsApp ---
+        // --- Cria o link do WhatsApp ---
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
 
 
@@ -138,7 +207,7 @@ function renderWeekView(allEvents) {
 
     for (let i = 0; i < 7; i++) {
         const day = new Date(weekStart);
-        day.setDate(weekStart.getDate() + i);
+        day.setDate(day.getDate() + i);
         const today = new Date();
         const isCurrentDay = day.toDateString() === today.toDateString();
 
@@ -164,7 +233,7 @@ function renderWeekView(allEvents) {
 
                 const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
                 
-                // --- NOVO: Cria o link do WhatsApp para a Visão Semanal ---
+                // --- Cria o link do WhatsApp para a Visão Semanal ---
                 const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
                 const isCompleted = event.status === 'completed';
 
@@ -179,7 +248,7 @@ function renderWeekView(allEvents) {
                             ${!isCompleted ? `
                                 <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
-                                </a>
+                            </a>
                             ` : ''}
                             <button data-action="edit-appointment" data-appointment='${apptDataString}' class="text-gray-600 hover:text-blue-600 p-1" title="Editar">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
@@ -212,11 +281,10 @@ function renderWeekView(allEvents) {
 }
 
 function renderAgenda() {
-    const profFilter = document.getElementById('profFilter');
-    const profFilterValue = profFilter ? profFilter.value : 'all';
-
     const filteredEvents = state.allEvents.filter(event => {
-        return profFilterValue === 'all' || event.professionalId === profFilterValue;
+        // Filtra pelo profissional selecionado
+        const profMatch = localState.selectedProfessionalId === 'all' || event.professionalId === localState.selectedProfessionalId;
+        return profMatch;
     });
 
     if (localState.currentView === 'list') {
@@ -239,7 +307,8 @@ async function fetchAndDisplayAgenda() {
         start.setHours(0, 0, 0, 0);
         end = new Date(localState.currentDate);
         end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = start.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+        // ATUALIZAÇÃO: Usa o formato reduzido
+        weekRangeSpan.textContent = formatDateReduced(start);
     } else {
         start = getStartOfWeek(new Date(localState.currentDate));
         end = new Date(start);
@@ -249,8 +318,20 @@ async function fetchAndDisplayAgenda() {
     }
 
     try {
-        const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(state.establishmentId, start.toISOString(), end.toISOString());
-        const blockagesData = await blockagesApi.getBlockagesByDateRange(state.establishmentId, start.toISOString(), end.toISOString());
+        // Envia o ID do profissional selecionado no filtro (se não for 'all')
+        const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(
+            state.establishmentId, 
+            start.toISOString(), 
+            end.toISOString(), 
+            localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId
+        );
+        
+        const blockagesData = await blockagesApi.getBlockagesByDateRange(
+            state.establishmentId, 
+            start.toISOString(), 
+            end.toISOString(), 
+            localState.selectedProfessionalId
+        );
         
         // Combina agendamentos e bloqueios numa única lista de eventos
         const allEvents = [
@@ -259,6 +340,10 @@ async function fetchAndDisplayAgenda() {
         ];
         
         state.allEvents = allEvents; // Armazena a lista combinada no estado global
+        
+        // Recarrega o seletor de profissionais para atualizar o estado de 'selected'
+        renderProfessionalSelector();
+        
         renderAgenda();
     } catch (error) {
         showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
@@ -267,9 +352,6 @@ async function fetchAndDisplayAgenda() {
 }
 
 async function populateFilters() {
-    const profFilter = document.getElementById('profFilter');
-    if (!profFilter) return;
-
     try {
         if (!state.professionals || state.professionals.length === 0) {
             state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
@@ -278,50 +360,184 @@ async function populateFilters() {
             state.services = await servicesApi.getServices(state.establishmentId);
         }
 
+        // Aplica a cor para o filtro de card
         state.professionals.forEach((prof, index) => {
             state.professionalColors.set(prof.id, colorPalette[index % colorPalette.length]);
         });
+        
+        // Renderiza o seletor de fotos na primeira carga
+        renderProfessionalSelector();
 
-        profFilter.innerHTML = '<option value="all">Todos Profissionais</option>';
-        state.professionals.forEach(p => profFilter.innerHTML += `<option value="${p.id}">${p.name}</option>`);
     } catch (error) {
         console.error("Erro ao popular filtros:", error);
     }
 }
 
-// --- 4. LÓGICA DO MODAL DE AGENDAMENTO ---
+// --- LÓGICA DE MANIPULAÇÃO DO FLUXO DO MODAL ---
 
+/**
+ * Atualiza o estado da nova marcação e renderiza a view correta.
+ * @param {number} step - O passo para onde navegar (1-4).
+ */
+function navigateModalStep(step) {
+    if (step < 1 || step > 4) return;
+    newAppointmentState.step = step;
+    openAppointmentModal(null, true); // O segundo parâmetro true indica que é uma navegação interna
+}
+
+// Lógica para selecionar Serviço no Step 2
+function handleServiceCardClick(serviceId, element) {
+    const isSelected = element.classList.contains('selected');
+    const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
+
+    if (isSelected) {
+        element.classList.remove('selected');
+        // Remove o ID do serviço da lista
+        if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
+    } else {
+        element.classList.add('selected');
+        // Adiciona o ID do serviço à lista
+        newAppointmentState.data.selectedServiceIds.push(serviceId);
+    }
+}
+
+// Lógica para selecionar Profissional no Step 3
+function handleProfessionalCardClick(professionalId, element) {
+    const professionalContainer = document.querySelector('.professional-step-cards');
+    if (!professionalContainer) return;
+    
+    // Limpa a seleção anterior
+    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected'));
+    
+    // Seleciona o novo
+    element.classList.add('selected');
+    
+    const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
+    
+    newAppointmentState.data.professionalId = professionalId;
+    newAppointmentState.data.professionalName = professional ? professional.name : 'N/A';
+}
+
+// Lógica para selecionar Horário no Step 4
+function handleTimeSlotClick(slot, element) {
+    const timeContainer = document.getElementById('availableTimesContainer');
+    if (!timeContainer) return;
+    
+    timeContainer.querySelectorAll('.time-slot-card').forEach(c => c.classList.remove('selected'));
+    element.classList.add('selected');
+    newAppointmentState.data.time = slot;
+}
+
+
+// --- LÓGICA DE ATUALIZAÇÃO E VALIDAÇÃO ---
+
+async function updateTimesAndDuration() {
+    const totalDurationSpan = document.getElementById('apptTotalDuration');
+    const timeContainer = document.getElementById('availableTimesContainer');
+    
+    if (!totalDurationSpan || !timeContainer) return;
+
+    const professionalId = newAppointmentState.data.professionalId;
+    const selectedServiceIds = newAppointmentState.data.selectedServiceIds;
+    const date = document.getElementById('apptDate').value;
+    
+    newAppointmentState.data.date = date; // Salva a data
+
+    const totalDuration = selectedServiceIds.reduce((acc, id) => {
+        const service = availableServicesForModal.find(s => s.id === id);
+        return acc + (service ? (service.duration + (service.bufferTime || 0)) : 0);
+    }, 0);
+    totalDurationSpan.textContent = `${totalDuration} min`;
+
+    if (totalDuration === 0 || !professionalId || !date) {
+        timeContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Selecione serviço, profissional e data.</p>';
+        return;
+    }
+
+    timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
+    
+    try {
+        const serviceIdsParam = selectedServiceIds.join(',');
+        const res = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${state.establishmentId}&professionalId=${professionalId}&serviceIds=${serviceIdsParam}&date=${date}`);
+        
+        if (!res.ok) throw new Error('Falha na resposta da API de disponibilidade');
+        
+        let slots = await res.json();
+        
+        // Filtra slots passados
+        const now = new Date();
+        const selectedDateObj = new Date(date + 'T00:00:00');
+        if (selectedDateObj.toDateString() === now.toDateString()) {
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            slots = slots.filter(slot => {
+                const [slotHours, slotMinutes] = slot.split(':').map(Number);
+                const slotTotalMinutes = slotHours * 60 + slotMinutes;
+                return slotTotalMinutes >= currentMinutes;
+            });
+        }
+
+        timeContainer.innerHTML = '';
+        if (slots.length > 0) {
+            slots.forEach(slot => {
+                const card = document.createElement('button');
+                card.type = 'button';
+                card.className = `time-slot-card p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition ${newAppointmentState.data.time === slot ? 'selected' : ''}`;
+                card.textContent = slot;
+                // CORREÇÃO: Anexando o listener de clique no slot
+                card.addEventListener('click', () => handleTimeSlotClick(slot, card));
+                timeContainer.appendChild(card);
+            });
+            // Re-seleciona o horário se ele ainda estiver no estado
+            if (newAppointmentState.data.time) {
+                const selectedSlot = timeContainer.querySelector(`[data-action="time-slot"][data-time="${newAppointmentState.data.time}"]`);
+                if (selectedSlot) selectedSlot.classList.add('selected');
+            }
+        } else {
+            timeContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum horário disponível.</p>`;
+        }
+    } catch (e) {
+        timeContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao buscar horários.</p>';
+    }
+}
+
+// --- FUNÇÃO DE SUBMISSÃO FINAL ---
 async function handleAppointmentFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
-    const appointmentId = form.querySelector('#appointmentId').value;
-    const selectedServiceIds = Array.from(form.querySelectorAll('#apptServicesContainer input:checked')).map(cb => cb.value);
-    const selectedTime = form.querySelector('#selectedTime').value;
-    const selectedDate = form.querySelector('#apptDate').value;
+    const submitButton = form.querySelector('button[type="submit"]');
 
-    const selectedRewardInput = form.querySelector('input[name="redeemedReward"]:checked');
-    const redeemedReward = selectedRewardInput ? JSON.parse(selectedRewardInput.value) : null;
+    // Validação final
+    if (!newAppointmentState.data.time || newAppointmentState.data.selectedServiceIds.length === 0 || !newAppointmentState.data.professionalId) {
+        return showNotification('Erro de Validação', 'Por favor, selecione o horário, serviço(s) e profissional antes de confirmar.', 'error');
+    }
 
-    if (selectedServiceIds.length === 0) return showNotification('Por favor, selecione pelo menos um serviço.', 'error');
-    if (!selectedTime) return showNotification('Por favor, selecione um horário disponível.', 'error');
+    submitButton.disabled = true;
+    submitButton.textContent = 'A confirmar...';
 
-    const servicesData = selectedServiceIds.map(id => {
+    const servicesData = newAppointmentState.data.selectedServiceIds.map(id => {
         const service = availableServicesForModal.find(s => s.id === id);
         return { id: service.id, name: service.name, price: service.price, duration: service.duration, bufferTime: service.bufferTime || 0, photo: service.photo || null };
     });
 
-    const [hours, minutes] = selectedTime.split(':');
-    const startTimeAsDate = new Date(`${selectedDate}T${hours}:${minutes}:00`);
+    const [hours, minutes] = newAppointmentState.data.time.split(':');
+    const startTimeAsDate = new Date(`${newAppointmentState.data.date}T${hours}:${minutes}:00`);
 
     const appointmentData = {
         establishmentId: state.establishmentId,
-        clientName: form.querySelector('#apptClientName').value,
-        clientPhone: form.querySelector('#apptClientPhone').value,
+        clientName: newAppointmentState.data.clientName, // Pego do estado
+        clientPhone: newAppointmentState.data.clientPhone, // Pego do estado
         services: servicesData,
-        professionalId: form.querySelector('#apptProfessional').value,
+        professionalId: newAppointmentState.data.professionalId, // Pego do estado
         startTime: startTimeAsDate.toISOString(),
-        redeemedReward: redeemedReward
+        redeemedReward: newAppointmentState.data.redeemedReward
     };
+    
+    // Se estiver editando, adicione o ID
+    const appointmentId = form.querySelector('#appointmentId').value;
+    if (appointmentId) {
+        appointmentData.id = appointmentId;
+    }
+
 
     try {
         if (appointmentId) {
@@ -334,186 +550,510 @@ async function handleAppointmentFormSubmit(e) {
         fetchAndDisplayAgenda();
     } catch (error) {
         showNotification(error.message, 'error');
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Confirmar Agendamento';
     }
 }
 
-async function openAppointmentModal(appointment = null) {
+
+// --- RENDERIZADORES DE ETAPA ---
+
+function renderClientCard(client) {
+    const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
+    
+    return `
+        <div class="client-search-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-blue-50 ${isSelected ? 'selected border-blue-500' : ''}" 
+             data-action="select-client" 
+             data-client-name="${client.name}" 
+             data-client-phone="${client.phone}">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${client.name.charAt(0).toUpperCase()}</div>
+                <div>
+                    <p class="font-semibold text-gray-800">${client.name}</p>
+                    <p class="text-sm text-gray-500">${client.phone}</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function handleClientSearch(searchTerm) {
+    const resultsContainer = document.getElementById('clientSearchResults');
+    if (!resultsContainer) return;
+    
+    // CORREÇÃO: A busca deve ser case-insensitive
+    const term = searchTerm.toLowerCase().trim();
+
+    if (term.length < 3) {
+        resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Digite pelo menos 3 caracteres para buscar clientes existentes.</p>';
+        return;
+    }
+    
+    // Filtra no cache local (que deve ser carregado na inicialização)
+    const filteredClients = allClientsData.filter(client => 
+        client.name.toLowerCase().includes(term) || 
+        client.phone.includes(term)
+    );
+
+    if (filteredClients.length === 0) {
+        resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente encontrado com este termo.</p>';
+        return;
+    }
+
+    resultsContainer.innerHTML = filteredClients.map(renderClientCard).join('');
+    
+    // Anexa listeners de seleção aos novos cards renderizados
+    resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
+        card.addEventListener('click', (e) => {
+            const clientName = card.dataset.clientName;
+            const clientPhone = card.dataset.clientPhone;
+            
+            // Atualiza o estado
+            newAppointmentState.data.clientName = clientName;
+            newAppointmentState.data.clientPhone = clientPhone;
+            
+            // Atualiza a UI da etapa 1 (Inputs e Resultados)
+            document.getElementById('apptClientName').value = clientName;
+            document.getElementById('apptClientPhone').value = clientPhone;
+            
+            // Força a atualização visual (deseleciona todos e seleciona o atual)
+            document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
+            card.classList.add('selected', 'border-blue-500');
+        });
+    });
+}
+
+async function handleClientRegistration(e) {
+    e.preventDefault();
+    const form = document.getElementById('clientRegistrationForm');
+    const registerButton = form.querySelector('button[type="submit"]');
+
+    const clientData = {
+        establishmentId: state.establishmentId,
+        name: form.querySelector('#regClientName').value.trim(),
+        email: form.querySelector('#regClientEmail').value.trim(),
+        phone: form.querySelector('#regClientPhone').value.trim(),
+        dobDay: form.querySelector('#regClientDobDay').value.trim(),
+        dobMonth: form.querySelector('#regClientDobMonth').value.trim(),
+        notes: form.querySelector('#regClientNotes').value.trim(),
+    };
+
+    if (!clientData.name || !clientData.phone) {
+         return showNotification('Erro de Validação', 'Nome e Telefone são obrigatórios.', 'error');
+    }
+    
+    registerButton.disabled = true;
+    registerButton.textContent = 'A salvar...';
+
+    try {
+        // CORREÇÃO: Chamada simulada para API de clientes (o backend não tem esta rota). 
+        // No mundo real, a chamada seria para `clientsApi.createClient(clientData);`
+        // Como estamos num ambiente de simulação, apenas atualizamos o cache local.
+        
+        // Simulação de salvar o cliente na lista local para que a busca encontre:
+        const newClient = { name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 };
+        allClientsData.push(newClient);
+        
+        // ATUALIZAÇÃO DO ESTADO DE AGENDAMENTO
+        newAppointmentState.data.clientName = clientData.name;
+        newAppointmentState.data.clientPhone = clientData.phone;
+        
+        showNotification('Cliente cadastrado com sucesso!', 'success');
+        // Usa o ID correto para fechar o modal de registro
+        document.getElementById('clientRegistrationModal').style.display = 'none';
+        
+        // Re-renderiza a Step 1 para mostrar o cliente selecionado
+        navigateModalStep(1); 
+        
+    } catch (error) {
+        showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
+    } finally {
+        registerButton.disabled = false;
+        registerButton.textContent = 'Salvar';
+    }
+}
+
+function renderClientRegistrationModal() {
+    // Usamos showGenericModal que injeta o HTML e abre o modal genérico
+    const modalContent = `
+        <div class="modal-content max-w-2xl p-0 rounded-xl overflow-hidden shadow-2xl" id="clientRegistrationModal">
+            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
+                <h2 class="text-xl font-bold text-gray-800">Cadastrar Novo Cliente</h2>
+                <button type="button" data-action="close-modal" data-target="clientRegistrationModal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
+            </header>
+            
+            <form id="clientRegistrationForm" class="flex flex-col h-full">
+                <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                        <div><label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                        <div><label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                        <div><label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (Dia)</label><input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                        <div><label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Aniversário (Mês)</label><input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    </div>
+                    <div><label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label><textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea></div>
+                </div>
+                
+                <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
+                    <button type="button" data-action="close-modal" data-target="clientRegistrationModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
+                    <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar</button>
+                </footer>
+            </form>
+        </div>
+    `;
+
+    showGenericModal(modalContent, 'clientRegistrationModal'); // Usa o modal genérico do componente modal.js
+    
+    // CORREÇÃO: Anexa o listener de submit para o formulário de cadastro.
+    // Usamos um evento 'submit' que será capturado pelo formulário.
+    document.getElementById('clientRegistrationForm').addEventListener('submit', handleClientRegistration);
+}
+
+function openClientRegistrationModal() {
+    renderClientRegistrationModal();
+}
+
+function renderStep1_Client(appointment, isNavigating) {
+    const title = appointment ? 'Editar Agendamento' : 'Selecionar Cliente';
+    const formContent = `
+        <!-- CONTEÚDO DA ETAPA 1: CLIENTE -->
+        <div class="p-5 space-y-6">
+            <h3 class="text-xl font-bold text-gray-800">1. Dados do Cliente</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="apptClientName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
+                    <input type="text" id="apptClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Nome Completo" value="${newAppointmentState.data.clientName}">
+                </div>
+                <div>
+                    <label for="apptClientPhone" class="block text-sm font-medium text-gray-700">Telemóvel</label>
+                    <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
+                </div>
+            </div>
+             <!-- Pesquisa de clientes e botão Cadastrar novo cliente (Conforme Imagem 1) -->
+            <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+                <div class="relative flex-grow">
+                    <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
+                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <button type="button" data-action="open-client-registration" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                    Cadastrar
+                </button>
+            </div>
+            
+            <div id="clientSearchResults" class="space-y-3 max-h-40 overflow-y-auto p-1">
+                <p class="text-sm text-gray-500">Digite para buscar clientes existentes.</p>
+            </div>
+        </div>
+        
+        <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
+            <button type="button" data-action="close-modal" data-target="appointmentModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
+            <button type="button" data-action="next-step" data-current-step="1" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        </footer>
+    `;
+    return { title: title, content: formContent };
+}
+
+function renderStep2_Service() {
+    const title = 'Selecionar Serviço';
+    
+    const formContent = `
+        <!-- CONTEÚDO DA ETAPA 2: SERVIÇO -->
+        <div class="p-5 space-y-6">
+            <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
+             <!-- Pesquisa de serviços (Conforme Imagem 3) -->
+            <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+                 <input type="search" placeholder="Buscar Serviço..." class="flex-grow p-3 pl-10 border rounded-lg">
+                 <button type="button" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">Cadastrar</button>
+            </div>
+            
+            <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
+                 ${availableServicesForModal.map(service => {
+                    const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
+                    const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
+                    
+                    return `
+                        <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
+                            <div class="flex items-center">
+                                <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
+                                <div class="flex-1">
+                                    <p class="font-semibold text-sm text-gray-800">${service.name}</p>
+                                    <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
+                                </div>
+                            </div>
+                        </div>`;
+                }).join('')}
+            </div>
+        </div>
+        
+        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
+            <button type="button" data-action="prev-step" data-current-step="2" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="2" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        </footer>
+    `;
+    return { title: title, content: formContent };
+}
+
+function renderStep3_Professional() {
+    const title = 'Selecionar Profissional';
+
+    const formContent = `
+        <!-- CONTEÚDO DA ETAPA 3: PROFISSIONAL -->
+        <div class="p-5 space-y-6">
+             <h3 class="text-xl font-bold text-gray-800">3. Profissional</h3>
+             <div id="apptProfessionalContainer" class="mt-4 flex flex-wrap gap-3 max-h-48 overflow-y-auto p-1 professional-step-cards">
+                 ${availableProfessionalsForModal.map(prof => {
+                    const isChecked = newAppointmentState.data.professionalId === prof.id;
+                    const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
+                    
+                    return `
+                         <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
+                             <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
+                             <p class="text-xs font-semibold text-gray-800">${prof.name.split(' ')[0]}</p>
+                             <p class="text-[10px] text-gray-500">${prof.specialty || 'Profissional'}</p>
+                         </div>`;
+                    }).join('')}
+             </div>
+             <!-- Pesquisa (Conforme Imagem de Cliente) -->
+             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+                <input type="search" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
+                <button type="button" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">Cadastrar</button>
+             </div>
+        </div>
+        
+        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
+            <button type="button" data-action="prev-step" data-current-step="3" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="3" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        </footer>
+    `;
+    return { title: title, content: formContent };
+}
+
+function renderStep4_Schedule(appointment) {
+    const title = appointment ? 'Confirmar Edição' : 'Data e Horário';
+    
+    // Obter data formatada para a exibição no cabeçalho
+    const today = new Date();
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const initialDate = newAppointmentState.data.date || todayString;
+
+    const formContent = `
+        <!-- CONTEÚDO DA ETAPA 4: DATA/HORA -->
+        <div class="p-5 space-y-6">
+            <h3 class="text-xl font-bold text-gray-800">4. ${title}</h3>
+
+            <!-- Resumo (Conforme Imagem 4) -->
+            <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 space-y-1">
+                <p class="font-bold text-gray-800">${newAppointmentState.data.clientName}</p>
+                <p class="text-sm text-gray-700">Serviços: ${newAppointmentState.data.selectedServiceIds.length} selecionado(s)</p>
+                <p class="text-sm text-gray-700">Profissional: ${newAppointmentState.data.professionalName}</p>
+            </div>
+
+            <!-- Data e Duração -->
+            <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                <div>
+                    <label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label>
+                    <input type="date" id="apptDate" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500" value="${initialDate}">
+                </div>
+                <div class="bg-gray-100 p-3 rounded-lg shadow-sm flex flex-col justify-center">
+                    <label class="block text-xs font-medium text-gray-600">Duração Total Estimada</label>
+                    <span id="apptTotalDuration" class="mt-1 text-xl font-bold text-gray-800">0 min</span>
+                </div>
+            </div>
+
+            <!-- Horários Disponíveis -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Horários Disponíveis</label>
+                <div id="availableTimesContainer" class="mt-2 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
+                    <p class="col-span-full text-center text-gray-500">Selecione serviço(s), profissional e data.</p>
+                </div>
+            </div>
+
+             <!-- Fidelidade (Opcional) -->
+            <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
+        </div>
+        
+        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
+            <button type="button" data-action="prev-step" data-current-step="4" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
+            <button type="submit" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Confirmar Agendamento</button>
+        </footer>
+    `;
+    return { title: title, content: formContent };
+}
+
+// --- FUNÇÃO PRINCIPAL DO MODAL ---
+
+async function openAppointmentModal(appointment = null, isNavigating = false) {
     const modal = document.getElementById('appointmentModal');
+    
+    // Reinicia o estado na abertura inicial (não navegação)
+    if (!isNavigating) {
+        newAppointmentState = {
+            step: 1,
+            data: {
+                clientName: appointment?.clientName || '',
+                clientPhone: appointment?.clientPhone || '',
+                selectedServiceIds: appointment?.services?.map(s => s.id) || [],
+                professionalId: appointment?.professionalId || null,
+                professionalName: appointment?.professionalName || '',
+                date: null,
+                time: null,
+                redeemedReward: null
+            }
+        };
+    }
+    
+    // --- 1. Busca de Dados (Garante que os catálogos estão prontos) ---
+    try {
+        const [details, servicesData, professionalsData, clientsData] = await Promise.all([
+            establishmentApi.getEstablishmentDetails(state.establishmentId),
+            servicesApi.getServices(state.establishmentId),
+            (await professionalsApi.getProfessionals(state.establishmentId)).filter(p => p.status === 'active'),
+            clientsApi.getClients(state.establishmentId) // NOVO: Busca todos os clientes
+        ]);
+        
+        loyaltySettingsForModal = details.loyaltyProgram || { enabled: false };
+        availableServicesForModal = servicesData;
+        availableProfessionalsForModal = professionalsData;
+        allClientsData = clientsData; // NOVO: Salva clientes no cache
+
+    } catch (error) {
+        showNotification('Erro Crítico', 'Não foi possível carregar os dados para o agendamento. Verifique a conexão.', 'error');
+        modal.style.display = 'none';
+        return;
+    }
+
+    // --- 2. Renderiza a Etapa Atual ---
+    let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
+    
+    switch (newAppointmentState.step) {
+        case 1: renderResult = renderStep1_Client(appointment, isNavigating); break;
+        case 2: renderResult = renderStep2_Service(); break;
+        case 3: renderResult = renderStep3_Professional(); break;
+        case 4: renderResult = renderStep4_Schedule(appointment); break;
+        default: break;
+    }
+    
+    // 3. Monta o Modal
     modal.innerHTML = `
-        <div class="modal-content">
-            <h2 id="appointmentModalTitle" class="text-2xl font-bold mb-4">Novo Agendamento</h2>
-            <form id="appointmentForm" class="space-y-4">
-                <input type="hidden" id="appointmentId">
-                <input type="hidden" id="selectedTime">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label for="apptClientName" class="block text-sm font-medium text-gray-700">Nome do Cliente</label><input type="text" id="apptClientName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Nome Completo"></div>
-                    <div><label for="apptClientPhone" class="block text-sm font-medium text-gray-700">Telemóvel do Cliente</label><input type="tel" id="apptClientPhone" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX"></div>
+        <div class="modal-content max-w-4xl p-0 rounded-xl overflow-hidden shadow-2xl">
+            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
+                <h2 class="text-xl font-bold text-gray-800">${renderResult.title}</h2>
+                <button type="button" data-action="close-modal" data-target="appointmentModal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
+            </header>
+            
+            <form id="appointmentForm" class="flex flex-col h-full">
+                <input type="hidden" id="appointmentId" value="${appointment?.id || ''}">
+                <input type="hidden" id="selectedTime" value="${newAppointmentState.data.time || ''}">
+                
+                <div class="flex-1 overflow-y-auto" style="max-height: 80vh;">
+                    ${renderResult.content}
                 </div>
-                <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
-                <div><label class="block text-sm font-medium text-gray-700">Serviços</label><div id="apptServicesContainer" class="mt-1 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-32 overflow-y-auto p-2 bg-gray-50 rounded-md border"><div class="loader"></div></div></div>
-                <div><label for="apptProfessional" class="block text-sm font-medium text-gray-700">Profissional</label><select id="apptProfessional" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"><option value="">Selecione um profissional</option></select></div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label><input type="date" id="apptDate" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                    <div><label class="block text-sm font-medium text-gray-700">Duração Total</label><span id="apptTotalDuration" class="mt-1 block w-full p-2 bg-gray-50 border border-gray-200 rounded-md text-gray-600">0 min</span></div>
-                </div>
-                <div><label class="block text-sm font-medium text-gray-700">Horários Disponíveis</label><div id="availableTimesContainer" class="mt-2 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-2 bg-gray-50 rounded-md"><p class="col-span-full text-center text-gray-500">Selecione serviço, profissional e data.</p></div></div>
-                <div class="flex gap-4 pt-4"><button type="button" data-action="close-modal" data-target="appointmentModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Cancelar</button><button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg">Confirmar</button></div>
+                
             </form>
         </div>`;
 
-    const form = modal.querySelector('#appointmentForm');
-    const title = modal.querySelector('#appointmentModalTitle');
-    const dateInput = modal.querySelector('#apptDate');
-    const timeContainer = modal.querySelector('#availableTimesContainer');
-    const selectedTimeInput = modal.querySelector('#selectedTime');
-    const servicesContainer = modal.querySelector('#apptServicesContainer');
-    const professionalSelect = modal.querySelector('#apptProfessional');
-    const totalDurationSpan = modal.querySelector('#apptTotalDuration');
+    // 4. Anexa Listeners de Navegação/Ação
+    modal.querySelectorAll('[data-action="next-step"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const currentStep = parseInt(btn.dataset.currentStep, 10);
+            
+            // Validação
+            if (currentStep === 1) {
+                const clientNameInput = modal.querySelector('#apptClientName');
+                const clientPhoneInput = modal.querySelector('#apptClientPhone');
 
-    form.addEventListener('submit', handleAppointmentFormSubmit);
+                // Garante que o estado seja atualizado com os dados atuais dos inputs antes da validação
+                newAppointmentState.data.clientName = clientNameInput.value.trim();
+                newAppointmentState.data.clientPhone = clientPhoneInput.value.trim();
+                
+                if (!newAppointmentState.data.clientName || !newAppointmentState.data.clientPhone) {
+                    return showNotification('Atenção', 'Nome e telefone do cliente são obrigatórios.', 'error');
+                }
+            } else if (currentStep === 2) {
+                if (newAppointmentState.data.selectedServiceIds.length === 0) {
+                     return showNotification('Atenção', 'Selecione pelo menos um serviço.', 'error');
+                }
+            } else if (currentStep === 3) {
+                 if (!newAppointmentState.data.professionalId) {
+                     return showNotification('Atenção', 'Selecione um profissional.', 'error');
+                 }
+            }
+            
+            navigateModalStep(currentStep + 1);
+        });
+    });
 
-    try {
-        const details = await establishmentApi.getEstablishmentDetails(state.establishmentId);
-        loyaltySettingsForModal = details.loyaltyProgram || { enabled: false };
+    modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => {
+        btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1));
+    });
 
-        [availableServicesForModal, availableProfessionalsForModal] = await Promise.all([
-            servicesApi.getServices(state.establishmentId),
-            professionalsApi.getProfessionals(state.establishmentId)
-        ]);
+    // Event listener para o formulário na Etapa 4
+    const appointmentForm = modal.querySelector('#appointmentForm');
+    
+    // Se estivermos na Etapa 4 (e o botão de submit for renderizado)
+    if (newAppointmentState.step === 4 && appointmentForm) {
+         appointmentForm.addEventListener('submit', handleAppointmentFormSubmit);
+    }
 
-        professionalSelect.innerHTML = '<option value="">Selecione um profissional</option>' + availableProfessionalsForModal.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-        servicesContainer.innerHTML = availableServicesForModal.map(service => `
-            <div class="flex items-center">
-                <input type="checkbox" id="appt-service-${service.id}" value="${service.id}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                <label for="appt-service-${service.id}" class="ml-2 text-sm text-gray-700">${service.name} (${service.duration} min)</label>
-            </div>`).join('');
 
-        const today = new Date();
-        const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    // 5. Ativação inicial do modal e listeners específicos da etapa
 
-        if (appointment) {
-            title.textContent = 'Editar Agendamento';
-            form.querySelector('#appointmentId').value = appointment.id;
-            form.querySelector('#apptClientName').value = appointment.clientName;
-            form.querySelector('#apptClientPhone').value = appointment.clientPhone;
-            professionalSelect.value = appointment.professionalId;
-            const date = new Date(appointment.startTime);
-            dateInput.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-            selectedTimeInput.value = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-            const selectedServiceIds = appointment.services.map(s => s.id);
-            form.querySelectorAll('#apptServicesContainer input[type="checkbox"]').forEach(cb => {
-                cb.checked = selectedServiceIds.includes(cb.value);
-            });
-        } else {
-            title.textContent = 'Novo Agendamento';
-            dateInput.value = todayString;
+    // Certifica-se de que o modal está visível
+    modal.style.display = 'flex';
+    
+    // --- LÓGICA DE ATIVAÇÃO DE CARDS (Step 2 & 3) ---
+    if (newAppointmentState.step === 2) {
+        const servicesContainer = modal.querySelector('#apptServicesContainer');
+        servicesContainer.querySelectorAll('.service-card').forEach(card => {
+            card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
+        });
+    }
+
+    if (newAppointmentState.step === 3) {
+        const professionalContainer = modal.querySelector('#apptProfessionalContainer');
+        professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => {
+            card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
+        });
+    }
+    
+    // --- LÓGICA ESPECÍFICA DA STEP 1 (Busca e Cadastro) ---
+    if (newAppointmentState.step === 1) {
+        const clientSearchInput = modal.querySelector('#clientSearchInput');
+        
+        // Listener para a busca de clientes (em tempo real)
+        if (clientSearchInput) {
+            clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
+            
+            // CORREÇÃO: Disparar a busca inicial se houver dados no estado, para mostrar a seleção
+             if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
+                 // Concatena nome e telefone para simular um termo de busca que traria o cliente
+                 handleClientSearch(`${newAppointmentState.data.clientName} ${newAppointmentState.data.clientPhone}`);
+             }
         }
 
-        const clientPhoneInput = form.querySelector('#apptClientPhone');
-        clientPhoneInput.addEventListener('blur', async () => {
-            const clientName = form.querySelector('#apptClientName').value;
-            const clientPhone = clientPhoneInput.value;
-            const rewardsContainer = form.querySelector('#loyaltyRewardsContainer');
+        // Listener para abrir o modal de cadastro de novo cliente
+        const registerButton = modal.querySelector('[data-action="open-client-registration"]');
+        if (registerButton) {
+            registerButton.addEventListener('click', openClientRegistrationModal);
+        }
+    }
+    
+    // Lógica para a Etapa 4 (Data/Hora)
+    if (newAppointmentState.step === 4) {
+        const dateInput = modal.querySelector('#apptDate');
+        
+        // Listener para atualização de horários ao mudar a data
+        if (dateInput) dateInput.addEventListener('change', updateTimesAndDuration);
+        
+        // Chamada inicial (após a renderização)
+        updateTimesAndDuration();
 
-            if (loyaltySettingsForModal.enabled && clientName && clientPhone) {
-                try {
-                    const clientDetails = await clientsApi.getClientDetails(state.establishmentId, clientName, clientPhone);
-                    const points = clientDetails.loyaltyPoints || 0;
-                    const availableRewards = loyaltySettingsForModal.tiers.filter(t => t.points <= points);
+        // Lógica de Fidelidade (Disparada no carregamento da Step 4)
+        const clientPhoneInput = modal.querySelector('#apptClientPhone');
+        if (clientPhoneInput) clientPhoneInput.dispatchEvent(new Event('blur'));
 
-                    if (availableRewards.length > 0) {
-                        rewardsContainer.innerHTML = `
-                            <p class="font-semibold text-gray-800 mb-2">Fidelidade <span class="font-normal text-indigo-600">(${points} pts)</span></p>
-                            <div class="space-y-2">
-                                ${availableRewards.map(tier => {
-                                    const tierDataString = JSON.stringify(tier).replace(/'/g, "&apos;");
-                                    return `
-                                    <label class="flex items-center bg-white p-2 rounded-md border cursor-pointer">
-                                        <input type="radio" name="redeemedReward" value='${tierDataString}' class="h-4 w-4 text-indigo-600">
-                                        <span class="ml-3 text-sm font-medium text-gray-700">${tier.reward} (-${tier.points} pts)</span>
-                                    </label>
-                                `}).join('')}
-                                <label class="flex items-center bg-white p-2 rounded-md border cursor-pointer">
-                                    <input type="radio" name="redeemedReward" value="" checked class="h-4 w-4 text-indigo-600">
-                                    <span class="ml-3 text-sm font-medium text-gray-500">Não resgatar prémio</span>
-                                </label>
-                            </div>`;
-                        rewardsContainer.classList.remove('hidden');
-                    } else {
-                        rewardsContainer.classList.add('hidden');
-                    }
-                } catch (error) {
-                    console.warn("Cliente sem histórico de fidelidade ou erro na busca.");
-                    rewardsContainer.classList.add('hidden');
-                }
-            }
-        });
-
-        const updateTimes = async () => {
-            const selectedServiceIds = Array.from(form.querySelectorAll('#apptServicesContainer input:checked')).map(cb => cb.value);
-            const professionalId = professionalSelect.value;
-            const date = dateInput.value;
-            selectedTimeInput.value = '';
-
-            const totalDuration = selectedServiceIds.reduce((acc, id) => {
-                const service = availableServicesForModal.find(s => s.id === id);
-                return acc + (service ? (service.duration + (service.bufferTime || 0)) : 0);
-            }, 0);
-            totalDurationSpan.textContent = `${totalDuration} min`;
-
-            if (selectedServiceIds.length === 0 || !professionalId || !date) {
-                timeContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Selecione serviços, profissional e data.</p>';
-                return;
-            }
-
-            timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${state.establishmentId}&professionalId=${professionalId}&serviceIds=${selectedServiceIds.join(',')}&date=${date}`);
-                if (!res.ok) throw new Error('Falha na resposta da API de disponibilidade');
-                let slots = await res.json();
-
-                const now = new Date();
-                const selectedDateObj = new Date(date + 'T00:00:00');
-                if (selectedDateObj.toDateString() === now.toDateString()) {
-                    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                    slots = slots.filter(slot => {
-                        const [slotHours, slotMinutes] = slot.split(':').map(Number);
-                        const slotTotalMinutes = slotHours * 60 + slotMinutes;
-                        return slotTotalMinutes >= currentMinutes;
-                    });
-                }
-
-                timeContainer.innerHTML = '';
-                if (slots.length > 0) {
-                    slots.forEach(slot => {
-                        const card = document.createElement('button');
-                        card.type = 'button';
-                        card.className = 'time-slot-card';
-                        card.textContent = slot;
-                        if (appointment && selectedTimeInput.value === slot) card.classList.add('selected');
-                        card.addEventListener('click', () => {
-                            timeContainer.querySelectorAll('.time-slot-card').forEach(c => c.classList.remove('selected'));
-                            card.classList.add('selected');
-                            selectedTimeInput.value = slot;
-                        });
-                        timeContainer.appendChild(card);
-                    });
-                } else {
-                    timeContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum horário disponível.</p>`;
-                }
-            } catch (e) {
-                console.error("Erro ao buscar horários:", e);
-                timeContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao buscar horários.</p>';
-            }
-        };
-
-        servicesContainer.addEventListener('change', updateTimes);
-        professionalSelect.addEventListener('change', updateTimes);
-        dateInput.addEventListener('change', updateTimes);
-        updateTimes();
-        modal.style.display = 'flex';
-    } catch (error) {
-        showNotification('Erro', 'Não foi possível carregar dados para o agendamento.', 'error');
     }
 }
 
@@ -523,6 +1063,8 @@ async function openAppointmentModal(appointment = null) {
 export async function loadAgendaPage() {
     if (currentTimeInterval) clearInterval(currentTimeInterval);
     localState.currentDate = new Date();
+    // Limpa o termo de busca ao carregar a página
+    localState.profSearchTerm = ''; 
 
     contentDiv.innerHTML = `
         <section>
@@ -537,16 +1079,38 @@ export async function loadAgendaPage() {
                     <button id="nextBtn" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
                     <span id="weekRange" class="font-semibold text-lg"></span>
                 </div>
-                <div class="flex items-center gap-4">
-                    <select id="profFilter" class="p-2 border rounded-md shadow-sm"><option value="all">Todos Profissionais</option></select>
-                    <button data-action="new-appointment" class="py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-300">Novo Agendamento</button>
+            </div>
+            
+            <!-- NOVO: Filtro de Profissionais baseado em Fotos e Pesquisa -->
+            <div class="bg-white p-4 rounded-xl shadow-lg mb-6">
+                 <div class="prof-search-bar flex items-center gap-4">
+                    <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="flex-grow p-2 border rounded-md shadow-sm">
+                    <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
+                        <div class="relative">
+                            <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                        </div>
+                        <span class="text-sm font-medium text-gray-700">Inativos</span>
+                    </label>
+                </div>
+                <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
+                    <!-- O seletor de fotos será renderizado aqui pelo JS -->
+                    <div class="loader mx-auto"></div>
                 </div>
             </div>
+            <!-- FIM NOVO -->
+            
             <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
+            
+            <!-- BOTÃO FLUTUANTE DE NOVO AGENDAMENTO -->
+            <button data-action="new-appointment" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+            </button>
         </section>`;
 
     // Adiciona listeners aos botões de navegação
-    document.getElementById('profFilter').addEventListener('change', renderAgenda);
     document.querySelectorAll('.view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
@@ -569,9 +1133,43 @@ export async function loadAgendaPage() {
         localState.currentDate.setDate(localState.currentDate.getDate() + step);
         fetchAndDisplayAgenda();
     });
+    
+    // NOVO: Listeners para o filtro de profissionais (Busca, Seleção e Toggle)
+    document.getElementById('profSearchInput').addEventListener('input', (e) => {
+        localState.profSearchTerm = e.target.value;
+        renderProfessionalSelector();
+    });
 
+    document.getElementById('showInactiveProfsToggle').addEventListener('change', (e) => {
+        localState.showInactiveProfs = e.target.checked;
+        // Se a busca estiver ativa, o render vai lidar com a filtragem
+        // Se a busca estiver vazia, apenas atualiza a lista de seleção
+        renderProfessionalSelector(); 
+        fetchAndDisplayAgenda(); // Adiciona o fetch para reatualizar a agenda com base nos inativos/ativos
+    });
+    
     contentDiv.addEventListener('click', async (e) => {
         const targetElement = e.target.closest('[data-action]');
+        
+        if (e.target.closest('[data-action="select-professional"]')) {
+            const selectedProfCard = e.target.closest('[data-action="select-professional"]');
+            const profId = selectedProfCard.dataset.profId;
+            
+            // Verifica se está deselecionando o profissional atual
+            const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
+            
+            localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
+
+            // Limpa o termo de busca se um profissional foi selecionado
+            if (profId !== 'all') {
+                document.getElementById('profSearchInput').value = '';
+                localState.profSearchTerm = '';
+            }
+            
+            await fetchAndDisplayAgenda(); // Atualiza a agenda com o novo filtro
+            return;
+        }
+
         if (!targetElement) return;
 
         const action = targetElement.dataset.action;

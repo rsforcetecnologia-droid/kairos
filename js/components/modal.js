@@ -106,42 +106,95 @@ export function showNotification(message, type = 'info', playSound = false) {
 }
 
 /**
- * Exibe um modal de confirmação moderno e compacto.
- * @param {string} title - O título da confirmação.
- * @param {string} message - A pergunta de confirmação.
- * @returns {Promise<boolean>} - Uma promessa que resolve para 'true' se o utilizador confirmar, e 'false' se cancelar.
- */
+ * Exibe um modal de confirmação moderno e compacto, com estilo de app mobile.
+ * @param {string} title - O título da confirmação.
+ * @param {string} message - A pergunta de confirmação.
+ * @returns {Promise<boolean>} - Uma promessa que resolve para 'true' se o utilizador confirmar, e 'false' se cancelar.
+ */
 export function showConfirmation(title, message) {
-    return new Promise((resolve) => {
-        genericModal.innerHTML = `
-            <div class="modal-content max-w-sm text-center p-6 rounded-lg shadow-xl">
-                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
-                    <svg class="h-6 w-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                </div>
-                <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">${title}</h3>
-                <div class="mt-2 text-sm text-gray-500">
-                    <p>${message}</p>
-                </div>
-                <div class="mt-5 sm:mt-6 flex justify-end gap-2">
-                    <button id="genericModalCancelBtn" class="py-1 px-4 bg-white text-gray-700 font-semibold rounded-md border border-gray-300 hover:bg-gray-50 transition text-xs">Cancelar</button>
-                    <button id="genericModalConfirmBtn" class="py-1 px-4 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition text-xs">Confirmar</button>
-                </div>
-            </div>`;
+    return new Promise((resolve) => {
+        genericModal.innerHTML = `
+            <div class="modal-content max-w-sm p-0 rounded-xl overflow-hidden shadow-2xl">
+                <div class="p-6 text-center">
+                    <!-- Ícone de Alerta com cor mais suave -->
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-200">
+                        <svg class="h-6 w-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-xl leading-6 font-bold text-gray-900 mt-4">${title}</h3>
+                    <div class="mt-2 text-sm text-gray-600">
+                        <p>${message}</p>
+                    </div>
+                </div>
+                <!-- Botões no rodapé com cores mais suaves -->
+                <div class="bg-gray-50 px-4 py-3 flex justify-center gap-3 border-t">
+                    <button id="genericModalCancelBtn" class="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition text-sm">Cancelar</button>
+                    <button id="genericModalConfirmBtn" class="flex-1 py-2 px-4 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition text-sm">Confirmar</button>
+                </div>
+            </div>`;
 
-        genericModal.style.display = 'flex';
+        genericModal.style.display = 'flex';
 
-        document.getElementById('genericModalConfirmBtn').onclick = () => {
-            genericModal.style.display = 'none';
-            resolve(true);
-        };
-        document.getElementById('genericModalCancelBtn').onclick = () => {
-            genericModal.style.display = 'none';
-            resolve(false);
-        };
-    });
+        document.getElementById('genericModalConfirmBtn').onclick = () => {
+            genericModal.style.display = 'none';
+            resolve(true);
+        };
+        document.getElementById('genericModalCancelBtn').onclick = () => {
+            genericModal.style.display = 'none';
+            resolve(false);
+        };
+    });
 }
+
+/**
+ * Exibe um modal genérico com conteúdo customizado, usando o novo estilo padronizado.
+ * @param {string} title - O título do modal.
+ * @param {string} contentHTML - O HTML do corpo a ser inserido.
+ * @param {string} [maxWidth='max-w-4xl'] - Largura máxima do modal (classes Tailwind).
+ * @param {boolean} [showCloseButton=true] - Se deve incluir o botão de fechar no cabeçalho.
+ * @returns {object} - Controles do modal { modalElement, close, setContent }.
+ */
+export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', showCloseButton = true }) {
+    const modal = document.getElementById('genericModal');
+    
+    // Adiciona o listener para fechar ao clicar no "X"
+    const handleClose = () => {
+        modal.style.display = 'none';
+    };
+
+    const setContent = (newContentHTML) => {
+         modal.querySelector('#genericModalContentBody').innerHTML = newContentHTML;
+    }
+
+    modal.innerHTML = `
+        <div class="modal-content ${maxWidth} p-0 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]" 
+             onclick="event.stopPropagation()">
+            
+            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
+                <h2 class="text-xl font-bold text-gray-800">${title}</h2>
+                ${showCloseButton ? `<button data-close-modal class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>` : ''}
+            </header>
+
+            <div id="genericModalContentBody" class="flex-1 overflow-y-auto p-5">
+                ${contentHTML}
+            </div>
+            
+            <footer id="genericModalFooter" class="hidden"></footer>
+        </div>
+    `;
+
+    // Garante que o clique no botão 'x' feche o modal
+    const closeButton = modal.querySelector('[data-close-modal]');
+    if (closeButton) {
+        closeButton.onclick = handleClose;
+    }
+
+    modal.style.display = 'flex';
+
+    return { modalElement: modal, close: handleClose, setContent };
+}
+
 
 /**
  * Inicializa um listener global para lidar com o fecho de modals e a ativação do áudio.
@@ -155,6 +208,7 @@ export function initializeModalClosers() {
     }, { once: true }); // O listener é executado apenas uma vez
 
     document.addEventListener('click', (e) => {
+        // Fechamento de modais customizados que usam data-action="close-modal" (DEPRECATED: usar data-close-modal)
         const button = e.target.closest('[data-action="close-modal"]');
         if (button) {
             const targetModalId = button.dataset.target;
@@ -165,7 +219,22 @@ export function initializeModalClosers() {
                 }
             }
         }
+
+        // Fechamento de modais que usam data-close-modal (NOVO PADRÃO)
+        const newCloseButton = e.target.closest('[data-close-modal]');
+        if (newCloseButton) {
+            const modal = document.getElementById('genericModal');
+            if (modal) modal.style.display = 'none';
+        }
     });
+    
+    // Fechamento de modais ao clicar fora (se for o modal genérico)
+    genericModal.addEventListener('click', (e) => {
+        // Se o clique foi no background do modal (e não dentro do modal-content)
+        if (e.target === genericModal) {
+            genericModal.style.display = 'none';
+        }
+    });
 }
 
 
@@ -203,36 +272,31 @@ async function fetchAndDisplayCancellations() {
 }
 
 export function openCancellationHistoryModal() {
-    const modal = document.getElementById('genericModal'); // Reutilizando o modal genérico
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-    modal.innerHTML = `
-        <div class="modal-content max-w-3xl">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">Histórico de Cancelamentos</h2>
-                <button type="button" data-action="close-modal" data-target="genericModal" class="text-2xl font-bold">&times;</button>
-            </div>
-            <div class="flex items-center gap-4 bg-gray-100 p-3 rounded-lg mb-4">
-                <div><label for="cancelStartDate" class="text-sm font-medium">De:</label><input type="date" id="cancelStartDate" value="${thirtyDaysAgoStr}" class="p-2 border rounded-md"></div>
-                <div><label for="cancelEndDate" class="text-sm font-medium">Até:</label><input type="date" id="cancelEndDate" value="${today}" class="p-2 border rounded-md"></div>
-                <button id="searchCancellationsBtn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Buscar</button>
-            </div>
-            <div id="cancellationListContainer" class="space-y-3 max-h-96 overflow-y-auto pr-2">
-                <div class="loader mx-auto"></div>
-            </div>
+    const contentHTML = `
+        <div class="flex items-center gap-4 bg-gray-100 p-3 rounded-lg mb-4">
+            <div><label for="cancelStartDate" class="text-sm font-medium">De:</label><input type="date" id="cancelStartDate" value="${thirtyDaysAgoStr}" class="p-2 border rounded-md"></div>
+            <div><label for="cancelEndDate" class="text-sm font-medium">Até:</label><input type="date" id="cancelEndDate" value="${today}" class="p-2 border rounded-md"></div>
+            <button id="searchCancellationsBtn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Buscar</button>
+        </div>
+        <div id="cancellationListContainer" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+            <div class="loader mx-auto"></div>
         </div>
     `;
-    modal.style.display = 'flex';
 
-    const searchBtn = modal.querySelector('#searchCancellationsBtn');
+    const { modalElement } = showGenericModal({
+        title: "Histórico de Cancelamentos",
+        contentHTML: contentHTML,
+        maxWidth: 'max-w-3xl'
+    });
+    
+    const searchBtn = modalElement.querySelector('#searchCancellationsBtn');
     searchBtn.addEventListener('click', fetchAndDisplayCancellations);
     
     // Carrega a busca inicial
     fetchAndDisplayCancellations();
 }
-
-
-
