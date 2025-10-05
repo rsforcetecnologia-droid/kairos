@@ -142,5 +142,48 @@ router.post('/redeem', async (req, res) => {
     }
 });
 
+// ROTA ADICIONADA: Criar um novo cliente (a partir do modal de agendamento)
+router.post('/', async (req, res) => {
+    const { establishmentId, name, phone, email, dobDay, dobMonth, notes } = req.body;
+    if (!establishmentId || !name || !phone) {
+        return res.status(400).json({ message: 'Estabelecimento, nome e telefone são obrigatórios.' });
+    }
+
+    try {
+        const { db } = req;
+        // O identificador único do cliente é uma combinação de nome e telefone
+        const clientIdentifier = `${name.trim()}-${phone.trim()}`;
+        const clientRef = db.collection('clients').doc(clientIdentifier);
+
+        const clientDoc = await clientRef.get();
+        if (clientDoc.exists) {
+            // Opcional: pode-se atualizar os dados se o cliente já existir
+            // ou retornar um erro/aviso. Por agora, vamos apenas confirmar que existe.
+            return res.status(200).json({ message: 'Cliente já existente.', id: clientDoc.id });
+        }
+
+        const newClientData = {
+            establishmentId,
+            name,
+            phone,
+            email: email || null,
+            dob: (dobDay && dobMonth) ? `${dobDay}/${dobMonth}` : null,
+            notes: notes || null,
+            loyaltyPoints: 0, // Pontos de fidelidade começam em zero
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        await clientRef.set(newClientData);
+
+        res.status(201).json({ message: 'Cliente criado com sucesso!', id: clientRef.id, ...newClientData });
+
+    } catch (error) {
+        console.error("Erro ao criar cliente:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao criar o cliente.' });
+    }
+});
+
+
 // ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;
+

@@ -647,21 +647,20 @@ async function handleClientRegistration(e) {
     registerButton.textContent = 'A salvar...';
 
     try {
-        // CORREÇÃO: Chamada simulada para API de clientes (o backend não tem esta rota). 
-        // No mundo real, a chamada seria para `clientsApi.createClient(clientData);`
-        // Como estamos num ambiente de simulação, apenas atualizamos o cache local.
+        // CORREÇÃO: Chama a API real para criar o cliente
+        await clientsApi.createClient(clientData);
         
-        // Simulação de salvar o cliente na lista local para que a busca encontre:
-        const newClient = { name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 };
-        allClientsData.push(newClient);
+        // Adiciona o novo cliente ao cache local para que a busca o encontre imediatamente
+        allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
         
         // ATUALIZAÇÃO DO ESTADO DE AGENDAMENTO
         newAppointmentState.data.clientName = clientData.name;
         newAppointmentState.data.clientPhone = clientData.phone;
         
         showNotification('Cliente cadastrado com sucesso!', 'success');
-        // Usa o ID correto para fechar o modal de registro
-        document.getElementById('clientRegistrationModal').style.display = 'none';
+        
+        // CORREÇÃO: Fecha o modal genérico
+        document.getElementById('genericModal').style.display = 'none';
         
         // Re-renderiza a Step 1 para mostrar o cliente selecionado
         navigateModalStep(1); 
@@ -675,40 +674,41 @@ async function handleClientRegistration(e) {
 }
 
 function renderClientRegistrationModal() {
-    // Usamos showGenericModal que injeta o HTML e abre o modal genérico
+    // CORREÇÃO: O conteúdo agora é apenas o formulário, pois o modal genérico cria a estrutura.
     const modalContent = `
-        <div class="modal-content max-w-2xl p-0 rounded-xl overflow-hidden shadow-2xl" id="clientRegistrationModal">
-            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
-                <h2 class="text-xl font-bold text-gray-800">Cadastrar Novo Cliente</h2>
-                <button type="button" data-action="close-modal" data-target="clientRegistrationModal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
-            </header>
-            
-            <form id="clientRegistrationForm" class="flex flex-col h-full">
-                <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                        <div><label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                        <div><label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                        <div><label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (Dia)</label><input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                        <div><label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Aniversário (Mês)</label><input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    </div>
-                    <div><label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label><textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea></div>
+        <form id="clientRegistrationForm" class="flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (Dia)</label><input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Aniversário (Mês)</label><input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
                 </div>
-                
-                <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-                    <button type="button" data-action="close-modal" data-target="clientRegistrationModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-                    <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar</button>
-                </footer>
-            </form>
-        </div>
+                <div><label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label><textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea></div>
+            </div>
+            
+            <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
+                <button type="button" data-action="close-modal" data-target="genericModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
+                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar</button>
+            </footer>
+        </form>
     `;
 
-    showGenericModal(modalContent, 'clientRegistrationModal'); // Usa o modal genérico do componente modal.js
+    // CORREÇÃO: Usa a assinatura correta de `showGenericModal`
+    showGenericModal({
+        title: 'Cadastrar Novo Cliente',
+        contentHTML: modalContent,
+        maxWidth: 'max-w-2xl'
+    });
     
-    // CORREÇÃO: Anexa o listener de submit para o formulário de cadastro.
-    // Usamos um evento 'submit' que será capturado pelo formulário.
-    document.getElementById('clientRegistrationForm').addEventListener('submit', handleClientRegistration);
+    // CORREÇÃO: Anexa o listener de submit ao formulário DEPOIS que o modal é renderizado.
+    const form = document.getElementById('clientRegistrationForm');
+    if (form) {
+         form.addEventListener('submit', handleClientRegistration);
+    }
 }
+
 
 function openClientRegistrationModal() {
     renderClientRegistrationModal();
@@ -1219,3 +1219,4 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
+

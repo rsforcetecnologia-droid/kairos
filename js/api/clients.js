@@ -61,3 +61,16 @@ export const redeemReward = (establishmentId, clientName, clientPhone, rewardDat
         body: JSON.stringify({ establishmentId, clientName, clientPhone, rewardData }),
     });
 };
+
+/**
+ * Cria um novo cliente.
+ * @param {object} clientData - Os dados do cliente a ser criado.
+ * @returns {Promise<object>} - Uma promessa que resolve com o cliente criado.
+ */
+export const createClient = (clientData) => {
+    return authenticatedFetch('/api/clients', {
+        method: 'POST',
+        body: JSON.stringify(clientData),
+    });
+};
+
