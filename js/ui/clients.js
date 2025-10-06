@@ -3,7 +3,7 @@
 import * as clientsApi from '../api/clients.js';
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 
 const contentDiv = document.getElementById('content');
 let allClientsData = [];
@@ -183,35 +183,70 @@ function renderFidelidadeTab(client, loyaltyHistory) {
 function openClientDetailModal(client) {
     currentClient = client;
     currentView = 'detail';
-    const title = client ? client.name : 'Novo Cliente';
+    const isEditing = client !== null;
+    const title = isEditing ? 'Editar Cliente' : 'Adicionar Cliente';
 
-    contentDiv.innerHTML = `
-        <div id="client-detail-view" class="bg-gray-50 p-4 rounded-t-lg">
-            <div class="flex justify-between items-center">
-                <h2 class="text-2xl font-bold text-gray-800">${title}</h2>
-                <button data-action="close-detail-view" class="text-2xl font-bold text-gray-500 hover:text-gray-800">&times;</button>
-            </div>
-        </div>
-        <div class="bg-white rounded-b-lg shadow-md">
-            <div class="border-b border-gray-200">
-                <nav id="client-detail-tabs" class="-mb-px flex space-x-6 px-4"">
-                    <!-- Abas serão renderizadas aqui -->
-                </nav>
-            </div>
-            <div id="client-detail-content">
-                <!-- Conteúdo da aba será renderizado aqui -->
-            </div>
-            <div class="p-4 bg-gray-50 border-t flex justify-between">
-                <button data-action="delete-client" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 ${!client ? 'hidden' : ''}">Excluir Cliente</button>
+    const dob = client?.dob ? client.dob.split('/') : ['', ''];
+
+    const modalContent = `
+        <form id="client-form" class="flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                <input type="hidden" id="clientId" value="${client?.id || ''}">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="clientName" class="block text-sm font-medium text-gray-700">Nome</label>
+                        <input type="text" id="clientName" value="${client?.name || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="clientEmail" class="block text-sm font-medium text-gray-700">E-mail</label>
+                        <input type="email" id="clientEmail" value="${client?.email || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label for="clientPhone" class="block text-sm font-medium text-gray-700">Telefone</label>
+                        <input type="tel" id="clientPhone" value="${client?.phone || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label for="clientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (dia)</label>
+                            <input type="number" id="clientDobDay" value="${dob[0]}" min="1" max="31" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                        </div>
+                        <div>
+                            <label for="clientDobMonth" class="block text-sm font-medium text-gray-700">(mês)</label>
+                            <input type="number" id="clientDobMonth" value="${dob[1]}" min="1" max="12" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                        </div>
+                    </div>
+                </div>
                 <div>
-                    <button data-action="close-detail-view" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 mr-2">Voltar</button>
-                    <button data-action="save-client" class="py-2 px-4 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600">Salvar</button>
+                    <label for="clientNotes" class="block text-sm font-medium text-gray-700">Observações</label>
+                    <textarea id="clientNotes" rows="4" class="mt-1 w-full p-2 border border-gray-300 rounded-md">${client?.notes || ''}</textarea>
                 </div>
             </div>
-        </div>
+            <footer class="p-4 bg-gray-50 border-t flex justify-between items-center">
+                ${isEditing ? `<button type="button" data-action="delete-client" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Excluir Cliente</button>` : '<div></div>'}
+                <div class="flex gap-3">
+                    <button type="button" data-action="close-detail-view" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" data-action="save-client" class="py-2 px-4 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600">Salvar</button>
+                </div>
+            </footer>
+        </form>
     `;
-    renderDetailContent('cadastro');
+
+    showGenericModal({
+        title: title,
+        contentHTML: modalContent,
+        maxWidth: 'max-w-3xl'
+    });
+
+    // Anexa o listener de submit ao formulário DEPOIS que o modal é renderizado.
+    const form = document.getElementById('client-form');
+    if (form) {
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            handleSaveClient();
+        });
+    }
 }
+
 
 async function handleSaveClient() {
     const form = document.getElementById('client-form');
@@ -240,6 +275,7 @@ async function handleSaveClient() {
             await clientsApi.createClient(clientData);
             showNotification('Sucesso', 'Cliente cadastrado com sucesso!', 'success');
         }
+        document.getElementById('genericModal').style.display = 'none';
         await loadClientsPage(); // Volta para a lista
     } catch (error) {
         showNotification('Erro', `Não foi possível salvar: ${error.message}`, 'error');
@@ -253,6 +289,7 @@ async function handleDeleteClient() {
         try {
             await clientsApi.deleteClient(currentClient.id);
             showNotification('Sucesso', 'Cliente excluído.', 'success');
+            document.getElementById('genericModal').style.display = 'none';
             await loadClientsPage();
         } catch (error) {
             showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
@@ -308,49 +345,59 @@ export async function loadClientsPage() {
 }
 
 // --- GESTOR DE EVENTOS GLOBAL DA PÁGINA ---
-
+// **CORREÇÃO APLICADA AQUI**
 contentDiv.addEventListener('click', async (e) => {
-    const target = e.target.closest('[data-action]');
-    if (!target) return;
-
-    const action = target.dataset.action;
+    const actionTarget = e.target.closest('[data-action]');
+    const cardTarget = e.target.closest('.client-card');
 
     if (currentView === 'list') {
-        if (action === 'new-client') {
+        if (actionTarget && actionTarget.dataset.action === 'new-client') {
             openClientDetailModal(null);
-        } else if (e.target.closest('.client-card')) {
-            const clientId = e.target.closest('.client-card').dataset.clientId;
+        } else if (cardTarget) {
+            const clientId = cardTarget.dataset.clientId;
             const client = allClientsData.find(c => c.id === clientId);
-            if(client) openClientDetailModal(client);
+            if (client) {
+                openClientDetailModal(client);
+            }
         }
     } else if (currentView === 'detail') {
-        if (action === 'close-detail-view') {
-            loadClientsPage();
-        } else if (action === 'save-client') {
-            await handleSaveClient();
-        } else if (action === 'delete-client') {
-            await handleDeleteClient();
-        } else if (action === 'redeem-reward') {
-             const points = parseInt(target.dataset.points, 10);
-            const reward = target.dataset.reward;
-            const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
-            if (confirmed) {
-                try {
-                    await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
-                    showNotification('Prémio resgatado com sucesso!', 'success');
-                    // Recarrega os dados do cliente e a aba de fidelidade
-                    const updatedClients = await clientsApi.getClients(state.establishmentId);
-                    allClientsData = updatedClients;
-                    const updatedClient = allClientsData.find(c => c.id === currentClient.id);
-                    if(updatedClient) currentClient = updatedClient;
-                    renderDetailContent('fidelidade');
-                } catch (error) {
-                    showNotification(`Erro ao resgatar: ${error.message}`, 'error');
-                }
+        if (actionTarget) {
+            const action = actionTarget.dataset.action;
+            switch (action) {
+                case 'close-detail-view':
+                    document.getElementById('genericModal').style.display = 'none';
+                    loadClientsPage();
+                    break;
+                case 'save-client':
+                    // O submit do formulário já chama handleSaveClient
+                    break;
+                case 'delete-client':
+                    await handleDeleteClient();
+                    break;
+                case 'redeem-reward':
+                    const points = parseInt(actionTarget.dataset.points, 10);
+                    const reward = actionTarget.dataset.reward;
+                    const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
+                    if (confirmed) {
+                        try {
+                            await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
+                            showNotification('Prémio resgatado com sucesso!', 'success');
+                            // Recarrega os dados do cliente e a aba de fidelidade
+                            const updatedClients = await clientsApi.getClients(state.establishmentId);
+                            allClientsData = updatedClients;
+                            const updatedClient = allClientsData.find(c => c.id === currentClient.id);
+                            if(updatedClient) currentClient = updatedClient;
+                            renderDetailContent('fidelidade');
+                        } catch (error) {
+                            showNotification(`Erro ao resgatar: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
             }
         }
     }
 });
+
 
 contentDiv.addEventListener('input', (e) => {
     if (e.target.id === 'clientSearchInput') {
@@ -374,4 +421,3 @@ contentDiv.addEventListener('input', (e) => {
         `).join('') : `<p class="col-span-full text-center text-gray-500">Nenhum cliente encontrado.</p>`;
     }
 });
-
