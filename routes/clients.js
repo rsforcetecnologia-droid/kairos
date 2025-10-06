@@ -8,56 +8,106 @@ router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     try {
         const { db } = req;
-        const [appointmentsSnapshot, clientsSnapshot] = await Promise.all([
-            db.collection('appointments').where('establishmentId', '==', establishmentId).get(),
-            db.collection('clients').where('establishmentId', '==', establishmentId).get()
-        ]);
-        const loyaltyPointsMap = new Map();
-        clientsSnapshot.forEach(doc => {
-            loyaltyPointsMap.set(doc.id, doc.data().loyaltyPoints || 0);
-        });
-        const clientsMap = new Map();
-        appointmentsSnapshot.docs.forEach(doc => {
-            const data = doc.data();
-            const clientIdentifier = `${data.clientName.trim()}-${data.clientPhone.trim()}`;
-            const appointmentDate = data.startTime.toDate();
-            if (clientsMap.has(clientIdentifier)) {
-                const client = clientsMap.get(clientIdentifier);
-                client.visitCount++;
-                if (appointmentDate > client.lastVisit) client.lastVisit = appointmentDate;
-            } else {
-                clientsMap.set(clientIdentifier, {
-                    name: data.clientName, phone: data.clientPhone,
-                    visitCount: 1, lastVisit: appointmentDate,
-                    loyaltyPoints: loyaltyPointsMap.get(clientIdentifier) || 0
-                });
-            }
-        });
-        res.status(200).json(Array.from(clientsMap.values()));
+        const snapshot = await db.collection('clients')
+            .where('establishmentId', '==', establishmentId)
+            // .orderBy('name') // REMOVIDO: Esta linha causava o erro de índice.
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(200).json([]);
+        }
+        const clientsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // ADICIONADO: Ordena a lista de clientes por nome no servidor.
+        clientsList.sort((a, b) => a.name.localeCompare(b.name));
+
+        res.status(200).json(clientsList);
     } catch (error) {
         console.error("Erro ao listar clientes:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
-// Obter detalhes de um cliente
-router.get('/details/:establishmentId', async (req, res) => {
-    const { establishmentId } = req.params;
-    const { clientName, clientPhone } = req.query;
-    if (!clientName || !clientPhone) {
-        return res.status(400).json({ message: 'Nome e telefone do cliente são obrigatórios.' });
+// Criar um novo cliente
+router.post('/', async (req, res) => {
+    const { establishmentId, name, phone, email, dob, notes } = req.body;
+    if (!establishmentId || !name || !phone) {
+        return res.status(400).json({ message: 'Estabelecimento, nome e telefone são obrigatórios.' });
     }
+
     try {
         const { db } = req;
-        const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
-        const clientDoc = await db.collection('clients').doc(clientIdentifier).get();
-        if (!clientDoc.exists) return res.status(200).json({ loyaltyPoints: 0 });
-        res.status(200).json(clientDoc.data());
+        
+        // Verifica se já existe um cliente com o mesmo telefone
+        const existingClientQuery = await db.collection('clients')
+            .where('establishmentId', '==', establishmentId)
+            .where('phone', '==', phone)
+            .limit(1)
+            .get();
+
+        if (!existingClientQuery.empty) {
+            return res.status(409).json({ message: 'Já existe um cliente com este número de telefone.' });
+        }
+
+        const newClientData = {
+            establishmentId,
+            name,
+            phone,
+            email: email || null,
+            dob: dob || null,
+            notes: notes || null,
+            loyaltyPoints: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await db.collection('clients').add(newClientData);
+        res.status(201).json({ message: 'Cliente criado com sucesso!', id: docRef.id, ...newClientData });
+
     } catch (error) {
-        console.error("Erro ao buscar detalhes do cliente:", error);
+        console.error("Erro ao criar cliente:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao criar o cliente.' });
+    }
+});
+
+// Atualizar um cliente
+router.put('/:clientId', async (req, res) => {
+    const { clientId } = req.params;
+    const clientData = req.body;
+     try {
+        const { db } = req;
+        const clientRef = db.collection('clients').doc(clientId);
+        await clientRef.update(clientData);
+        res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao atualizar cliente:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+// Apagar um cliente
+router.delete('/:clientId', async (req, res) => {
+    const { clientId } = req.params;
+    try {
+        const { db } = req;
+        const clientRef = db.collection('clients').doc(clientId);
+        
+        // Opcional: apagar subcoleções como 'loyaltyHistory'
+        const subcollectionRef = clientRef.collection('loyaltyHistory');
+        const subcollectionSnapshot = await subcollectionRef.get();
+        const batch = db.batch();
+        subcollectionSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+
+        await clientRef.delete();
+        res.status(200).json({ message: 'Cliente e seu histórico de fidelidade foram excluídos.' });
+    } catch (error) {
+        console.error("Erro ao apagar cliente:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
 
 // Obter histórico de agendamentos de um cliente
 router.get('/history/:establishmentId', async (req, res) => {
@@ -72,15 +122,18 @@ router.get('/history/:establishmentId', async (req, res) => {
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
+            .orderBy('startTime', 'desc')
             .get();
         if (snapshot.empty) return res.status(200).json([]);
-        let history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        history.sort((a, b) => b.startTime.toMillis() - a.startTime.toMillis());
-        const fullHistory = history.map(appt => ({
-            date: appt.startTime.toDate().toLocaleDateString('pt-BR'),
-            serviceName: appt.services.map(s => s.name).join(', ')
-        }));
-        res.status(200).json(fullHistory);
+        const history = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                date: data.startTime.toDate().toLocaleDateString('pt-BR'),
+                serviceName: (data.services || []).map(s => s.name).join(', ')
+            };
+        });
+        res.status(200).json(history);
     } catch (error) {
         console.error("Erro ao buscar histórico do cliente:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
@@ -96,10 +149,20 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
     try {
         const { db } = req;
-        const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
-        const historySnapshot = await db.collection('clients').doc(clientIdentifier)
+        // Precisamos encontrar o ID do cliente primeiro
+        const clientQuery = await db.collection('clients')
+            .where('establishmentId', '==', establishmentId)
+            .where('phone', '==', clientPhone)
+            .limit(1).get();
+        
+        if (clientQuery.empty) return res.status(200).json([]);
+
+        const clientId = clientQuery.docs[0].id;
+        const historySnapshot = await db.collection('clients').doc(clientId)
             .collection('loyaltyHistory').orderBy('timestamp', 'desc').get();
+
         if (historySnapshot.empty) return res.status(200).json([]);
+        
         const history = historySnapshot.docs.map(doc => {
             const data = doc.data();
             return { ...data, timestamp: data.timestamp.toDate().toLocaleDateString('pt-BR') };
@@ -119,8 +182,15 @@ router.post('/redeem', async (req, res) => {
     }
     try {
         const { db } = req;
-        const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
-        const clientRef = db.collection('clients').doc(clientIdentifier);
+        const clientQuery = await db.collection('clients')
+            .where('establishmentId', '==', establishmentId)
+            .where('phone', '==', clientPhone)
+            .limit(1).get();
+        
+        if (clientQuery.empty) throw new Error("Cliente não encontrado.");
+
+        const clientRef = clientQuery.docs[0].ref;
+
         await db.runTransaction(async (transaction) => {
             const clientDoc = await transaction.get(clientRef);
             if (!clientDoc.exists) throw new Error("Cliente não encontrado no programa de fidelidade.");
@@ -142,48 +212,5 @@ router.post('/redeem', async (req, res) => {
     }
 });
 
-// ROTA ADICIONADA: Criar um novo cliente (a partir do modal de agendamento)
-router.post('/', async (req, res) => {
-    const { establishmentId, name, phone, email, dobDay, dobMonth, notes } = req.body;
-    if (!establishmentId || !name || !phone) {
-        return res.status(400).json({ message: 'Estabelecimento, nome e telefone são obrigatórios.' });
-    }
-
-    try {
-        const { db } = req;
-        // O identificador único do cliente é uma combinação de nome e telefone
-        const clientIdentifier = `${name.trim()}-${phone.trim()}`;
-        const clientRef = db.collection('clients').doc(clientIdentifier);
-
-        const clientDoc = await clientRef.get();
-        if (clientDoc.exists) {
-            // Opcional: pode-se atualizar os dados se o cliente já existir
-            // ou retornar um erro/aviso. Por agora, vamos apenas confirmar que existe.
-            return res.status(200).json({ message: 'Cliente já existente.', id: clientDoc.id });
-        }
-
-        const newClientData = {
-            establishmentId,
-            name,
-            phone,
-            email: email || null,
-            dob: (dobDay && dobMonth) ? `${dobDay}/${dobMonth}` : null,
-            notes: notes || null,
-            loyaltyPoints: 0, // Pontos de fidelidade começam em zero
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-
-        await clientRef.set(newClientData);
-
-        res.status(201).json({ message: 'Cliente criado com sucesso!', id: clientRef.id, ...newClientData });
-
-    } catch (error) {
-        console.error("Erro ao criar cliente:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao criar o cliente.' });
-    }
-});
-
-
-// ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;
 

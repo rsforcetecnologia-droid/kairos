@@ -9,6 +9,16 @@ router.get('/', async (req, res) => {
     }
     try {
         const { db } = req;
+
+        // NOVO: Busca as configurações do estabelecimento para obter o intervalo dos slots
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        if (!establishmentDoc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+        const establishmentData = establishmentDoc.data();
+        const slotInterval = establishmentData.slotInterval || 30; // Usa a configuração, com um padrão de 30 minutos.
+
+
         const serviceIdArray = serviceIds.split(',');
         const serviceDocs = await Promise.all(serviceIdArray.map(id => db.collection('services').doc(id).get()));
         let totalDuration = 0;
@@ -43,7 +53,8 @@ router.get('/', async (req, res) => {
         ];
 
         const availableSlots = [];
-        const slotInterval = 30; // ✅ ALTERADO DE 15 PARA 30
+        // ✅ A linha abaixo foi substituída pela lógica que busca do banco de dados.
+        // const slotInterval = 30; 
         const workStart = new Date(`${date}T${todayConfig.start}:00-03:00`);
         const workEnd = new Date(`${date}T${todayConfig.end}:00-03:00`);
         let breakStart, breakEnd;
@@ -88,3 +99,4 @@ router.get('/', async (req, res) => {
 
 // ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;
+

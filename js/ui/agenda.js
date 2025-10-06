@@ -34,6 +34,7 @@ let allClientsData = []; // NOVO: Cache de clientes para a busca
 // Estado local da página da agenda
 let localState = {
     currentView: 'list', // 'list' ou 'week'
+    weekViewDays: 7, // NOVO: 3, 5, ou 7
     currentDate: new Date(),
     selectedProfessionalId: 'all', // NOVO: ID do profissional selecionado ('all' por padrão)
     profSearchTerm: '', // NOVO: Termo de busca para o filtro de fotos
@@ -139,7 +140,7 @@ function getStartOfWeek(date) {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Garante que a semana começa na Segunda-feira
     return new Date(d.setDate(diff));
 }
 
@@ -200,12 +201,13 @@ function renderListView(allEvents) {
 
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
-    const weekDays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+    const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     const weekStart = getStartOfWeek(localState.currentDate);
+    const numDays = localState.weekViewDays;
 
-    let weekHTML = '<div class="grid grid-cols-7 divide-x divide-gray-200 min-h-[60vh]">';
+    let weekHTML = `<div class="grid divide-x divide-gray-200 min-h-[60vh]" style="grid-template-columns: repeat(${numDays}, minmax(0, 1fr));">`;
 
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < numDays; i++) {
         const day = new Date(weekStart);
         day.setDate(day.getDate() + i);
         const today = new Date();
@@ -268,7 +270,7 @@ function renderWeekView(allEvents) {
         weekHTML += `
             <div class="flex flex-col">
                 <div class="text-center py-2 border-b ${isCurrentDay ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50'}">
-                    <p class="font-bold">${weekDays[i]}</p>
+                    <p class="font-bold">${weekDays[day.getDay()]}</p>
                     <p class="text-sm">${day.getDate()}/${day.getMonth() + 1}</p>
                 </div>
                 <div class="flex-grow overflow-y-auto">${eventsHTML}</div>
@@ -312,9 +314,9 @@ async function fetchAndDisplayAgenda() {
     } else {
         start = getStartOfWeek(new Date(localState.currentDate));
         end = new Date(start);
-        end.setDate(start.getDate() + 6);
+        end.setDate(start.getDate() + (localState.weekViewDays - 1));
         end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR')} - ${end.toLocaleDateString('pt-BR')}`;
+        weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} - ${end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}`;
     }
 
     try {
@@ -391,11 +393,11 @@ function handleServiceCardClick(serviceId, element) {
     const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
 
     if (isSelected) {
-        element.classList.remove('selected');
+        element.classList.remove('selected', 'border-blue-500'); // CORREÇÃO: Remove a classe da borda
         // Remove o ID do serviço da lista
         if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
     } else {
-        element.classList.add('selected');
+        element.classList.add('selected', 'border-blue-500'); // CORREÇÃO: Adiciona a classe da borda
         // Adiciona o ID do serviço à lista
         newAppointmentState.data.selectedServiceIds.push(serviceId);
     }
@@ -407,16 +409,17 @@ function handleProfessionalCardClick(professionalId, element) {
     if (!professionalContainer) return;
     
     // Limpa a seleção anterior
-    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected'));
+    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-blue-500')); // CORREÇÃO: Remove a classe da borda
     
     // Seleciona o novo
-    element.classList.add('selected');
+    element.classList.add('selected', 'border-blue-500'); // CORREÇÃO: Adiciona a classe da borda
     
     const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
     
     newAppointmentState.data.professionalId = professionalId;
     newAppointmentState.data.professionalName = professional ? professional.name : 'N/A';
 }
+
 
 // Lógica para selecionar Horário no Step 4
 function handleTimeSlotClick(slot, element) {
@@ -764,8 +767,7 @@ function renderStep2_Service() {
             <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
              <!-- Pesquisa de serviços (Conforme Imagem 3) -->
             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" placeholder="Buscar Serviço..." class="flex-grow p-3 pl-10 border rounded-lg">
-                 <button type="button" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">Cadastrar</button>
+                 <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="flex-grow p-3 pl-10 border rounded-lg">
             </div>
             
             <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
@@ -817,8 +819,7 @@ function renderStep3_Professional() {
              </div>
              <!-- Pesquisa (Conforme Imagem de Cliente) -->
              <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                <input type="search" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
-                <button type="button" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">Cadastrar</button>
+                <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
              </div>
         </div>
         
@@ -881,6 +882,60 @@ function renderStep4_Schedule(appointment) {
     `;
     return { title: title, content: formContent };
 }
+
+// --- FUNÇÕES DE BUSCA NO MODAL ---
+function handleServiceSearchInModal(searchTerm) {
+    const container = document.getElementById('apptServicesContainer');
+    if (!container) return;
+    const term = searchTerm.toLowerCase();
+    const filtered = availableServicesForModal.filter(s => s.name.toLowerCase().includes(term));
+
+    container.innerHTML = filtered.map(service => {
+        const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
+        const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
+        
+        return `
+            <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
+                <div class="flex items-center">
+                    <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
+                    <div class="flex-1">
+                        <p class="font-semibold text-sm text-gray-800">${service.name}</p>
+                        <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
+                    </div>
+                </div>
+            </div>`;
+    }).join('');
+
+    // Reanexa os listeners de clique aos cards filtrados
+    container.querySelectorAll('.service-card').forEach(card => {
+        card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
+    });
+}
+
+function handleProfessionalSearchInModal(searchTerm) {
+    const container = document.getElementById('apptProfessionalContainer');
+    if (!container) return;
+    const term = searchTerm.toLowerCase();
+    const filtered = availableProfessionalsForModal.filter(p => p.name.toLowerCase().includes(term));
+
+    container.innerHTML = filtered.map(prof => {
+        const isChecked = newAppointmentState.data.professionalId === prof.id;
+        const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
+        
+        return `
+             <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
+                 <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
+                 <p class="text-xs font-semibold text-gray-800">${prof.name.split(' ')[0]}</p>
+                 <p class="text-[10px] text-gray-500">${prof.specialty || 'Profissional'}</p>
+             </div>`;
+    }).join('');
+
+    // Reanexa os listeners de clique aos cards filtrados
+    container.querySelectorAll('.professional-modal-card').forEach(card => {
+        card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
+    });
+}
+
 
 // --- FUNÇÃO PRINCIPAL DO MODAL ---
 
@@ -1009,6 +1064,10 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         servicesContainer.querySelectorAll('.service-card').forEach(card => {
             card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
         });
+        const serviceSearchInput = modal.querySelector('#serviceSearchModalInput');
+        if (serviceSearchInput) {
+            serviceSearchInput.addEventListener('input', (e) => handleServiceSearchInModal(e.target.value));
+        }
     }
 
     if (newAppointmentState.step === 3) {
@@ -1016,6 +1075,10 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => {
             card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
         });
+        const professionalSearchInput = modal.querySelector('#professionalSearchModalInput');
+        if (professionalSearchInput) {
+            professionalSearchInput.addEventListener('input', (e) => handleProfessionalSearchInModal(e.target.value));
+        }
     }
     
     // --- LÓGICA ESPECÍFICA DA STEP 1 (Busca e Cadastro) ---
@@ -1074,6 +1137,11 @@ export async function loadAgendaPage() {
                         <button data-view="list" class="view-btn active">Lista</button>
                         <button data-view="week" class="view-btn">Semana</button>
                     </div>
+                    <div id="week-days-toggle" class="hidden items-center gap-1 rounded-lg bg-gray-200 p-1">
+                        <button data-days="3" class="week-days-btn view-btn">3 dias</button>
+                        <button data-days="5" class="week-days-btn view-btn">5 dias</button>
+                        <button data-days="7" class="week-days-btn view-btn active">7 dias</button>
+                    </div>
                     <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
                     <button id="prevBtn" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
                     <button id="nextBtn" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
@@ -1111,25 +1179,43 @@ export async function loadAgendaPage() {
         </section>`;
 
     // Adiciona listeners aos botões de navegação
-    document.querySelectorAll('.view-btn').forEach(btn => {
+    document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             localState.currentView = btn.dataset.view;
+
+            const weekDaysToggle = document.getElementById('week-days-toggle');
+            if (localState.currentView === 'week') {
+                weekDaysToggle.style.display = 'flex';
+            } else {
+                weekDaysToggle.style.display = 'none';
+            }
+
             fetchAndDisplayAgenda();
         });
     });
+
+    document.querySelectorAll('.week-days-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            localState.weekViewDays = parseInt(btn.dataset.days, 10);
+            fetchAndDisplayAgenda();
+        });
+    });
+
     document.getElementById('todayBtn').addEventListener('click', () => {
         localState.currentDate = new Date();
         fetchAndDisplayAgenda();
     });
     document.getElementById('prevBtn').addEventListener('click', () => {
-        const step = localState.currentView === 'week' ? 7 : 1;
+        const step = localState.currentView === 'week' ? localState.weekViewDays : 1;
         localState.currentDate.setDate(localState.currentDate.getDate() - step);
         fetchAndDisplayAgenda();
     });
     document.getElementById('nextBtn').addEventListener('click', () => {
-        const step = localState.currentView === 'week' ? 7 : 1;
+        const step = localState.currentView === 'week' ? localState.weekViewDays : 1;
         localState.currentDate.setDate(localState.currentDate.getDate() + step);
         fetchAndDisplayAgenda();
     });
@@ -1219,4 +1305,5 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
+
 

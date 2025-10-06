@@ -93,7 +93,23 @@ const checkSubscription = async (req, res, next) => {
             }
 
             const expiryTimestamp = subscription.expiryDate;
-            const expiryDate = expiryTimestamp.toDate();
+            let expiryDate;
+
+            // Check if it's a Firestore Timestamp object (which has a toDate method)
+            if (expiryTimestamp && typeof expiryTimestamp.toDate === 'function') {
+                expiryDate = expiryTimestamp.toDate();
+            }
+            // Check if it's a serialized Timestamp object (common when passed through JSON)
+            else if (expiryTimestamp && typeof expiryTimestamp._seconds === 'number') {
+                expiryDate = new Date(expiryTimestamp._seconds * 1000);
+            }
+            // Check if it's a string date
+            else if (typeof expiryTimestamp === 'string') {
+                expiryDate = new Date(expiryTimestamp);
+            } else {
+                // If it's none of the above, it's invalid or missing
+                return res.status(403).json({ message: 'Acesso negado. Assinatura com data de expiração inválida.' });
+            }
             
             // Calcula a data limite (expiração + carência)
             const gracePeriodEnd = new Date(expiryDate);

@@ -3,7 +3,7 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Busca a lista completa de clientes de um estabelecimento, incluindo dados de fidelidade.
+ * Busca a lista completa de clientes de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de clientes.
  */
@@ -12,16 +12,41 @@ export const getClients = (establishmentId) => {
 };
 
 /**
- * Busca os detalhes de fidelidade de um cliente específico.
- * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} clientName - O nome do cliente.
- * @param {string} clientPhone - O telemóvel do cliente.
- * @returns {Promise<object>} - Uma promessa que resolve com os dados de fidelidade do cliente.
+ * Cria um novo cliente.
+ * @param {object} clientData - Os dados do cliente a ser criado.
+ * @returns {Promise<object>} - Uma promessa que resolve com o cliente criado.
  */
-export const getClientDetails = (establishmentId, clientName, clientPhone) => {
-    const endpoint = `/api/client-details/${establishmentId}?clientName=${encodeURIComponent(clientName)}&clientPhone=${encodeURIComponent(clientPhone)}`;
-    return authenticatedFetch(endpoint);
+export const createClient = (clientData) => {
+    return authenticatedFetch('/api/clients', {
+        method: 'POST',
+        body: JSON.stringify(clientData),
+    });
 };
+
+/**
+ * Atualiza um cliente existente.
+ * @param {string} clientId - O ID do cliente.
+ * @param {object} clientData - Os novos dados do cliente.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ */
+export const updateClient = (clientId, clientData) => {
+    return authenticatedFetch(`/api/clients/${clientId}`, {
+        method: 'PUT',
+        body: JSON.stringify(clientData),
+    });
+};
+
+/**
+ * Apaga um cliente.
+ * @param {string} clientId - O ID do cliente a ser apagado.
+ * @returns {Promise<object>} - Uma promessa que resolve com la confirmação.
+ */
+export const deleteClient = (clientId) => {
+    return authenticatedFetch(`/api/clients/${clientId}`, {
+        method: 'DELETE',
+    });
+};
+
 
 /**
  * Busca o histórico de agendamentos de um cliente específico.
@@ -59,18 +84,6 @@ export const redeemReward = (establishmentId, clientName, clientPhone, rewardDat
     return authenticatedFetch(`/api/clients/redeem`, {
         method: 'POST',
         body: JSON.stringify({ establishmentId, clientName, clientPhone, rewardData }),
-    });
-};
-
-/**
- * Cria um novo cliente.
- * @param {object} clientData - Os dados do cliente a ser criado.
- * @returns {Promise<object>} - Uma promessa que resolve com o cliente criado.
- */
-export const createClient = (clientData) => {
-    return authenticatedFetch('/api/clients', {
-        method: 'POST',
-        body: JSON.stringify(clientData),
     });
 };
 

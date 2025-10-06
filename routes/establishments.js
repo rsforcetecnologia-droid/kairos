@@ -39,8 +39,12 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
         }
         
         // --- NOVO: Lógica de Salvamento da Integração Financeira ---
-        const { financialIntegration, ...otherData } = data;
+        const { financialIntegration, slotInterval, ...otherData } = data;
         const updateData = { ...otherData };
+
+        if (slotInterval !== undefined) {
+            updateData.slotInterval = Number(slotInterval);
+        }
 
         if (financialIntegration) {
             updateData.financialIntegration = {
@@ -60,3 +64,4 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
 });
 
 module.exports = router;
+
