@@ -16,7 +16,7 @@ import { navigateTo } from '../main.js';
 const contentDiv = document.getElementById('content');
 let localState = {
     allComandas: [],
-    comandaListView: 'active',
+    comandaListView: 'atendimento', // 'atendimento', 'awaiting_payment', 'finalizada'
     historyDate: new Date().toISOString().split('T')[0],
     itemCatalog: { products: [], services: [], professionals: [] },
     currentSale: null,
@@ -32,14 +32,19 @@ function handleSelectComanda(comandaId) {
     if (!comanda) return;
 
     let allItems = [];
-    if (comanda.type === 'appointment') {
+    if (comanda.status === 'completed' && comanda.items) {
+         // Se estiver completa, usa a lista final de itens na raiz (vinda do sales API/BD)
+         allItems = comanda.items;
+    } else if (comanda.type === 'appointment') {
         const services = comanda.services || [];
         const extraItems = comanda.comandaItems || [];
+        // Se estiver em aberto, combina serviços originais com itens adicionais
         allItems = [
             ...services.map(s => ({ ...s, type: 'service' })),
             ...extraItems.map(i => ({ id: i.itemId, name: i.name, price: i.price, type: i.type }))
         ];
     } else {
+        // Venda avulsa em aberto
         allItems = comanda.items || [];
     }
 
@@ -65,11 +70,14 @@ function renderCurrentSale() {
     }
     const sale = localState.currentSale;
     const isCompleted = sale.status === 'completed';
-    const total = sale.items.reduce((acc, item) => acc + item.price, 0);
+    const total = sale.items.reduce((acc, item) => acc + (item.price || 0), 0);
 
+    // Desativa o botão de checkout se o caixa estiver fechado e a comanda não estiver completa
+    const checkoutDisabled = !localState.cashierSession && !isCompleted;
+    
     const footerButton = isCompleted
-        ? `<button data-action="reopen-comanda" class="w-full bg-yellow-500 text-white font-bold py-4 rounded-lg hover:bg-yellow-600 transition-all text-lg">REABRIR COMANDA</button>`
-        : `<button data-action="checkout" class="w-full bg-green-600 text-white font-bold py-4 rounded-lg hover:bg-green-700 transition-all text-lg" ${sale.items.length === 0 ? 'disabled' : ''}>FINALIZAR PAGAMENTO</button>`;
+        ? `<button data-action="reopen-comanda" class="w-full bg-yellow-500 text-white font-bold py-4 rounded-lg hover:bg-yellow-600 transition-all text-lg" ${checkoutDisabled ? 'disabled' : ''}>REABRIR COMANDA</button>`
+        : `<button data-action="checkout" class="w-full bg-green-600 text-white font-bold py-4 rounded-lg hover:bg-green-700 transition-all text-lg" ${sale.items.length === 0 || checkoutDisabled ? 'disabled' : ''}>FINALIZAR PAGAMENTO</button>`;
 
     const professionalInfoHTML = sale.professionalName ? `<div class="mt-2 text-sm text-gray-500"><span>Responsável: </span><span class="font-semibold text-gray-700">${sale.professionalName}</span></div>` : '';
 
@@ -92,7 +100,7 @@ function renderCurrentSale() {
                             <p class="font-semibold text-gray-700">${item.name}</p>
                             <p class="text-xs text-gray-500">${item.type === 'product' ? 'Produto' : 'Serviço'}</p>
                         </div>
-                        <p class="font-medium text-gray-800 mr-4">R$ ${item.price.toFixed(2)}</p>
+                        <p class="font-medium text-gray-800 mr-4">R$ ${(item.price || 0).toFixed(2)}</p>
                         ${!isCompleted ? `<button class="text-red-500 hover:text-red-800 text-2xl leading-none" data-action="remove-item" data-item-index="${index}">&times;</button>` : ''}
                     </div>
                 `).join('')}
@@ -112,44 +120,110 @@ function renderComandasList() {
     if (!container) return;
     let listToRender = [];
     let message = '';
-    if (localState.comandaListView === 'active') {
-        listToRender = localState.allComandas.filter(c => c.status !== 'completed');
-        message = 'Nenhuma comanda em atendimento.';
-    } else {
-        const targetDateStr = localState.historyDate;
-        const targetDate = new Date(`${targetDateStr}T00:00:00`);
-        targetDate.setHours(0, 0, 0, 0);
-        listToRender = localState.allComandas.filter(c => {
-            if (c.status !== 'completed' || !c.transaction || !c.transaction.paidAt) return false;
+    
+    // Mapeamento dos status (Chaves de filtro ajustadas)
+    let targetStatuses = [];
+    switch (localState.comandaListView) {
+        case 'atendimento':
+            targetStatuses = ['confirmed'];
+            message = 'Nenhuma comanda em atendimento.';
+            break;
+        case 'awaiting_payment':
+            targetStatuses = ['awaiting_payment'];
+            message = 'Nenhuma comanda aguardando pagamento.';
+            break;
+        case 'finalizada':
+            targetStatuses = ['completed'];
+            message = 'Nenhuma comanda finalizada nesta data.';
+            break;
+        default:
+             targetStatuses = ['confirmed'];
+            message = 'Nenhuma comanda em atendimento.';
+    }
+
+    listToRender = localState.allComandas.filter(c => {
+        if (!targetStatuses.includes(c.status)) return false;
+        
+        if (c.status === 'completed') {
+            const targetDateStr = localState.historyDate;
+            const targetDate = new Date(`${targetDateStr}T00:00:00`);
+            targetDate.setHours(0, 0, 0, 0);
+
+            if (!c.transaction || !c.transaction.paidAt) return false;
+            
             const paidDate = new Date(c.transaction.paidAt);
             paidDate.setHours(0, 0, 0, 0);
             return paidDate.getTime() === targetDate.getTime();
-        });
-        message = localState.comandaListView === 'closedToday' ? 'Nenhuma comanda finalizada hoje.' : 'Nenhuma comanda finalizada nesta data.';
-    }
-    if (localState.comandaListView === 'active') {
+        }
+        
+        return true;
+    });
+
+    // Ordenação
+    const isClosedView = localState.comandaListView === 'finalizada'; 
+    if (!isClosedView) {
         listToRender.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
     } else {
         listToRender.sort((a, b) => new Date(b.transaction.paidAt) - new Date(a.transaction.paidAt));
     }
+    
     if (listToRender.length === 0) {
         container.innerHTML = `<p class="text-center text-gray-500 p-4">${message}</p>`;
         return;
     }
+    
     container.innerHTML = listToRender.map(comanda => {
         const isSelected = localState.currentSale && localState.currentSale.id === comanda.id;
         const comandaDate = new Date(comanda.startTime);
         const dateString = comandaDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         const timeString = comandaDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        return `<div class="p-3 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-indigo-100 shadow' : 'hover:bg-gray-100'}" data-action="select-comanda" data-comanda-id="${comanda.id}"><div class="flex justify-between items-start"><div class="flex-grow pr-2"><p class="font-bold text-sm text-gray-800 truncate">${comanda.clientName}</p><p class="text-xs text-gray-500 truncate">com ${comanda.professionalName}</p></div><div class="text-right flex-shrink-0"><p class="text-xs font-semibold text-gray-600">${timeString}</p><p class="text-xs text-gray-500">${dateString}</p></div></div></div>`;
+        
+        const totalValue = [...(comanda.services || []), ...(comanda.comandaItems || [])].reduce((acc, item) => acc + (item.price || 0), 0);
+
+        return `<div class="p-3 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-indigo-100 shadow' : 'hover:bg-gray-100'}" data-action="select-comanda" data-comanda-id="${comanda.id}">
+            <div class="flex justify-between items-start">
+                <div class="flex-grow pr-2">
+                    <p class="font-bold text-sm text-gray-800 truncate">${comanda.clientName}</p>
+                    <p class="text-xs text-gray-500 truncate">com ${comanda.professionalName}</p>
+                </div>
+                <div class="text-right flex-shrink-0">
+                     <p class="text-xs font-semibold ${isClosedView ? 'text-green-600' : 'text-gray-600'}">R$ ${totalValue.toFixed(2)}</p>
+                    <p class="text-xs text-gray-500">${timeString}</p>
+                </div>
+            </div>
+        </div>`;
     }).join('');
+    
+    // Configuração do picker de data
+    const historyPicker = document.getElementById('history-date-picker');
+    if (localState.comandaListView === 'finalizada') {
+        historyPicker.classList.remove('hidden');
+        document.getElementById('history-date-input').value = localState.historyDate;
+    } else {
+        historyPicker.classList.add('hidden');
+    }
+    
+    // Adiciona o estado 'active' ao botão correto
+    document.querySelectorAll('.comanda-filter-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-filter="${localState.comandaListView}"]`)?.classList.add('active');
 }
 
 function renderAddItemPanel() {
     const container = document.getElementById('pdv-add-item-panel');
     if (!container) return;
 
-    if (localState.currentSale && localState.currentSale.status !== 'completed') {
+    // Desativa se o caixa estiver fechado
+    const isCompleted = localState.currentSale && localState.currentSale.status === 'completed';
+    const checkoutDisabled = !localState.cashierSession && !isCompleted;
+
+    if (checkoutDisabled || isCompleted) {
+        container.innerHTML = `
+            <div class="p-4 h-full flex flex-col justify-center items-center text-center text-gray-400 bg-white rounded-lg shadow">
+                 <svg class="w-24 h-24 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                <p class="font-medium">Painel de Itens</p>
+                <p class="text-sm">${!localState.cashierSession ? 'O caixa está fechado.' : 'Selecione uma comanda em aberto.'}</p>
+            </div>`;
+    } else if (localState.currentSale) {
         container.innerHTML = `
             <div class="p-4 h-full flex flex-col justify-center items-center bg-white rounded-lg shadow">
                 <svg class="w-20 h-20 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -197,9 +271,18 @@ async function initializeData(params) {
         localState.itemCatalog = { products: [], services: [], professionals };
         localState.cashierSession = session;
         localState.historyDate = localState.historyDate || new Date().toISOString().split('T')[0];
+
+        // NOVO/AJUSTADO: Lógica para selecionar a comanda por ID (vindo do histórico do cliente)
         if (params.selectedAppointmentId) {
             const selected = localState.allComandas.find(c => c.id === params.selectedAppointmentId);
-            if (selected) handleSelectComanda(selected.id);
+            if (selected) {
+                // Define o filtro de visualização e a comanda
+                localState.comandaListView = params.initialFilter || 'atendimento'; 
+                handleSelectComanda(selected.id);
+            }
+        } else {
+             // Garante que o filtro padrão seja aplicado se não houver parâmetro
+             localState.comandaListView = 'atendimento';
         }
         renderPage();
     } catch (error) {
@@ -687,9 +770,9 @@ export async function loadComandasPage(params = {}) {
                         <div class="p-3 border-b"><button data-action="new-sale" class="w-full bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition-all">+ NOVA VENDA</button></div>
                         <div class="p-2 border-b">
                             <div class="flex bg-gray-100 rounded-md p-1">
-                                <button data-filter="active" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md active">Em Aberto</button>
-                                <button data-filter="closedToday" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md">Finalizadas Hoje</button>
-                                <button data-filter="history" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md">Histórico</button>
+                                <button data-filter="atendimento" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md active">Em Atendimento</button>
+                                <button data-filter="awaiting_payment" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md">Aguardando Pagamento</button>
+                                <button data-filter="finalizada" class="comanda-filter-btn flex-1 text-sm font-semibold py-1 rounded-md">Finalizadas</button>
                             </div>
                             <div id="history-date-picker" class="hidden mt-2 flex gap-2">
                                 <input type="date" id="history-date-input" class="w-full p-1 border rounded-md text-sm">
@@ -710,6 +793,14 @@ export async function loadComandasPage(params = {}) {
         </section>
     `;
     
+    // Atualiza o estado local com os parâmetros de navegação (se existirem)
+    if (params.initialFilter) {
+        localState.comandaListView = params.initialFilter;
+    }
+    if (params.filterDate) {
+        localState.historyDate = new Date(params.filterDate).toISOString().split('T')[0];
+    }
+    
     if (pdvPageHandler) {
         contentDiv.removeEventListener('click', pdvPageHandler);
     }
@@ -724,13 +815,16 @@ export async function loadComandasPage(params = {}) {
             target.classList.add('active');
             localState.comandaListView = filter;
             localState.currentSale = null;
+            
+            // Lógica para mostrar/esconder o seletor de datas
             const historyPicker = document.getElementById('history-date-picker');
-            historyPicker.classList.toggle('hidden', filter !== 'history');
-            if (filter === 'closedToday') {
-                localState.historyDate = new Date().toISOString().split('T')[0];
-            } else if (filter === 'history') {
+            if (filter === 'finalizada') {
+                historyPicker.classList.remove('hidden');
                 document.getElementById('history-date-input').value = localState.historyDate;
+            } else {
+                historyPicker.classList.add('hidden');
             }
+
             renderPage();
             return;
         }
@@ -780,5 +874,9 @@ export async function loadComandasPage(params = {}) {
 
     contentDiv.addEventListener('click', pdvPageHandler);
     
+    // Seleciona o botão de filtro correto na interface na inicialização
+    document.querySelectorAll('.comanda-filter-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-filter="${localState.comandaListView}"]`)?.classList.add('active');
+
     await initializeData(params);
 }

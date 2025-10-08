@@ -122,14 +122,15 @@ router.get('/history/:establishmentId', async (req, res) => {
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
-            .orderBy('startTime', 'desc')
+            // .orderBy('startTime', 'desc') // LINHA REMOVIDA PARA RESOLVER O ERRO DE ÍNDICE COMPOSTO
             .get();
         if (snapshot.empty) return res.status(200).json([]);
         const history = snapshot.docs.map(doc => {
             const data = doc.data();
             return {
                 id: doc.id,
-                date: data.startTime.toDate().toLocaleDateString('pt-BR'),
+                // Garantir que a data é uma string ISO para o frontend ordenar e filtrar
+                date: data.startTime.toDate().toISOString(), 
                 serviceName: (data.services || []).map(s => s.name).join(', ')
             };
         });
@@ -213,4 +214,3 @@ router.post('/redeem', async (req, res) => {
 });
 
 module.exports = router;
-
