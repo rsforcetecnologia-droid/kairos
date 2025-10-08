@@ -43,6 +43,12 @@ function renderProfessionalsListHTML(professionals) {
     }).join('');
 }
 
+function closeProfessionalModal() {
+    const modal = document.getElementById('genericModal');
+    modal.style.display = 'none';
+}
+
+
 async function openProfessionalModal(professional) {
     const modal = document.getElementById('genericModal');
     const services = state.services || await servicesApi.getServices(state.establishmentId);
@@ -51,7 +57,7 @@ async function openProfessionalModal(professional) {
     const modalHTML = `
         <div class="modal-content max-w-5xl p-0">
             <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
-                <h2 class="text-2xl font-bold text-gray-800">${professional.name}</h2>
+                <h2 class="text-2xl font-bold text-gray-800">${professional.name || 'Novo Profissional'}</h2>
                 <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </div>
             <div class="modal-tabs px-6 border-b flex items-center">
@@ -67,7 +73,7 @@ async function openProfessionalModal(professional) {
                 <div id="comissoes" class="tab-content hidden"><h3 class="text-xl font-semibold mb-4">Personalizar Comissões</h3><p>Funcionalidade de comissões personalizadas será implementada aqui.</p></div>
             </div>
             <div class="modal-footer px-6 py-4 bg-gray-100 flex justify-between items-center">
-                <button data-action="delete-professional" data-id="${professional.id}" class="text-red-600 font-semibold hover:text-red-800">Excluir Profissional</button>
+                <button data-action="delete-professional" data-id="${professional.id}" class="text-red-600 font-semibold hover:text-red-800 ${professional.id ? '' : 'hidden'}">Excluir Profissional</button>
                 <div>
                     <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 mr-2">Cancelar</button>
                     <button id="save-professional-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
@@ -94,6 +100,9 @@ function fillCadastroTab(prof, services) {
         const monthName = new Date(0, i).toLocaleString('pt-BR', { month: 'long' });
         return `<option value="${month}" ${selected}>${monthName.charAt(0).toUpperCase() + monthName.slice(1)}</option>`;
     }).join('');
+    
+    // Define o status padrão como 'active' se não estiver definido
+    const currentStatus = prof.status || 'active';
 
     form.innerHTML = `
         <input type="hidden" id="professionalId" value="${prof.id}">
@@ -101,6 +110,15 @@ function fillCadastroTab(prof, services) {
             <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required></div>
             <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required></div>
             <div class="form-group"><label for="profAccess">Dar acesso ao sistema?</label><select id="profAccess"><option value="sim" ${prof.hasAccess ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.hasAccess ? 'selected' : ''}>Não</option></select></div>
+            
+            <div class="form-group">
+                <label for="profStatus">Status (Ativo)</label>
+                <select id="profStatus">
+                    <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
+                    <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
+                </select>
+            </div>
+            
             <div class="form-group"><label for="profAccessType">Tipo de acesso</label><select id="profAccessType"><option value="gestor" ${prof.accessType === 'gestor' ? 'selected' : ''}>Gestor</option><option value="funcionario" ${prof.accessType !== 'gestor' ? 'selected' : ''}>Funcionário</option></select></div>
             <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}"></div>
             <div class="form-group"><label for="profPassword">Senha do profissional</label><input type="password" id="profPassword" placeholder="********"></div>
@@ -218,6 +236,15 @@ function setupModalEventListeners(professional) {
             document.getElementById(button.dataset.tab).classList.remove('hidden');
         });
     });
+    
+    // CORREÇÃO: Adiciona listener para fechar o modal ao clicar no botão "Cancelar" ou no "X"
+    modal.addEventListener('click', (e) => {
+        const closeBtn = e.target.closest('[data-action="close-modal"]');
+        if (closeBtn) {
+            e.stopPropagation();
+            closeProfessionalModal();
+        }
+    });
 
     document.getElementById('save-professional-btn').addEventListener('click', async () => {
         const form = document.getElementById('professionalForm');
@@ -237,7 +264,8 @@ function setupModalEventListeners(professional) {
                 };
             });
         }
-
+        
+        const passwordInput = form.querySelector('#profPassword');
         const professionalData = {
             ...professional,
             name: form.querySelector('#profName').value,
@@ -251,13 +279,25 @@ function setupModalEventListeners(professional) {
             receivesCommission: form.querySelector('#profCommission').value === 'sim',
             showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
             orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
-            notes: form.querySelector('#profNotes').value
+            notes: form.querySelector('#profNotes').value,
+            // CAMPO 'STATUS' LIDO DO SELECT
+            status: form.querySelector('#profStatus').value
         };
+        
+        if (passwordInput && passwordInput.value) {
+            professionalData.password = passwordInput.value;
+        }
 
         try {
-            await professionalsApi.updateProfessional(professional.id, professionalData);
-            showNotification('Sucesso!', 'Profissional atualizado.', 'success');
-            modal.style.display = 'none';
+            if (professional.id) {
+                await professionalsApi.updateProfessional(professional.id, professionalData);
+                showNotification('Sucesso!', 'Profissional atualizado.', 'success');
+            } else {
+                 await professionalsApi.createProfessional(professionalData);
+                showNotification('Sucesso!', 'Profissional criado.', 'success');
+            }
+            
+            closeProfessionalModal();
             loadProfessionalsPage();
         } catch (error) {
             showNotification('Erro', error.message, 'error');
@@ -338,7 +378,7 @@ function setupModalEventListeners(professional) {
             try {
                 await professionalsApi.deleteProfessional(professional.id);
                 showNotification('Sucesso!', 'Profissional excluído.', 'success');
-                modal.style.display = 'none';
+                closeProfessionalModal();
                 loadProfessionalsPage();
             } catch (error) {
                  showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
@@ -402,6 +442,9 @@ export async function loadProfessionalsPage() {
                         <input type="checkbox" id="showInactiveProfToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                         <span class="text-sm font-medium text-gray-700">Mostrar Inativos</span>
                     </label>
+                    <button data-action="open-professional-modal" data-professional="{}" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 flex-shrink-0">
+                        + Novo Profissional
+                    </button>
                 </div>
             </div>
 
@@ -437,7 +480,15 @@ export async function loadProfessionalsPage() {
 
         if (card) {
             e.preventDefault();
-            const profData = JSON.parse(card.dataset.professional);
+            let profData = {};
+            if (card.dataset.professional) {
+                try {
+                    profData = JSON.parse(card.dataset.professional);
+                } catch (error) {
+                    console.error("Erro ao fazer parse do professional data:", error);
+                    return;
+                }
+            }
             openProfessionalModal(profData);
         }
 
@@ -450,6 +501,7 @@ export async function loadProfessionalsPage() {
     listDiv.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
     try {
         const [professionals, services] = await Promise.all([
+            // A API agora inclui inativos para o painel de gestão
             professionalsApi.getProfessionals(state.establishmentId),
             servicesApi.getServices(state.establishmentId)
         ]);

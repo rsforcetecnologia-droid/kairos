@@ -14,8 +14,6 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
 
     try {
         const establishmentRef = db.collection('establishments').doc(establishmentId);
-        // ### CORREÇÃO APLICADA AQUI ###
-        // A consulta agora considera ativos todos que NÃO são 'inactive'.
         const professionalsRef = db.collection('professionals')
             .where('establishmentId', '==', establishmentId)
             .where('status', '!=', 'inactive');
@@ -74,15 +72,36 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// Listar profissionais (Rota Pública)
+// Listar profissionais (Rota Pública E Privada)
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
-        const snapshot = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
+        let query = db.collection('professionals').where('establishmentId', '==', establishmentId);
+        
+        // Verifica a autenticação para decidir se deve retornar profissionais inativos
+        const { authorization } = req.headers;
+        let isAuthenticated = false;
+        if (authorization && authorization.startsWith('Bearer ')) {
+            const token = authorization.split('Bearer ')[1];
+            try {
+                await admin.auth().verifyIdToken(token);
+                isAuthenticated = true;
+            } catch (error) {
+                isAuthenticated = false;
+            }
+        }
+
+        if (!isAuthenticated) {
+            query = query.where('status', '==', 'active').where('showOnAgenda', '==', true);
+        }
+
+        const snapshot = await query.get();
         if (snapshot.empty) return res.status(200).json([]);
+        
         const professionalsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.status(200).json(professionalsList);
+
     } catch (error) {
         console.error("Erro ao listar profissionais:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });

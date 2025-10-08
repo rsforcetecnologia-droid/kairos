@@ -14,10 +14,14 @@ import { authenticatedFetch } from './apiService.js';
  * @param {string} establishmentId - ID do estabelecimento.
  * @param {string} startDateISO - Data de início no formato ISO (new Date().toISOString()).
  * @param {string} endDateISO - Data de fim no formato ISO.
+ * @param {string | null} professionalId - O ID do profissional para filtrar (opcional).
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de agendamentos.
  */
-export const getAppointmentsByDateRange = (establishmentId, startDateISO, endDateISO) => {
-    const endpoint = `/api/appointments/${establishmentId}?startDate=${startDateISO}&endDate=${endDateISO}`;
+export const getAppointmentsByDateRange = (establishmentId, startDateISO, endDateISO, professionalId = null) => {
+    let endpoint = `/api/appointments/${establishmentId}?startDate=${startDateISO}&endDate=${endDateISO}`;
+    if (professionalId) {
+        endpoint += `&professionalId=${professionalId}`;
+    }
     return authenticatedFetch(endpoint);
 };
 
