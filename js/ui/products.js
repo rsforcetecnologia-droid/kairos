@@ -5,24 +5,24 @@ import * as productsApi from '../api/products.js';
 import * as categoriesApi from '../api/categories.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
+import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
+let pageEventListener = null;
+let currentView = 'products'; // 'products' ou 'movements'
+let activeStockFilter = 'all'; // Filtro para os cartões de indicadores
 
-// --- 3. FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
-
-// --- LÓGICA DE CATEGORIAS ---
-
+// --- 3. LÓGICA DE CATEGORIAS (MODAL) ---
 async function handleCategoryFormSubmit(e) {
     e.preventDefault();
     const categoryNameInput = document.getElementById('categoryName');
     const name = categoryNameInput.value;
     if (!name) return;
-
     try {
         await categoriesApi.createCategory({ establishmentId: state.establishmentId, name });
         categoryNameInput.value = '';
-        await fetchAndDisplayCategories();
+        await fetchAndDisplayCategoriesInModal();
     } catch (error) {
         showNotification('Erro', `Não foi possível criar a categoria: ${error.message}`, 'error');
     }
@@ -33,14 +33,15 @@ async function handleDeleteCategory(categoryId) {
     if (confirmed) {
         try {
             await categoriesApi.deleteCategory(categoryId);
-            await fetchAndDisplayCategories();
+            await fetchAndDisplayCategoriesInModal();
+            await fetchBaseData(); // Atualiza os filtros na página principal
         } catch (error) {
             showNotification('Erro', 'Não foi possível apagar a categoria.', 'error');
         }
     }
 }
 
-async function fetchAndDisplayCategories() {
+async function fetchAndDisplayCategoriesInModal() {
     const listDiv = document.getElementById('categoryList');
     if (!listDiv) return;
     listDiv.innerHTML = '<div class="loader mx-auto"></div>';
@@ -49,20 +50,16 @@ async function fetchAndDisplayCategories() {
         state.categories = categories;
         listDiv.innerHTML = '';
         if (categories.length > 0) {
-            categories.forEach(cat => {
-                const item = document.createElement('div');
-                item.className = 'flex justify-between items-center bg-gray-100 p-2 rounded';
-                item.innerHTML = `
+            listDiv.innerHTML = categories.map(cat => `
+                <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
                     <span>${cat.name}</span>
                     <button data-action="delete-category" data-id="${cat.id}" class="text-red-500 hover:text-red-700">Apagar</button>
-                `;
-                listDiv.appendChild(item);
-            });
+                </div>`).join('');
         } else {
             listDiv.innerHTML = '<p class="text-center text-gray-500">Nenhuma categoria encontrada.</p>';
         }
     } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500">Erro ao carregar categorias.</p>';
+        listDiv.innerHTML = `<p class="text-red-500">Erro ao carregar categorias.</p>`;
     }
 }
 
@@ -71,23 +68,20 @@ function openCategoryModal() {
     modal.innerHTML = `
     <div class="modal-content max-w-lg">
         <h2 class="text-2xl font-bold mb-6">Gerir Categorias de Produtos</h2>
-        <div class="mb-6">
-            <form id="categoryForm" class="flex gap-4">
-                <input type="text" id="categoryName" placeholder="Nome da nova categoria" required class="flex-grow block w-full rounded-md border-gray-300 shadow-sm">
-                <button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg">Adicionar</button>
-            </form>
-        </div>
+        <div class="mb-6"><form id="categoryForm" class="flex gap-4"><input type="text" id="categoryName" placeholder="Nome da nova categoria" required class="flex-grow block w-full rounded-md border-gray-300 shadow-sm"><button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg">Adicionar</button></form></div>
         <div id="categoryList" class="space-y-2 max-h-64 overflow-y-auto"></div>
-        <div class="mt-6">
-            <button type="button" data-action="close-modal" data-target="categoryModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Fechar</button>
-        </div>
+        <div class="mt-6"><button type="button" data-action="close-modal" data-target="categoryModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Fechar</button></div>
     </div>`;
     modal.style.display = 'flex';
     modal.querySelector('#categoryForm').addEventListener('submit', handleCategoryFormSubmit);
-    fetchAndDisplayCategories();
+    modal.addEventListener('click', (e) => {
+        const button = e.target.closest('button[data-action="delete-category"]');
+        if (button) handleDeleteCategory(button.dataset.id);
+    });
+    fetchAndDisplayCategoriesInModal();
 }
 
-// --- LÓGICA DE PRODUTOS ---
+// --- LÓGICA DE PRODUTOS E ESTOQUE ---
 
 async function handleProductFormSubmit(e) {
     e.preventDefault();
@@ -113,7 +107,7 @@ async function handleProductFormSubmit(e) {
         }
         document.getElementById('productModal').style.display = 'none';
         showNotification('Sucesso', `Produto ${productId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
-        await fetchProductsAndCategories();
+        await fetchBaseData(); // Recarrega os dados
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
@@ -123,108 +117,38 @@ function openProductModal(product = null) {
     const modal = document.getElementById('productModal');
     modal.innerHTML = `
     <div class="modal-content max-w-3xl">
-        <h2 id="productModalTitle" class="text-2xl font-bold mb-6">Novo Produto</h2>
+        <h2 id="productModalTitle" class="text-2xl font-bold mb-6">${product ? 'Editar' : 'Novo'} Produto</h2>
         <form id="productForm">
-            <input type="hidden" id="productId">
-            <input type="hidden" id="productPhotoBase64">
-
+            <input type="hidden" id="productId" value="${product?.id || ''}">
+            <input type="hidden" id="productPhotoBase64" value="${product?.photo || ''}">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div class="md:col-span-1 space-y-4">
-                    <div class="form-group">
-                        <label>Imagem do Produto</label>
-                        <div class="mt-1 flex flex-col items-center">
-                            <img id="productPhotoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Foto" alt="Foto do Produto" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
-                            <input type="file" id="productPhotoInput" class="hidden" accept="image/*">
-                            <button type="button" id="productPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button>
-                        </div>
-                    </div>
+                    <div class="form-group"><label>Imagem do Produto</label><div class="mt-1 flex flex-col items-center"><img id="productPhotoPreview" src="${product?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto'}" alt="Foto do Produto" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50"><input type="file" id="productPhotoInput" class="hidden" accept="image/*"><button type="button" id="productPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button></div></div>
                 </div>
-
-                <div class="md:col-span-2">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                        <div class="form-group sm:col-span-2">
-                            <label for="productName">Nome do Produto</label>
-                            <input type="text" id="productName" required>
-                        </div>
-                        <div class="form-group sm:col-span-2">
-                            <label for="productCategory">Categoria</label>
-                            <select id="productCategory"></select>
-                        </div>
-                        <div class="form-group">
-                            <label for="productPrice">Preço (R$)</label>
-                            <input type="number" id="productPrice" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="productCommissionRate">Comissão (%)</label>
-                            <input type="number" id="productCommissionRate" placeholder="Ex: 10">
-                        </div>
-                    </div>
-                </div>
+                <div class="md:col-span-2"><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5"><div class="form-group sm:col-span-2"><label for="productName">Nome do Produto</label><input type="text" id="productName" value="${product?.name || ''}" required></div><div class="form-group sm:col-span-2"><label for="productCategory">Categoria</label><select id="productCategory"></select></div><div class="form-group"><label for="productPrice">Preço (R$)</label><input type="number" id="productPrice" step="0.01" value="${product?.price || ''}" required></div><div class="form-group"><label for="productCommissionRate">Comissão (%)</label><input type="number" id="productCommissionRate" placeholder="Ex: 10" value="${product?.commissionRate || ''}"></div></div></div>
             </div>
-
-            <div class="mt-6 pt-6 border-t">
-                <h3 class="text-lg font-semibold text-gray-700 text-left mb-4">Controlo de Stock</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div class="form-group">
-                        <label for="productCurrentStock">Atual</label>
-                        <input type="number" id="productCurrentStock">
-                    </div>
-                    <div class="form-group">
-                        <label for="productMinStock">Mínimo</label>
-                        <input type="number" id="productMinStock">
-                    </div>
-                    <div class="form-group">
-                        <label for="productMaxStock">Máximo</label>
-                        <input type="number" id="productMaxStock">
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mt-8 pt-6 border-t flex justify-end gap-4">
-                <button type="button" data-action="close-modal" data-target="productModal" class="py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
-                <button type="submit" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
-            </div>
+            <div class="mt-6 pt-6 border-t"><h3 class="text-lg font-semibold text-gray-700 text-left mb-4">Controlo de Stock</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6"><div class="form-group"><label for="productCurrentStock">Atual</label><input type="number" id="productCurrentStock" value="${product?.currentStock || 0}"></div><div class="form-group"><label for="productMinStock">Mínimo</label><input type="number" id="productMinStock" value="${product?.minStock || 0}"></div><div class="form-group"><label for="productMaxStock">Máximo</label><input type="number" id="productMaxStock" value="${product?.maxStock || 0}"></div></div></div>
+            <div class="mt-8 pt-6 border-t flex justify-end gap-4"><button type="button" data-action="close-modal" data-target="productModal" class="py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button><button type="submit" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button></div>
         </form>
     </div>`;
 
     const form = modal.querySelector('#productForm');
-    const title = modal.querySelector('#productModalTitle');
     const categorySelect = modal.querySelector('#productCategory');
-    const photoPreview = modal.querySelector('#productPhotoPreview');
-    const photoBase64Input = modal.querySelector('#productPhotoBase64');
     const photoInput = modal.querySelector('#productPhotoInput');
-    const photoButton = modal.querySelector('#productPhotoButton');
-
+    
     form.addEventListener('submit', handleProductFormSubmit);
-    photoButton.addEventListener('click', () => photoInput.click());
+    modal.querySelector('#productPhotoButton').addEventListener('click', () => photoInput.click());
 
     categorySelect.innerHTML = '<option value="">Sem categoria</option>' + state.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
-
-    if (product) {
-        title.textContent = 'Editar Produto';
-        form.querySelector('#productId').value = product.id;
-        form.querySelector('#productName').value = product.name;
-        form.querySelector('#productPrice').value = product.price;
-        form.querySelector('#productCommissionRate').value = product.commissionRate || '';
-        form.querySelector('#productCurrentStock').value = product.currentStock;
-        form.querySelector('#productMinStock').value = product.minStock;
-        form.querySelector('#productMaxStock').value = product.maxStock;
-        categorySelect.value = product.categoryId || '';
-        if (product.photo) {
-            photoPreview.src = product.photo;
-            photoBase64Input.value = product.photo;
-        }
-    } else {
-        title.textContent = 'Novo Produto';
-    }
+    if(product) categorySelect.value = product.categoryId || '';
 
     photoInput.onchange = () => {
         const file = photoInput.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = e => {
-                photoPreview.src = e.target.result;
-                photoBase64Input.value = e.target.result;
+                modal.querySelector('#productPhotoPreview').src = e.target.result;
+                modal.querySelector('#productPhotoBase64').value = e.target.result;
             };
             reader.readAsDataURL(file);
         }
@@ -233,72 +157,169 @@ function openProductModal(product = null) {
     modal.style.display = 'flex';
 }
 
-function renderProductsList() {
-    const listDiv = document.getElementById('productsList');
-    const searchTerm = document.getElementById('productSearchInput').value.toLowerCase();
-    const categoryFilter = document.getElementById('productCategoryFilter').value;
+// --- FUNÇÕES DE RENDERIZAÇÃO DAS ABAS ---
 
-    const filteredProducts = state.products.filter(p => {
+function renderProductsView() {
+    const container = document.getElementById('products-content-container');
+    container.innerHTML = `
+        <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
+            <div class="flex items-center gap-4"><input type="text" id="productSearchInput" placeholder="Pesquisar..." class="w-64 p-2 border rounded-md"><select id="productCategoryFilter" class="p-2 border rounded-md bg-white"><option value="all">Todas as categorias</option></select></div>
+            <div class="flex items-center gap-2"><button data-action="new-product" class="py-2 px-4 bg-green-500 text-white font-semibold rounded-lg shadow-md hover:bg-green-600">Adicionar produto</button><button class="py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Imprimir</button></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div data-action="filter-stock" data-filter-type="ok" class="indicator-card bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg flex items-center gap-4 cursor-pointer transition-all"><div class="bg-green-100 p-2 rounded-full"><svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.085a2 2 0 00-1.736.93L5.5 8m7 2H5m7 2v4m0 0H5"></path></svg></div><div><p class="text-sm text-gray-500">Estoque em dia</p><p id="indicator-ok" class="text-2xl font-bold text-gray-800">0</p></div></div>
+            <div data-action="filter-stock" data-filter-type="near_min" class="indicator-card bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg flex items-center gap-4 cursor-pointer transition-all"><div class="bg-blue-100 p-2 rounded-full"><svg class="w-6 h-6 text-blue-600 transform -rotate-90" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 2zM10 15a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 15zM10 7a3 3 0 100 6 3 3 0 000-6z"></path><path fill-rule="evenodd" d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm8-7a7 7 0 100 14 7 7 0 000-14z" clip-rule="evenodd"></path></svg></div><div><p class="text-sm text-gray-500">Perto do mínimo</p><p id="indicator-near-min" class="text-2xl font-bold text-gray-800">0</p></div></div>
+            <div data-action="filter-stock" data-filter-type="at_min" class="indicator-card bg-orange-50 border-l-4 border-orange-500 p-4 rounded-r-lg flex items-center gap-4 cursor-pointer transition-all"><div class="bg-orange-100 p-2 rounded-full"><svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div><div><p class="text-sm text-gray-500">Utilizando o mínimo</p><p id="indicator-at-min" class="text-2xl font-bold text-gray-800">0</p></div></div>
+            <div data-action="filter-stock" data-filter-type="empty" class="indicator-card bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg flex items-center gap-4 cursor-pointer transition-all"><div class="bg-red-100 p-2 rounded-full"><svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg></div><div><p class="text-sm text-gray-500">Esgotado</p><p id="indicator-empty" class="text-2xl font-bold text-gray-800">0</p></div></div>
+        </div>
+        <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produto</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Preço</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estoque (Min/Max)</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Movimentação do estoque</th><th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ação</th></tr></thead><tbody id="productsTableBody" class="bg-white divide-y divide-gray-200"></tbody></table></div>`;
+    
+    const categoryFilter = document.getElementById('productCategoryFilter');
+    if (categoryFilter) {
+        categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
+        state.categories.forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${cat.name}</option>`);
+    }
+    renderStockIndicators();
+    renderProductsTable();
+}
+
+function renderStockReportView() {
+    const container = document.getElementById('products-content-container');
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    container.innerHTML = `
+        <div class="space-y-6">
+             <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                <div><label for="reportStartDate" class="block text-sm font-medium text-gray-700">De</label><input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="mt-1 w-full p-2 border rounded-md"></div>
+                <div><label for="reportEndDate" class="block text-sm font-medium text-gray-700">Até</label><input type="date" id="reportEndDate" value="${today}" class="mt-1 w-full p-2 border rounded-md"></div>
+                <div><label for="productFilterReport" class="block text-sm font-medium text-gray-700">Produto</label><select id="productFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="all">Todos os Produtos</option></select></div>
+                <div><label for="categoryFilterReport" class="block text-sm font-medium text-gray-700">Categoria</label><select id="categoryFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="all">Todas as Categorias</option></select></div>
+                <button data-action="generate-report" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700">Gerar Relatório</button>
+            </div>
+            <div id="report-results" class="bg-white border rounded-lg shadow-sm overflow-x-auto">
+                <p class="text-center text-gray-500 py-8">Selecione os filtros e clique em "Gerar Relatório".</p>
+            </div>
+        </div>`;
+
+    const productFilter = document.getElementById('productFilterReport');
+    const categoryFilter = document.getElementById('categoryFilterReport');
+    if (productFilter && state.products) productFilter.innerHTML += state.products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (categoryFilter && state.categories) categoryFilter.innerHTML += state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+async function generateStockReport() {
+    const resultsContainer = document.getElementById('report-results');
+    resultsContainer.innerHTML = '<div class="loader mx-auto my-8"></div>';
+
+    const filters = {
+        startDate: document.getElementById('reportStartDate').value,
+        endDate: document.getElementById('reportEndDate').value,
+        productId: document.getElementById('productFilterReport').value,
+        categoryId: document.getElementById('categoryFilterReport').value,
+    };
+
+    try {
+        const reportData = await productsApi.getStockReport(filters);
+        if (reportData.length === 0) {
+            resultsContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Nenhuma movimentação de stock encontrada.</p>';
+            return;
+        }
+        resultsContainer.innerHTML = `
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produto</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Alteração</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Anterior</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Novo</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilizador</th></tr></thead>
+                <tbody class="divide-y divide-gray-200">
+                    ${reportData.map(item => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 whitespace-nowrap">${new Date(item.date).toLocaleString('pt-BR')}</td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold">${item.productName}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-center font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">${item.change > 0 ? '+' : ''}${item.change}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-center">${item.oldStock}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-center">${item.newStock}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.reason}</td>
+                            <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.user}</td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`;
+    } catch (error) {
+        showNotification('Erro', `Não foi possível gerar o relatório: ${error.message}`, 'error');
+        resultsContainer.innerHTML = `<p class="text-center text-red-500 py-8">${error.message}</p>`;
+    }
+}
+
+// --- FUNÇÕES DE CONTROLO ---
+
+function renderStockIndicators() {
+    const indicators = { ok: 0, near_min: 0, at_min: 0, empty: 0 };
+    if (!state.products) return;
+    state.products.forEach(p => {
+        const stock = p.currentStock;
+        const min = p.minStock;
+        if (stock <= 0) indicators.empty++;
+        else if (min > 0 && stock <= min) indicators.at_min++;
+        else if (min > 0 && stock <= min * 1.2) indicators.near_min++;
+        else indicators.ok++;
+    });
+    document.getElementById('indicator-ok').textContent = indicators.ok;
+    document.getElementById('indicator-near-min').textContent = indicators.near_min;
+    document.getElementById('indicator-at-min').textContent = indicators.at_min;
+    document.getElementById('indicator-empty').textContent = indicators.empty;
+}
+
+function renderProductsTable() {
+    const tableBody = document.getElementById('productsTableBody');
+    if (!tableBody) return;
+    const searchTerm = document.getElementById('productSearchInput')?.value.toLowerCase() || '';
+    const categoryFilter = document.getElementById('productCategoryFilter')?.value || 'all';
+
+    let filteredProducts = state.products;
+
+    // 1. Filtro por status de estoque
+    if (activeStockFilter !== 'all') {
+        filteredProducts = filteredProducts.filter(p => {
+            const stock = p.currentStock;
+            const min = p.minStock;
+            switch (activeStockFilter) {
+                case 'ok': return stock > 0 && (min === 0 || stock > min * 1.2);
+                case 'near_min': return min > 0 && stock > min && stock <= min * 1.2;
+                case 'at_min': return min > 0 && stock > 0 && stock <= min;
+                case 'empty': return stock <= 0;
+                default: return true;
+            }
+        });
+    }
+
+    // 2. Filtro por busca e categoria
+    filteredProducts = filteredProducts.filter(p => {
         const nameMatch = p.name.toLowerCase().includes(searchTerm);
         const categoryMatch = categoryFilter === 'all' || p.categoryId === categoryFilter;
         return nameMatch && categoryMatch;
     });
 
-    listDiv.innerHTML = '';
+    tableBody.innerHTML = '';
     if (filteredProducts.length > 0) {
-        filteredProducts.forEach(p => {
-            const card = document.createElement('div');
-            let stockColorClass = 'bg-green-100 text-green-800', stockStatusText = 'OK';
-            if (p.currentStock <= 0) {
-                stockColorClass = 'bg-red-100 text-red-800'; stockStatusText = 'Esgotado';
-            } else if (p.minStock > 0 && p.currentStock <= p.minStock) {
-                stockColorClass = 'bg-yellow-100 text-yellow-800'; stockStatusText = 'Baixo';
-            }
-            const category = state.categories.find(c => c.id === p.categoryId);
-            const photoSrc = p.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(p.name.charAt(0))}`;
+        tableBody.innerHTML = filteredProducts.map(p => {
+            const photoSrc = p.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${encodeURIComponent(p.name.charAt(0))}`;
             const productDataString = JSON.stringify(p).replace(/'/g, "&apos;");
-
-            card.className = `product-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300`;
-            card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${p.name}" class="w-full h-20 object-cover">
-                <div class="p-2 flex flex-col flex-grow">
-                    <div class="flex-grow">
-                        ${category ? `<p class="text-[10px] font-semibold text-indigo-600 uppercase mb-1">${category.name}</p>` : ''}
-                        <div class="flex justify-between items-start gap-1">
-                            <h3 class="text-xs font-bold text-gray-900 text-left flex-1 leading-tight">${p.name}</h3>
-                            <span class="text-sm font-bold text-blue-600 whitespace-nowrap">R$ ${p.price.toFixed(2)}</span>
-                        </div>
-                        <div class="text-center my-1">
-                            <p class="text-lg font-bold text-gray-800">${p.currentStock}</p>
-                            <div class="text-xs text-gray-500 flex justify-between items-center">
-                                <span>Mín: ${p.minStock}</span>
-                                <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full ${stockColorClass}">${stockStatusText}</span>
-                                <span>Máx: ${p.maxStock}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mt-2 pt-2 border-t space-y-1">
-                        <div class="grid grid-cols-2 gap-1">
-                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="-1" class="text-xs font-semibold bg-red-100 text-red-700 rounded py-1 px-2 hover:bg-red-200">Saída</button>
-                            <button data-action="adjust-stock" data-product-id="${p.id}" data-change="1" class="text-xs font-semibold bg-green-100 text-green-700 rounded py-1 px-2 hover:bg-green-200">Entrada</button>
-                        </div>
-                        <div class="flex items-center justify-end gap-1">
-                            <button data-action="edit-product" data-product='${productDataString}' class="text-gray-500 hover:text-blue-600 p-1" title="Editar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                            <button data-action="delete-product" data-id="${p.id}" class="text-gray-500 hover:text-red-600 p-1" title="Apagar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                        </div>
-                    </div>
-                </div>`;
-            listDiv.appendChild(card);
-        });
+            return `<tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap"><div class="flex items-center"><div class="flex-shrink-0 h-10 w-10"><img class="h-10 w-10 rounded-full object-cover" src="${photoSrc}" alt=""></div><div class="ml-4"><div class="text-sm font-medium text-gray-900">${p.name}</div></div></div></td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">R$ ${p.price.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"><div class="flex flex-col"><span class="font-bold">${p.currentStock}</span><span class="text-xs text-gray-500">Min: ${p.minStock} / Max: ${p.maxStock}</span></div></td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm"><div class="flex items-center gap-2"><button data-action="adjust-stock" data-product-id="${p.id}" data-change="1" class="flex items-center gap-1 text-xs font-semibold bg-green-100 text-green-700 rounded-full py-1 px-3 hover:bg-green-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>Entrada</button><button data-action="adjust-stock" data-product-id="${p.id}" data-change="-1" class="flex items-center gap-1 text-xs font-semibold bg-red-100 text-red-700 rounded-full py-1 px-3 hover:bg-red-200"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>Saída</button></div></td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium"><button data-action="edit-product" data-product='${productDataString}' class="text-indigo-600 hover:text-indigo-900">Editar</button></td>
+            </tr>`;
+        }).join('');
     } else {
-        listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum produto encontrado.</p>`;
+        tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-500">Nenhum produto encontrado.</td></tr>`;
     }
 }
 
 
-async function fetchProductsAndCategories() {
-    const listDiv = document.getElementById('productsList');
-    listDiv.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
+async function fetchBaseData() {
+    const contentContainer = document.getElementById('products-content-container');
+    contentContainer.innerHTML = '<div class="loader col-span-full mx-auto my-8"></div>';
     try {
         const [products, categories] = await Promise.all([
             productsApi.getProducts(state.establishmentId),
@@ -306,99 +327,108 @@ async function fetchProductsAndCategories() {
         ]);
         state.products = products;
         state.categories = categories;
-
-        const categoryFilter = document.getElementById('productCategoryFilter');
-        categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
-        state.categories.forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${cat.name}</option>`);
-
-        renderProductsList();
+        switchTab(currentView);
     } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar dados.</p>';
+        contentContainer.innerHTML = '<p class="text-red-500 col-span-full text-center p-8">Erro ao carregar dados.</p>';
     }
 }
 
-// --- 5. EVENT LISTENERS E INICIALIZAÇÃO DA PÁGINA ---
+function switchTab(targetView) {
+    if (currentView === targetView && document.getElementById('products-content-container').children.length > 1) return;
+    currentView = targetView;
+    activeStockFilter = 'all'; // Reseta o filtro de estoque ao trocar de aba
 
-function setupEventListeners() {
-    const pageHandler = async (e) => {
-        const button = e.target.closest('button[data-action]');
-        if (!button) return;
-
-        const action = button.dataset.action;
-        const productId = button.dataset.productId || button.dataset.id;
-
-        if (action === 'new-product') {
-            openProductModal();
-        } else if (action === 'edit-product') {
-            const productData = JSON.parse(button.dataset.product);
-            openProductModal(productData);
-        } else if (action === 'delete-product') {
-            const confirmed = await showConfirmation('Apagar Produto', 'Tem a certeza que deseja apagar este produto?');
-            if (confirmed) {
-                try {
-                    await productsApi.deleteProduct(productId);
-                    showNotification('Sucesso', 'Produto apagado.', 'success');
-                    await fetchProductsAndCategories();
-                } catch (error) {
-                    showNotification('Erro', `Não foi possível apagar o produto: ${error.message}`, 'error');
-                }
-            }
-        } else if (action === 'adjust-stock') {
-            const change = parseInt(button.dataset.change, 10);
-            try {
-                await productsApi.adjustStock(productId, { change, reason: 'Ajuste manual' });
-                const productIndex = state.products.findIndex(p => p.id === productId);
-                if (productIndex > -1) {
-                    state.products[productIndex].currentStock += change;
-                    renderProductsList();
-                }
-            } catch (error) {
-                showNotification('Erro de Stock', error.message, 'error');
-            }
-        } else if (action === 'manage-categories') {
-            openCategoryModal();
-        } else if (action === 'delete-category') {
-            handleDeleteCategory(button.dataset.id);
-        }
-    };
-
-    contentDiv.addEventListener('click', pageHandler);
-    contentDiv.addEventListener('input', e => {
-        if (e.target.id === 'productSearchInput') renderProductsList();
-    });
-    contentDiv.addEventListener('change', e => {
-        if (e.target.id === 'productCategoryFilter') renderProductsList();
+    document.querySelectorAll('#products-tabs button.tab-button').forEach(button => {
+        const isTarget = button.dataset.view === targetView;
+        button.classList.toggle('border-indigo-500', isTarget);
+        button.classList.toggle('text-indigo-600', isTarget);
+        button.classList.toggle('border-transparent', !isTarget);
+        button.classList.toggle('text-gray-500', !isTarget);
     });
 
-    document.getElementById('categoryModal').addEventListener('click', e => {
-        const button = e.target.closest('button[data-action="delete-category"]');
-        if (button) handleDeleteCategory(button.dataset.id);
-    });
+    if (targetView === 'products') renderProductsView();
+    else if (targetView === 'movements') renderStockReportView();
 }
-
-// --- 6. FUNÇÃO PRINCIPAL EXPORTADA ---
 
 export async function loadProductsPage() {
     contentDiv.innerHTML = `
         <section>
-            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
-                <h2 class="text-3xl font-bold text-gray-800">Produtos e Stock</h2>
-                <div class="flex items-center gap-4">
-                    <button data-action="manage-categories" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Categorias</button>
-                    <button data-action="new-product" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Adicionar Produto</button>
+            <div class="bg-white rounded-lg shadow-md">
+                <div id="products-tabs" class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-6 px-6" aria-label="Tabs">
+                        <button data-view="products" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Produtos</button>
+                        <button data-action="manage-categories" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Categorias</button>
+                        <button data-view="movements" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Movimentações</button>
+                    </nav>
+                </div>
+                <div id="products-content-container" class="p-6">
+                    <div class="loader mx-auto"></div>
                 </div>
             </div>
-            <div class="bg-white p-4 rounded-lg shadow-md mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" id="productSearchInput" placeholder="Pesquisar por nome do produto..." class="w-full p-2 border rounded-md">
-                    <select id="productCategoryFilter" class="w-full p-2 border rounded-md">
-                        <option value="all">Todas as categorias</option>
-                    </select>
-                </div>
-            </div>
-            <div id="productsList" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4"></div>
         </section>`;
 
-    setupEventListeners();
-    await fetchProductsAndCategories();
+    if (pageEventListener) {
+        contentDiv.removeEventListener('click', pageEventListener);
+        contentDiv.removeEventListener('input', pageEventListener);
+        contentDiv.removeEventListener('change', pageEventListener);
+    }
+
+    pageEventListener = async (e) => {
+        const target = e.target;
+        const button = target.closest('button[data-action], button[data-view], .indicator-card');
+
+        if (target.id === 'productSearchInput' || target.id === 'productCategoryFilter') {
+            renderProductsTable();
+            return;
+        }
+        if (!button) return;
+
+        if (button.hasAttribute('data-view')) {
+            switchTab(button.dataset.view);
+            return;
+        }
+
+        const action = button.dataset.action;
+        const productId = button.dataset.productId || button.dataset.id;
+
+        switch (action) {
+            case 'new-product': openProductModal(); break;
+            case 'edit-product': openProductModal(JSON.parse(button.dataset.product)); break;
+            case 'manage-categories': openCategoryModal(); break;
+            case 'generate-report': await generateStockReport(); break;
+            case 'filter-stock':
+                const filterType = button.dataset.filterType;
+                activeStockFilter = (activeStockFilter === filterType) ? 'all' : filterType;
+                document.querySelectorAll('.indicator-card').forEach(card => {
+                    card.classList.toggle('ring-2', card.dataset.filterType === activeStockFilter);
+                    card.classList.toggle('ring-indigo-500', card.dataset.filterType === activeStockFilter);
+                    card.classList.toggle('shadow-lg', card.dataset.filterType === activeStockFilter);
+                });
+                renderProductsTable();
+                break;
+            case 'adjust-stock':
+                const change = parseInt(button.dataset.change, 10);
+                try {
+                    await productsApi.adjustStock(productId, { change, reason: 'Ajuste manual' });
+                    const productIndex = state.products.findIndex(p => p.id === productId);
+                    if (productIndex > -1) {
+                        state.products[productIndex].currentStock += change;
+                        renderStockIndicators();
+                        renderProductsTable();
+                    }
+                } catch (error) {
+                    showNotification('Erro de Stock', error.message, 'error');
+                }
+                break;
+        }
+    };
+    
+    contentDiv.addEventListener('click', pageEventListener);
+    contentDiv.addEventListener('input', pageEventListener);
+    contentDiv.addEventListener('change', pageEventListener);
+
+    currentView = 'products';
+    activeStockFilter = 'all'; // Reseta o filtro ao carregar a página
+    await fetchBaseData();
 }
+

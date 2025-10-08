@@ -22,9 +22,9 @@ import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
 import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
-import { loadStockReportPage } from './ui/stockReport.js'; // ### NOVO ###
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
+// ... (o resto do ficheiro permanece exatamente igual)
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
 const contentDiv = document.getElementById('content');
@@ -50,12 +50,12 @@ const colorThemes = {
 let unsubscribeNotificationsListener = null;
 let notifications = [];
 
-// --- 3. MAPEAMENTO DE ROTAS ---
+// --- 3. MAPEAMENTO DE ROTAS (ATUALIZADO) ---
 const pageLoader = {
     'agenda-section': loadAgendaPage,
     'comandas-section': loadComandasPage,
     'relatorios-section': loadReportsPage,
-    'stock-report-section': loadStockReportPage, // ### NOVO ###
+    // A linha 'stock-report-section' foi removida
     'servicos-section': loadServicesPage,
     'produtos-section': loadProductsPage,
     'profissionais-section': loadProfessionalsPage,
@@ -69,6 +69,7 @@ const pageLoader = {
     'packages-section': loadPackagesPage,
 };
 
+// ... (o resto do ficheiro main.js permanece igual)
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
 function applyTheme(themeKey) {

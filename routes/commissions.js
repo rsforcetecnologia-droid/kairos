@@ -6,87 +6,108 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 // Aplica o middleware de autenticação em todas as rotas deste arquivo
 router.use(verifyToken, hasAccess);
 
-// Rota para CALCULAR a comissão (sem salvar)
+// ROTA ATUALIZADA: Calcular comissão com base em período, profissionais e tipos de item
 router.post('/calculate', async (req, res) => {
     const { establishmentId } = req.user;
-    const { professionalId, startDate, endDate, commissionRate, calculationType } = req.body;
+    const { professionalIds, startDate, endDate, calculationTypes } = req.body;
 
-    if (!professionalId || !startDate || !endDate || commissionRate === undefined || !calculationType) {
-        return res.status(400).json({ message: 'Todos os parâmetros são obrigatórios.' });
+    if (!professionalIds || professionalIds.length === 0 || !startDate || !endDate || !calculationTypes) {
+        return res.status(400).json({ message: 'Profissionais, período e tipos de cálculo são obrigatórios.' });
     }
 
     try {
         const { db } = req;
         const start = new Date(startDate);
         const end = new Date(endDate + "T23:59:59");
+        let professionalsToProcess = [];
+        const allProfessionals = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
+        const allProfessionalsMap = new Map(allProfessionals.docs.map(doc => [doc.id, doc.data()]));
 
-        const appointmentsQuery = db.collection('appointments')
-            .where('establishmentId', '==', establishmentId)
-            .where('professionalId', '==', professionalId)
-            .where('status', '==', 'completed')
-            .where('startTime', '>=', start)
-            .where('startTime', '<=', end);
+        if (professionalIds.includes('all')) {
+            professionalsToProcess = allProfessionals.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else {
+            professionalsToProcess = professionalIds.map(id => ({ id, ...allProfessionalsMap.get(id) }));
+        }
 
-        const salesQuery = db.collection('sales')
-            .where('establishmentId', '==', establishmentId)
-            .where('professionalId', '==', professionalId)
-            .where('startTime', '>=', start)
-            .where('startTime', '<=', end);
+        const results = [];
 
-        const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
-            appointmentsQuery.get(),
-            salesQuery.get()
-        ]);
+        for (const prof of professionalsToProcess) {
+            const salesQuery = db.collection('sales')
+                .where('establishmentId', '==', establishmentId)
+                .where('professionalId', '==', prof.id)
+                .where('transaction.paidAt', '>=', start)
+                .where('transaction.paidAt', '<=', end);
 
-        let totalCommissionableValue = 0;
-        const commissionableItems = [];
+            const salesSnapshot = await salesQuery.get();
+            if (salesSnapshot.empty) {
+                continue; // Pula para o próximo profissional se não houver vendas
+            }
 
-        const processItems = (items, saleDate, clientName, saleType) => {
-            (items || []).forEach(item => {
-                let isCommissionable = false;
-                if (calculationType === 'services_only' && item.type === 'service') {
-                    isCommissionable = true;
-                } else if (calculationType === 'products_only' && item.type === 'product') {
-                    isCommissionable = true;
-                } else if (calculationType === 'services_and_products') {
-                    isCommissionable = true;
-                }
+            let totalCommissionableValue = 0;
+            let totalCommission = 0;
+            const commissionableItems = [];
 
-                if (isCommissionable) {
+            for (const saleDoc of salesSnapshot.docs) {
+                const saleData = saleDoc.data();
+                const items = saleData.items || [];
+
+                for (const item of items) {
+                    let commissionRate = 0;
                     const price = item.price || 0;
-                    totalCommissionableValue += price;
-                    commissionableItems.push({
-                        date: saleDate,
-                        client: clientName,
-                        item: item.name,
-                        value: price,
-                        type: saleType
-                    });
+                    let isCommissionable = false;
+
+                    if (item.type === 'service' && calculationTypes.services) {
+                        const serviceDoc = await db.collection('services').doc(item.id).get();
+                        if (serviceDoc.exists) {
+                            const serviceData = serviceDoc.data();
+                            commissionRate = serviceData.commissionType === 'custom' && serviceData.professionalCommissions?.[prof.id] !== undefined
+                                ? serviceData.professionalCommissions[prof.id]
+                                : serviceData.commissionRate || 0;
+                            isCommissionable = true;
+                        }
+                    } else if (item.type === 'product' && calculationTypes.products) {
+                        const productDoc = await db.collection('products').doc(item.id).get();
+                        if (productDoc.exists) {
+                            commissionRate = productDoc.data().commissionRate || 0;
+                            isCommissionable = true;
+                        }
+                    } else if (item.type === 'package' && calculationTypes.packages) {
+                        const packageDoc = await db.collection('servicePackages').doc(item.id).get();
+                        if (packageDoc.exists) {
+                            commissionRate = packageDoc.data().commissionRate || 0;
+                            isCommissionable = true;
+                        }
+                    }
+
+                    if (isCommissionable) {
+                        const itemCommission = price * (commissionRate / 100);
+                        totalCommissionableValue += price;
+                        totalCommission += itemCommission;
+
+                        commissionableItems.push({
+                            date: saleData.transaction.paidAt.toDate(),
+                            client: saleData.clientName,
+                            item: item.name,
+                            value: price,
+                            commissionRate: commissionRate,
+                            commissionValue: itemCommission,
+                            type: item.type
+                        });
+                    }
                 }
-            });
-        };
+            }
+            
+            if (commissionableItems.length > 0) {
+                 results.push({
+                    professionalId: prof.id,
+                    professionalName: prof.name,
+                    summary: { totalCommissionableValue, totalCommission, totalItems: commissionableItems.length },
+                    items: commissionableItems.sort((a, b) => new Date(a.date) - new Date(b.date))
+                });
+            }
+        }
 
-        appointmentsSnapshot.forEach(doc => {
-            const data = doc.data();
-            const allItems = [...(data.services || []), ...(data.comandaItems || [])];
-            processItems(allItems, data.startTime.toDate(), data.clientName, 'Agendamento');
-        });
-
-        salesSnapshot.forEach(doc => {
-            const data = doc.data();
-            processItems(data.items, data.startTime.toDate(), data.clientName, 'Venda Avulsa');
-        });
-
-        const totalCommission = totalCommissionableValue * (parseFloat(commissionRate) / 100);
-
-        res.status(200).json({
-            summary: {
-                totalCommissionableValue,
-                commissionRate: parseFloat(commissionRate),
-                totalCommission
-            },
-            items: commissionableItems.sort((a, b) => new Date(a.date) - new Date(b.date))
-        });
+        res.status(200).json(results);
 
     } catch (error) {
         console.error("Erro ao calcular comissão:", error);
@@ -94,24 +115,21 @@ router.post('/calculate', async (req, res) => {
     }
 });
 
-// ROTA NOVA: Salvar um relatório de comissão
+
 router.post('/save', async (req, res) => {
     const { establishmentId } = req.user;
-    const { professionalId, professionalName, month, year, reportData } = req.body;
+    const { professionalId, professionalName, period, reportData } = req.body;
 
-    if (!professionalId || !month || !year || !reportData) {
+    if (!professionalId || !period || !reportData) {
         return res.status(400).json({ message: 'Dados insuficientes para salvar o relatório.' });
     }
 
     try {
         const { db } = req;
         const report = {
-            establishmentId,
-            professionalId,
-            professionalName,
-            month,
-            year,
-            ...reportData,
+            establishmentId, professionalId, professionalName,
+            period, // Salva o período como uma string (ex: "01/10/2025 a 31/10/2025")
+            summary: reportData.summary,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
@@ -123,39 +141,27 @@ router.post('/save', async (req, res) => {
     }
 });
 
-// ROTA NOVA E CORRIGIDA: Obter histórico de relatórios de um profissional
-router.get('/history/:professionalId', async (req, res) => {
+// ROTA ATUALIZADA: Obter histórico de todos os relatórios
+router.get('/history', async (req, res) => {
     const { establishmentId } = req.user;
-    const { professionalId } = req.params;
-
     try {
         const { db } = req;
-        // MODIFICAÇÃO: Removido orderBy para evitar a necessidade de um índice composto complexo.
-        // A ordenação será feita no servidor após buscar os dados.
         const snapshot = await db.collection('commission_reports')
             .where('establishmentId', '==', establishmentId)
-            .where('professionalId', '==', professionalId)
+            .orderBy('createdAt', 'desc')
             .get();
 
         if (snapshot.empty) {
             return res.status(200).json([]);
         }
 
-        let history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // Ordenação em memória (workaround para a falta de índice)
-        history.sort((a, b) => {
-            if (b.year !== a.year) {
-                return b.year - a.year;
-            }
-            return b.month - a.month;
-        });
-
+        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.status(200).json(history);
     } catch (error) {
         console.error("Erro ao buscar histórico de comissões:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
 
 module.exports = router;

@@ -2,396 +2,300 @@
 
 import * as commissionsApi from '../api/commissions.js';
 import * as professionalsApi from '../api/professionals.js';
-import * as reportsApi from '../api/reports.js';
 import { state } from '../state.js';
-import { showNotification } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
-let currentCommissionResult = null;
-let currentConsolidatedReport = null; // Cache para o relatório consolidado
+let calculationResults = []; // Cache para os resultados do cálculo
+let pageEventListener = null; // <-- ESTA LINHA FOI ADICIONADA PARA CORRIGIR O ERRO
 
-// --- FUNÇÕES DE EXPORTAÇÃO ---
+// --- FUNÇÕES DE RECIBO E MODAIS ---
 
-function exportCommissionsToPDF() {
-    if (!currentConsolidatedReport || currentConsolidatedReport.length === 0) {
-        showNotification('Nenhum relatório para exportar.', 'info');
-        return;
-    }
-
+function generateReceipt(report) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const professionalName = document.getElementById('reportProfessionalSelect').options[document.getElementById('reportProfessionalSelect').selectedIndex].text;
-    const month = document.getElementById('reportMonth').options[document.getElementById('reportMonth').selectedIndex].text;
-    const year = document.getElementById('reportYear').value;
-
+    
     doc.setFontSize(18);
-    doc.text(`Relatório de Comissões - ${professionalName}`, 14, 22);
+    doc.text(`Recibo de Comissão - ${report.professionalName}`, 105, 20, null, null, 'center');
     doc.setFontSize(12);
-    doc.text(`Período: ${month} de ${year}`, 14, 32);
-
-    const head = [['Profissional', 'Total Comissionável (R$)', 'Taxa (%)', 'Comissão (R$)']];
-    const body = currentConsolidatedReport.map(report => [
-        report.professionalName,
-        report.summary.totalCommissionableValue.toFixed(2),
-        report.summary.commissionRate.toFixed(2),
-        report.summary.totalCommission.toFixed(2)
-    ]);
-
-    const grandTotal = currentConsolidatedReport.reduce((acc, report) => acc + report.summary.totalCommission, 0);
-    body.push(['', '', { content: 'TOTAL GERAL', styles: { fontStyle: 'bold' } }, { content: `R$ ${grandTotal.toFixed(2)}`, styles: { fontStyle: 'bold' } }]);
-
+    doc.text(`Período: ${report.period}`, 105, 30, null, null, 'center');
+    
     doc.autoTable({
         startY: 40,
-        head: head,
-        body: body,
-        theme: 'striped',
-        headStyles: { fillColor: [41, 128, 185] }
+        head: [['Descrição', 'Valor (R$)']],
+        body: [
+            ['Total Comissionável', `R$ ${report.summary.totalCommissionableValue.toFixed(2)}`],
+            ['Total de Itens', report.summary.totalItems],
+        ],
+        theme: 'striped'
     });
+    
+    const finalY = doc.lastAutoTable.finalY + 20;
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text('Valor Total da Comissão:', 14, finalY);
+    doc.text(`R$ ${report.summary.totalCommission.toFixed(2)}`, 190, finalY, null, null, 'right');
+    
+    const signatureY = finalY + 80;
+    doc.line(40, signatureY, 170, signatureY);
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(report.professionalName, 105, signatureY + 10, null, null, 'center');
 
-    doc.save(`relatorio_comissoes_${year}_${month}.pdf`);
+    doc.save(`recibo_comissao_${report.professionalName}_${report.period.replace(/\//g, '-')}.pdf`);
 }
 
-function exportCommissionsToExcel() {
-    if (!currentConsolidatedReport || currentConsolidatedReport.length === 0) {
-        showNotification('Nenhum relatório para exportar.', 'info');
-        return;
-    }
-    
-    const month = document.getElementById('reportMonth').options[document.getElementById('reportMonth').selectedIndex].text;
-    const year = document.getElementById('reportYear').value;
+function openCalculationModal() {
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const todayStr = today.toISOString().split('T')[0];
 
-    const data = currentConsolidatedReport.map(report => ({
-        'Profissional': report.professionalName,
-        'Total Comissionável (R$)': report.summary.totalCommissionableValue,
-        'Taxa (%)': report.summary.commissionRate,
-        'Comissão (R$)': report.summary.totalCommission
-    }));
+    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
-    const grandTotal = data.reduce((acc, row) => acc + row['Comissão (R$)'], 0);
-    data.push({}); // Linha em branco
-    data.push({
-        'Profissional': 'TOTAL GERAL',
-        'Comissão (R$)': grandTotal
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Comissões");
-
-    // Formatação
-    worksheet['!cols'] = [{ wch: 30 }, { wch: 25 }, { wch: 10 }, { wch: 15 }];
-
-    XLSX.writeFile(workbook, `relatorio_comissoes_${year}_${month}.xlsx`);
-}
-
-function renderCommissionHistory(history) {
-    const historyContainer = document.getElementById('commissionHistory');
-    if (!historyContainer) return;
-
-    if (history.length === 0) {
-        historyContainer.innerHTML = '<p class="text-center text-gray-500 py-4">Nenhum relatório salvo para este profissional.</p>';
-        return;
-    }
-    
-    const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-
-    historyContainer.innerHTML = `
-        <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Histórico de Relatórios Salvos</h3>
-        <div class="space-y-3 max-h-96 overflow-y-auto">
-            ${history.map(report => `
-                <div class="bg-gray-50 p-3 rounded-lg border">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <p class="font-bold text-gray-800">${monthNames[report.month - 1]} de ${report.year}</p>
-                            <p class="text-sm text-gray-600">Total Comissionável: <span class="font-semibold">R$ ${report.summary.totalCommissionableValue.toFixed(2)}</span></p>
-                        </div>
-                        <p class="text-lg font-bold text-green-600">Comissão: R$ ${report.summary.totalCommission.toFixed(2)}</p>
-                    </div>
+    const contentHTML = `
+        <form id="calculation-form" class="space-y-6">
+            <div>
+                <label for="calc-professionals" class="block text-sm font-medium text-gray-700">Profissionais</label>
+                <select id="calc-professionals" multiple class="mt-1 w-full p-2 border rounded-md h-32">
+                    <option value="all">Todos os Profissionais</option>
+                    ${professionalsOptions}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Período</label>
+                <div class="mt-1 grid grid-cols-2 gap-4">
+                    <input type="date" id="calc-start-date" value="${firstDayOfMonth}" class="w-full p-2 border rounded-md">
+                    <input type="date" id="calc-end-date" value="${todayStr}" class="w-full p-2 border rounded-md">
                 </div>
-            `).join('')}
-        </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Incluir no cálculo</label>
+                <div class="mt-2 space-y-2">
+                    <label class="flex items-center"><input type="checkbox" id="calc-type-services" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Serviços</span></label>
+                    <label class="flex items-center"><input type="checkbox" id="calc-type-products" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Produtos</span></label>
+                    <label class="flex items-center"><input type="checkbox" id="calc-type-packages" class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Pacotes</span></label>
+                </div>
+            </div>
+            <div class="pt-4 border-t">
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Calcular Previsão</button>
+            </div>
+        </form>
     `;
+
+    const { modalElement } = showGenericModal({
+        title: "Calcular Comissões",
+        contentHTML: contentHTML,
+        maxWidth: 'max-w-md'
+    });
+
+    modalElement.querySelector('#calculation-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleCommissionCalculation();
+        modalElement.querySelector('[data-action="close-modal"]').click();
+    });
 }
 
-async function fetchAndRenderHistory(professionalId) {
-    const historyContainer = document.getElementById('commissionHistory');
-    if (!historyContainer) return;
-    historyContainer.innerHTML = '<div class="loader mx-auto"></div>';
+// --- FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
+
+async function handleCommissionCalculation() {
+    const professionalIds = Array.from(document.getElementById('calc-professionals').selectedOptions).map(opt => opt.value);
+    const startDate = document.getElementById('calc-start-date').value;
+    const endDate = document.getElementById('calc-end-date').value;
+    const calculationTypes = {
+        services: document.getElementById('calc-type-services').checked,
+        products: document.getElementById('calc-type-products').checked,
+        packages: document.getElementById('calc-type-packages').checked,
+    };
+
+    if (professionalIds.length === 0) {
+        showNotification('Atenção', 'Selecione pelo menos um profissional.', 'error');
+        return;
+    }
+
+    navigateTo('commissions-section', { view: 'results', isLoading: true });
 
     try {
-        const history = await commissionsApi.getCommissionHistory(professionalId);
-        renderCommissionHistory(history);
+        const results = await commissionsApi.calculateCommission({ professionalIds, startDate, endDate, calculationTypes });
+        calculationResults = results;
+        
+        const periodString = `${new Date(startDate+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate+'T00:00:00').toLocaleDateString('pt-BR')}`;
+        renderResultsView(results, periodString);
+
+    } catch (error) {
+        showNotification('Erro', `Não foi possível calcular: ${error.message}`, 'error');
+        navigateTo('commissions-section', { view: 'history' });
+    }
+}
+
+async function handleSaveReports() {
+    if (calculationResults.length === 0) {
+        showNotification('Erro', 'Não há resultados para salvar.', 'error');
+        return;
+    }
+
+    const startDate = document.getElementById('calc-start-date')?.value;
+    const endDate = document.getElementById('calc-end-date')?.value;
+    const period = `${new Date(startDate+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate+'T00:00:00').toLocaleDateString('pt-BR')}`;
+    const confirmed = await showConfirmation('Salvar Relatórios', `Tem a certeza que deseja salvar ${calculationResults.length} relatório(s) de comissão para o período de ${period}?`);
+    
+    if(confirmed) {
+        try {
+            const savePromises = calculationResults.map(result => 
+                commissionsApi.saveCommissionReport({
+                    professionalId: result.professionalId,
+                    professionalName: result.professionalName,
+                    period: period,
+                    reportData: result
+                })
+            );
+            await Promise.all(savePromises);
+            showNotification('Sucesso!', 'Relatórios de comissão salvos.', 'success');
+            navigateTo('commissions-section', { view: 'history' });
+        } catch (error) {
+            showNotification('Erro', `Não foi possível salvar: ${error.message}`, 'error');
+        }
+    }
+}
+
+async function fetchAndRenderHistory() {
+    const historyContainer = document.getElementById('commissionHistory');
+    if (!historyContainer) return;
+    historyContainer.innerHTML = '<div class="loader mx-auto my-8"></div>';
+
+    try {
+        const history = await commissionsApi.getCommissionHistory();
+        
+        if (history.length === 0) {
+            historyContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Nenhum relatório de comissão salvo ainda.</p>';
+            return;
+        }
+
+        historyContainer.innerHTML = `
+            <div class="space-y-3">
+                ${history.map(report => `
+                    <div class="bg-white p-4 rounded-lg shadow-sm border">
+                        <div class="flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                                <p class="font-bold text-gray-800">${report.professionalName}</p>
+                                <p class="text-sm text-gray-500">Período: ${report.period}</p>
+                                <p class="text-sm text-gray-600 mt-1">Salvo em: ${new Date(report.createdAt.toDate()).toLocaleDateString('pt-BR')}</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-lg font-bold text-green-600">R$ ${report.summary.totalCommission.toFixed(2)}</p>
+                                <button data-action="generate-receipt" data-report='${JSON.stringify(report).replace(/'/g, "&apos;")}' class="mt-1 py-1 px-3 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-200">Gerar Recibo</button>
+                            </div>
+                        </div>
+                    </div>`).join('')}
+            </div>`;
     } catch (error) {
         historyContainer.innerHTML = `<p class="text-red-500 text-center">Erro ao carregar histórico: ${error.message}</p>`;
     }
 }
 
-
-async function handleCommissionReport() {
-    const resultsDiv = document.getElementById('commissionResults');
-    const professionalId = document.getElementById('professionalSelect').value;
-    const year = document.getElementById('commissionYear').value;
-    const month = document.getElementById('commissionMonth').value;
-    const commissionRate = document.getElementById('commissionRate').value;
-    const calculationType = document.getElementById('calculationType').value;
-
-    if (!professionalId || !year || !month || !commissionRate || !calculationType) {
-        showNotification('Por favor, preencha todos os campos do formulário.', 'error');
-        return;
-    }
-
-    // Define startDate e endDate com base no mês e ano
-    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // O dia 0 do próximo mês é o último dia do mês atual
-
-    resultsDiv.innerHTML = '<div class="loader mx-auto"></div>';
-    currentCommissionResult = null; // Limpa o resultado anterior
-
-    try {
-        const result = await commissionsApi.calculateCommission({
-            professionalId,
-            startDate,
-            endDate,
-            commissionRate,
-            calculationType
-        });
-
-        currentCommissionResult = result; // Armazena o resultado para poder salvar
-
-        resultsDiv.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-center">
-                <div class="bg-blue-50 p-4 rounded-lg"><p class="text-sm text-gray-600">Total Comissionável</p><p class="text-2xl font-bold text-blue-800">R$ ${result.summary.totalCommissionableValue.toFixed(2)}</p></div>
-                <div class="bg-yellow-50 p-4 rounded-lg"><p class="text-sm text-gray-600">Taxa de Comissão</p><p class="text-2xl font-bold text-yellow-800">${result.summary.commissionRate}%</p></div>
-                <div class="bg-green-50 p-4 rounded-lg"><p class="text-sm text-gray-600">Comissão Total</p><p class="text-2xl font-bold text-green-800">R$ ${result.summary.totalCommission.toFixed(2)}</p></div>
+function renderHistoryView() {
+    contentDiv.innerHTML = `
+        <section class="space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-3xl font-bold text-gray-800">Comissões</h2>
             </div>
-            <div class="flex justify-between items-center mb-4">
-                <h4 class="text-lg font-semibold">Itens Comissionáveis</h4>
-                <button id="saveReportBtn" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Salvar Relatório</button>
-            </div>
-            <div class="overflow-y-auto max-h-96">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-gray-100">
-                        <tr>
-                            <th class="px-4 py-2 text-left">Data</th>
-                            <th class="px-4 py-2 text-left">Cliente</th>
-                            <th class="px-4 py-2 text-left">Item</th>
-                            <th class="px-4 py-2 text-left">Tipo</th>
-                            <th class="px-4 py-2 text-right">Valor</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        ${result.items.map(item => `
-                            <tr>
-                                <td class="px-4 py-2">${new Date(item.date).toLocaleDateString('pt-BR')}</td>
-                                <td class="px-4 py-2">${item.client}</td>
-                                <td class="px-4 py-2">${item.item}</td>
-                                <td class="px-4 py-2">${item.type}</td>
-                                <td class="px-4 py-2 text-right">R$ ${item.value.toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-        // Adiciona o listener para o botão de salvar
-        document.getElementById('saveReportBtn').addEventListener('click', handleSaveReport);
-    } catch (error) {
-        resultsDiv.innerHTML = `<p class="text-red-500 text-center">Erro ao gerar relatório: ${error.message}</p>`;
-    }
+            <div id="commissionHistory" class="bg-gray-50 p-4 rounded-lg"></div>
+            <button data-action="open-calculator" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-3 3v6m-3-9h6m-6 9h6m3-9a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </button>
+        </section>
+    `;
+    fetchAndRenderHistory();
 }
 
-async function handleSaveReport() {
-    if (!currentCommissionResult) {
-        showNotification('Nenhum relatório para salvar.', 'error');
-        return;
-    }
-
-    const professionalId = document.getElementById('professionalSelect').value;
-    const professionalName = document.getElementById('professionalSelect').options[document.getElementById('professionalSelect').selectedIndex].text;
-    const year = document.getElementById('commissionYear').value;
-    const month = document.getElementById('commissionMonth').value;
-
-    const reportToSave = {
-        professionalId,
-        professionalName,
-        month,
-        year,
-        reportData: currentCommissionResult
-    };
-
-    try {
-        await commissionsApi.saveCommissionReport(reportToSave);
-        showNotification('Relatório salvo com sucesso!', 'success');
-        fetchAndRenderHistory(professionalId); // Atualiza o histórico
-    } catch (error) {
-        showNotification(`Erro ao salvar: ${error.message}`, 'error');
-    }
-}
-
-async function handleGenerateConsolidatedReport() {
-    const resultsContainer = document.getElementById('consolidatedReportResults');
-    const professionalId = document.getElementById('reportProfessionalSelect').value;
-    const year = document.getElementById('reportYear').value;
-    const month = document.getElementById('reportMonth').value;
-
-    resultsContainer.innerHTML = '<div class="loader mx-auto"></div>';
-    currentConsolidatedReport = null; // Limpa o cache
-
-    try {
-        const reports = await reportsApi.getCommissionReport(state.establishmentId, year, month, professionalId);
-        currentConsolidatedReport = reports; // Armazena os dados para exportação
-        
-        if (reports.length === 0) {
-            resultsContainer.innerHTML = '<p class="text-center text-gray-500">Nenhum relatório de comissão salvo para este período/profissional.</p>';
-            return;
-        }
-
-        const grandTotal = reports.reduce((acc, report) => acc + report.summary.totalCommission, 0);
-
-        resultsContainer.innerHTML = `
-            <div class="flex justify-between items-center mb-4">
-                 <div>
-                    <p class="text-lg font-semibold">Total Geral de Comissões:</p>
-                    <p class="text-4xl font-bold text-green-600">R$ ${grandTotal.toFixed(2)}</p>
-                </div>
-                <div class="flex gap-2">
-                    <button id="exportPdfBtn" class="py-2 px-3 bg-red-600 text-white font-semibold rounded-lg text-sm hover:bg-red-700">Exportar PDF</button>
-                    <button id="exportExcelBtn" class="py-2 px-3 bg-green-700 text-white font-semibold rounded-lg text-sm hover:bg-green-800">Exportar Excel</button>
-                </div>
-            </div>
-            <table id="consolidated-table" class="min-w-full text-sm">
-                <thead class="bg-gray-100">
-                    <tr>
-                        <th class="px-4 py-2 text-left">Profissional</th>
-                        <th class="px-4 py-2 text-right">Total Comissionável</th>
-                        <th class="px-4 py-2 text-right">Taxa (%)</th>
-                        <th class="px-4 py-2 text-right">Comissão (R$)</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y">
-                    ${reports.map(report => `
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-2 font-semibold">${report.professionalName}</td>
-                            <td class="px-4 py-2 text-right">R$ ${report.summary.totalCommissionableValue.toFixed(2)}</td>
-                            <td class="px-4 py-2 text-right">${report.summary.commissionRate}%</td>
-                            <td class="px-4 py-2 text-right font-bold">R$ ${report.summary.totalCommission.toFixed(2)}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        `;
-        document.getElementById('exportPdfBtn').addEventListener('click', exportCommissionsToPDF);
-        document.getElementById('exportExcelBtn').addEventListener('click', exportCommissionsToExcel);
-    } catch (error) {
-        resultsContainer.innerHTML = `<p class="text-red-500 text-center">Erro ao gerar relatório consolidado: ${error.message}</p>`;
-    }
-}
-
-
-export async function loadCommissionsPage() {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth() + 1;
+function renderResultsView(results, period) {
+    calculationResults = results;
+    const grandTotal = results.reduce((acc, r) => acc + r.summary.totalCommission, 0);
 
     contentDiv.innerHTML = `
-        <section class="space-y-8">
-            <div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-6">Apuração de Comissões</h2>
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                        <div>
-                            <label for="professionalSelect" class="block text-sm font-medium">Profissional</label>
-                            <select id="professionalSelect" class="w-full p-2 border rounded-md"></select>
-                        </div>
-                        <div>
-                            <label for="commissionYear" class="block text-sm font-medium">Ano</label>
-                            <select id="commissionYear" class="w-full p-2 border rounded-md">
-                                ${Array.from({length: 5}, (_, i) => `<option value="${currentYear - i}">${currentYear - i}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label for="commissionMonth" class="block text-sm font-medium">Mês</label>
-                            <select id="commissionMonth" class="w-full p-2 border rounded-md">
-                                ${Array.from({length: 12}, (_, i) => `<option value="${i + 1}" ${i + 1 === currentMonth ? 'selected' : ''}>${new Date(0, i).toLocaleString('pt-BR', { month: 'long' })}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label for="calculationType" class="block text-sm font-medium">Calcular sobre</label>
-                            <select id="calculationType" class="w-full p-2 border rounded-md">
-                                <option value="services_only">Apenas Serviços</option>
-                                <option value="products_only">Apenas Produtos</option>
-                                <option value="services_and_products">Serviços e Produtos</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="commissionRate" class="block text-sm font-medium">Comissão (%)</label>
-                            <input type="number" id="commissionRate" value="10" class="w-full p-2 border rounded-md">
-                        </div>
-                    </div>
-                    <button id="calculateCommissionBtn" class="mt-4 w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Calcular</button>
-                </div>
+        <section>
+            <div class="flex justify-between items-center mb-6">
+                <button data-action="back-to-history" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300"> < Voltar </button>
+                <h2 class="text-2xl font-bold text-gray-800 text-center">Previsão de Comissão</h2>
+                <button data-action="save-reports" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Salvar Relatórios</button>
             </div>
-
-            <div id="commissionResults" class="bg-white p-6 rounded-lg shadow-md">
-                <p class="text-center text-gray-500">Preencha os filtros acima para gerar o relatório.</p>
-            </div>
-
-            <div id="commissionHistory" class="bg-white p-6 rounded-lg shadow-md">
-                </div>
-            
-            <div>
-                <h2 class="text-3xl font-bold text-gray-800 mb-6">Relatório de Comissões</h2>
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                        <div>
-                            <label for="reportProfessionalSelect" class="block text-sm font-medium">Profissional</label>
-                            <select id="reportProfessionalSelect" class="w-full p-2 border rounded-md"></select>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <p class="text-center text-gray-500 mb-4">Período: <strong>${period}</strong></p>
+                <div class="text-center mb-6"><p class="text-lg font-semibold">Total Geral de Comissões:</p><p class="text-4xl font-bold text-green-600">R$ ${grandTotal.toFixed(2)}</p></div>
+                
+                <div class="space-y-4">
+                ${results.map(result => `
+                    <details class="bg-gray-50 p-3 rounded-lg border">
+                        <summary class="flex justify-between items-center cursor-pointer">
+                            <p class="font-bold text-gray-800">${result.professionalName}</p>
+                            <p class="text-lg font-bold text-green-600">R$ ${result.summary.totalCommission.toFixed(2)}</p>
+                        </summary>
+                        <div class="mt-4 pt-4 border-t overflow-x-auto">
+                            <table class="min-w-full text-xs">
+                                <thead class="bg-gray-100"><tr>
+                                    <th class="px-2 py-1 text-left">Data</th><th class="px-2 py-1 text-left">Item</th>
+                                    <th class="px-2 py-1 text-right">Valor</th><th class="px-2 py-1 text-right">Taxa</th><th class="px-2 py-1 text-right">Comissão</th>
+                                </tr></thead>
+                                <tbody class="divide-y">
+                                ${result.items.map(item => `
+                                    <tr>
+                                        <td class="px-2 py-1">${new Date(item.date).toLocaleDateString('pt-BR')}</td>
+                                        <td class="px-2 py-1">${item.item}</td>
+                                        <td class="px-2 py-1 text-right">R$ ${item.value.toFixed(2)}</td>
+                                        <td class="px-2 py-1 text-right">${item.commissionRate}%</td>
+                                        <td class="px-2 py-1 text-right font-semibold">R$ ${item.commissionValue.toFixed(2)}</td>
+                                    </tr>`).join('')}
+                                </tbody>
+                            </table>
                         </div>
-                        <div>
-                            <label for="reportYear" class="block text-sm font-medium">Ano</label>
-                             <select id="reportYear" class="w-full p-2 border rounded-md">
-                                ${Array.from({length: 5}, (_, i) => `<option value="${currentYear - i}">${currentYear - i}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label for="reportMonth" class="block text-sm font-medium">Mês</label>
-                            <select id="reportMonth" class="w-full p-2 border rounded-md">
-                                ${Array.from({length: 12}, (_, i) => `<option value="${i + 1}" ${i + 1 === currentMonth ? 'selected' : ''}>${new Date(0, i).toLocaleString('pt-BR', { month: 'long' })}</option>`).join('')}
-                            </select>
-                        </div>
-                        <button id="generateConsolidatedReportBtn" class="bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700">Extrair Relatório</button>
-                    </div>
-                </div>
-                <div id="consolidatedReportResults" class="bg-white p-6 rounded-lg shadow-md mt-4">
-                    <p class="text-center text-gray-500">Selecione o período para extrair o relatório de comissões.</p>
+                    </details>
+                `).join('')}
                 </div>
             </div>
         </section>
     `;
+}
 
-    document.getElementById('calculateCommissionBtn').addEventListener('click', handleCommissionReport);
-    document.getElementById('generateConsolidatedReportBtn').addEventListener('click', handleGenerateConsolidatedReport);
+// --- FUNÇÃO PRINCIPAL E EVENT LISTENERS ---
 
-    try {
-        const professionals = await professionalsApi.getProfessionals(state.establishmentId);
-        const professionalSelect = document.getElementById('professionalSelect');
-        const reportProfessionalSelect = document.getElementById('reportProfessionalSelect');
-        
-        if (professionals.length > 0) {
-            const options = professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-            professionalSelect.innerHTML = options;
-            reportProfessionalSelect.innerHTML = '<option value="all">Toda a Equipe</option>' + options;
+export async function loadCommissionsPage(params = {}) {
+    const { view = 'history', isLoading = false } = params;
 
-            // Carrega o histórico do primeiro profissional da lista
-            fetchAndRenderHistory(professionals[0].id);
-            // Adiciona um listener para atualizar o histórico quando o profissional muda
-            professionalSelect.addEventListener('change', (e) => fetchAndRenderHistory(e.target.value));
-        } else {
-             const noProfMsg = '<option value="">Nenhum profissional encontrado</option>';
-             professionalSelect.innerHTML = noProfMsg;
-             reportProfessionalSelect.innerHTML = noProfMsg;
+    if (pageEventListener) {
+        contentDiv.removeEventListener('click', pageEventListener);
+    }
+
+    pageEventListener = (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        const action = button.dataset.action;
+
+        switch (action) {
+            case 'open-calculator': openCalculationModal(); break;
+            case 'back-to-history': navigateTo('commissions-section', { view: 'history' }); break;
+            case 'save-reports': handleSaveReports(); break;
+            case 'generate-receipt':
+                const reportData = JSON.parse(button.dataset.report.replace(/&apos;/g, "'"));
+                generateReceipt(reportData);
+                break;
         }
-    } catch (error) {
-        showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
+    };
+    contentDiv.addEventListener('click', pageEventListener);
+
+    if (isLoading) {
+        contentDiv.innerHTML = `<div class="p-8 text-center"><div class="loader mx-auto"></div><p class="mt-4">A calcular comissões...</p></div>`;
+        return;
+    }
+
+    if (view === 'history' || view === 'main') {
+        renderHistoryView();
+    }
+    
+    if (!state.professionals || state.professionals.length === 0) {
+        try {
+            state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
+        } catch (error) {
+            showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
+        }
     }
 }

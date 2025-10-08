@@ -6,9 +6,7 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 // Criar novo serviço (Rota Privada)
 router.post('/', verifyToken, hasAccess, async (req, res) => {
     try {
-        // ### CORREÇÃO APLICADA AQUI ###
-        // Adicionado 'commissionRate' à desestruturação do corpo da requisição.
-        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate } = req.body;
+        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate, commissionType, professionalCommissions, notes } = req.body;
         if (!establishmentId || !name || price === undefined || duration === undefined) {
             return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
         }
@@ -18,7 +16,10 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
             price: Number(price),
             duration: Number(duration),
             bufferTime: Number(bufferTime) || 0,
-            commissionRate: Number(commissionRate) || 0, // Adiciona o novo campo
+            commissionRate: Number(commissionRate) || 0,
+            commissionType: commissionType || 'default', // 'default' ou 'custom'
+            professionalCommissions: professionalCommissions || {}, // Objeto para comissões personalizadas
+            notes: notes || '',
             active: active !== false,
             photo: photo || null,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -70,14 +71,14 @@ router.put('/:serviceId', verifyToken, hasAccess, async (req, res) => {
     const data = req.body;
     try {
         const { db } = req;
-        // ### CORREÇÃO APLICADA AQUI ###
-        // Garante que o `commissionRate` seja salvo como número.
         const updatedData = {
             ...data,
             price: Number(data.price),
             duration: Number(data.duration),
             bufferTime: Number(data.bufferTime) || 0,
             commissionRate: Number(data.commissionRate) || 0,
+            commissionType: data.commissionType || 'default',
+            professionalCommissions: data.professionalCommissions || {}
         };
         await db.collection('services').doc(serviceId).update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });

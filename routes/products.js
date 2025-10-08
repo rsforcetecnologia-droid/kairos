@@ -82,26 +82,55 @@ router.get('/:establishmentId', async (req, res) => {
     }
 });
 
+// ATUALIZADO: Rota de atualização agora regista o histórico de estoque
 router.put('/:productId', async (req, res) => {
     const { productId } = req.params;
     const data = req.body;
     try {
         const { db } = req;
-        const updatedData = {
-            ...data,
-            price: Number(data.price) || 0,
-            currentStock: Number(data.currentStock) || 0,
-            minStock: Number(data.minStock) || 0,
-            maxStock: Number(data.maxStock) || 0,
-            commissionRate: Number(data.commissionRate) || 0,
-        };
-        await db.collection('products').doc(productId).update(updatedData);
+        const productRef = db.collection('products').doc(productId);
+
+        await db.runTransaction(async (transaction) => {
+            const productDoc = await transaction.get(productRef);
+            if (!productDoc.exists) {
+                throw new Error("Produto não encontrado.");
+            }
+
+            const oldStock = productDoc.data().currentStock || 0;
+            const newStock = Number(data.currentStock) || 0;
+            const change = newStock - oldStock;
+
+            const updatedData = {
+                ...data,
+                price: Number(data.price) || 0,
+                currentStock: newStock,
+                minStock: Number(data.minStock) || 0,
+                maxStock: Number(data.maxStock) || 0,
+                commissionRate: Number(data.commissionRate) || 0,
+            };
+            
+            transaction.update(productRef, updatedData);
+
+            if (change !== 0) {
+                const historyRef = productRef.collection('stockHistory').doc();
+                transaction.set(historyRef, {
+                    change,
+                    newStock,
+                    oldStock,
+                    reason: 'Ajuste manual (edição)',
+                    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                    user: req.user.uid // Regista o UID do utilizador que fez a alteração
+                });
+            }
+        });
+        
         res.status(200).json({ message: 'Produto atualizado com sucesso.' });
     } catch (error) {
         console.error("Erro ao atualizar produto:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
 
 router.patch('/:productId/stock', async (req, res) => {
     const { productId } = req.params;
@@ -122,7 +151,7 @@ router.patch('/:productId/stock', async (req, res) => {
                 change, newStock, oldStock,
                 reason: reason || 'Ajuste manual',
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                user: req.user.uid // Registra o UID do usuário que fez a alteração
+                user: req.user.uid
             });
         });
         res.status(200).json({ message: 'Stock atualizado com sucesso.' });
@@ -162,8 +191,6 @@ router.get('/:productId/stock-history', async (req, res) => {
     }
 });
 
-// ### NOVO CÓDIGO ADICIONADO AQUI ###
-// Rota para Relatório de Movimentação de Estoque
 router.get('/stock-history/report', async (req, res) => {
     const { establishmentId } = req.user;
     const { startDate, endDate, productId, categoryId } = req.query;
@@ -192,7 +219,7 @@ router.get('/stock-history/report', async (req, res) => {
         }
 
         const allMovements = [];
-        const userCache = {}; // Cache para nomes de usuários
+        const userCache = {}; 
 
         for (const productDoc of productsSnapshot.docs) {
             const productData = productDoc.data();
@@ -206,13 +233,12 @@ router.get('/stock-history/report', async (req, res) => {
             for (const historyDoc of historySnapshot.docs) {
                 const historyData = historyDoc.data();
 
-                // Busca nome do usuário se não estiver no cache
                 if (historyData.user && !userCache[historyData.user]) {
                     try {
                         const userRecord = await admin.auth().getUser(historyData.user);
                         userCache[historyData.user] = userRecord.displayName || userRecord.email;
                     } catch (e) {
-                        userCache[historyData.user] = 'Usuário Desconhecido';
+                        userCache[historyData.user] = 'Utilizador Desconhecido';
                     }
                 }
 
