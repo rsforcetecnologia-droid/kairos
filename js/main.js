@@ -21,7 +21,8 @@ import { loadUsersPage } from './ui/users.js';
 import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
 import { loadCommissionsPage } from './ui/commissions.js';
-import { loadPackagesPage } from './ui/packages.js'; // NOVO
+import { loadPackagesPage } from './ui/packages.js'; 
+import { loadStockReportPage } from './ui/stockReport.js'; // ### NOVO ###
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -54,6 +55,7 @@ const pageLoader = {
     'agenda-section': loadAgendaPage,
     'comandas-section': loadComandasPage,
     'relatorios-section': loadReportsPage,
+    'stock-report-section': loadStockReportPage, // ### NOVO ###
     'servicos-section': loadServicesPage,
     'produtos-section': loadProductsPage,
     'profissionais-section': loadProfessionalsPage,
@@ -64,39 +66,30 @@ const pageLoader = {
     'sales-report-section': loadSalesReportPage,
     'financial-section': loadFinancialPage,
     'commissions-section': loadCommissionsPage,
-    'packages-section': loadPackagesPage, // NOVO
+    'packages-section': loadPackagesPage,
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
-// ### FUNÇÃO ATUALIZADA E CORRIGIDA ###
 function applyTheme(themeKey) {
     const theme = colorThemes[themeKey] || colorThemes.indigo;
     const styleSheet = document.getElementById('dynamic-theme-styles');
-    
-    // Converte a cor principal para RGBA para usar com transparência
     const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
     };
-
     const mainRgb = hexToRgb(theme.main);
-
-    // Garante que a cor do texto no link ativo seja legível
     const activeLinkTextColor = (themeKey === 'amber') ? '#1f2937' : 'white';
-
-    // Gera o novo CSS com um estilo mais subtil
     styleSheet.innerHTML = `
         .sidebar-link.active { 
             background-color: ${theme.main}; 
             color: ${activeLinkTextColor}; 
         }
         .sidebar-link:not(.active):hover { 
-            background-color: rgba(${mainRgb}, 0.2); /* Cor principal com 20% de opacidade */
+            background-color: rgba(${mainRgb}, 0.2);
         }
     `;
 }
-
 
 function renderNotificationPanel() {
     const unreadCount = notifications.filter(n => !n.read).length;
@@ -142,7 +135,7 @@ function setupRealtimeListeners(establishmentId) {
                     read: false
                 });
 
-                showNotification(notification.message, 'info', true);
+                showNotification(notification.title, notification.message, 'info', true);
                 renderNotificationPanel();
 
                 const activeLink = document.querySelector('.sidebar-link.active');
@@ -318,4 +311,3 @@ function initialize() {
 }
 
 initialize();
-

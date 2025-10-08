@@ -97,6 +97,7 @@ async function handleProductFormSubmit(e) {
         establishmentId: state.establishmentId,
         name: form.querySelector('#productName').value,
         price: parseFloat(form.querySelector('#productPrice').value),
+        commissionRate: parseFloat(form.querySelector('#productCommissionRate').value) || 0,
         currentStock: parseInt(form.querySelector('#productCurrentStock').value),
         minStock: parseInt(form.querySelector('#productMinStock').value),
         maxStock: parseInt(form.querySelector('#productMaxStock').value),
@@ -121,62 +122,67 @@ async function handleProductFormSubmit(e) {
 function openProductModal(product = null) {
     const modal = document.getElementById('productModal');
     modal.innerHTML = `
-    <div class="modal-content max-w-2xl">
+    <div class="modal-content max-w-3xl">
         <h2 id="productModalTitle" class="text-2xl font-bold mb-6">Novo Produto</h2>
-        <form id="productForm" class="space-y-6">
+        <form id="productForm">
             <input type="hidden" id="productId">
             <input type="hidden" id="productPhotoBase64">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-1">
-                    <label class="block text-sm font-medium text-gray-700">Imagem do Produto</label>
-                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                        <div class="space-y-1 text-center">
-                            <img id="productPhotoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Foto" class="mx-auto h-24 w-24 rounded-md object-cover mb-2">
-                            <div class="flex text-sm text-gray-600">
-                                <label for="productPhotoInput" class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none">
-                                    <span>Carregar ficheiro</span>
-                                    <input id="productPhotoInput" type="file" class="sr-only" accept="image/*">
-                                </label>
-                            </div>
-                            <p class="text-xs text-gray-500">PNG, JPG, GIF até 10MB</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="md:col-span-1 space-y-4">
+                    <div class="form-group">
+                        <label>Imagem do Produto</label>
+                        <div class="mt-1 flex flex-col items-center">
+                            <img id="productPhotoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Foto" alt="Foto do Produto" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
+                            <input type="file" id="productPhotoInput" class="hidden" accept="image/*">
+                            <button type="button" id="productPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button>
                         </div>
                     </div>
                 </div>
-                <div class="md:col-span-2 space-y-4">
-                    <div>
-                        <label for="productName" class="block text-sm font-medium text-gray-700">Nome do Produto</label>
-                        <input type="text" id="productName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                    <div>
-                        <label for="productCategory" class="block text-sm font-medium text-gray-700">Categoria</label>
-                        <select id="productCategory" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></select>
-                    </div>
-                    <div>
-                        <label for="productPrice" class="block text-sm font-medium text-gray-700">Preço (R$)</label>
-                        <input type="number" id="productPrice" step="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                </div>
-            </div>
-            <div class="border-t pt-6">
-                <h3 class="text-lg font-semibold text-gray-700 text-left mb-2">Controlo de Stock</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                        <label for="productCurrentStock" class="block text-sm font-medium text-gray-700">Atual</label>
-                        <input type="number" id="productCurrentStock" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                    <div>
-                        <label for="productMinStock" class="block text-sm font-medium text-gray-700">Mínimo</label>
-                        <input type="number" id="productMinStock" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                    </div>
-                    <div>
-                        <label for="productMaxStock" class="block text-sm font-medium text-gray-700">Máximo</label>
-                        <input type="number" id="productMaxStock" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+
+                <div class="md:col-span-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+                        <div class="form-group sm:col-span-2">
+                            <label for="productName">Nome do Produto</label>
+                            <input type="text" id="productName" required>
+                        </div>
+                        <div class="form-group sm:col-span-2">
+                            <label for="productCategory">Categoria</label>
+                            <select id="productCategory"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="productPrice">Preço (R$)</label>
+                            <input type="number" id="productPrice" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="productCommissionRate">Comissão (%)</label>
+                            <input type="number" id="productCommissionRate" placeholder="Ex: 10">
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="flex gap-4 pt-4">
-                <button type="button" data-action="close-modal" data-target="productModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Cancelar</button>
-                <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg">Salvar</button>
+
+            <div class="mt-6 pt-6 border-t">
+                <h3 class="text-lg font-semibold text-gray-700 text-left mb-4">Controlo de Stock</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div class="form-group">
+                        <label for="productCurrentStock">Atual</label>
+                        <input type="number" id="productCurrentStock">
+                    </div>
+                    <div class="form-group">
+                        <label for="productMinStock">Mínimo</label>
+                        <input type="number" id="productMinStock">
+                    </div>
+                    <div class="form-group">
+                        <label for="productMaxStock">Máximo</label>
+                        <input type="number" id="productMaxStock">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-8 pt-6 border-t flex justify-end gap-4">
+                <button type="button" data-action="close-modal" data-target="productModal" class="py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button type="submit" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
             </div>
         </form>
     </div>`;
@@ -187,8 +193,10 @@ function openProductModal(product = null) {
     const photoPreview = modal.querySelector('#productPhotoPreview');
     const photoBase64Input = modal.querySelector('#productPhotoBase64');
     const photoInput = modal.querySelector('#productPhotoInput');
+    const photoButton = modal.querySelector('#productPhotoButton');
 
     form.addEventListener('submit', handleProductFormSubmit);
+    photoButton.addEventListener('click', () => photoInput.click());
 
     categorySelect.innerHTML = '<option value="">Sem categoria</option>' + state.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
 
@@ -197,6 +205,7 @@ function openProductModal(product = null) {
         form.querySelector('#productId').value = product.id;
         form.querySelector('#productName').value = product.name;
         form.querySelector('#productPrice').value = product.price;
+        form.querySelector('#productCommissionRate').value = product.commissionRate || '';
         form.querySelector('#productCurrentStock').value = product.currentStock;
         form.querySelector('#productMinStock').value = product.minStock;
         form.querySelector('#productMaxStock').value = product.maxStock;
@@ -239,17 +248,16 @@ function renderProductsList() {
     if (filteredProducts.length > 0) {
         filteredProducts.forEach(p => {
             const card = document.createElement('div');
-            let stockColorClass = 'bg-green-100 text-green-800', borderColorClass = 'border-green-500', progressBgClass = 'bg-green-500', stockStatusText = 'OK';
+            let stockColorClass = 'bg-green-100 text-green-800', stockStatusText = 'OK';
             if (p.currentStock <= 0) {
-                stockColorClass = 'bg-red-100 text-red-800'; borderColorClass = 'border-red-500'; progressBgClass = 'bg-red-500'; stockStatusText = 'Esgotado';
+                stockColorClass = 'bg-red-100 text-red-800'; stockStatusText = 'Esgotado';
             } else if (p.minStock > 0 && p.currentStock <= p.minStock) {
-                stockColorClass = 'bg-yellow-100 text-yellow-800'; borderColorClass = 'border-yellow-500'; progressBgClass = 'bg-yellow-500'; stockStatusText = 'Baixo';
+                stockColorClass = 'bg-yellow-100 text-yellow-800'; stockStatusText = 'Baixo';
             }
             const category = state.categories.find(c => c.id === p.categoryId);
             const photoSrc = p.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(p.name.charAt(0))}`;
             const productDataString = JSON.stringify(p).replace(/'/g, "&apos;");
 
-            // --- ALTERAÇÕES APLICADAS AQUI ---
             card.className = `product-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300`;
             card.innerHTML = `
                 <img src="${photoSrc}" alt="Imagem de ${p.name}" class="w-full h-20 object-cover">

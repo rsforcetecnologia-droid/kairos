@@ -3,11 +3,6 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Este módulo agrupa todas as funções para interagir com os endpoints
- * de produtos (`products`) da API.
- */
-
-/**
  * Busca todos os produtos de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de produtos.
@@ -63,4 +58,28 @@ export const adjustStock = (productId, stockData) => {
         method: 'PATCH',
         body: JSON.stringify(stockData),
     });
+};
+
+// ### NOVO CÓDIGO ADICIONADO AQUI ###
+
+/**
+ * Busca o histórico de estoque de um produto.
+ * @param {string} productId - O ID do produto.
+ * @returns {Promise<Array>} - Uma promessa que resolve com o histórico de estoque.
+ */
+export const getStockHistory = (productId) => {
+    return authenticatedFetch(`/api/products/${productId}/stock-history`);
+};
+
+/**
+ * Busca o relatório de movimentação de estoque.
+ * @param {object} filters - Filtros para o relatório ({ startDate, endDate, productId, categoryId }).
+ * @returns {Promise<Array>} - Uma promessa que resolve com os dados do relatório.
+ */
+export const getStockReport = ({ startDate, endDate, productId, categoryId }) => {
+    const params = new URLSearchParams({ startDate, endDate });
+    if (productId && productId !== 'all') params.append('productId', productId);
+    if (categoryId && categoryId !== 'all') params.append('categoryId', categoryId);
+    
+    return authenticatedFetch(`/api/products/stock-history/report?${params.toString()}`);
 };

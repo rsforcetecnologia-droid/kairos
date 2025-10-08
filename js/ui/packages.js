@@ -37,6 +37,10 @@ function renderPackagesList() {
     listContainer.innerHTML = localState.allPackages.map(pkg => {
         const isActive = pkg.status === 'active';
         const packageDataString = JSON.stringify(pkg).replace(/'/g, "&apos;");
+        
+        const finalPrice = pkg.price || 0;
+        const originalPrice = pkg.originalPrice || 0;
+        const commissionRate = pkg.commissionRate || 0;
 
         return `
             <div class="bg-white rounded-lg shadow-md overflow-hidden transform hover:-translate-y-1 transition-transform duration-300">
@@ -51,12 +55,13 @@ function renderPackagesList() {
                         </span>
                     </div>
                     <div class="mt-4 pt-4 border-t">
-                        <p class="text-3xl font-extrabold text-indigo-600">R$ ${pkg.finalPrice.toFixed(2)}</p>
-                        <p class="text-sm text-gray-500 line-through">Valor original: R$ ${pkg.originalPrice.toFixed(2)}</p>
+                        <p class="text-3xl font-extrabold text-indigo-600">R$ ${finalPrice.toFixed(2)}</p>
+                        <p class="text-sm text-gray-500 line-through">Valor original: R$ ${originalPrice.toFixed(2)}</p>
+                        <p class="text-sm text-gray-500 mt-1">Comissão: ${commissionRate}%</p>
                     </div>
                     <ul class="mt-4 space-y-1 text-sm text-gray-600">
-                        ${pkg.services.slice(0, 3).map(s => `<li>• ${s.quantity}x ${s.name}</li>`).join('')}
-                        ${pkg.services.length > 3 ? `<li class="font-semibold text-xs">...e mais ${pkg.services.length - 3} item(ns)</li>` : ''}
+                        ${(pkg.services || []).slice(0, 3).map(s => `<li>• ${s.quantity}x ${s.name}</li>`).join('')}
+                        ${(pkg.services || []).length > 3 ? `<li class="font-semibold text-xs">...e mais ${(pkg.services || []).length - 3} item(ns)</li>` : ''}
                     </ul>
                 </div>
                 <div class="bg-gray-50 px-5 py-3 flex justify-end items-center gap-2">
@@ -72,7 +77,7 @@ function renderPackagesList() {
 
 async function openPackageModal(pkg = null) {
     const isEditing = !!pkg;
-    const servicesInPackage = pkg ? pkg.services : [];
+    const servicesInPackage = pkg ? JSON.parse(JSON.stringify(pkg.services || [])) : [];
 
     const contentHTML = `
         <form id="package-form" class="flex flex-col h-full">
@@ -105,26 +110,27 @@ async function openPackageModal(pkg = null) {
                         <h3 class="text-lg font-semibold text-gray-800">Serviços Incluídos</h3>
                         <button type="button" id="add-service-to-package-btn" class="py-1 px-3 bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-sm hover:bg-indigo-200">+ Adicionar</button>
                     </div>
-                    <div id="package-services-list" class="space-y-2 max-h-48 overflow-y-auto p-2 border rounded-md bg-gray-50 min-h-[5rem]">
-                        <!-- Serviços serão renderizados aqui -->
-                    </div>
+                    <div id="package-services-list" class="space-y-2 max-h-48 overflow-y-auto p-2 border rounded-md bg-gray-50 min-h-[5rem]"></div>
                 </div>
 
                 <div class="border-t pt-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-2">Preço e Validade</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <div>
                             <label class="block text-sm font-medium text-gray-500">Valor Original</label>
                             <p id="originalPrice" class="text-xl font-bold text-gray-700 mt-1">R$ 0.00</p>
                         </div>
                          <div>
-                            <label for="finalPrice" class="block text-sm font-medium text-gray-700">Preço Final do Pacote</label>
-                            <input type="number" step="0.01" id="finalPrice" value="${pkg?.finalPrice || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                            <label for="finalPrice" class="block text-sm font-medium text-gray-700">Preço Final</label>
+                            <input type="number" step="0.01" id="finalPrice" value="${pkg?.price || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                        </div>
+                        <div>
+                            <label for="commissionRate" class="block text-sm font-medium text-gray-700">Comissão (%)</label>
+                            <input type="number" id="commissionRate" value="${pkg?.commissionRate || 0}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 10">
                         </div>
                         <div>
                             <label for="validityDays" class="block text-sm font-medium text-gray-700">Validade (dias)</label>
                             <input type="number" id="validityDays" value="${pkg?.validityDays || 30}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 30, 60, 90">
-                             <p class="text-xs text-gray-500 mt-1">Deixe em branco para não expirar.</p>
                         </div>
                     </div>
                 </div>
@@ -140,11 +146,18 @@ async function openPackageModal(pkg = null) {
     const { modalElement } = showGenericModal({
         title: isEditing ? 'Editar Pacote de Serviços' : 'Criar Novo Pacote',
         contentHTML: contentHTML,
-        maxWidth: 'max-w-3xl'
+        maxWidth: 'max-w-4xl'
     });
 
-    // Anexa listeners e renderiza dados iniciais
     const servicesListContainer = modalElement.querySelector('#package-services-list');
+    
+    const updatePrices = (services, modal) => {
+        const originalPriceEl = modal.querySelector('#originalPrice');
+        const originalPrice = services.reduce((acc, s) => acc + (s.price * s.quantity), 0);
+        if (originalPriceEl) {
+            originalPriceEl.textContent = `R$ ${originalPrice.toFixed(2)}`;
+        }
+    };
     
     const renderSelectedServices = (services) => {
         if (services.length === 0) {
@@ -163,12 +176,7 @@ async function openPackageModal(pkg = null) {
                 </div>
             `).join('');
         }
-        updatePrices(services);
-    };
-    
-    const updatePrices = (services) => {
-        const originalPrice = services.reduce((acc, s) => acc + (s.price * s.quantity), 0);
-        document.getElementById('originalPrice').textContent = `R$ ${originalPrice.toFixed(2)}`;
+        updatePrices(services, modalElement);
     };
 
     renderSelectedServices(servicesInPackage);
@@ -212,7 +220,8 @@ async function openPackageModal(pkg = null) {
             status: document.getElementById('packageStatus').value,
             services: servicesInPackage,
             originalPrice: servicesInPackage.reduce((acc, s) => acc + (s.price * s.quantity), 0),
-            finalPrice: parseFloat(document.getElementById('finalPrice').value),
+            price: parseFloat(document.getElementById('finalPrice').value),
+            commissionRate: parseFloat(document.getElementById('commissionRate').value) || 0, // Adicionado
             validityDays: parseInt(document.getElementById('validityDays').value, 10) || null
         };
 
@@ -229,7 +238,7 @@ async function openPackageModal(pkg = null) {
             }
             showNotification('Sucesso!', `Pacote ${isEditing ? 'atualizado' : 'criado'} com sucesso.`, 'success');
             modalElement.querySelector('[data-action="close-modal"]').click();
-            loadPackagesPage();
+            await loadPackagesPage();
         } catch (error) {
             showNotification('Erro', `Não foi possível salvar o pacote: ${error.message}`, 'error');
         }
@@ -239,10 +248,15 @@ async function openPackageModal(pkg = null) {
 function openServiceSelectionModal(onSelect) {
     let searchTerm = '';
 
-    const renderServiceList = (container) => {
+    const modalContainer = document.createElement('div');
+    modalContainer.id = 'service-selection-modal';
+    modalContainer.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[110]';
+
+    const renderServiceList = (listContainer) => {
         const filtered = localState.servicesForModal.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        container.innerHTML = filtered.map(s => `
-            <div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-100 cursor-pointer" data-service-id="${s.id}">
+        listContainer.innerHTML = filtered.map(s => `
+            <div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-100 cursor-pointer" 
+                 data-action="select-service" data-service-id="${s.id}">
                 <div>
                     <p class="font-semibold">${s.name}</p>
                     <p class="text-sm text-gray-500">${s.duration} min</p>
@@ -252,21 +266,28 @@ function openServiceSelectionModal(onSelect) {
         `).join('');
     };
 
-    const modalContent = `
-        <div class="flex flex-col h-full">
-            <input type="search" id="service-search-input" placeholder="Pesquisar serviço..." class="p-3 border-b focus:outline-none">
+    modalContainer.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg flex flex-col max-h-[80vh]">
+            <header class="p-5 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-800">Selecionar Serviço</h2>
+                <button data-action="close-selection-modal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
+            </header>
+            <div class="p-4 border-b">
+                <input type="search" id="service-search-input" placeholder="Pesquisar serviço..." class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
             <div id="service-selection-list" class="flex-1 overflow-y-auto p-2"></div>
-        </div>`;
+        </div>
+    `;
 
-    const { modalElement } = showGenericModal({
-        title: 'Selecionar Serviço',
-        contentHTML: modalContent,
-        maxWidth: 'max-w-lg'
-    });
+    document.body.appendChild(modalContainer);
 
-    const listContainer = modalElement.querySelector('#service-selection-list');
-    const searchInput = modalElement.querySelector('#service-search-input');
+    const listContainer = modalContainer.querySelector('#service-selection-list');
+    const searchInput = modalContainer.querySelector('#service-search-input');
     
+    const closeThisModal = () => {
+        modalContainer.remove();
+    };
+
     renderServiceList(listContainer);
     
     searchInput.addEventListener('input', () => {
@@ -274,14 +295,18 @@ function openServiceSelectionModal(onSelect) {
         renderServiceList(listContainer);
     });
 
-    listContainer.addEventListener('click', (e) => {
-        const serviceRow = e.target.closest('[data-service-id]');
+    modalContainer.addEventListener('click', (e) => {
+        const serviceRow = e.target.closest('[data-action="select-service"]');
+        const closeButton = e.target.closest('[data-action="close-selection-modal"]');
+        
         if (serviceRow) {
             const service = localState.servicesForModal.find(s => s.id === serviceRow.dataset.serviceId);
             if (service) {
                 onSelect(service);
-                modalElement.querySelector('[data-close-modal]').click();
+                closeThisModal();
             }
+        } else if (closeButton || e.target === modalContainer) {
+            closeThisModal();
         }
     });
 }
@@ -335,8 +360,8 @@ export async function loadPackagesPage() {
                     if (confirmed) {
                         try {
                             await packagesApi.deletePackage(pkgId);
-                            showNotification('Sucesso', 'Pacote excluído.', 'success');
-                            loadPackagesPage();
+                            showNotification('Sucesso!', 'Pacote excluído.', 'success');
+                            await loadPackagesPage();
                         } catch (error) {
                             showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
                         }

@@ -46,7 +46,7 @@ router.delete('/categories/:categoryId', async (req, res) => {
 // --- PRODUTOS ---
 router.post('/', async (req, res) => {
     try {
-        const { establishmentId, name, price, currentStock, minStock, maxStock, categoryId, photo } = req.body;
+        const { establishmentId, name, price, currentStock, minStock, maxStock, categoryId, photo, commissionRate } = req.body;
         if (!establishmentId || !name || price === undefined) return res.status(400).json({ message: 'Os campos establishmentId, name e price são obrigatórios.' });
         const { db } = req;
         const newProduct = {
@@ -57,6 +57,7 @@ router.post('/', async (req, res) => {
             maxStock: Number(maxStock) || 0,
             categoryId: categoryId || null,
             photo: photo || null,
+            commissionRate: Number(commissionRate) || 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
         const docRef = await db.collection('products').add(newProduct);
@@ -92,6 +93,7 @@ router.put('/:productId', async (req, res) => {
             currentStock: Number(data.currentStock) || 0,
             minStock: Number(data.minStock) || 0,
             maxStock: Number(data.maxStock) || 0,
+            commissionRate: Number(data.commissionRate) || 0,
         };
         await db.collection('products').doc(productId).update(updatedData);
         res.status(200).json({ message: 'Produto atualizado com sucesso.' });
@@ -120,7 +122,7 @@ router.patch('/:productId/stock', async (req, res) => {
                 change, newStock, oldStock,
                 reason: reason || 'Ajuste manual',
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                user: req.user.uid
+                user: req.user.uid // Registra o UID do usuário que fez a alteração
             });
         });
         res.status(200).json({ message: 'Stock atualizado com sucesso.' });
@@ -160,6 +162,82 @@ router.get('/:productId/stock-history', async (req, res) => {
     }
 });
 
+// ### NOVO CÓDIGO ADICIONADO AQUI ###
+// Rota para Relatório de Movimentação de Estoque
+router.get('/stock-history/report', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { startDate, endDate, productId, categoryId } = req.query;
 
-// ✅ ESSA LINHA RESOLVE O ERRO
+    if (!startDate || !endDate) {
+        return res.status(400).json({ message: 'Datas de início e fim são obrigatórias.' });
+    }
+
+    try {
+        const { db } = req;
+        const start = admin.firestore.Timestamp.fromDate(new Date(startDate));
+        const end = admin.firestore.Timestamp.fromDate(new Date(endDate + "T23:59:59"));
+
+        let productsQuery = db.collection('products').where('establishmentId', '==', establishmentId);
+
+        if (productId && productId !== 'all') {
+            productsQuery = productsQuery.where(admin.firestore.FieldPath.documentId(), '==', productId);
+        }
+        if (categoryId && categoryId !== 'all') {
+            productsQuery = productsQuery.where('categoryId', '==', categoryId);
+        }
+
+        const productsSnapshot = await productsQuery.get();
+        if (productsSnapshot.empty) {
+            return res.status(200).json([]);
+        }
+
+        const allMovements = [];
+        const userCache = {}; // Cache para nomes de usuários
+
+        for (const productDoc of productsSnapshot.docs) {
+            const productData = productDoc.data();
+            const historyQuery = db.collection('products').doc(productDoc.id).collection('stockHistory')
+                .where('timestamp', '>=', start)
+                .where('timestamp', '<=', end)
+                .orderBy('timestamp', 'desc');
+            
+            const historySnapshot = await historyQuery.get();
+
+            for (const historyDoc of historySnapshot.docs) {
+                const historyData = historyDoc.data();
+
+                // Busca nome do usuário se não estiver no cache
+                if (historyData.user && !userCache[historyData.user]) {
+                    try {
+                        const userRecord = await admin.auth().getUser(historyData.user);
+                        userCache[historyData.user] = userRecord.displayName || userRecord.email;
+                    } catch (e) {
+                        userCache[historyData.user] = 'Usuário Desconhecido';
+                    }
+                }
+
+                allMovements.push({
+                    productId: productDoc.id,
+                    productName: productData.name,
+                    date: historyData.timestamp.toDate(),
+                    change: historyData.change,
+                    oldStock: historyData.oldStock,
+                    newStock: historyData.newStock,
+                    reason: historyData.reason,
+                    user: userCache[historyData.user] || 'N/A'
+                });
+            }
+        }
+
+        allMovements.sort((a, b) => b.date - a.date);
+
+        res.status(200).json(allMovements);
+
+    } catch (error) {
+        console.error("Erro ao gerar relatório de estoque:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+
 module.exports = router;

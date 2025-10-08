@@ -6,7 +6,9 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 // Criar novo serviço (Rota Privada)
 router.post('/', verifyToken, hasAccess, async (req, res) => {
     try {
-        const { establishmentId, name, price, duration, bufferTime, photo, active } = req.body;
+        // ### CORREÇÃO APLICADA AQUI ###
+        // Adicionado 'commissionRate' à desestruturação do corpo da requisição.
+        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate } = req.body;
         if (!establishmentId || !name || price === undefined || duration === undefined) {
             return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
         }
@@ -16,6 +18,7 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
             price: Number(price),
             duration: Number(duration),
             bufferTime: Number(bufferTime) || 0,
+            commissionRate: Number(commissionRate) || 0, // Adiciona o novo campo
             active: active !== false,
             photo: photo || null,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -67,11 +70,14 @@ router.put('/:serviceId', verifyToken, hasAccess, async (req, res) => {
     const data = req.body;
     try {
         const { db } = req;
+        // ### CORREÇÃO APLICADA AQUI ###
+        // Garante que o `commissionRate` seja salvo como número.
         const updatedData = {
             ...data,
             price: Number(data.price),
             duration: Number(data.duration),
             bufferTime: Number(data.bufferTime) || 0,
+            commissionRate: Number(data.commissionRate) || 0,
         };
         await db.collection('services').doc(serviceId).update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });
@@ -110,5 +116,4 @@ router.delete('/:serviceId', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// ✅ ESSA LINHA RESOLVE O ERRO
 module.exports = router;

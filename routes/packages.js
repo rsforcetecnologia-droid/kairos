@@ -5,10 +5,12 @@ const admin = require('firebase-admin');
 // Rota para criar um novo pacote de serviços
 router.post('/', async (req, res) => {
     const { establishmentId } = req.user; // Obtido do token de autenticação
-    const { name, services, price, validityDays, isActive } = req.body;
+    // CORREÇÃO: Adicionados `commissionRate`, `originalPrice`, `status` e `description`
+    const { name, services, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
 
-    if (!name || !services || services.length === 0 || price === undefined || validityDays === undefined) {
-        return res.status(400).json({ message: 'Nome, serviços, preço e validade são obrigatórios.' });
+    // A validação `validityDays` foi removida para permitir valores nulos
+    if (!name || !services || services.length === 0 || price === undefined) {
+        return res.status(400).json({ message: 'Nome, serviços e preço são obrigatórios.' });
     }
 
     try {
@@ -16,10 +18,13 @@ router.post('/', async (req, res) => {
         const newPackage = {
             establishmentId,
             name,
-            services, // Espera-se um array de objetos [{ id, name, price }]
+            description: description || null,
+            services,
+            originalPrice: Number(originalPrice) || 0,
             price: Number(price),
-            validityDays: Number(validityDays),
-            isActive: isActive !== false, // Ativo por defeito
+            validityDays: Number(validityDays) || null,
+            status: status || 'active',
+            commissionRate: Number(commissionRate) || 0, // Adiciona o campo de comissão
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
@@ -39,7 +44,6 @@ router.get('/:establishmentId', async (req, res) => {
         const { db } = req;
         const snapshot = await db.collection('servicePackages')
             .where('establishmentId', '==', establishmentId)
-            // .orderBy('name') // REMOVIDO: Esta linha causava o erro de índice.
             .get();
 
         if (snapshot.empty) {
@@ -47,8 +51,6 @@ router.get('/:establishmentId', async (req, res) => {
         }
 
         const packages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        // ADICIONADO: Ordena a lista de pacotes por nome aqui no servidor.
         packages.sort((a, b) => a.name.localeCompare(b.name));
 
         res.status(200).json(packages);
@@ -61,9 +63,11 @@ router.get('/:establishmentId', async (req, res) => {
 // Rota para atualizar um pacote
 router.put('/:packageId', async (req, res) => {
     const { packageId } = req.params;
-    const { name, services, price, validityDays, isActive } = req.body;
+    // CORREÇÃO: Adicionados `commissionRate`, `originalPrice`, `status` e `description`
+    const { name, services, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
 
-    if (!name || !services || services.length === 0 || price === undefined || validityDays === undefined) {
+    // A validação `validityDays` foi removida para permitir valores nulos
+    if (!name || !services || services.length === 0 || price === undefined) {
         return res.status(400).json({ message: 'Dados incompletos para atualizar o pacote.' });
     }
 
@@ -73,10 +77,13 @@ router.put('/:packageId', async (req, res) => {
 
         const updatedData = {
             name,
+            description: description || null,
             services,
+            originalPrice: Number(originalPrice) || 0,
             price: Number(price),
-            validityDays: Number(validityDays),
-            isActive: isActive !== false
+            validityDays: Number(validityDays) || null,
+            status: status || 'active',
+            commissionRate: Number(commissionRate) || 0 // Adiciona o campo de comissão
         };
 
         await packageRef.update(updatedData);
@@ -102,4 +109,3 @@ router.delete('/:packageId', async (req, res) => {
 });
 
 module.exports = router;
-

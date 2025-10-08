@@ -1,9 +1,9 @@
 // js/components/modal.js
 
 /**
- * Este módulo centraliza a lógica para todos os popups da aplicação,
- * incluindo modals de confirmação e notificações "toast".
- */
+ * Este módulo centraliza a lógica para todos os popups da aplicação,
+ * incluindo modals de confirmação e notificações "toast".
+ */
 import * as appointmentsApi from '../api/appointments.js';
 import { state } from '../state.js';
 
@@ -14,95 +14,97 @@ let audioContext;
 
 // Prepara o áudio para ser tocado
 async function setupAudio() {
-    if (audioContext) return;
-    try {
-        // Cria o AudioContext após uma interação do usuário para compatibilidade com navegadores
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    } catch (e) {
-        console.error("Não foi possível inicializar o áudio:", e);
-    }
+    if (audioContext) return;
+    try {
+        // Cria o AudioContext após uma interação do usuário para compatibilidade com navegadores
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+        console.error("Não foi possível inicializar o áudio:", e);
+    }
 }
 
 // Toca o som de notificação
 function playNotificationSound() {
-    if (!audioContext) {
-        console.warn("AudioContext não inicializado. O som não será tocado.");
-        return;
-    }
-    // Garante que o áudio possa ser tocado
-    if (audioContext.state === 'suspended') {
-        audioContext.resume();
-    }
+    if (!audioContext) {
+        console.warn("AudioContext não inicializado. O som não será tocado.");
+        return;
+    }
+    // Garante que o áudio possa ser tocado
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
 
-    // Cria um som simples de "bip" dinamicamente
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    // Cria um som simples de "bip" dinamicamente
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.2);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.2);
 
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.2);
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
 }
 
 
 /**
- * Exibe uma notificação "toast" moderna que desaparece automaticamente.
- * @param {string} message - A mensagem a ser exibida.
- * @param {'success'|'error'|'info'} type - O tipo de notificação.
- * @param {boolean} playSound - Se um som deve ser tocado.
- */
-export function showNotification(message, type = 'info', playSound = false) {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
+ * Exibe uma notificação "toast" moderna que desaparece automaticamente.
+ * @param {string} title - O título da notificação.
+ * @param {string} message - A mensagem a ser exibida.
+ * @param {'success'|'error'|'info'} type - O tipo de notificação.
+ * @param {boolean} playSound - Se um som deve ser tocado.
+ */
+export function showNotification(title, message, type = 'info', playSound = false) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
 
-    if (playSound) {
-        playNotificationSound();
-    }
+    if (playSound) {
+        playNotificationSound();
+    }
 
-    const toast = document.createElement('div');
+    const toast = document.createElement('div');
 
-    const typeClasses = {
-        success: 'bg-green-50 border-green-400 text-green-700',
-        error: 'bg-red-50 border-red-400 text-red-700',
-        info: 'bg-blue-50 border-blue-400 text-blue-700'
-    };
+    const typeClasses = {
+        success: 'bg-green-50 border-green-400 text-green-700',
+        error: 'bg-red-50 border-red-400 text-red-700',
+        info: 'bg-blue-50 border-blue-400 text-blue-700'
+    };
 
-    const icons = {
-        success: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-        error: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
-        info: `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
-    };
+    const icons = {
+        success: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+        error: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+        info: `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+    };
 
-    const progressBg = {
-        success: 'bg-green-500',
-        error: 'bg-red-500',
-        info: 'bg-blue-500'
-    }
+    const progressBg = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+    }
 
-    toast.className = `toast ${typeClasses[type] || typeClasses['info']}`;
-    toast.innerHTML = `
-        <div class="toast-icon">${icons[type] || icons['info']}</div>
-        <div class="toast-content">
-            <p class="text-sm font-medium">${message}</p>
-        </div>
-        <button class="toast-close">&times;</button>
-        <div class="toast-progress-bar">
-            <div class="toast-progress ${progressBg[type] || progressBg['info']}"></div>
-        </div>
-    `;
-    container.appendChild(toast);
+    toast.className = `toast ${typeClasses[type] || typeClasses['info']}`;
+    toast.innerHTML = `
+        <div class="toast-icon">${icons[type] || icons['info']}</div>
+        <div class="toast-content">
+            <p class="font-bold">${title}</p>
+            <p class="text-sm">${message}</p>
+        </div>
+        <button class="toast-close">&times;</button>
+        <div class="toast-progress-bar">
+            <div class="toast-progress ${progressBg[type] || progressBg['info']}"></div>
+        </div>
+    `;
+    container.appendChild(toast);
 
-    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
+    toast.querySelector('.toast-close').addEventListener('click', () => toast.remove());
 
-    setTimeout(() => {
-        toast.remove();
-    }, 4000); // O toast desaparece após 4 segundos
+    setTimeout(() => {
+        toast.remove();
+    }, 4000); 
 }
 
 /**
@@ -116,8 +118,7 @@ export function showConfirmation(title, message) {
         genericModal.innerHTML = `
             <div class="modal-content max-w-sm p-0 rounded-xl overflow-hidden shadow-2xl">
                 <div class="p-6 text-center">
-                    <!-- Ícone de Alerta com cor mais suave -->
-                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-200">
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100">
                         <svg class="h-6 w-6 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
@@ -127,7 +128,6 @@ export function showConfirmation(title, message) {
                         <p>${message}</p>
                     </div>
                 </div>
-                <!-- Botões no rodapé com cores mais suaves -->
                 <div class="bg-gray-50 px-4 py-3 flex justify-center gap-3 border-t">
                     <button id="genericModalCancelBtn" class="flex-1 py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition text-sm">Cancelar</button>
                     <button id="genericModalConfirmBtn" class="flex-1 py-2 px-4 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition text-sm">Confirmar</button>
@@ -166,9 +166,10 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
          modal.querySelector('#genericModalContentBody').innerHTML = newContentHTML;
     }
 
+    // ### CORREÇÃO APLICADA AQUI ###
+    // O atributo `onclick` que causava o problema foi REMOVIDO.
     modal.innerHTML = `
-        <div class="modal-content ${maxWidth} p-0 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]" 
-             onclick="event.stopPropagation()">
+        <div class="modal-content ${maxWidth} p-0 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]">
             
             <header class="p-5 border-b flex justify-between items-center bg-gray-50">
                 <h2 class="text-xl font-bold text-gray-800">${title}</h2>
@@ -189,13 +190,11 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
         closeButton.onclick = handleClose;
     }
 
-    // *** CORREÇÃO APLICADA AQUI ***
-    // Também procura por botões de cancelar dentro do conteúdo injetado
+    // Procura por botões de cancelar dentro do conteúdo injetado
     const cancelButton = modal.querySelector('[data-action="close-modal"]');
     if (cancelButton) {
         cancelButton.onclick = handleClose;
     }
-    // *** FIM DA CORREÇÃO ***
 
     modal.style.display = 'flex';
 
@@ -204,28 +203,28 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
 
 
 /**
- * Inicializa um listener global para lidar com o fecho de modals e a ativação do áudio.
- */
+ * Inicializa um listener global para lidar com o fecho de modals e a ativação do áudio.
+ */
 export function initializeModalClosers() {
-    document.body.addEventListener('click', () => {
-        // Inicializa o contexto de áudio com a primeira interação do usuário em qualquer lugar da página
-        if (!audioContext) {
-            setupAudio();
-        }
-    }, { once: true }); // O listener é executado apenas uma vez
+    document.body.addEventListener('click', () => {
+        // Inicializa o contexto de áudio com a primeira interação do usuário em qualquer lugar da página
+        if (!audioContext) {
+            setupAudio();
+        }
+    }, { once: true }); // O listener é executado apenas uma vez
 
-    document.addEventListener('click', (e) => {
-        // Fechamento de modais customizados que usam data-action="close-modal" (DEPRECATED: usar data-close-modal)
-        const button = e.target.closest('[data-action="close-modal"]');
-        if (button) {
-            const targetModalId = button.dataset.target;
-            if (targetModalId) {
-                const targetModal = document.getElementById(targetModalId);
-                if (targetModal) {
-                    targetModal.style.display = 'none';
-                }
-            }
-        }
+    document.addEventListener('click', (e) => {
+        // Fechamento de modais customizados que usam data-action="close-modal"
+        const button = e.target.closest('[data-action="close-modal"]');
+        if (button) {
+            const targetModalId = button.dataset.target;
+            if (targetModalId) {
+                const targetModal = document.getElementById(targetModalId);
+                if (targetModal) {
+                    targetModal.style.display = 'none';
+                }
+            }
+        }
 
         // Fechamento de modais que usam data-close-modal (NOVO PADRÃO)
         const newCloseButton = e.target.closest('[data-close-modal]');
@@ -233,12 +232,13 @@ export function initializeModalClosers() {
             const modal = document.getElementById('genericModal');
             if (modal) modal.style.display = 'none';
         }
-    });
+    });
     
-    // Fechamento de modais ao clicar fora (se for o modal genérico)
+    // ### CORREÇÃO APLICADA AQUI ###
+    // A lógica para fechar o modal ao clicar fora foi melhorada para ser mais robusta.
     genericModal.addEventListener('click', (e) => {
-        // Se o clique foi no background do modal (e não dentro do modal-content)
-        if (e.target === genericModal) {
+        // Se o clique NÃO foi dentro do `modal-content` (ou seja, foi no overlay escuro), fecha o modal.
+        if (!e.target.closest('.modal-content')) {
             genericModal.style.display = 'none';
         }
     });

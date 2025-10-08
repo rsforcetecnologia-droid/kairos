@@ -26,7 +26,6 @@ function renderServicesList() {
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
             const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
 
-            // --- ALTERAÇÕES PARA REDUZIR O TAMANHO DO CARD ---
             card.innerHTML = `
                 <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-full h-24 object-cover">
                 <div class="p-3 flex flex-col flex-grow">
@@ -42,6 +41,7 @@ function renderServicesList() {
                         </div>
                         <p class="text-xl font-bold text-indigo-600 mb-2 text-left">R$ ${service.price.toFixed(2)}</p>
                         <p class="text-xs text-gray-500 text-left">${service.duration} min (+${service.bufferTime || 0} min extra)</p>
+                        <p class="text-xs text-gray-500 text-left">Comissão: ${service.commissionRate || 0}%</p>
                     </div>
                     <div class="mt-2 pt-2 border-t flex items-center justify-end gap-2">
                         <button data-action="edit-service" data-service='${serviceDataString}' class="text-gray-500 hover:text-blue-600 p-1" title="Editar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
@@ -78,6 +78,7 @@ async function handleServiceFormSubmit(e) {
         price: parseFloat(form.querySelector('#servicePrice').value),
         duration: parseInt(form.querySelector('#serviceDuration').value),
         bufferTime: parseInt(form.querySelector('#serviceBufferTime').value) || 0,
+        commissionRate: parseFloat(form.querySelector('#serviceCommissionRate').value) || 0,
         active: form.querySelector('#serviceStatus').checked,
         photo: form.querySelector('#servicePhotoBase64').value
     };
@@ -98,39 +99,66 @@ async function handleServiceFormSubmit(e) {
 
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
+    // ### CORREÇÃO APLICADA AQUI ###
+    // O HTML do formulário foi reestruturado para usar um grid explícito, como na tela de profissionais.
     modal.innerHTML = `
-    <div class="modal-content max-w-2xl">
+    <div class="modal-content max-w-3xl">
         <h2 id="serviceModalTitle" class="text-2xl font-bold mb-6">Novo Serviço</h2>
-        <form id="serviceForm" class="space-y-6">
+        <form id="serviceForm">
             <input type="hidden" id="serviceId">
             <input type="hidden" id="servicePhotoBase64">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-1">
-                    <label class="block text-sm font-medium text-gray-700">Imagem do Serviço</label>
-                    <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-                        <div class="space-y-1 text-center">
-                            <img id="servicePhotoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Foto" class="mx-auto h-24 w-24 rounded-md object-cover mb-2">
-                            <div class="flex text-sm text-gray-600">
-                                <label for="servicePhotoInput" class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none">
-                                    <span>Carregar ficheiro</span>
-                                    <input id="servicePhotoInput" name="servicePhotoInput" type="file" class="sr-only" accept="image/*">
-                                </label>
-                            </div>
-                            <p class="text-xs text-gray-500">PNG, JPG, GIF até 10MB</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="md:col-span-1 space-y-4">
+                    <div class="form-group">
+                        <label>Imagem do Serviço</label>
+                        <div class="mt-1 flex flex-col items-center">
+                            <img id="servicePhotoPreview" src="https://placehold.co/128x128/E2E8F0/4A5568?text=Foto" alt="Foto do Serviço" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
+                            <input type="file" id="servicePhotoInput" class="hidden" accept="image/*">
+                            <button type="button" id="servicePhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button>
                         </div>
                     </div>
                 </div>
-                <div class="md:col-span-2 space-y-4">
-                    <div><label for="serviceName" class="block text-sm font-medium text-gray-700">Nome do Serviço</label><input type="text" id="serviceName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label for="servicePrice" class="block text-sm font-medium text-gray-700">Preço (R$)</label><input type="number" id="servicePrice" step="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                        <div><label for="serviceDuration" class="block text-sm font-medium text-gray-700">Duração (minutos)</label><input type="number" id="serviceDuration" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
+
+                <div class="md:col-span-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+                        <div class="form-group sm:col-span-2">
+                            <label for="serviceName">Nome do Serviço</label>
+                            <input type="text" id="serviceName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="servicePrice">Preço (R$)</label>
+                            <input type="number" id="servicePrice" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="serviceDuration">Duração (min)</label>
+                            <input type="number" id="serviceDuration" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="serviceBufferTime">Tempo Extra (min)</label>
+                            <input type="number" id="serviceBufferTime" placeholder="Opcional">
+                        </div>
+                        <div class="form-group">
+                            <label for="serviceCommissionRate">Comissão (%)</label>
+                            <input type="number" id="serviceCommissionRate" placeholder="Ex: 10">
+                        </div>
                     </div>
-                    <div><label for="serviceBufferTime" class="block text-sm font-medium text-gray-700">Tempo Extra / Limpeza (minutos)</label><input type="number" id="serviceBufferTime" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Opcional"></div>
-                    <div class="flex items-center pt-2"><label for="serviceStatus" class="flex items-center cursor-pointer"><div class="relative"><input type="checkbox" id="serviceStatus" class="sr-only"><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div><div id="serviceStatusLabel" class="ml-3 text-gray-700 font-semibold"></div></label></div>
                 </div>
             </div>
-            <div class="flex gap-4 pt-4 border-t"><button type="button" data-action="close-modal" data-target="serviceModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Cancelar</button><button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg">Salvar</button></div>
+
+            <div class="mt-6 pt-6 border-t flex items-center justify-between">
+                <label for="serviceStatus" class="flex items-center cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" id="serviceStatus" class="sr-only">
+                        <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                    </div>
+                    <div id="serviceStatusLabel" class="ml-3 text-gray-700 font-semibold"></div>
+                </label>
+                <div class="flex gap-4">
+                    <button type="button" data-action="close-modal" data-target="serviceModal" class="py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
+                </div>
+            </div>
         </form>
     </div>`;
 
@@ -141,8 +169,10 @@ function openServiceModal(service = null) {
     const photoPreview = modal.querySelector('#servicePhotoPreview');
     const photoBase64Input = modal.querySelector('#servicePhotoBase64');
     const photoInput = modal.querySelector('#servicePhotoInput');
+    const photoButton = modal.querySelector('#servicePhotoButton');
 
     form.addEventListener('submit', handleServiceFormSubmit);
+    photoButton.addEventListener('click', () => photoInput.click());
 
     if (service) {
         title.textContent = 'Editar Serviço';
@@ -151,6 +181,7 @@ function openServiceModal(service = null) {
         form.querySelector('#servicePrice').value = service.price;
         form.querySelector('#serviceDuration').value = service.duration;
         form.querySelector('#serviceBufferTime').value = service.bufferTime || '';
+        form.querySelector('#serviceCommissionRate').value = service.commissionRate || '';
         statusToggle.checked = service.active;
         if (service.photo) {
             photoPreview.src = service.photo;
