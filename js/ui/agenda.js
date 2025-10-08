@@ -720,7 +720,6 @@ function openClientRegistrationModal() {
 function renderStep1_Client(appointment, isNavigating) {
     const title = appointment ? 'Editar Agendamento' : 'Selecionar Cliente';
     const formContent = `
-        <!-- CONTEÚDO DA ETAPA 1: CLIENTE -->
         <div class="p-5 space-y-6">
             <h3 class="text-xl font-bold text-gray-800">1. Dados do Cliente</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -733,8 +732,7 @@ function renderStep1_Client(appointment, isNavigating) {
                     <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
                 </div>
             </div>
-             <!-- Pesquisa de clientes e botão Cadastrar novo cliente (Conforme Imagem 1) -->
-            <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
                 <div class="relative flex-grow">
                     <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -762,11 +760,9 @@ function renderStep2_Service() {
     const title = 'Selecionar Serviço';
     
     const formContent = `
-        <!-- CONTEÚDO DA ETAPA 2: SERVIÇO -->
         <div class="p-5 space-y-6">
             <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
-             <!-- Pesquisa de serviços (Conforme Imagem 3) -->
-            <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
                  <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="flex-grow p-3 pl-10 border rounded-lg">
             </div>
             
@@ -801,7 +797,6 @@ function renderStep3_Professional() {
     const title = 'Selecionar Profissional';
 
     const formContent = `
-        <!-- CONTEÚDO DA ETAPA 3: PROFISSIONAL -->
         <div class="p-5 space-y-6">
              <h3 class="text-xl font-bold text-gray-800">3. Profissional</h3>
              <div id="apptProfessionalContainer" class="mt-4 flex flex-wrap gap-3 max-h-48 overflow-y-auto p-1 professional-step-cards">
@@ -817,7 +812,6 @@ function renderStep3_Professional() {
                          </div>`;
                     }).join('')}
              </div>
-             <!-- Pesquisa (Conforme Imagem de Cliente) -->
              <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
                 <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
              </div>
@@ -840,18 +834,15 @@ function renderStep4_Schedule(appointment) {
     const initialDate = newAppointmentState.data.date || todayString;
 
     const formContent = `
-        <!-- CONTEÚDO DA ETAPA 4: DATA/HORA -->
         <div class="p-5 space-y-6">
             <h3 class="text-xl font-bold text-gray-800">4. ${title}</h3>
 
-            <!-- Resumo (Conforme Imagem 4) -->
             <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 space-y-1">
                 <p class="font-bold text-gray-800">${newAppointmentState.data.clientName}</p>
                 <p class="text-sm text-gray-700">Serviços: ${newAppointmentState.data.selectedServiceIds.length} selecionado(s)</p>
                 <p class="text-sm text-gray-700">Profissional: ${newAppointmentState.data.professionalName}</p>
             </div>
 
-            <!-- Data e Duração -->
             <div class="grid grid-cols-2 gap-4 border-t pt-4">
                 <div>
                     <label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label>
@@ -863,7 +854,6 @@ function renderStep4_Schedule(appointment) {
                 </div>
             </div>
 
-            <!-- Horários Disponíveis -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Horários Disponíveis</label>
                 <div id="availableTimesContainer" class="mt-2 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
@@ -871,8 +861,7 @@ function renderStep4_Schedule(appointment) {
                 </div>
             </div>
 
-             <!-- Fidelidade (Opcional) -->
-            <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
+             <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
         </div>
         
         <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
@@ -1118,6 +1107,13 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         if (clientPhoneInput) clientPhoneInput.dispatchEvent(new Event('blur'));
 
     }
+
+    // Adicionado para corrigir o botão Cancelar
+    modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    });
 }
 
 
@@ -1149,7 +1145,6 @@ export async function loadAgendaPage() {
                 </div>
             </div>
             
-            <!-- NOVO: Filtro de Profissionais baseado em Fotos e Pesquisa -->
             <div class="bg-white p-4 rounded-xl shadow-lg mb-6">
                  <div class="prof-search-bar flex items-center gap-4">
                     <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="flex-grow p-2 border rounded-md shadow-sm">
@@ -1162,15 +1157,11 @@ export async function loadAgendaPage() {
                     </label>
                 </div>
                 <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
-                    <!-- O seletor de fotos será renderizado aqui pelo JS -->
                     <div class="loader mx-auto"></div>
                 </div>
             </div>
-            <!-- FIM NOVO -->
-            
             <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
             
-            <!-- BOTÃO FLUTUANTE DE NOVO AGENDAMENTO -->
             <button data-action="new-appointment" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -1305,5 +1296,3 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
-
-

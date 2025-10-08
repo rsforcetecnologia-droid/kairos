@@ -158,7 +158,6 @@ export function showConfirmation(title, message) {
 export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', showCloseButton = true }) {
     const modal = document.getElementById('genericModal');
     
-    // Adiciona o listener para fechar ao clicar no "X"
     const handleClose = () => {
         modal.style.display = 'none';
     };
@@ -189,6 +188,14 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
     if (closeButton) {
         closeButton.onclick = handleClose;
     }
+
+    // *** CORREÇÃO APLICADA AQUI ***
+    // Também procura por botões de cancelar dentro do conteúdo injetado
+    const cancelButton = modal.querySelector('[data-action="close-modal"]');
+    if (cancelButton) {
+        cancelButton.onclick = handleClose;
+    }
+    // *** FIM DA CORREÇÃO ***
 
     modal.style.display = 'flex';
 

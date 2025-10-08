@@ -68,6 +68,7 @@ const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
 const dbexplorerRoutes = require('./routes/dbexplorer');
 const commissionsRoutes = require('./routes/commissions'); // NOVO
+const packagesRoutes = require('./routes/packages'); // NOVO
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
@@ -93,6 +94,7 @@ app.use('/api/sales', verifyToken, checkSubscription, hasAccess, saleRoutes);
 app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRoutes);
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); // NOVO
+app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); // NOVO
 
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
@@ -146,3 +148,4 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
+

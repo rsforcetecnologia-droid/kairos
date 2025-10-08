@@ -20,7 +20,8 @@ import { loadAusenciasPage } from './ui/ausencias.js';
 import { loadUsersPage } from './ui/users.js';
 import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
-import { loadCommissionsPage } from './ui/commissions.js'; // NOVO
+import { loadCommissionsPage } from './ui/commissions.js';
+import { loadPackagesPage } from './ui/packages.js'; // NOVO
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -62,7 +63,8 @@ const pageLoader = {
     'users-section': loadUsersPage,
     'sales-report-section': loadSalesReportPage,
     'financial-section': loadFinancialPage,
-    'commissions-section': loadCommissionsPage, // NOVO
+    'commissions-section': loadCommissionsPage,
+    'packages-section': loadPackagesPage, // NOVO
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
@@ -316,3 +318,4 @@ function initialize() {
 }
 
 initialize();
+

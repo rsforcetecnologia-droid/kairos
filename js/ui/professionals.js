@@ -105,29 +105,44 @@ function fillCadastroTab(prof, services) {
     const currentStatus = prof.status || 'active';
 
     form.innerHTML = `
-        <input type="hidden" id="professionalId" value="${prof.id}">
-        <div class="form-grid">
-            <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required></div>
-            <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required></div>
-            <div class="form-group"><label for="profAccess">Dar acesso ao sistema?</label><select id="profAccess"><option value="sim" ${prof.hasAccess ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.hasAccess ? 'selected' : ''}>Não</option></select></div>
-            
-            <div class="form-group">
-                <label for="profStatus">Status (Ativo)</label>
-                <select id="profStatus">
-                    <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
-                    <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
-                </select>
+        <input type="hidden" id="professionalId" value="${prof.id || ''}">
+        <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-1 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Foto de Perfil</label>
+                    <div class="mt-1 flex flex-col items-center">
+                        <img id="profPhotoPreview" src="${prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`}" alt="Foto de Perfil" class="w-32 h-32 rounded-full object-cover mb-3 border-4 border-gray-200">
+                        <input type="file" id="profPhotoInput" class="hidden" accept="image/*">
+                        <button type="button" id="profPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Foto</button>
+                    </div>
+                </div>
+                 <div class="form-group">
+                    <label for="profStatus">Status</label>
+                    <select id="profStatus">
+                        <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
+                        <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
+                    </select>
+                </div>
             </div>
-            
-            <div class="form-group"><label for="profAccessType">Tipo de acesso</label><select id="profAccessType"><option value="gestor" ${prof.accessType === 'gestor' ? 'selected' : ''}>Gestor</option><option value="funcionario" ${prof.accessType !== 'gestor' ? 'selected' : ''}>Funcionário</option></select></div>
-            <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}"></div>
-            <div class="form-group"><label for="profPassword">Senha do profissional</label><input type="password" id="profPassword" placeholder="********"></div>
-            <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31"></div>
-            <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth"><option value="">Selecione...</option>${monthOptions}</select></div>
-            <div class="form-group"><label for="profCommission">Recebe comissão?</label><select id="profCommission"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
-            <div class="form-group"><label for="profShowOnAgenda">Mostrar na agenda</label><select id="profShowOnAgenda"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
-            <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1"></div>
+
+            <div class="md:col-span-2 space-y-4">
+                <div class="form-grid">
+                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required></div>
+                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required></div>
+                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}"></div>
+                    <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31"></div>
+                    <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth"><option value="">Selecione...</option>${monthOptions}</select></div>
+                    <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1"></div>
+                </div>
+                 <div class="grid grid-cols-2 gap-4 pt-4 border-t">
+                    <div class="form-group"><label for="profCommission">Recebe comissão?</label><select id="profCommission"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
+                    <div class="form-group"><label for="profShowOnAgenda">Mostrar na agenda</label><select id="profShowOnAgenda"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
+                </div>
+            </div>
         </div>
+
         <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${s.name}</span></label>`).join('')}</div></div>
         <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3">${prof.notes || ''}</textarea></div>`;
 }
@@ -246,6 +261,32 @@ function setupModalEventListeners(professional) {
         }
     });
 
+    // --- Lógica para upload de foto ---
+    const photoInput = document.getElementById('profPhotoInput');
+    const photoButton = document.getElementById('profPhotoButton');
+    const photoPreview = document.getElementById('profPhotoPreview');
+    const photoBase64Input = document.getElementById('profPhotoBase64');
+
+    if (photoButton) {
+        photoButton.addEventListener('click', () => photoInput.click());
+    }
+
+    if (photoInput) {
+        photoInput.onchange = () => {
+            const file = photoInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    photoPreview.src = e.target.result;
+                    photoBase64Input.value = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+    }
+    // --- FIM Lógica Foto ---
+
+
     document.getElementById('save-professional-btn').addEventListener('click', async () => {
         const form = document.getElementById('professionalForm');
         const scheduleContainer = document.getElementById('profScheduleContainer');
@@ -265,29 +306,22 @@ function setupModalEventListeners(professional) {
             });
         }
         
-        const passwordInput = form.querySelector('#profPassword');
         const professionalData = {
             ...professional,
             name: form.querySelector('#profName').value,
             specialty: form.querySelector('#profSpecialty').value,
+            photo: form.querySelector('#profPhotoBase64').value,
             services: selectedServices,
             workingHours: workingHours,
             phone: form.querySelector('#profPhone').value,
             dob: `${form.querySelector('#profDobDay').value}/${form.querySelector('#profDobMonth').value}`,
-            hasAccess: form.querySelector('#profAccess').value === 'sim',
-            accessType: form.querySelector('#profAccessType').value,
             receivesCommission: form.querySelector('#profCommission').value === 'sim',
             showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
             orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
             notes: form.querySelector('#profNotes').value,
-            // CAMPO 'STATUS' LIDO DO SELECT
             status: form.querySelector('#profStatus').value
         };
         
-        if (passwordInput && passwordInput.value) {
-            professionalData.password = passwordInput.value;
-        }
-
         try {
             if (professional.id) {
                 await professionalsApi.updateProfessional(professional.id, professionalData);
