@@ -51,3 +51,15 @@ export const deleteBlockage = (blockageId) => {
         method: 'DELETE',
     });
 };
+
+/**
+ * Apaga múltiplos bloqueios de uma só vez.
+ * @param {string[]} ids - Um array com os IDs dos bloqueios a serem apagados.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da exclusão.
+ */
+export const batchDeleteBlockages = (ids) => {
+    return authenticatedFetch('/api/blockages/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+    });
+};
