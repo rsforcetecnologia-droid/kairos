@@ -92,7 +92,16 @@ function openCalculationModal() {
     modalElement.querySelector('#calculation-form').addEventListener('submit', (e) => {
         e.preventDefault();
         handleCommissionCalculation();
-        modalElement.querySelector('[data-action="close-modal"]').click();
+        
+        // CORREÇÃO: Procura o botão 'X' (data-close-modal) que é garantido existir no modal genérico, 
+        // e clica nele para fechar após o cálculo.
+        const closeButton = modalElement.querySelector('[data-close-modal]'); 
+        if (closeButton) {
+            closeButton.click();
+        } else {
+            // Fallback para fechar o elemento principal do modal
+            modalElement.style.display = 'none'; 
+        }
     });
 }
 
@@ -179,7 +188,7 @@ async function fetchAndRenderHistory() {
                             <div>
                                 <p class="font-bold text-gray-800">${report.professionalName}</p>
                                 <p class="text-sm text-gray-500">Período: ${report.period}</p>
-                                <p class="text-sm text-gray-600 mt-1">Salvo em: ${new Date(report.createdAt.toDate()).toLocaleDateString('pt-BR')}</p>
+                                <p class="text-sm text-gray-600 mt-1">Salvo em: ${new Date(report.createdAt).toLocaleDateString('pt-BR')}</p>
                             </div>
                             <div class="text-right">
                                 <p class="text-lg font-bold text-green-600">R$ ${report.summary.totalCommission.toFixed(2)}</p>

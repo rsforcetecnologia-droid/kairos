@@ -56,6 +56,12 @@ router.post('/calculate', async (req, res) => {
                     const price = item.price || 0;
                     let isCommissionable = false;
 
+                    // CORREÇÃO DE SEGURANÇA: Verifica se o item.id é válido antes de tentar consultar o Firestore
+                    if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+                        console.warn(`[COMMISSION_CALC] Item sem ID encontrado na venda ${saleDoc.id}. Pulando item: ${item.name}`);
+                        continue; 
+                    }
+
                     if (item.type === 'service' && calculationTypes.services) {
                         const serviceDoc = await db.collection('services').doc(item.id).get();
                         if (serviceDoc.exists) {
@@ -159,8 +165,8 @@ router.get('/history', async (req, res) => {
             return { 
                 id: doc.id, 
                 ...data,
-                // Converte o Timestamp para string ISO antes de enviar
-                createdAt: data.createdAt.toDate().toISOString() 
+                // CORREÇÃO DE DATA: Converte com segurança para string ISO
+                createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : data.createdAt 
             };
         });
 

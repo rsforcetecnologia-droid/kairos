@@ -41,7 +41,7 @@ function renderServicesList() {
                             </label>
                         </div>
                         <p class="text-xl font-bold text-indigo-600 mb-2 text-left">R$ ${service.price.toFixed(2)}</p>
-                        <p class="text-xs text-gray-500 text-left">${service.duration} min (+${service.bufferTime || 0} min extra)</p>
+                        <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
                         <p class="text-xs text-gray-500 text-left">Comissão Padrão: ${service.commissionRate || 0}%</p>
                     </div>
                     <div class="mt-2 pt-2 border-t flex items-center justify-end gap-2">
@@ -91,7 +91,8 @@ async function handleServiceFormSubmit(e) {
         establishmentId: state.establishmentId,
         name: form.querySelector('#serviceName').value,
         price: parseFloat(form.querySelector('#servicePrice').value),
-        duration: parseInt(form.querySelector('#serviceDurationHours').value * 60) + parseInt(form.querySelector('#serviceDurationMinutes').value),
+        // CORREÇÃO: Captura o valor de Duração em minutos
+        duration: parseInt(form.querySelector('#serviceDurationMinutes').value, 10),
         bufferTime: 0,
         commissionRate: parseFloat(form.querySelector('#serviceCommissionRate').value) || 0,
         active: true,
@@ -117,6 +118,10 @@ async function handleServiceFormSubmit(e) {
 
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
+    
+    // Calcula a duração atual em minutos para preenchimento
+    const durationInMinutes = service?.duration || 0; 
+    
     modal.innerHTML = `
     <div class="modal-content max-w-3xl">
         <form id="serviceForm">
@@ -146,15 +151,13 @@ function openServiceModal(service = null) {
                         <input type="number" id="servicePrice" step="0.01" value="${service?.price || ''}" class="mt-1 w-full p-2 border rounded-md" required>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Categoria</label>
+                        <label for="serviceCategory" class="block text-sm font-medium text-gray-700">Categoria</label>
                         <select id="serviceCategory" class="mt-1 w-full p-2 border rounded-md bg-white"></select>
                     </div>
+                    
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Duração</label>
-                        <div class="flex items-center gap-2 mt-1">
-                            <select id="serviceDurationHours" class="w-full p-2 border rounded-md bg-white">${Array.from({length: 10}, (_, i) => `<option value="${i}">${i}</option>`).join('')} h</select>
-                            <select id="serviceDurationMinutes" class="w-full p-2 border rounded-md bg-white">${[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => `<option value="${m}">${m}</option>`).join('')} min</select>
-                        </div>
+                        <label for="serviceDurationMinutes" class="block text-sm font-medium text-gray-700">Duração Total (minutos)</label>
+                        <input type="number" id="serviceDurationMinutes" min="0" value="${durationInMinutes}" class="mt-1 w-full p-2 border rounded-md" required>
                     </div>
                 </div>
                 <div>
@@ -266,11 +269,9 @@ function openServiceModal(service = null) {
     toggleCommissionView();
 
     const form = modal.querySelector('#serviceForm');
-    const durationInMinutes = service?.duration || 0;
-    form.querySelector('#serviceDurationHours').value = Math.floor(durationInMinutes / 60);
-    form.querySelector('#serviceDurationMinutes').value = durationInMinutes % 60;
     
-    // Este campo não existe mais no novo layout, mas mantemos a lógica para não quebrar o submit
+    // Este campo de status oculto é mantido para compatibilidade com o handleServiceFormSubmit original, 
+    // mesmo que a lógica de horas/minutos tenha sido removida.
     const serviceStatusInput = document.createElement('input');
     serviceStatusInput.type = 'hidden';
     serviceStatusInput.id = 'serviceStatus';
@@ -341,8 +342,8 @@ export async function loadServicesPage() {
         <section>
             <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <h2 class="text-3xl font-bold text-gray-800">Gerir Serviços</h2>
-                <div class="flex items-center gap-4">
-                    <input type="text" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
+                <div class="flex items-center gap-4 w-full md:w-auto">
+                    <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
                     <button data-action="new-service" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
                         Novo Serviço
                     </button>
