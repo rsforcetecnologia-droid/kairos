@@ -1,15 +1,111 @@
-// js/ui/services.js
+// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/js/ui/services.js
 
 // --- 1. IMPORTAÇÕES ---
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js'; // Importado showGenericModal
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 
 // --- 3. FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
+
+// NOVO: Funções de Lógica de Categoria (Replicada e adaptada do modelo de Produtos)
+async function handleCategoryFormSubmit(e) {
+    e.preventDefault();
+    const form = e.target.closest('#categoryForm');
+    const categoryNameInput = form.querySelector('#categoryName');
+    const name = categoryNameInput.value;
+    if (!name) return;
+    try {
+        await servicesApi.createServiceCategory({ establishmentId: state.establishmentId, name });
+        categoryNameInput.value = '';
+        showNotification('Sucesso', 'Categoria criada!', 'success');
+        await fetchAndDisplayCategoriesInModal();
+        await fetchBaseData(); // Atualiza a lista principal de serviços
+    } catch (error) {
+        showNotification('Erro', `Não foi possível criar a categoria: ${error.message}`, 'error');
+    }
+}
+
+async function handleDeleteCategory(categoryId) {
+    const confirmed = await showConfirmation('Apagar Categoria', 'Tem a certeza? Os serviços nesta categoria ficarão sem categoria.');
+    if (confirmed) {
+        try {
+            await servicesApi.deleteServiceCategory(categoryId);
+            showNotification('Sucesso', 'Categoria apagada.', 'success');
+            await fetchAndDisplayCategoriesInModal();
+            await fetchBaseData(); // Atualiza a lista principal de serviços
+        } catch (error) {
+            showNotification('Erro', 'Não foi possível apagar a categoria.', 'error');
+        }
+    }
+}
+
+async function fetchAndDisplayCategoriesInModal() {
+    const listDiv = document.getElementById('categoryList');
+    if (!listDiv) return;
+    listDiv.innerHTML = '<div class="loader mx-auto my-4"></div>';
+    try {
+        const categories = await servicesApi.getServiceCategories(state.establishmentId);
+        state.serviceCategories = categories; // Armazena no state para uso no modal de serviço
+        listDiv.innerHTML = '';
+        if (categories.length > 0) {
+            listDiv.innerHTML = categories.map(cat => `
+                <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
+                    <span>${cat.name}</span>
+                    <button data-action="delete-category" data-id="${cat.id}" class="text-red-500 hover:text-red-700 font-semibold text-sm">Apagar</button>
+                </div>`).join('');
+        } else {
+            listDiv.innerHTML = '<p class="text-center text-gray-500">Nenhuma categoria criada.</p>';
+        }
+    } catch (error) {
+        listDiv.innerHTML = `<p class="text-red-500 text-center">Erro ao carregar categorias.</p>`;
+    }
+}
+
+function openCategoryModal() {
+    // Reutilizando o modal genérico para a gestão de categorias
+    const contentHTML = `
+        <div class="space-y-4">
+            <div class="mb-4">
+                <form id="categoryForm" class="flex gap-4 items-end">
+                    <div class="flex-1">
+                        <label for="categoryName" class="block text-sm font-medium text-gray-700">Nova Categoria</label>
+                        <input type="text" id="categoryName" placeholder="Nome da categoria" required class="mt-1 w-full p-2 border rounded-md">
+                    </div>
+                    <button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Adicionar</button>
+                </form>
+            </div>
+            <div id="categoryList" class="space-y-2 max-h-64 overflow-y-auto p-2 border rounded-md"></div>
+        </div>
+    `;
+
+    showGenericModal({
+        title: "Gerir Categorias de Serviços",
+        contentHTML: contentHTML,
+        maxWidth: 'max-w-xl'
+    });
+
+    const modalElement = document.getElementById('genericModal');
+    if (modalElement) {
+        const categoryForm = modalElement.querySelector('#categoryForm');
+        if (categoryForm) {
+             categoryForm.addEventListener('submit', handleCategoryFormSubmit);
+             categoryForm.addEventListener('click', (e) => {
+                 const button = e.target.closest('button[data-action="delete-category"]');
+                 if (button) {
+                     e.preventDefault(); 
+                     handleDeleteCategory(button.dataset.id);
+                 }
+             });
+        }
+    }
+
+    fetchAndDisplayCategoriesInModal();
+}
+
 
 function renderServicesList() {
     const listDiv = document.getElementById('servicesList');
@@ -19,6 +115,8 @@ function renderServicesList() {
     const searchTerm = searchInput.value.toLowerCase();
     const filteredServices = state.services.filter(s => s.name.toLowerCase().includes(searchTerm));
 
+    const categoryMap = new Map((state.serviceCategories || []).map(c => [c.id, c.name]));
+
     listDiv.innerHTML = '';
     if (filteredServices.length > 0) {
         filteredServices.forEach(service => {
@@ -26,6 +124,7 @@ function renderServicesList() {
             card.className = `service-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300 ${service.active ? 'opacity-100' : 'opacity-50 bg-gray-100'}`;
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
             const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
+            const categoryName = categoryMap.get(service.categoryId) || 'N/A';
 
             card.innerHTML = `
                 <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-full h-24 object-cover">
@@ -40,9 +139,9 @@ function renderServicesList() {
                                 </div>
                             </label>
                         </div>
-                        <p class="text-xl font-bold text-indigo-600 mb-2 text-left">R$ ${service.price.toFixed(2)}</p>
+                        <p class="text-xl font-bold text-indigo-600 mb-1 text-left">R$ ${service.price.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500 text-left mb-2">Categoria: ${categoryName}</p>
                         <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
-                        <p class="text-xs text-gray-500 text-left">Comissão Padrão: ${service.commissionRate || 0}%</p>
                     </div>
                     <div class="mt-2 pt-2 border-t flex items-center justify-end gap-2">
                         <button data-action="edit-service" data-service='${serviceDataString}' class="text-gray-500 hover:text-blue-600 p-1" title="Editar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
@@ -56,16 +155,24 @@ function renderServicesList() {
     }
 }
 
-async function fetchAndDisplayServices() {
-    const listDiv = document.getElementById('servicesList');
+async function fetchBaseData() {
+     const listDiv = document.getElementById('servicesList');
     if (!listDiv) return;
-    listDiv.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
+    listDiv.innerHTML = '<div class="loader col-span-full mx-auto my-10"></div>';
     try {
-        state.services = await servicesApi.getServices(state.establishmentId);
+        // Busca serviços, profissionais E CATEGORIAS
+        const [servicesData, professionalsData, categoriesData] = await Promise.all([
+            servicesApi.getServices(state.establishmentId),
+            professionalsApi.getProfessionals(state.establishmentId),
+            servicesApi.getServiceCategories(state.establishmentId) // <-- NOVA BUSCA
+        ]);
+        state.services = servicesData;
+        state.professionals = professionalsData;
+        state.serviceCategories = categoriesData; // <-- SALVA NO ESTADO
         renderServicesList();
     } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar serviços.</p>';
-        showNotification('Erro', `Não foi possível carregar os serviços: ${error.message}`, 'error');
+        listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
+        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
     }
 }
 
@@ -74,6 +181,7 @@ async function handleServiceFormSubmit(e) {
     const form = e.target.closest('#serviceModal');
     const serviceId = form.querySelector('#serviceId').value;
     
+    // ... (restante da lógica de comissões inalterada) ...
     const professionalCommissions = {};
     const commissionType = form.querySelector('input[name="commissionType"]:checked').value;
     if (commissionType === 'custom') {
@@ -91,9 +199,9 @@ async function handleServiceFormSubmit(e) {
         establishmentId: state.establishmentId,
         name: form.querySelector('#serviceName').value,
         price: parseFloat(form.querySelector('#servicePrice').value),
-        // CORREÇÃO: Captura o valor de Duração em minutos
         duration: parseInt(form.querySelector('#serviceDurationMinutes').value, 10),
-        bufferTime: 0,
+        bufferTime: parseInt(form.querySelector('#serviceBufferTimeMinutes').value, 10) || 0, // <-- CAPTURA bufferTime
+        categoryId: form.querySelector('#serviceCategory').value || null, // <-- CAPTURA A CATEGORIA
         commissionRate: parseFloat(form.querySelector('#serviceCommissionRate').value) || 0,
         active: true,
         photo: form.querySelector('#servicePhotoBase64').value,
@@ -110,7 +218,7 @@ async function handleServiceFormSubmit(e) {
         }
         document.getElementById('serviceModal').style.display = 'none';
         showNotification('Sucesso', `Serviço ${serviceId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
-        await fetchAndDisplayServices();
+        await fetchBaseData(); // Recarrega com categorias
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
@@ -118,10 +226,17 @@ async function handleServiceFormSubmit(e) {
 
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
-    
-    // Calcula a duração atual em minutos para preenchimento
+    const categories = state.serviceCategories || []; // Pega a lista de categorias do estado
+
     const durationInMinutes = service?.duration || 0; 
+    // CORREÇÃO: Pega o bufferTime do serviço, se existir.
+    const bufferTimeInMinutes = service?.bufferTime || 0; 
     
+    // Constrói as opções de categoria
+    const categoryOptions = categories.map(c => 
+        `<option value="${c.id}" ${service?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
+    ).join('');
+
     modal.innerHTML = `
     <div class="modal-content max-w-3xl">
         <form id="serviceForm">
@@ -152,12 +267,21 @@ function openServiceModal(service = null) {
                     </div>
                     <div>
                         <label for="serviceCategory" class="block text-sm font-medium text-gray-700">Categoria</label>
-                        <select id="serviceCategory" class="mt-1 w-full p-2 border rounded-md bg-white"></select>
+                        <select id="serviceCategory" class="mt-1 w-full p-2 border rounded-md bg-white">
+                             <option value="">Sem Categoria</option>
+                            ${categoryOptions}
+                        </select>
                     </div>
                     
-                    <div>
-                        <label for="serviceDurationMinutes" class="block text-sm font-medium text-gray-700">Duração Total (minutos)</label>
-                        <input type="number" id="serviceDurationMinutes" min="0" value="${durationInMinutes}" class="mt-1 w-full p-2 border rounded-md" required>
+                    <div class="grid grid-cols-2 gap-4">
+                         <div>
+                            <label for="serviceDurationMinutes" class="block text-sm font-medium text-gray-700">Duração (minutos)</label>
+                            <input type="number" id="serviceDurationMinutes" min="0" value="${durationInMinutes}" class="mt-1 w-full p-2 border rounded-md" required>
+                         </div>
+                         <div>
+                            <label for="serviceBufferTimeMinutes" class="block text-sm font-medium text-gray-700">Minutos Extras</label>
+                            <input type="number" id="serviceBufferTimeMinutes" min="0" value="${bufferTimeInMinutes}" class="mt-1 w-full p-2 border rounded-md">
+                         </div>
                     </div>
                 </div>
                 <div>
@@ -165,7 +289,7 @@ function openServiceModal(service = null) {
                     <textarea id="serviceNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${service?.notes || ''}</textarea>
                 </div>
             </div>
-
+            
             <div id="tab-content-comissoes" class="tab-content hidden space-y-6">
                 <div>
                     <label class="block text-lg font-medium text-gray-800">Tipo de comissão</label>
@@ -270,8 +394,6 @@ function openServiceModal(service = null) {
 
     const form = modal.querySelector('#serviceForm');
     
-    // Este campo de status oculto é mantido para compatibilidade com o handleServiceFormSubmit original, 
-    // mesmo que a lógica de horas/minutos tenha sido removida.
     const serviceStatusInput = document.createElement('input');
     serviceStatusInput.type = 'hidden';
     serviceStatusInput.id = 'serviceStatus';
@@ -305,11 +427,13 @@ function setupEventListeners() {
                     try {
                         await servicesApi.deleteService(serviceId);
                         showNotification('Sucesso', 'Serviço apagado com sucesso!', 'success');
-                        await fetchAndDisplayServices();
+                        await fetchBaseData();
                     } catch (error) {
                         showNotification('Erro', `Não foi possível apagar o serviço: ${error.message}`, 'error');
                     }
                 }
+            } else if (action === 'manage-categories') { // <-- NOVA AÇÃO
+                 openCategoryModal();
             }
         } else if (toggle) {
             const serviceId = toggle.dataset.id;
@@ -344,6 +468,9 @@ export async function loadServicesPage() {
                 <h2 class="text-3xl font-bold text-gray-800">Gerir Serviços</h2>
                 <div class="flex items-center gap-4 w-full md:w-auto">
                     <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
+                    <button data-action="manage-categories" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">
+                         Gerir Categorias
+                    </button>
                     <button data-action="new-service" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
                         Novo Serviço
                     </button>
@@ -359,5 +486,5 @@ export async function loadServicesPage() {
         state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
     }
     
-    await fetchAndDisplayServices();
+    await fetchBaseData(); // Alterado para a nova função que busca categorias
 }

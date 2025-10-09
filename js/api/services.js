@@ -1,3 +1,5 @@
+// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/js/api/services.js
+
 // js/api/services.js
 
 import { authenticatedFetch } from './apiService.js';
@@ -6,6 +8,42 @@ import { authenticatedFetch } from './apiService.js';
  * Este módulo agrupa todas as funções para interagir com os endpoints
  * de serviços (`services`) da API.
  */
+
+// --- FUNÇÕES DE CATEGORIAS DE SERVIÇOS ---
+
+/**
+ * Busca todas as categorias de serviços de um estabelecimento.
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @returns {Promise<Array>} - Uma promessa que resolve com a lista de categorias.
+ */
+export const getServiceCategories = (establishmentId) => {
+    return authenticatedFetch(`/api/services/categories/${establishmentId}`);
+};
+
+/**
+ * Cria uma nova categoria de serviço.
+ * @param {object} categoryData - Os dados da categoria ({ establishmentId, name }).
+ * @returns {Promise<object>} - Uma promessa que resolve com a categoria criada.
+ */
+export const createServiceCategory = (categoryData) => {
+    return authenticatedFetch('/api/services/categories', {
+        method: 'POST',
+        body: JSON.stringify(categoryData),
+    });
+};
+
+/**
+ * Apaga uma categoria de serviço.
+ * @param {string} categoryId - O ID da categoria a ser apagada.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da exclusão.
+ */
+export const deleteServiceCategory = (categoryId) => {
+    return authenticatedFetch(`/api/services/categories/${categoryId}`, {
+        method: 'DELETE',
+    });
+};
+
+// --- FUNÇÕES DE SERVIÇOS (EXISTENTES) ---
 
 /**
  * Busca todos os serviços de um estabelecimento.

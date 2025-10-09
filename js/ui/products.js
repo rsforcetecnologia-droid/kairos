@@ -1,10 +1,10 @@
-// js/ui/products.js
+// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/js/ui/products.js
 
 // --- 1. IMPORTAÇÕES ---
 import * as productsApi from '../api/products.js';
 import * as categoriesApi from '../api/categories.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
@@ -20,9 +20,12 @@ async function handleCategoryFormSubmit(e) {
     const name = categoryNameInput.value;
     if (!name) return;
     try {
+        // CORREÇÃO: Chama a API de criação de categoria de PRODUTOS
         await categoriesApi.createCategory({ establishmentId: state.establishmentId, name });
         categoryNameInput.value = '';
+        showNotification('Sucesso', 'Categoria de produto criada!', 'success');
         await fetchAndDisplayCategoriesInModal();
+        await fetchBaseData(); // Atualiza os filtros na página principal
     } catch (error) {
         showNotification('Erro', `Não foi possível criar a categoria: ${error.message}`, 'error');
     }
@@ -33,6 +36,7 @@ async function handleDeleteCategory(categoryId) {
     if (confirmed) {
         try {
             await categoriesApi.deleteCategory(categoryId);
+            showNotification('Sucesso', 'Categoria de produto apagada.', 'success');
             await fetchAndDisplayCategoriesInModal();
             await fetchBaseData(); // Atualiza os filtros na página principal
         } catch (error) {
@@ -44,7 +48,7 @@ async function handleDeleteCategory(categoryId) {
 async function fetchAndDisplayCategoriesInModal() {
     const listDiv = document.getElementById('categoryList');
     if (!listDiv) return;
-    listDiv.innerHTML = '<div class="loader mx-auto"></div>';
+    listDiv.innerHTML = '<div class="loader mx-auto my-4"></div>';
     try {
         const categories = await categoriesApi.getCategories(state.establishmentId);
         state.categories = categories;
@@ -64,20 +68,42 @@ async function fetchAndDisplayCategoriesInModal() {
 }
 
 function openCategoryModal() {
-    const modal = document.getElementById('categoryModal');
-    modal.innerHTML = `
-    <div class="modal-content max-w-lg">
-        <h2 class="text-2xl font-bold mb-6">Gerir Categorias de Produtos</h2>
-        <div class="mb-6"><form id="categoryForm" class="flex gap-4"><input type="text" id="categoryName" placeholder="Nome da nova categoria" required class="flex-grow block w-full rounded-md border-gray-300 shadow-sm"><button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg">Adicionar</button></form></div>
-        <div id="categoryList" class="space-y-2 max-h-64 overflow-y-auto"></div>
-        <div class="mt-6"><button type="button" data-action="close-modal" data-target="categoryModal" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg">Fechar</button></div>
-    </div>`;
-    modal.style.display = 'flex';
-    modal.querySelector('#categoryForm').addEventListener('submit', handleCategoryFormSubmit);
-    modal.addEventListener('click', (e) => {
-        const button = e.target.closest('button[data-action="delete-category"]');
-        if (button) handleDeleteCategory(button.dataset.id);
+    const contentHTML = `
+        <div class="space-y-4">
+            <div class="mb-4">
+                <form id="categoryForm" class="flex gap-4 items-end">
+                    <div class="flex-1">
+                        <label for="categoryName" class="block text-sm font-medium text-gray-700">Nova Categoria</label>
+                        <input type="text" id="categoryName" placeholder="Nome da nova categoria" required class="mt-1 w-full p-2 border rounded-md">
+                    </div>
+                    <button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Adicionar</button>
+                </form>
+            </div>
+            <div id="categoryList" class="space-y-2 max-h-64 overflow-y-auto p-2 border rounded-md"></div>
+        </div>
+    `;
+
+    // Utiliza showGenericModal que injeta o conteúdo no modal genérico
+    showGenericModal({
+        title: "Gerir Categorias de Produtos",
+        contentHTML: contentHTML,
+        maxWidth: 'max-w-xl'
     });
+    
+    // O modal genérico já está visível, basta anexar os listeners ao seu conteúdo
+    const modalElement = document.getElementById('genericModal');
+    if (modalElement) {
+        const categoryForm = modalElement.querySelector('#categoryForm');
+        if (categoryForm) {
+            categoryForm.addEventListener('submit', handleCategoryFormSubmit);
+            modalElement.addEventListener('click', (e) => {
+                 const button = e.target.closest('button[data-action="delete-category"]');
+                 // O ID do modal principal é 'categoryModal', mas estamos usando 'genericModal' no novo fluxo
+                 if (button) handleDeleteCategory(button.dataset.id);
+            });
+        }
+    }
+
     fetchAndDisplayCategoriesInModal();
 }
 
@@ -139,7 +165,7 @@ function openProductModal(product = null) {
     form.addEventListener('submit', handleProductFormSubmit);
     modal.querySelector('#productPhotoButton').addEventListener('click', () => photoInput.click());
 
-    categorySelect.innerHTML = '<option value="">Sem categoria</option>' + state.categories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+    categorySelect.innerHTML = '<option value="">Sem categoria</option>' + state.categories.map(cat => `<option value="${cat.id}" ${product?.categoryId === cat.id ? 'selected' : ''}>${cat.name}</option>`).join('');
     if(product) categorySelect.value = product.categoryId || '';
 
     photoInput.onchange = () => {
@@ -357,7 +383,7 @@ export async function loadProductsPage() {
                 <div id="products-tabs" class="border-b border-gray-200">
                     <nav class="-mb-px flex space-x-6 px-6" aria-label="Tabs">
                         <button data-view="products" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Produtos</button>
-                        <button data-action="manage-categories" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Categorias</button>
+                        <button data-action="manage-product-categories" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Categorias</button>
                         <button data-view="movements" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Movimentações</button>
                     </nav>
                 </div>
@@ -394,7 +420,7 @@ export async function loadProductsPage() {
         switch (action) {
             case 'new-product': openProductModal(); break;
             case 'edit-product': openProductModal(JSON.parse(button.dataset.product)); break;
-            case 'manage-categories': openCategoryModal(); break;
+            case 'manage-product-categories': openCategoryModal(); break; // <-- AÇÃO CORRIGIDA
             case 'generate-report': await generateStockReport(); break;
             case 'filter-stock':
                 const filterType = button.dataset.filterType;
@@ -431,4 +457,3 @@ export async function loadProductsPage() {
     activeStockFilter = 'all'; // Reseta o filtro ao carregar a página
     await fetchBaseData();
 }
-

@@ -1,12 +1,62 @@
+// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/routes/services.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess } = require('../middlewares/auth');
 
+// --- ROTAS DE CATEGORIAS DE SERVIÇOS ---
+
+// Criar nova categoria
+router.post('/categories', verifyToken, hasAccess, async (req, res) => {
+    try {
+        const { establishmentId } = req.user;
+        const { name, parentId } = req.body;
+        if (!establishmentId || !name) return res.status(400).json({ message: 'ID do estabelecimento e nome da categoria são obrigatórios.' });
+        const { db } = req;
+        const newCategory = { establishmentId, name, parentId: parentId || null, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+        const docRef = await db.collection('serviceCategories').add(newCategory);
+        res.status(201).json({ message: 'Categoria criada com sucesso!', id: docRef.id, data: newCategory });
+    } catch (error) {
+        console.error("Erro ao criar categoria de serviço:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// Listar categorias
+router.get('/categories/:establishmentId', verifyToken, hasAccess, async (req, res) => {
+    try {
+        const { establishmentId } = req.params;
+        const { db } = req;
+        const snapshot = await db.collection('serviceCategories').where('establishmentId', '==', establishmentId).orderBy('name').get();
+        if (snapshot.empty) return res.status(200).json([]);
+        const categoriesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(categoriesList);
+    } catch (error) {
+        console.error("Erro ao listar categorias de serviço:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// Deletar categoria
+router.delete('/categories/:categoryId', verifyToken, hasAccess, async (req, res) => {
+    const { categoryId } = req.params;
+    try {
+        const { db } = req;
+        await db.collection('serviceCategories').doc(categoryId).delete();
+        // Opcional: Remover a categoria dos serviços que a utilizam
+        res.status(200).json({ message: 'Categoria apagada com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao apagar categoria de serviço:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+
 // Criar novo serviço (Rota Privada)
 router.post('/', verifyToken, hasAccess, async (req, res) => {
     try {
-        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate, commissionType, professionalCommissions, notes } = req.body;
+        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate, commissionType, professionalCommissions, notes, categoryId } = req.body;
         if (!establishmentId || !name || price === undefined || duration === undefined) {
             return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
         }
@@ -22,6 +72,7 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
             notes: notes || '',
             active: active !== false,
             photo: photo || null,
+            categoryId: categoryId || null, // <-- ADICIONADO
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
         const docRef = await db.collection('services').add(newService);
@@ -78,7 +129,8 @@ router.put('/:serviceId', verifyToken, hasAccess, async (req, res) => {
             bufferTime: Number(data.bufferTime) || 0,
             commissionRate: Number(data.commissionRate) || 0,
             commissionType: data.commissionType || 'default',
-            professionalCommissions: data.professionalCommissions || {}
+            professionalCommissions: data.professionalCommissions || {},
+            categoryId: data.categoryId || null // <-- ADICIONADO
         };
         await db.collection('services').doc(serviceId).update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });
