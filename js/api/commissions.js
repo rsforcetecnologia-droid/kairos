@@ -3,7 +3,7 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Calcula a comissão de um profissional com base nos filtros fornecidos.
+ * Calcula a comissão com base nos filtros fornecidos.
  * @param {object} commissionData - Os dados para o cálculo.
  * @returns {Promise<object>} - Uma promessa que resolve com o resultado do cálculo da comissão.
  */
@@ -27,10 +27,10 @@ export const saveCommissionReport = (reportData) => {
 };
 
 /**
- * Busca o histórico de relatórios de comissão de um profissional.
- * @param {string} professionalId - O ID do profissional.
+ * CORRIGIDO: Busca o histórico de TODOS os relatórios de comissão salvos para o estabelecimento.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de relatórios.
  */
-export const getCommissionHistory = (professionalId) => {
-    return authenticatedFetch(`/api/commissions/history/${professionalId}`);
+export const getCommissionHistory = () => {
+    // A rota correta não precisa de um ID de profissional.
+    return authenticatedFetch(`/api/commissions/history`);
 };

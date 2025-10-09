@@ -6,7 +6,7 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 // Aplica o middleware de autenticação em todas as rotas deste arquivo
 router.use(verifyToken, hasAccess);
 
-// ROTA ATUALIZADA: Calcular comissão com base em período, profissionais e tipos de item
+// Rota para CALCULAR a comissão (sem salvar)
 router.post('/calculate', async (req, res) => {
     const { establishmentId } = req.user;
     const { professionalIds, startDate, endDate, calculationTypes } = req.body;
@@ -128,7 +128,7 @@ router.post('/save', async (req, res) => {
         const { db } = req;
         const report = {
             establishmentId, professionalId, professionalName,
-            period, // Salva o período como uma string (ex: "01/10/2025 a 31/10/2025")
+            period,
             summary: reportData.summary,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
@@ -141,21 +141,32 @@ router.post('/save', async (req, res) => {
     }
 });
 
-// ROTA ATUALIZADA: Obter histórico de todos os relatórios
+// ROTA CORRIGIDA: Obter histórico de todos os relatórios
 router.get('/history', async (req, res) => {
     const { establishmentId } = req.user;
     try {
         const { db } = req;
         const snapshot = await db.collection('commission_reports')
             .where('establishmentId', '==', establishmentId)
-            .orderBy('createdAt', 'desc')
             .get();
 
         if (snapshot.empty) {
             return res.status(200).json([]);
         }
 
-        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let history = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return { 
+                id: doc.id, 
+                ...data,
+                // Converte o Timestamp para string ISO antes de enviar
+                createdAt: data.createdAt.toDate().toISOString() 
+            };
+        });
+
+        // Ordena os resultados no servidor antes de enviar
+        history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
         res.status(200).json(history);
     } catch (error) {
         console.error("Erro ao buscar histórico de comissões:", error);
