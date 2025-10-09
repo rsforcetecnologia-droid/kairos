@@ -343,13 +343,15 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             
             // --- Obtém as configurações financeiras padrão ---
             const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
-            // ### CORREÇÃO APLICADA AQUI ###
             const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
 
             const originalServiceIDs = new Set( (appointmentData.services || []).map(s => s.id) );
             
+            // CORREÇÃO: Inclui explicitamente 'product' e 'package' no payload de comandaItems.
             const comandaItemsPayload = items.filter(item => {
-                if (item.type === 'product') return true;
+                // Inclui Produtos e Pacotes
+                if (item.type === 'product' || item.type === 'package') return true; 
+                // Inclui Serviços que não estavam no agendamento original
                 if (item.type === 'service') {
                     return !originalServiceIDs.has(item.id);
                 }
@@ -360,7 +362,7 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
-                comandaItems: comandaItemsPayload,
+                comandaItems: comandaItemsPayload, // Agora inclui pacotes
                 transaction: {
                     payments: payments,
                     totalAmount: Number(totalAmount),

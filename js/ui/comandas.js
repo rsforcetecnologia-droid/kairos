@@ -11,6 +11,7 @@ import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { navigateTo } from '../main.js'; // IMPORTADO para o botão Ver Relatório
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
@@ -195,6 +196,64 @@ function renderComandaDetail() {
 
 // --- 4. FUNÇÕES DE MODAIS ---
 
+/**
+ * Abre um modal moderno para obter o valor inicial ou final do caixa.
+ * @param {'open'|'close'} type - Tipo de operação ('open' ou 'close').
+ * @param {number} [expectedAmount=0] - Valor esperado para o fecho de caixa.
+ * @returns {Promise<number|null>} - Retorna o valor inserido ou null se cancelado.
+ */
+function openCashierModal(type, expectedAmount = 0) {
+    return new Promise((resolve) => {
+        const isClose = type === 'close';
+        const title = isClose ? 'Valor Final do Caixa' : 'Valor Inicial do Caixa';
+        const expectedDisplay = isClose 
+            ? `<p class="text-sm font-medium text-gray-500">Valor Esperado (Dinheiro)</p><p class="text-2xl font-bold text-gray-800">R$ ${expectedAmount.toFixed(2)}</p>` 
+            : `<p class="text-sm font-medium text-gray-500">Valor a Iniciar</p>`;
+
+        const contentHTML = `
+            <form id="cashierModalForm" class="space-y-6">
+                <div class="bg-gray-50 p-4 rounded-lg text-center">
+                    ${expectedDisplay}
+                </div>
+                <div>
+                    <label for="cashierAmountInput" class="block text-sm font-medium text-gray-700">Insira o valor em Dinheiro</label>
+                    <input type="number" step="0.01" id="cashierAmountInput" required 
+                           class="mt-1 block w-full p-3 border border-gray-300 rounded-lg text-2xl text-center focus:ring-indigo-500 focus:border-indigo-500" 
+                           placeholder="0.00">
+                </div>
+                <div class="flex gap-4 pt-4 border-t">
+                    <button type="button" data-action="cancel" class="flex-1 py-3 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400">Cancelar</button>
+                    <button type="submit" class="flex-1 py-3 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Confirmar</button>
+                </div>
+            </form>`;
+
+        const { modalElement, close } = showGenericModal({
+            title: title,
+            contentHTML: contentHTML,
+            maxWidth: 'max-w-xs'
+        });
+
+        const form = modalElement.querySelector('#cashierModalForm');
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            const value = parseFloat(form.querySelector('#cashierAmountInput').value);
+            if (isNaN(value) || value < 0) {
+                showNotification('Erro de Validação', 'Por favor, insira um valor numérico válido.', 'error');
+                return;
+            }
+            close();
+            resolve(value);
+        };
+
+        form.addEventListener('submit', handleSubmit);
+        form.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+            close();
+            resolve(null);
+        });
+    });
+}
+
 function openAddItemModal() {
     const { modalElement, setContent, close } = showGenericModal({ 
         title: "Adicionar Item à Comanda", 
@@ -315,9 +374,11 @@ function openCheckoutModal() {
     const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
     const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
 
-    let payments = [];
+    let payments = []; // Array para armazenar os pagamentos desta SESSÃO do modal
+    
+    // O modalInternalState agora reflete o estado dos inputs de valor/método
     let modalInternalState = {
-        remainingAmount: total,
+        remainingAmount: total, // Será recalculado em render()
         selectedMethod: 'dinheiro',
         installments: 1,
         amountReceived: ''
@@ -330,9 +391,12 @@ function openCheckoutModal() {
         const changeContainer = document.getElementById('change-container');
         const installmentsContainer = document.getElementById('installments-container');
         const paymentValueInput = document.getElementById('payment-value');
+        const addPaymentBtn = document.getElementById('add-payment-btn');
+        const paymentControlsSection = document.getElementById('payment-controls-section');
+
 
         const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
-        modalInternalState.remainingAmount = total - totalPaid;
+        modalInternalState.remainingAmount = total - totalPaid; // CÁLCULO CORRIGIDO
 
         paymentList.innerHTML = payments.map((p, index) => `
             <div class="flex justify-between items-center bg-gray-100 p-2 rounded-md animate-fade-in-fast">
@@ -343,17 +407,37 @@ function openCheckoutModal() {
                 </div>
             </div>`).join('');
 
+        // 1. Atualização do Status de Pagamento
         remainingEl.textContent = `Faltam: R$ ${modalInternalState.remainingAmount.toFixed(2)}`;
         remainingEl.className = `text-lg font-bold text-center mb-4 ${modalInternalState.remainingAmount > 0.001 ? 'text-red-600' : 'text-green-600'}`;
-        if (modalInternalState.remainingAmount <= 0.001) {
+        
+        // 2. Lógica de Desativação e Ocultação quando PAGO
+        const isTotalPaid = modalInternalState.remainingAmount <= 0.001;
+
+        if (isTotalPaid) {
              remainingEl.textContent = 'Total Pago!';
-             paymentValueInput.value = '';
+             if (paymentControlsSection) paymentControlsSection.classList.add('hidden');
         } else {
-            paymentValueInput.value = modalInternalState.remainingAmount.toFixed(2);
+             if (paymentControlsSection) paymentControlsSection.classList.remove('hidden');
         }
         
-        finalizeBtn.disabled = modalInternalState.remainingAmount > 0.001;
+        finalizeBtn.disabled = !isTotalPaid;
         
+        if (paymentValueInput) {
+            // Garante que o valor a adicionar seja sempre o restante se o pagamento não estiver completo
+            if (!isTotalPaid) {
+                paymentValueInput.value = modalInternalState.remainingAmount.toFixed(2);
+            } else {
+                 paymentValueInput.value = '';
+            }
+            paymentValueInput.disabled = isTotalPaid;
+        }
+        
+        if (addPaymentBtn) {
+            addPaymentBtn.disabled = isTotalPaid;
+        }
+
+        // CORREÇÃO VISUAL: Atualiza o estilo de seleção dos botões
         document.querySelectorAll('.payment-method-btn').forEach(btn => {
             btn.classList.toggle('ring-2', btn.dataset.method === modalInternalState.selectedMethod);
             btn.classList.toggle('ring-offset-2', btn.dataset.method === modalInternalState.selectedMethod);
@@ -370,8 +454,15 @@ function openCheckoutModal() {
         const valueInput = document.getElementById('payment-value');
         let value = parseFloat(valueInput.value);
         
+        // Adiciona a verificação de que o valor restante é > 0
+        if (modalInternalState.remainingAmount <= 0.001) {
+             showNotification('Pagamento Inválido', 'O pagamento já está completo. Clique em Finalizar.', 'error');
+             return;
+        }
+
+        // Se o utilizador não inseriu nada, ou inseriu <= 0, ou mais do que o restante
         if (!value || value <= 0 || value > modalInternalState.remainingAmount + 0.001) {
-            showNotification('Valor Inválido', 'Insira um valor de pagamento válido.', 'error');
+            showNotification('Valor Inválido', 'Por favor, insira um valor de pagamento válido e que não exceda o valor em falta.', 'error');
             return;
         }
         
@@ -384,12 +475,16 @@ function openCheckoutModal() {
             newPayment.installments = modalInternalState.installments;
         }
         
-        payments.push(newPayment);
-        
+        payments.push(newPayment); // Adiciona o pagamento
+
+        // Reverte o estado dos inputs para o padrão após o pagamento
         modalInternalState.selectedMethod = 'dinheiro';
         modalInternalState.installments = 1;
-        document.getElementById('installments-select').value = 1;
-        render();
+        
+        const installmentsSelect = document.getElementById('installments-select');
+        if (installmentsSelect) installmentsSelect.value = 1;
+        
+        render(); // Re-renderiza para atualizar o restante e limpar os inputs
     };
 
     const contentHTML = `
@@ -397,8 +492,7 @@ function openCheckoutModal() {
         <div id="payment-list" class="space-y-2 mb-4"></div>
         <div id="remaining-amount"></div>
         
-        <div id="payment-controls" class="space-y-4 border-t pt-4">
-            <div class="grid grid-cols-3 gap-2">
+        <div id="payment-controls-section" class="space-y-4 border-t pt-4"> <div class="grid grid-cols-3 gap-2">
                 <button data-method="dinheiro" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-green-400 bg-green-50 ring-green-500"><svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg><span class="text-xs mt-1 font-semibold">Dinheiro</span></button>
                 <button data-method="pix" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-cyan-400 bg-cyan-50 ring-cyan-500"><svg class="w-6 h-6 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg><span class="text-xs mt-1 font-semibold">PIX</span></button>
                 <button data-method="debito" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-blue-400 bg-blue-50 ring-blue-500"><svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg><span class="text-xs mt-1 font-semibold">Débito</span></button>
@@ -415,23 +509,42 @@ function openCheckoutModal() {
         <div class="mt-6 pt-4 border-t"><button id="finalize-checkout-btn" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-400" disabled>Finalizar</button></div>
     `;
 
-    const { modalElement } = showGenericModal({ title: "Finalizar Pagamento", contentHTML, maxWidth: 'max-w-md' });
+    const { modalElement, close } = showGenericModal({ title: "Finalizar Pagamento", contentHTML, maxWidth: 'max-w-md' });
+    
+    // ANTES DE RENDERIZAR, GARANTE QUE OS INPUTS EXISTAM PARA O EVENT LISTENER
     document.getElementById('payment-value').value = modalInternalState.remainingAmount.toFixed(2);
     
-    modalElement.addEventListener('click', (e) => {
-        const methodBtn = e.target.closest('.payment-method-btn');
-        if (methodBtn) {
-            modalInternalState.selectedMethod = methodBtn.dataset.method;
-            modalInternalState.installments = 1;
-            document.getElementById('installments-select').value = 1;
-            render();
+    // --- CORREÇÃO DE DUPLICAÇÃO DE LISTENERS: Adiciona o listener UMA VEZ no modalElement ---
+    const addPaymentHandler = (e) => {
+        if (e.target.closest('#add-payment-btn')) {
+            addPayment();
+            // Desativa o botão temporariamente para prevenir execuções múltiplas imediatas
+            e.target.closest('#add-payment-btn').disabled = true; 
+            setTimeout(() => {
+                 const btn = modalElement.querySelector('#add-payment-btn');
+                 if(btn) btn.disabled = modalInternalState.remainingAmount <= 0.001; 
+            }, 500); 
         }
-        if (e.target.closest('#add-payment-btn')) addPayment();
         if (e.target.closest('[data-action="remove-payment"]')) {
             payments.splice(parseInt(e.target.closest('[data-action="remove-payment"]').dataset.paymentIndex, 10), 1);
             render();
         }
         if (e.target.closest('#finalize-checkout-btn')) handleFinalizeCheckout(comanda, total, payments);
+    };
+
+    modalElement.addEventListener('click', addPaymentHandler);
+    // --------------------------------------------------------------------------------------
+
+    // CORREÇÃO: Novo listener para seleção de método (fora de addPaymentHandler, para evitar lógica de duplicação)
+    modalElement.addEventListener('click', (e) => {
+        const methodBtn = e.target.closest('.payment-method-btn');
+        if (methodBtn) {
+            modalInternalState.selectedMethod = methodBtn.dataset.method;
+            modalInternalState.installments = 1;
+            const installmentsSelect = document.getElementById('installments-select');
+            if (installmentsSelect) installmentsSelect.value = 1;
+            render();
+        }
     });
 
     modalElement.addEventListener('change', e => {
@@ -444,39 +557,16 @@ function openCheckoutModal() {
         }
     });
 
-    render();
-}
+    // Limpa o listener ao fechar o modal (boas práticas)
+    const originalClose = close;
+    modalElement.querySelector('[data-action="close-modal"]').onclick = () => {
+        modalElement.removeEventListener('click', addPaymentHandler);
+        originalClose();
+    };
 
-async function openNewSaleModal() {
-    const clientsOptions = localState.clients.map(c => `<option value="${c.id}">${c.name} - ${c.phone}</option>`).join('');
-    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
-    const contentHTML = `
-        <form id="new-sale-form" class="space-y-4">
-            <div>
-                <label for="new-sale-client" class="block text-sm font-medium text-gray-700">Cliente</label>
-                <select id="new-sale-client" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um cliente...</option>
-                    ${clientsOptions}
-                </select>
-                <button type="button" data-action="new-client-from-sale" class="text-sm text-blue-600 hover:underline mt-1">ou Cadastrar Novo Cliente</button>
-            </div>
-            <div>
-                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional Responsável</label>
-                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um profissional...</option>
-                    ${professionalsOptions}
-                </select>
-            </div>
-             <div class="pt-4 border-t">
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Iniciar Venda</button>
-            </div>
-        </form>
-    `;
+    render(); // Renderiza o estado inicial
 
-    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML, maxWidth: 'max-w-md' });
-
-    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
 }
 
 
@@ -533,7 +623,6 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     let itemRemoved = false;
     
-    // **CORREÇÃO APLICADA AQUI**
     // Prioriza a remoção de 'comandaItems' antes de 'services'
     const comandaItemIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
 
@@ -550,7 +639,7 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     
     if (itemRemoved) {
         try {
-            // A API de update geral do agendamento lida com a atualização de ambos os arrays
+            // Chama a rota de atualização do agendamento com o objeto comanda modificado
             await appointmentsApi.updateAppointment(comanda.id, comanda);
             showNotification('Sucesso', 'Item removido!', 'success');
             // Re-renderiza localmente para refletir a mudança imediatamente
@@ -663,6 +752,7 @@ export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
     renderPageLayout();
 
+    // Remove listeners antigos para evitar duplicação (boas práticas)
     if (pageEventListener) {
         contentDiv.removeEventListener('click', pageEventListener);
         contentDiv.removeEventListener('change', pageEventListener);
@@ -687,9 +777,58 @@ export async function loadComandasPage(params = {}) {
             const comandaId = target.dataset.id;
             
             switch (action) {
-                case 'new-sale': openNewSaleModal(); break;
+                // Botão + NOVA VENDA
+                case 'new-sale': openNewSaleModal(); break; 
                 case 'add-item': openAddItemModal(); break;
                 case 'checkout': openCheckoutModal(); break;
+                // Botão FECHAR CAIXA (usando novo modal)
+                case 'close-cashier': {
+                    if (!localState.isCashierOpen || !localState.activeCashierSessionId) {
+                        return showNotification('Atenção', 'Não há sessão de caixa aberta para fechar.', 'error');
+                    }
+                    const reportData = await cashierApi.getCloseCashierReport(localState.activeCashierSessionId);
+                    
+                    // SUBSTITUIÇÃO DO PROMPT POR MODAL MODERNO
+                    const finalAmount = await openCashierModal('close', reportData.expectedAmount);
+                    
+                    if (finalAmount === null || isNaN(finalAmount)) return; // Cancelado ou entrada inválida
+                    
+                    const difference = finalAmount - reportData.expectedAmount;
+
+                    try {
+                        await cashierApi.closeCashier(localState.activeCashierSessionId, finalAmount);
+                        // O valor de quebra de caixa (difference) é registrado no backend (routes/cashier.js)
+                        showNotification('Sucesso!', `Caixa fechado. Quebra: R$ ${difference.toFixed(2)}`, 'success');
+                        await fetchAndDisplayData();
+                    } catch (error) {
+                        showNotification('Erro', `Falha ao fechar caixa: ${error.message}`, 'error');
+                    }
+                    break;
+                }
+                // Botão ABRIR CAIXA (usando novo modal)
+                case 'open-cashier': {
+                    const confirmed = await showConfirmation('Abrir Caixa', 'Deseja abrir uma nova sessão de caixa?');
+                    if (confirmed) {
+                        // SUBSTITUIÇÃO DO PROMPT POR MODAL MODERNO
+                        const initialAmount = await openCashierModal('open');
+
+                        if (initialAmount === null || isNaN(initialAmount)) return; // Cancelado ou entrada inválida
+                        
+                        try {
+                            await cashierApi.openCashier(initialAmount);
+                            showNotification('Sucesso!', `Caixa aberto com R$ ${initialAmount.toFixed(2)}.`, 'success');
+                            await fetchAndDisplayData();
+                        } catch (error) {
+                             showNotification('Erro', `Falha ao abrir caixa: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
+                }
+                // Botão VER RELATÓRIO
+                case 'view-sales-report':
+                    navigateTo('sales-report-section');
+                    break;
+                
                 case 'remove-item':
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
                     break;

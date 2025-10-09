@@ -1,4 +1,4 @@
-// js/ui/salesReport.js (Completo e Corrigido com Detalhes da Venda)
+// js/ui/salesReport.js (Versão Final e Corrigida para Mobile-like UX)
 
 // --- 1. IMPORTAÇÕES ---
 import * as reportsApi from '../api/reports.js';
@@ -114,7 +114,10 @@ function renderReportData(data) {
     document.getElementById('summary-avg-ticket').textContent = `R$ ${summary.averageTicket.toFixed(2)}`;
     
     const paymentSummaryBody = document.getElementById('paymentSummaryTableBody');
-    paymentSummaryBody.innerHTML = Object.entries(summary.paymentMethodTotals).map(([method, total]) => `
+    // Mapeia e ordena as formas de pagamento para um visual mais limpo e previsível
+    const sortedPayments = Object.entries(summary.paymentMethodTotals).sort(([, totalA], [, totalB]) => totalB - totalA);
+
+    paymentSummaryBody.innerHTML = sortedPayments.map(([method, total]) => `
         <tr class="border-b">
             <td class="py-2 px-4 font-medium">${method.charAt(0).toUpperCase() + method.slice(1)}</td>
             <td class="py-2 px-4 text-right font-semibold">R$ ${total.toFixed(2)}</td>
@@ -123,18 +126,17 @@ function renderReportData(data) {
     
     const transactionsTableBody = document.getElementById('transactionsTableBody');
     if (transactions.length === 0) {
-        transactionsTableBody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-gray-500">Nenhuma venda encontrada para o período selecionado.</td></tr>`;
+        transactionsTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-gray-500">Nenhuma venda encontrada para o período selecionado.</td></tr>`;
         return;
     }
 
     transactionsTableBody.innerHTML = transactions.map((t, index) => `
         <tr class="border-b hover:bg-gray-50 cursor-pointer" data-transaction-index="${index}">
-            <td class="py-3 px-4">${new Date(t.date).toLocaleString('pt-BR')}</td>
-            <td class="py-3 px-4">${t.client}</td>
-            <td class="py-3 px-4">${t.items}</td>
-            <td class="py-3 px-4">${t.type}</td>
-            <td class="py-3 px-4">${t.responsavelCaixa}</td>
-            <td class="py-3 px-4 text-right font-medium">R$ ${t.total.toFixed(2)}</td>
+            <td class="w-24 py-3 px-4">${new Date(t.date).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+            <td class="w-40 py-3 px-4 truncate max-w-[150px]">${t.client}</td>
+            <td class="w-auto py-3 px-4 truncate max-w-[200px]">${t.items}</td>
+            <td class="w-16 py-3 px-4 text-center text-xs">${t.type}</td>
+            <td class="w-24 py-3 px-4 text-right font-medium">R$ ${t.total.toFixed(2)}</td>
         </tr>
     `).join('');
 
@@ -175,24 +177,23 @@ async function handleGenerateReport() {
         currentReportData = data; // Armazena os dados no cache
 
         mainReportsView.innerHTML = `
-            <div id="salesReportSummaryCards" class="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div class="bg-white p-4 rounded-lg shadow text-center"><h4 class="font-semibold text-gray-500">Receita Total</h4><p id="summary-revenue" class="text-3xl font-bold text-green-600"></p></div>
-                <div class="bg-white p-4 rounded-lg shadow text-center"><h4 class="font-semibold text-gray-500">Vendas Totais</h4><p id="summary-transactions" class="text-3xl font-bold text-blue-600"></p></div>
-                <div class="bg-white p-4 rounded-lg shadow text-center"><h4 class="font-semibold text-gray-500">Ticket Médio</h4><p id="summary-avg-ticket" class="text-3xl font-bold text-indigo-600"></p></div>
+            <div id="salesReportSummaryCards" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white p-4 rounded-lg shadow text-center border-b-4 border-green-500"><h4 class="font-semibold text-gray-500">Receita Total</h4><p id="summary-revenue" class="text-2xl md:text-3xl font-bold text-green-600"></p></div>
+                <div class="bg-white p-4 rounded-lg shadow text-center border-b-4 border-blue-500"><h4 class="font-semibold text-gray-500">Vendas Totais</h4><p id="summary-transactions" class="text-2xl md:text-3xl font-bold text-blue-600"></p></div>
+                <div class="bg-white p-4 rounded-lg shadow text-center border-b-4 border-indigo-500"><h4 class="font-semibold text-gray-500">Ticket Médio</h4><p id="summary-avg-ticket" class="text-2xl md:text-3xl font-bold text-indigo-600"></p></div>
                 <div class="bg-white p-4 rounded-lg shadow"><h4 class="font-semibold text-gray-700 text-center mb-2">Receita por Pagamento</h4><table class="w-full text-sm"><tbody id="paymentSummaryTableBody"></tbody></table></div>
             </div>
-            <div class="bg-white p-6 rounded-lg shadow mt-8">
+            <div class="bg-white p-6 rounded-lg shadow mt-4">
                 <h3 class="text-xl font-semibold mb-4">Detalhes das Transações</h3>
                 <p class="text-sm text-gray-500 mb-4">Dê um duplo clique numa linha para ver mais detalhes.</p>
-                <div class="overflow-y-auto max-h-[60vh]">
-                    <table id="transactionsTable" class="min-w-full text-sm">
+                <div class="overflow-x-auto">
+                    <table id="transactionsTable" class="min-w-full text-sm table-fixed">
                         <thead class="bg-gray-100 sticky top-0"><tr>
-                            <th class="px-4 py-2 text-left font-semibold">Data/Hora</th>
-                            <th class="px-4 py-2 text-left font-semibold">Cliente</th>
-                            <th class="px-4 py-2 text-left font-semibold">Itens</th>
-                            <th class="px-4 py-2 text-left font-semibold">Tipo</th>
-                            <th class="px-4 py-2 text-left font-semibold">Responsável</th>
-                            <th class="px-4 py-2 text-right font-semibold">Valor Total</th>
+                            <th class="w-24 px-4 py-2 text-left font-semibold">Data/Hora</th>
+                            <th class="w-40 px-4 py-2 text-left font-semibold">Cliente</th>
+                            <th class="w-auto px-4 py-2 text-left font-semibold">Itens</th>
+                            <th class="w-16 px-4 py-2 text-center font-semibold">Tipo</th>
+                            <th class="w-24 px-4 py-2 text-right font-semibold">Valor Total</th>
                         </tr></thead>
                         <tbody id="transactionsTableBody" class="divide-y"></tbody>
                     </table>
@@ -219,14 +220,22 @@ export async function loadSalesReportPage() {
         <section>
             <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <h2 class="text-3xl font-bold text-gray-800">Relatório de Vendas</h2>
-                <div class="flex items-center gap-4 bg-white p-3 rounded-lg shadow-md">
-                    <div><label for="reportStartDate" class="text-sm font-medium">De:</label><input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="p-2 border rounded-md"></div>
-                    <div><label for="reportEndDate" class="text-sm font-medium">Até:</label><input type="date" id="reportEndDate" value="${today}" class="p-2 border rounded-md"></div>
-                    <div><label for="cashierSessionFilter" class="text-sm font-medium">Caixa:</label><select id="cashierSessionFilter" class="p-2 border rounded-md"><option value="all">Todos os Caixas</option></select></div>
-                    <button id="generateReportBtn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Gerar Relatório</button>
-                    <button id="exportPdfBtn" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Exportar PDF</button>
+                
+                <div class="w-full bg-white p-3 rounded-lg shadow-md space-y-3">
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1"><label for="reportStartDate" class="text-sm font-medium">De:</label><input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="p-2 border rounded-md w-full"></div>
+                        <div class="flex-1"><label for="reportEndDate" class="text-sm font-medium">Até:</label><input type="date" id="reportEndDate" value="${today}" class="p-2 border rounded-md w-full"></div>
+                    </div>
+                    <div class="flex flex-col gap-3">
+                         <div><label for="cashierSessionFilter" class="text-sm font-medium">Caixa:</label><select id="cashierSessionFilter" class="p-2 border rounded-md w-full bg-white"><option value="all">Todos os Caixas</option></select></div>
+                         <div class="flex gap-2">
+                             <button id="generateReportBtn" class="flex-1 py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Gerar Relatório</button>
+                             <button id="exportPdfBtn" class="flex-1 py-3 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Exportar PDF</button>
+                         </div>
+                    </div>
                 </div>
             </div>
+            
             <div id="main-reports-view">
                 </div>
         </section>`;
@@ -242,15 +251,18 @@ export async function loadSalesReportPage() {
     try {
         const sessions = await cashierApi.getCashierHistory();
         const sessionFilter = document.getElementById('cashierSessionFilter');
+        
+        // CORREÇÃO UX: Simplifica o texto do filtro de caixas
         sessions.forEach(session => {
-            const closeDate = new Date(session.closeTime).toLocaleDateString('pt-BR');
-            sessionFilter.innerHTML += `<option value="${session.id}">Caixa de ${closeDate} (${session.closedByName})</option>`;
+            const openTime = new Date(session.openTime).toLocaleString('pt-BR', { dateStyle: 'short' });
+            const closedByName = session.closedByName || 'N/A';
+
+            // Novo formato: [Nome do Responsável] - DD/MM
+            sessionFilter.innerHTML += `<option value="${session.id}">${closedByName} - ${openTime}</option>`;
         });
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar o histórico de caixas para o filtro.', 'error');
-        // O fluxo continua, pois a lista de sessões é opcional para gerar o relatório principal
     }
     
-    // CORREÇÃO: Chama handleGenerateReport fora do bloco try/catch para garantir que o relatório principal seja sempre gerado
     await handleGenerateReport();
 }

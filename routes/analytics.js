@@ -159,7 +159,7 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
 // NOVO ENDPOINT: Detalhes de um dia específico
 router.get('/:establishmentId/daily-details', async (req, res) => {
     const { establishmentId } = req.params;
-    const { year, month, day, professionalId } = req.query;
+    const { year, month, day, professionalId: filterProfessionalId } = req.query; // Renomeado para evitar conflito
 
     if (!year || !month || !day) {
         return res.status(400).json({ message: 'Ano, mês e dia são obrigatórios.' });
@@ -181,10 +181,15 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             .where('startTime', '>=', startDate)
             .where('startTime', '<=', endDate);
             
-        if (professionalId) {
-            appointmentsQuery = appointmentsQuery.where('professionalId', '==', professionalId);
-            salesQuery = salesQuery.where('professionalId', '==', professionalId);
+        if (filterProfessionalId) {
+            appointmentsQuery = appointmentsQuery.where('professionalId', '==', filterProfessionalId);
+            salesQuery = salesQuery.where('professionalId', '==', filterProfessionalId);
         }
+
+        // 1. Busca os profissionais para mapear o nome
+        const professionalsSnapshot = await db.collection('professionals')
+            .where('establishmentId', '==', establishmentId).get();
+        const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
 
         const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
             appointmentsQuery.get(),
@@ -198,9 +203,14 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             const data = doc.data();
             const value = data.transaction?.totalAmount || 0;
             totalRevenue += value;
+            
+            // Mapeia o nome do profissional a partir do ID
+            const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
+
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
+                professionalName: professionalName, // <-- CORRIGIDO
                 items: [...(data.services || []), ...(data.comandaItems || [])].map(i => i.name).join(', '),
                 value: value,
                 type: 'Agendamento'
@@ -211,9 +221,14 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             const data = doc.data();
             const value = data.totalAmount || 0;
             totalRevenue += value;
+            
+            // Mapeia o nome do profissional a partir do ID
+            const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
+
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
+                professionalName: professionalName, // <-- CORRIGIDO
                 items: data.items.map(i => i.name).join(', '),
                 value: value,
                 type: 'Venda Avulsa'

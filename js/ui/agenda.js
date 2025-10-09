@@ -189,8 +189,10 @@ function renderListView(allEvents) {
                             <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
                                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
                             </a>
-                        ` : ''}
-                        <button data-action="edit-appointment" class="action-btn" title="Editar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn" title="Editar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                        ` : `
+                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn opacity-40 cursor-not-allowed" title="Finalizado - Não editável" disabled><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                        `}
                         <button data-action="delete-appointment" data-id="${event.id}" class="action-btn" title="Apagar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                     </div>
                 </div>
@@ -250,9 +252,9 @@ function renderWeekView(allEvents) {
                             ${!isCompleted ? `
                                 <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
-                            </a>
-                            ` : ''}
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="text-gray-600 hover:text-blue-600 p-1" title="Editar">
+                                </a>
+                                ` : ''}
+                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="text-gray-600 hover:text-blue-600 p-1 ${isCompleted ? 'opacity-40 cursor-not-allowed' : ''}" title="Editar">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
                             </button>
                             <button data-action="delete-appointment" data-id="${event.id}" class="text-gray-600 hover:text-red-600 p-1" title="Apagar">
@@ -732,7 +734,7 @@ function renderStep1_Client(appointment, isNavigating) {
                     <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
                 </div>
             </div>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
                 <div class="relative flex-grow">
                     <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -931,19 +933,30 @@ function handleProfessionalSearchInModal(searchTerm) {
 async function openAppointmentModal(appointment = null, isNavigating = false) {
     const modal = document.getElementById('appointmentModal');
     
-    // Reinicia o estado na abertura inicial (não navegação)
+    // CORREÇÃO: Reinicia o estado na abertura inicial (não navegação) e usa dados existentes para pré-preencher
     if (!isNavigating) {
+        // Formata a data de início para o valor inicial do input
+        const initialDateString = appointment?.startTime 
+            ? new Date(appointment.startTime).toISOString().split('T')[0] 
+            : new Date().toISOString().split('T')[0];
+
+        // Formata a hora de início para o valor inicial do input (usado para seleção de slot)
+        const initialTimeString = appointment?.startTime
+            ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
+            : null;
+
         newAppointmentState = {
             step: 1,
             data: {
                 clientName: appointment?.clientName || '',
                 clientPhone: appointment?.clientPhone || '',
-                selectedServiceIds: appointment?.services?.map(s => s.id) || [],
+                // CORREÇÃO: Usa os IDs dos serviços existentes
+                selectedServiceIds: appointment?.services?.map(s => s.id) || [], 
                 professionalId: appointment?.professionalId || null,
                 professionalName: appointment?.professionalName || '',
-                date: null,
-                time: null,
-                redeemedReward: null
+                date: initialDateString,
+                time: initialTimeString,
+                redeemedReward: appointment?.redeemedReward || null
             }
         };
     }
@@ -1107,13 +1120,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         if (clientPhoneInput) clientPhoneInput.dispatchEvent(new Event('blur'));
 
     }
-
-    // Adicionado para corrigir o botão Cancelar
-    modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    });
 }
 
 
@@ -1261,7 +1267,16 @@ export async function loadAgendaPage() {
                 openAppointmentModal();
                 break;
             case 'edit-appointment':
-                if (apptData) openAppointmentModal(apptData);
+                if (!apptData) return;
+                
+                // --- CORREÇÃO SOLICITADA: Bloquear edição se finalizada ---
+                if (apptData.status === 'completed') {
+                    showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
+                    return;
+                }
+                // --- FIM CORREÇÃO SOLICITADA ---
+
+                openAppointmentModal(apptData);
                 break;
             case 'delete-appointment': {
                 const id = targetElement.dataset.id;
