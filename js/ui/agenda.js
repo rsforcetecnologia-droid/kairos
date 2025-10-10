@@ -17,14 +17,14 @@ const API_BASE_URL = window.location.origin;
 let currentTimeInterval = null;
 // NOVA PALETA DE CORES DE ALTO CONTRASTE
 const colorPalette = [
-    { bg: '#e0e7ff', border: '#4f46e5' }, // Indigo
-    { bg: '#d1fae5', border: '#059669' }, // Emerald
-    { bg: '#ffe4e6', border: '#e11d48' }, // Rose
-    { bg: '#fef3c7', border: '#d97706' }, // Amber
-    { bg: '#cffafe', border: '#0e7490' }, // Cyan
-    { bg: '#e0f2fe', border: '#0284c7' }, // Sky
-    { bg: '#ede9fe', border: '#7c3aed' }, // Violet
-    { bg: '#fce7f3', border: '#db2777' }, // Fuchsia
+    { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5' }, // Indigo
+    { bg: '#d1fae5', border: '#059669', main: '#059669' }, // Emerald
+    { bg: '#ffe4e6', border: '#e11d48', main: '#e11d48' }, // Rose
+    { bg: '#fef3c7', border: '#d97706', main: '#d97706' }, // Amber
+    { bg: '#cffafe', border: '#0e7490', main: '#0e7490' }, // Cyan
+    { bg: '#e0f2fe', border: '#0284c7', main: '#0284c7' }, // Sky
+    { bg: '#ede9fe', border: '#7c3aed', main: '#7c3aed' }, // Violet
+    { bg: '#fce7f3', border: '#db2777', main: '#db2777' }, // Fuchsia
 ];
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
@@ -111,23 +111,24 @@ function renderProfessionalSelector() {
         const defaultColor = colorPalette[0];
         const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
         
-        // Usa a cor do tema dinâmico se definida no CSS (melhor experiência visual)
-        const cssMainColor = getComputedStyle(document.body).getPropertyValue('--theme-main') || '#4f46e5';
-
         const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
         const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
         const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
         
+        // CORREÇÃO (BUG 1): Adiciona a lógica da moldura colorida via style inline
+        const borderColor = isSelected ? profColor.border : 'transparent'; // Use 'border' for the visible color
+        const borderStyle = `border: 3px solid ${borderColor}; box-shadow: ${isSelected ? '0 0 0 2px ' + profColor.border : 'none'};`;
+
         return `
             <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
                  data-action="select-professional" 
                  data-prof-id="${prof.id}">
                 
                 ${prof.id === 'all' 
-                    ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText};">
+                    ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
                         ${initials}
                        </div>`
-                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" />`
+                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${borderStyle}" />`
                 }
                 
                 <span class="prof-card-name">${profName}</span>
@@ -179,6 +180,9 @@ function renderListView(allEvents) {
         const statusText = isCompleted ? 'Finalizado' : 'Aberto';
         const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
         
+        // --- Verifica se há resgate de prêmio ---
+        const isRedeemed = event.redeemedReward?.points > 0;
+        
         // --- Cria o link do WhatsApp ---
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
 
@@ -186,7 +190,13 @@ function renderListView(allEvents) {
         return `
             <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
                 <div class="time-info" data-action="open-comanda"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
-                <div class="details-info" data-action="open-comanda"><p class="font-bold text-gray-800">${event.clientName}</p><p class="text-sm text-gray-600">${event.serviceName}</p><p class="text-sm text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}</p></div>
+                <div class="details-info" data-action="open-comanda">
+                    <p class="font-bold text-gray-800">${event.clientName}</p>
+                    <p class="text-sm text-gray-600">${event.serviceName}</p>
+                    <p class="text-sm text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}
+                        ${isRedeemed ? '<span class="text-xs font-semibold text-purple-600 ml-1">(Resgate de Prémio)</span>' : ''}
+                    </p>
+                </div>
                 <div class="status-info">
                     <span class="status-badge ${statusClass}">${statusText}</span>
                     <div class="card-actions flex gap-1 items-center">
@@ -243,6 +253,9 @@ function renderWeekView(allEvents) {
 
                 const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
                 
+                // --- Verifica se há resgate de prêmio ---
+                const isRedeemed = event.redeemedReward?.points > 0;
+
                 // --- Cria o link do WhatsApp para a Visão Semanal ---
                 const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
                 const isCompleted = event.status === 'completed';
@@ -253,6 +266,7 @@ function renderWeekView(allEvents) {
                         <div class="cursor-pointer flex-grow" data-action="open-comanda" data-appointment='${apptDataString}'>
                             <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${event.clientName}</p>
                             <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
+                            ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate de Prémio</p>' : ''}
                         </div>
                         <div class="flex items-center justify-end gap-2 mt-2 pt-1 border-t border-black border-opacity-10">
                             ${!isCompleted ? `
