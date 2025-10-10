@@ -15,8 +15,10 @@ const modules = {
     'produtos-section': 'Produtos',
     'profissionais-section': 'Profissionais',
     'clientes-section': 'Clientes',
-    'estabelecimento-section': 'Estabelecimento',
-    'users-section': 'Usuários e Acessos'
+    'packages-section': 'Pacotes', // ADICIONADO
+    'commissions-section': 'Comissões', // ADICIONADO
+    'estabelecimento-section': 'Configurações do Estabelecimento', // Corrigido/Ajustado rótulo
+    'users-section': 'Usuários e Acessos' // Assumido que era a intenção original
 };
 const permissions = {
     view: 'Visualizar',
@@ -99,31 +101,35 @@ function renderPermissionsForm(currentPermissions = {}) {
         const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
         const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
         
-        const specialPermissionHtml = isAgendaOrComandas ? `
-            <label class="flex items-center space-x-2 cursor-pointer mt-2 col-span-3">
+        const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
+             <div class="flex flex-col items-center space-y-1 cursor-pointer">
                 <div class="relative">
-                    <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only" 
-                        ${isViewAllChecked ? 'checked' : ''}>
+                    <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only" 
+                        ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
                     <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
                 </div>
-                <span class="text-sm font-semibold text-indigo-600">Ver dados de TODOS os Profissionais</span>
-            </label>
+                <span class="text-xs text-gray-600">${pLabel}</span>
+            </div>
+        `).join('');
+
+        const specialPermissionHtml = isAgendaOrComandas ? `
+            <div class="col-span-full pt-2 mt-2 border-t border-gray-200">
+                <label class="flex items-center space-x-3 cursor-pointer">
+                    <div class="relative">
+                        <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only" 
+                            ${isViewAllChecked ? 'checked' : ''}>
+                        <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                    </div>
+                    <span class="text-sm font-semibold text-indigo-600">Ver todos os dados da Equipe</span>
+                </label>
+            </div>
         ` : '';
 
         return `
-        <div class="grid grid-cols-1 md:grid-cols-3 items-center gap-4 py-3 border-b last:border-b-0">
-            <span class="font-semibold text-gray-800">${title}</span>
-            <div class="md:col-span-2 grid grid-cols-3 gap-2">
-                ${Object.entries(permissions).map(([pKey, pLabel]) => `
-                    <label class="flex flex-col items-center space-y-1 cursor-pointer">
-                        <div class="relative">
-                            <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only" 
-                                ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
-                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                        </div>
-                        <span class="text-sm text-gray-600">${pLabel}</span>
-                    </label>
-                `).join('')}
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 space-y-3">
+            <h4 class="font-bold text-gray-800 border-b pb-2">${title}</h4>
+            <div class="grid grid-cols-3 gap-2">
+                ${permissionToggles}
             </div>
             ${specialPermissionHtml}
         </div>
@@ -159,48 +165,49 @@ async function showUserFormView(user = null) {
     formView.querySelector('#userFormTitle').textContent = isEditing ? `Editar Usuário: ${user.name}` : 'Novo Usuário';
 
     const form = formView.querySelector('#userForm');
+    
+    // --- NOVO HTML COM ESTILO MODERNO E MOBILE-LIKE ---
     form.innerHTML = `
-        <div class="bg-white p-8 rounded-lg shadow-md space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label for="userName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
-                    <input type="text" id="userName" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" value="${user?.name || ''}">
-                </div>
-                <div>
-                    <label for="userEmail" class="block text-sm font-medium text-gray-700">Email</label>
-                    <input type="email" id="userEmail" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-100" value="${user?.email || ''}" ${isEditing ? 'disabled' : ''}>
-                </div>
-            </div>
+        <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl space-y-6">
             
-            <div class="grid grid-cols-1 gap-6">
-                <div>
-                    <label for="userProfessionalId" class="block text-sm font-medium text-gray-700">Associar a Profissional (Opcional)</label>
-                    <select id="userProfessionalId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                        ${renderProfessionalOptions(user?.professionalId)}
-                    </select>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="userName">Nome Completo</label>
+                    <input type="text" id="userName" required value="${user?.name || ''}">
+                </div>
+                <div class="form-group">
+                    <label for="userEmail">Email</label>
+                    <input type="email" id="userEmail" required value="${user?.email || ''}" ${isEditing ? 'disabled' : ''}>
+                    ${isEditing ? '<p class="text-xs text-gray-500 mt-1">O e-mail não pode ser alterado.</p>' : ''}
                 </div>
             </div>
 
+            <div class="form-group">
+                <label for="userProfessionalId">Associar a Profissional (Opcional)</label>
+                <select id="userProfessionalId" class="mt-1 block w-full">
+                    ${renderProfessionalOptions(user?.professionalId)}
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Define qual profissional este usuário representa na Agenda/Comandas.</p>
+            </div>
+            
             ${!isEditing ? `
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label for="userPassword" class="block text-sm font-medium text-gray-700">Senha</label>
-                    <input type="password" id="userPassword" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
-                </div>
+            <div class="form-group border-t pt-4">
+                <label for="userPassword">Senha Provisória</label>
+                <input type="password" id="userPassword" required placeholder="Mínimo 6 caracteres">
             </div>
             ` : ''}
 
             ${isEditing ? `
-            <div class="border-t pt-6">
+            <div class="border-t pt-6 bg-gray-50 p-4 rounded-lg">
                 <h3 class="text-lg font-medium leading-6 text-gray-900">Segurança</h3>
                 <div id="password-change-container" class="mt-4">
-                    <button type="button" data-action="show-password-form" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">Alterar Senha</button>
-                    <div id="password-form" class="hidden mt-4 space-y-4 max-w-sm">
-                        <div>
-                            <label for="userNewPassword" class="block text-sm font-medium text-gray-700">Nova Senha</label>
-                            <input type="password" id="userNewPassword" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                    <button type="button" data-action="show-password-form" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition">Alterar Senha</button>
+                    <div id="password-form" class="hidden mt-4 space-y-4 max-w-xs">
+                        <div class="form-group">
+                            <label for="userNewPassword">Nova Senha</label>
+                            <input type="password" id="userNewPassword" placeholder="Nova Senha">
                         </div>
-                        <div class="flex gap-4">
+                        <div class="flex gap-2">
                              <button type="button" data-action="cancel-password-change" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">Cancelar</button>
                              <button type="button" data-action="save-password" class="w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Salvar Nova Senha</button>
                         </div>
@@ -209,16 +216,16 @@ async function showUserFormView(user = null) {
             </div>
             ` : ''}
 
-            <div>
-                <h3 class="text-xl font-semibold mb-2 border-t pt-6">Permissões de Acesso</h3>
-                <div class="space-y-2 bg-gray-50 p-4 rounded-md">
+            <div class="border-t pt-6">
+                <h3 class="text-xl font-semibold mb-4 text-gray-900">Permissões de Acesso (Módulos)</h3>
+                <div class="space-y-3">
                     ${renderPermissionsForm(user?.permissions)}
                 </div>
             </div>
 
             <div class="flex gap-4 pt-6 border-t">
-                <button type="button" data-action="back-to-list" class="w-full py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">Cancelar</button>
-                <button type="submit" class="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Alterações</button>
+                <button type="button" data-action="back-to-list" class="flex-1 py-3 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400">Cancelar</button>
+                <button type="submit" class="flex-1 py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Alterações</button>
             </div>
         </div>
     `;
