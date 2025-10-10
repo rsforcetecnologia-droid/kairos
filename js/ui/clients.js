@@ -3,7 +3,7 @@
 import * as clientsApi from '../api/clients.js';
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js'; // <-- NOVA IMPORTAÇÃO
 import { navigateTo } from '../main.js'; // <-- NOVA IMPORTAÇÃO
 
 const contentDiv = document.getElementById('content');
@@ -61,7 +61,11 @@ function renderDetailTabs(activeTab = 'cadastro') {
 
     // Adiciona listeners de clique às abas
     tabContainer.querySelectorAll('.tab-btn').forEach(button => {
-        button.addEventListener('click', () => renderDetailContent(button.dataset.tab));
+        button.addEventListener('click', (e) => { // CORREÇÃO: Adicionado 'e'
+            e.preventDefault(); // CORREÇÃO: Previne o comportamento padrão do botão
+            e.stopPropagation(); // CORREÇÃO: Impede que o clique suba e feche o modal
+            renderDetailContent(button.dataset.tab);
+        });
     });
 }
 
@@ -547,84 +551,84 @@ export async function loadClientsPage() {
     } catch (error) {
         document.getElementById('clientsList').innerHTML = '<p class="text-red-500 col-span-full text-center">Erro ao carregar dados dos clientes.</p>';
     }
-}
 
-// --- GESTOR DE EVENTOS GLOBAL DA PÁGINA ---
-contentDiv.addEventListener('click', async (e) => {
-    const actionTarget = e.target.closest('[data-action]');
-    const filterBtn = e.target.closest('.client-filter-btn');
-    const cardTarget = e.target.closest('.client-card');
+    // --- GESTOR DE EVENTOS GLOBAL DA PÁGINA ---
+    contentDiv.addEventListener('click', async (e) => {
+        const actionTarget = e.target.closest('[data-action]');
+        const filterBtn = e.target.closest('.client-filter-btn');
+        const cardTarget = e.target.closest('.client-card');
 
-    if (filterBtn) {
-        handleFilterClick(filterBtn.dataset.filterKey);
-        return;
-    }
-
-    if (currentView === 'list') {
-        if (actionTarget) {
-            const action = actionTarget.dataset.action;
-            if (action === 'new-client') {
-                openClientDetailModal(null);
-            } else if (action === 'print-list') {
-                window.print();
-            }
-        } else if (cardTarget) {
-            const clientId = cardTarget.dataset.clientId;
-            const client = allClientsData.find(c => c.id === clientId);
-            if (client) {
-                openClientDetailModal(client);
-            }
+        if (filterBtn) {
+            handleFilterClick(filterBtn.dataset.filterKey);
+            return;
         }
-    } else if (currentView === 'detail') {
-        if (actionTarget) {
-            const action = actionTarget.dataset.action;
-            switch (action) {
-                case 'save-client':
-                    // O submit do formulário já chama handleSaveClient
-                    break;
-                case 'redeem-reward':
-                    const points = parseInt(actionTarget.dataset.points, 10);
-                    const reward = actionTarget.dataset.reward;
-                    const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
-                    if (confirmed) {
-                        try {
-                            await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
-                            showNotification('Prémio resgatado com sucesso!', 'success');
-                            // Recarrega os dados do cliente e a aba de fidelidade
-                            const updatedClients = await clientsApi.getClients(state.establishmentId);
-                            allClientsData = updatedClients;
-                            const updatedClient = allClientsData.find(c => c.id === currentClient.id);
-                            if(updatedClient) currentClient = updatedClient;
-                            renderDetailContent('fidelidade');
-                        } catch (error) {
-                            showNotification(`Erro ao resgatar: ${error.message}`, 'error');
+
+        if (currentView === 'list') {
+            if (actionTarget) {
+                const action = actionTarget.dataset.action;
+                if (action === 'new-client') {
+                    openClientDetailModal(null);
+                } else if (action === 'print-list') {
+                    window.print();
+                }
+            } else if (cardTarget) {
+                const clientId = cardTarget.dataset.clientId;
+                const client = allClientsData.find(c => c.id === clientId);
+                if (client) {
+                    openClientDetailModal(client);
+                }
+            }
+        } else if (currentView === 'detail') {
+            if (actionTarget) {
+                const action = actionTarget.dataset.action;
+                switch (action) {
+                    case 'save-client':
+                        // O submit do formulário já chama handleSaveClient
+                        break;
+                    case 'redeem-reward':
+                        const points = parseInt(actionTarget.dataset.points, 10);
+                        const reward = actionTarget.dataset.reward;
+                        const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
+                        if (confirmed) {
+                            try {
+                                await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
+                                showNotification('Prémio resgatado com sucesso!', 'success');
+                                // Recarrega os dados do cliente e a aba de fidelidade
+                                const updatedClients = await clientsApi.getClients(state.establishmentId);
+                                allClientsData = updatedClients;
+                                const updatedClient = allClientsData.find(c => c.id === currentClient.id);
+                                if(updatedClient) currentClient = updatedClient;
+                                renderDetailContent('fidelidade');
+                            } catch (error) {
+                                showNotification(`Erro ao resgatar: ${error.message}`, 'error');
+                            }
                         }
+                        break;
+                    case 'open-comanda-from-history': { // <-- NOVO: Abre Comanda do Histórico
+                        const apptId = actionTarget.dataset.appointmentId;
+                        if (apptId) {
+                            // 1. Fecha o modal de clientes
+                            document.getElementById('genericModal').style.display = 'none';
+                            
+                            // 2. Navega para a seção Comandas, passando o ID e o filtro 'finalizada'
+                            navigateTo('comandas-section', { 
+                                selectedAppointmentId: apptId, 
+                                initialFilter: 'finalizada'
+                            });
+                        }
+                        break;
                     }
-                    break;
-                case 'open-comanda-from-history': { // <-- NOVO: Abre Comanda do Histórico
-                    const apptId = actionTarget.dataset.appointmentId;
-                    if (apptId) {
-                        // 1. Fecha o modal de clientes
-                        document.getElementById('genericModal').style.display = 'none';
-                        
-                        // 2. Navega para a seção Comandas, passando o ID e o filtro 'finalizada'
-                        navigateTo('comandas-section', { 
-                            selectedAppointmentId: apptId, 
-                            initialFilter: 'finalizada'
-                        });
-                    }
-                    break;
                 }
             }
         }
-    }
-});
+    });
 
 
-contentDiv.addEventListener('input', (e) => {
-    if (e.target.id === 'clientSearchInput') {
-        const searchTerm = e.target.value;
-        const filtered = getFilteredClients(searchTerm, activeFilterKey);
-        renderClientListWithFilters(filtered, allClientsData.length);
-    }
-});
+    contentDiv.addEventListener('input', (e) => {
+        if (e.target.id === 'clientSearchInput') {
+            const searchTerm = e.target.value;
+            const filtered = getFilteredClients(searchTerm, activeFilterKey);
+            renderClientListWithFilters(filtered, allClientsData.length);
+        }
+    });
+}

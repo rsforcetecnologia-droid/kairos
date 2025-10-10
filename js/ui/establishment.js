@@ -3,7 +3,7 @@ import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
-import { updatePassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { updatePassword, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // CORREÇÃO: updateProfile importado
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
@@ -51,13 +51,36 @@ async function handleSave(formData, event) {
     }
     try {
         const existingData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
-        const updatedData = { ...existingData, ...formData };
-        await establishmentApi.updateEstablishmentDetails(state.establishmentId, updatedData);
-        showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
-        if (formData.name) {
-            document.getElementById('panelEstablishmentName').textContent = formData.name;
-            state.establishmentName = formData.name;
+        const updatePromises = [];
+        
+        const { ownerName, ...firestoreData } = formData; // Separa ownerName
+
+        // CORREÇÃO: Atualiza o displayName do Dono usando a função importada
+        if (ownerName && ownerName !== state.userName) {
+             const user = auth.currentUser;
+             if (user) {
+                 updatePromises.push(updateProfile(user, { displayName: ownerName })
+                     .then(() => {
+                         state.userName = ownerName;
+                         // A atualização do nome no sidebar é feita pelo main.js após o re-render
+                     })
+                 );
+             }
         }
+        
+        // Atualiza os dados do estabelecimento no Firestore
+        const updatedData = { ...existingData, ...firestoreData };
+        updatePromises.push(establishmentApi.updateEstablishmentDetails(state.establishmentId, updatedData));
+
+        await Promise.all(updatePromises);
+        
+        showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
+        
+        if (firestoreData.name) {
+            document.getElementById('panelEstablishmentName').textContent = firestoreData.name;
+            state.establishmentName = firestoreData.name;
+        }
+        
     } catch (error) {
         showNotification('Erro', `Não foi possível salvar: ${error.message}`, 'error');
     } finally {
@@ -75,32 +98,53 @@ function renderPersonalDataSection(data) {
     container.innerHTML = `
         <div class="bg-white p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Dados Pessoais e de Contato</h3>
+                <h3 class="text-xl font-bold text-gray-800">Dados Gerais e de Contato</h3>
                 <button type="submit" form="personal-data-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
             </div>
             <form id="personal-data-form" class="space-y-4">
+                
                 <div>
                     <label for="ownerName" class="block text-sm font-medium text-gray-700">Seu nome (Dono)</label>
-                    <input type="text" id="ownerName" class="mt-1 w-full p-2 border border-gray-300 rounded-md bg-gray-100" value="${state.userName || ''}" disabled>
+                    <input type="text" id="ownerName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${state.userName || ''}">
                 </div>
+                
                 <div>
                     <label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome do Salão ou Barbearia</label>
                     <input type="text" id="establishmentName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.name || ''}">
                 </div>
+                
                 <div>
                     <label for="establishmentPhone" class="block text-sm font-medium text-gray-700">Telefone Principal</label>
                     <input type="tel" id="establishmentPhone" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.phone || ''}">
                 </div>
-                 <div><label for="establishmentCnpjCpf" class="block text-sm font-medium text-gray-700">CNPJ / CPF</label><input type="text" id="establishmentCnpjCpf" value="${data.document || ''}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                <div><label for="establishmentEmail" class="block text-sm font-medium text-gray-700">E-mail de Contato</label><input type="email" id="establishmentEmail" value="${data.email || ''}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                <div><label for="establishmentAddress" class="block text-sm font-medium text-gray-700">Endereço Completo</label><input type="text" id="establishmentAddress" value="${data.address || ''}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
-                <div><label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label><input type="url" id="establishmentWebsite" value="${data.website || ''}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
+                
+                <div>
+                    <label for="establishmentCnpjCpf" class="block text-sm font-medium text-gray-700">CNPJ / CPF</label>
+                    <input type="text" id="establishmentCnpjCpf" value="${data.document || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                
+                <div>
+                    <label for="establishmentEmail" class="block text-sm font-medium text-gray-700">E-mail de Contato</label>
+                    <input type="email" id="establishmentEmail" value="${data.email || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                
+                <div>
+                    <label for="establishmentAddress" class="block text-sm font-medium text-gray-700">Endereço Completo</label>
+                    <input type="text" id="establishmentAddress" value="${data.address || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                
+                <div>
+                    <label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label>
+                    <input type="url" id="establishmentWebsite" value="${data.website || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                </div>
+                
             </form>
         </div>
     `;
     document.getElementById('personal-data-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
+            ownerName: document.getElementById('ownerName').value, // Novo campo
             name: document.getElementById('establishmentName').value,
             phone: document.getElementById('establishmentPhone').value,
             document: document.getElementById('establishmentCnpjCpf').value,
@@ -597,4 +641,3 @@ export async function loadEstablishmentPage() {
     // Inicia na primeira secção
     navigate('personal-data');
 }
-

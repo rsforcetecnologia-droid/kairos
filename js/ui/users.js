@@ -51,12 +51,11 @@ function renderUsersList(users) {
         // Adiciona a busca pelo nome do profissional associado
         const professional = state.professionals.find(p => p.id === user.professionalId); 
         const professionalName = professional ? professional.name : 'N/A';
+        const photoSrc = professional?.photo || `https://placehold.co/64x64/E2E8F0/4A5568?text=${encodeURIComponent(user.name.charAt(0))}`;
 
         return `
         <div class="bg-white rounded-lg shadow-md p-4 flex flex-col text-center transition-opacity ${!isActive ? 'opacity-60' : ''}">
-            <div class="w-20 h-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-3xl mx-auto mb-3">
-                ${user.name.charAt(0).toUpperCase()}
-            </div>
+            <img src="${photoSrc}" alt="Foto de Perfil" class="w-20 h-20 rounded-full mx-auto mb-3 border-4 border-gray-200 object-cover">
             <div class="flex-grow">
                 <p class="font-bold text-gray-800">${user.name}</p>
                 <p class="text-sm text-gray-500 truncate">${user.email}</p>
@@ -152,6 +151,29 @@ async function showUserFormView(user = null) {
         }
     }
     
+    // Helper para encontrar o profissional
+    const getProfessionalById = (id) => professionals.find(p => p.id === id);
+    
+    // Helper para determinar o URL da foto e iniciais
+    const renderUserPhotoPreview = (profId, userName) => {
+        const prof = getProfessionalById(profId);
+        const photo = prof?.photo;
+        const initials = userName ? userName.charAt(0).toUpperCase() : 'U';
+        const photoSrc = photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${initials}`;
+        
+        return { 
+            photoSrc: photoSrc, 
+            initials: initials,
+            photoUrl: photo || '' // O URL real da foto (pode ser Base64 ou URL)
+        };
+    };
+    
+    // Initial values
+    const initialProfId = user?.professionalId;
+    const initialUserName = user?.name || 'Novo Usuário'; 
+    const initialPhotoData = renderUserPhotoPreview(initialProfId, initialUserName);
+    const initialProf = getProfessionalById(initialProfId);
+    
     // Função auxiliar para renderizar opções de profissionais
     const renderProfessionalOptions = (selectedId) => {
         let options = '<option value="">-- Não Associado a um Profissional --</option>';
@@ -166,34 +188,47 @@ async function showUserFormView(user = null) {
 
     const form = formView.querySelector('#userForm');
     
-    // --- NOVO HTML COM ESTILO MODERNO E MOBILE-LIKE ---
+    // --- NOVO HTML COM ESTILO COMPACTO E CARDS COLORIDOS ---
     form.innerHTML = `
-        <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl space-y-6">
+        <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl space-y-4">
             
-            <div class="form-grid">
+            <div class="flex flex-col items-center mb-4">
+                 <img id="userPhotoPreview" src="${initialPhotoData.photoSrc}" alt="Foto de Perfil do Profissional" class="w-20 h-20 rounded-full mx-auto mb-3 border-4 border-gray-200 object-cover">
+                 <p id="profPhotoName" class="text-sm text-gray-500">${initialProf ? initialProf.name : 'Selecione um profissional'}</p>
+                 <input type="hidden" id="professionalPhotoUrl" value="${initialPhotoData.photoUrl}">
+            </div>
+
+            <div class="bg-blue-50 p-4 rounded-lg space-y-3">
+                 <h3 class="font-bold text-lg text-blue-800">Dados de Acesso</h3>
                 <div class="form-group">
                     <label for="userName">Nome Completo</label>
                     <input type="text" id="userName" required value="${user?.name || ''}">
                 </div>
                 <div class="form-group">
                     <label for="userEmail">Email</label>
-                    <input type="email" id="userEmail" required value="${user?.email || ''}" ${isEditing ? 'disabled' : ''}>
-                    ${isEditing ? '<p class="text-xs text-gray-500 mt-1">O e-mail não pode ser alterado.</p>' : ''}
+                    <input type="email" id="userEmail" required value="${user?.email || ''}">
+                    ${isEditing ? '<p class="text-xs text-gray-700 mt-1"></p>' : ''}
                 </div>
             </div>
 
-            <div class="form-group">
-                <label for="userProfessionalId">Associar a Profissional (Opcional)</label>
-                <select id="userProfessionalId" class="mt-1 block w-full">
-                    ${renderProfessionalOptions(user?.professionalId)}
-                </select>
-                <p class="text-xs text-gray-500 mt-1">Define qual profissional este usuário representa na Agenda/Comandas.</p>
+            <div class="bg-yellow-50 p-4 rounded-lg space-y-3">
+                 <h3 class="font-bold text-lg text-yellow-800">Associação (Agenda)</h3>
+                <div class="form-group">
+                    <label for="userProfessionalId">Associar a Profissional (Opcional)</label>
+                    <select id="userProfessionalId" class="mt-1 block w-full">
+                        ${renderProfessionalOptions(user?.professionalId)}
+                    </select>
+                    <p class="text-xs text-gray-700 mt-1">Define qual profissional este usuário representa na Agenda/Comandas.</p>
+                </div>
             </div>
             
             ${!isEditing ? `
-            <div class="form-group border-t pt-4">
-                <label for="userPassword">Senha Provisória</label>
-                <input type="password" id="userPassword" required placeholder="Mínimo 6 caracteres">
+            <div class="bg-red-50 p-4 rounded-lg space-y-3">
+                 <h3 class="font-bold text-lg text-red-800">Senha Provisória</h3>
+                 <div class="form-group">
+                     <label for="userPassword">Senha Provisória</label>
+                     <input type="password" id="userPassword" required placeholder="Mínimo 6 caracteres">
+                 </div>
             </div>
             ` : ''}
 
@@ -229,9 +264,35 @@ async function showUserFormView(user = null) {
             </div>
         </div>
     `;
+    
+    // --- NOVO LISTENER: Atualiza a foto ao mudar o profissional ---
+    const professionalSelect = form.querySelector('#userProfessionalId');
+    const photoPreviewEl = form.querySelector('#userPhotoPreview');
+    const profPhotoNameEl = form.querySelector('#profPhotoName');
+    
+    professionalSelect.addEventListener('change', (e) => {
+        const newProfId = e.target.value;
+        const prof = getProfessionalById(newProfId);
+        
+        // Use o nome do profissional se ele existir, caso contrário, use o nome do usuário/default
+        const nameToDisplay = prof ? prof.name : 'Selecione um profissional';
+
+        const photoData = renderUserPhotoPreview(newProfId, initialUserName);
+        
+        photoPreviewEl.src = photoData.photoSrc;
+        profPhotoNameEl.textContent = nameToDisplay;
+        form.querySelector('#professionalPhotoUrl').value = photoData.photoUrl;
+    });
+    // --- FIM NOVO LISTENER ---
+
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Captura o email ATUAL para verificar a mudança
+        const currentEmail = user?.email;
+        const newEmail = form.querySelector('#userEmail').value;
+        
         const permissions = {};
         form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             const module = cb.dataset.module;
@@ -250,6 +311,11 @@ async function showUserFormView(user = null) {
 
         try {
             if (isEditing) {
+                // Se o e-mail mudou, inclua-o no payload da API para que o backend atualize o Firebase Auth
+                if (currentEmail !== newEmail) {
+                    userData.email = newEmail;
+                }
+                
                 await usersApi.updateUser(user.id, userData);
                 showNotification('Usuário atualizado com sucesso!', 'success');
             } else {

@@ -61,6 +61,23 @@ function formatDateReduced(date) {
     return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).format(date).replace(/\./g, '');
 }
 
+// --- NOVO: Função para obter o início do bloco de visualização (substitui getStartOfWeek) ---
+function getWeekStart(date) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    
+    // Só faz o 'snap' para a segunda-feira se a visualização for de 7 dias completos.
+    if (localState.currentView === 'week' && localState.weekViewDays === 7) {
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Garante que a semana começa na Segunda-feira (1)
+        return new Date(d.setDate(diff));
+    }
+    
+    // Para 'list' (1 dia) ou blocos de 3/5 dias na 'week' view, 
+    // a data atual (d) já é o início do bloco que queremos exibir.
+    return d;
+}
+
 
 // --- NOVO: Função para renderizar a faixa de seleção de profissionais ---
 function renderProfessionalSelector() {
@@ -104,14 +121,13 @@ function renderProfessionalSelector() {
         return `
             <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
                  data-action="select-professional" 
-                 data-prof-id="${prof.id}"
-                 style="--theme-main: ${cssMainColor};">
+                 data-prof-id="${prof.id}">
                 
                 ${prof.id === 'all' 
                     ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText};">
                         ${initials}
                        </div>`
-                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${isSelected ? `border-color: ${cssMainColor}; box-shadow: 0 0 0 3px ${cssMainColor};` : ''}" />`
+                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" />`
                 }
                 
                 <span class="prof-card-name">${profName}</span>
@@ -131,17 +147,6 @@ function createWhatsAppLink(phone, clientName, serviceName, professionalName, st
     const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} para o dia ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
     const encodedMessage = encodeURIComponent(message);
     return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`;
-}
-
-// [Restante das funções de Agenda: getStartOfWeek, renderListView, renderWeekView, renderAgenda, fetchAndDisplayAgenda, populateFilters...]
-// ... (Mantendo as implementações anteriores dessas funções)
-
-function getStartOfWeek(date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Garante que a semana começa na Segunda-feira
-    return new Date(d.setDate(diff));
 }
 
 function renderListView(allEvents) {
@@ -204,7 +209,8 @@ function renderListView(allEvents) {
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
     const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const weekStart = getStartOfWeek(localState.currentDate);
+    // CORREÇÃO (BUG 3): Usa getWeekStart para calcular a data inicial do bloco
+    const weekStart = getWeekStart(localState.currentDate);
     const numDays = localState.weekViewDays;
 
     let weekHTML = `<div class="grid divide-x divide-gray-200 min-h-[60vh]" style="grid-template-columns: repeat(${numDays}, minmax(0, 1fr));">`;
@@ -314,7 +320,8 @@ async function fetchAndDisplayAgenda() {
         // ATUALIZAÇÃO: Usa o formato reduzido
         weekRangeSpan.textContent = formatDateReduced(start);
     } else {
-        start = getStartOfWeek(new Date(localState.currentDate));
+        // CORREÇÃO (BUG 3): Usa getWeekStart para calcular a data inicial do bloco
+        start = getWeekStart(new Date(localState.currentDate)); 
         end = new Date(start);
         end.setDate(start.getDate() + (localState.weekViewDays - 1));
         end.setHours(23, 59, 59, 999);
@@ -1145,8 +1152,8 @@ export async function loadAgendaPage() {
                         <button data-days="7" class="week-days-btn view-btn active">7 dias</button>
                     </div>
                     <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
-                    <button id="prevBtn" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
-                    <button id="nextBtn" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                    <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                    <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
                     <span id="weekRange" class="font-semibold text-lg"></span>
                 </div>
             </div>
@@ -1206,16 +1213,21 @@ export async function loadAgendaPage() {
         localState.currentDate = new Date();
         fetchAndDisplayAgenda();
     });
-    document.getElementById('prevBtn').addEventListener('click', () => {
+    
+    // CORREÇÃO (BUG 3): Lógica unificada para navegação semanal
+    const handleNavigationClick = (e) => {
+        const amount = parseInt(e.currentTarget.dataset.amount, 10);
         const step = localState.currentView === 'week' ? localState.weekViewDays : 1;
-        localState.currentDate.setDate(localState.currentDate.getDate() - step);
+        
+        const newDate = new Date(localState.currentDate);
+        newDate.setDate(newDate.getDate() + amount * step);
+        localState.currentDate = newDate;
+        
         fetchAndDisplayAgenda();
-    });
-    document.getElementById('nextBtn').addEventListener('click', () => {
-        const step = localState.currentView === 'week' ? localState.weekViewDays : 1;
-        localState.currentDate.setDate(localState.currentDate.getDate() + step);
-        fetchAndDisplayAgenda();
-    });
+    };
+
+    document.getElementById('prevBtn').addEventListener('click', handleNavigationClick);
+    document.getElementById('nextBtn').addEventListener('click', handleNavigationClick);
     
     // NOVO: Listeners para o filtro de profissionais (Busca, Seleção e Toggle)
     document.getElementById('profSearchInput').addEventListener('input', (e) => {
@@ -1234,6 +1246,7 @@ export async function loadAgendaPage() {
     contentDiv.addEventListener('click', async (e) => {
         const targetElement = e.target.closest('[data-action]');
         
+        // CORREÇÃO (BUG 1): Adiciona o listener para seleção do profissional
         if (e.target.closest('[data-action="select-professional"]')) {
             const selectedProfCard = e.target.closest('[data-action="select-professional"]');
             const profId = selectedProfCard.dataset.profId;
