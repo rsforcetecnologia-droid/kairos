@@ -27,8 +27,6 @@ try {
 // --- CONFIGURAÇÃO DO EXPRESS ---
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname)));
 
 // --- MIDDLEWARES ---
 const {
@@ -37,12 +35,8 @@ const {
     isSuperAdmin,
     isOwner,
     hasAccess,
-    checkSubscription // <-- IMPORTADO O NOVO MIDDLEWARE
+    checkSubscription
 } = require('./middlewares/auth');
-
-// Aplica o middleware que adiciona instâncias do Firebase a todas as rotas da API
-app.use('/api', addFirebaseInstances);
-
 
 // --- IMPORTAÇÃO E MONTAGEM DAS ROTAS DA API ---
 
@@ -67,8 +61,25 @@ const financialRoutes = require('./routes/financial');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
 const dbexplorerRoutes = require('./routes/dbexplorer');
-const commissionsRoutes = require('./routes/commissions'); // NOVO
-const packagesRoutes = require('./routes/packages'); // NOVO
+const commissionsRoutes = require('./routes/commissions'); 
+const packagesRoutes = require('./routes/packages'); 
+
+const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
+const publicRegisterRoutes = require('./routes/publicRegister'); 
+const stripeWebhookRoutes = require('./routes/stripeWebhook'); // ADICIONADO: Importa a rota do Webhook
+
+// --- 0. ROTAS DE WEBHOOK (DEVE VIR ANTES DO PARSER DE JSON) ---
+// Aplica o parser 'raw' e o middleware de instância para o Webhook do Stripe
+app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); 
+
+// IMPORTANTE: Parser de JSON para rotas comuns (DEPOIS do Webhook)
+app.use(express.json({ limit: '10mb' })); 
+
+// Aplica o middleware que adiciona instâncias do Firebase a todas as rotas da API
+app.use('/api', addFirebaseInstances);
+
+// Serve arquivos estáticos (CSS, JS, imagens)
+app.use(express.static(path.join(__dirname)));
 
 
 // 1. Rotas de Super Admin (só acessíveis por super-admin)
@@ -82,8 +93,6 @@ app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 
 // 3. Rotas de Acesso Geral (acessíveis por dono e funcionários)
-
-// APLICAÇÃO DO checkSubscription em TODAS as rotas protegidas:
 app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
 app.use('/api/blockages', verifyToken, checkSubscription, hasAccess, blockageRoutes);
 app.use('/api/cashier', verifyToken, checkSubscription, hasAccess, cashierRoutes);
@@ -93,22 +102,22 @@ app.use('/api/reports', verifyToken, checkSubscription, hasAccess, reportRoutes)
 app.use('/api/sales', verifyToken, checkSubscription, hasAccess, saleRoutes);
 app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRoutes);
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
-app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); // NOVO
-app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); // NOVO
+app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
+app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
 
 
 // 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
-// **CORRIGIDO:** Remoção de 'verifyToken' e 'checkSubscription' para permitir que rotas públicas funcionem.
-// A proteção deve ser aplicada DENTRO de cada arquivo de rota.
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/establishments', establishmentRoutes);
 app.use('/api/professionals', professionalRoutes);
 app.use('/api/services', serviceRoutes);
 
-// 5. Rotas Públicas (não precisam de verificação de token, mas a disponibilidade sim)
-// **CORRIGIDO:** Remoção de 'addFirebaseInstances' duplicado.
+// 5. Rotas Públicas (acesso totalmente desprotegido)
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
+
+app.use('/api/public/subscriptions', publicSubscriptionsRoutes); 
+app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes); 
 
 
 // --- ROTAS PARA SERVIR AS PÁGINAS HTML ---
@@ -135,7 +144,6 @@ app.get('/dbexplorer', (req, res) => { res.sendFile(path.join(__dirname, 'dbexpl
 app.get('/datadictionary', (req, res) => { res.sendFile(path.join(__dirname, 'datadictionary.html')); });
 
 
-
 // --- TRATAMENTO DE ERROS ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -148,4 +156,3 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
-

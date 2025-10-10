@@ -7,6 +7,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/site.css">
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
 </head>
 <body class="bg-gray-100">
 
@@ -27,17 +42,11 @@
         <div class="container mx-auto px-6 text-center">
             <h1 class="text-4xl font-extrabold text-gray-800">Planos que se adaptam a si</h1>
             <p class="mt-2 text-gray-600">Escolha o plano ideal para o tamanho do seu negócio.</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
-                <div class="bg-white p-8 rounded-lg shadow-lg border-t-4 border-indigo-500">
-                    <h2 class="text-2xl font-bold">Básico</h2>
-                    <p class="text-4xl font-extrabold my-4">R$ 59<span class="text-xl font-medium">/mês</span></p>
-                    <ul class="text-left space-y-2">
-                        <li>Até 2 Profissionais</li>
-                        <li>Agenda Online</li>
-                    </ul>
-                    <button class="mt-8 w-full bg-indigo-600 text-white font-bold py-3 rounded-lg">Assinar Agora</button>
-                </div>
+            
+            <div id="plans-container" class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+                <p class="col-span-full text-lg text-gray-600">A carregar planos de assinatura...</p>
             </div>
+            
         </div>
     </main>
 
@@ -46,5 +55,226 @@
             <p>© 2025 Kairos System. Todos os direitos reservados.</p>
         </div>
     </footer>
+    
+    <!-- Modal de Assinatura e Cadastro -->
+    <div id="subscriptionModal" class="modal">
+        <div id="modalContent" class="bg-white rounded-lg shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-800">Assinar <span id="modalPlanName"></span></h2>
+                <button data-action="close-modal" class="text-2xl font-bold text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            
+            <form id="subscriptionForm" class="flex-1 overflow-y-auto p-6 space-y-6">
+                 <input type="hidden" id="formPlanId">
+                 
+                <!-- 1. Dados do Estabelecimento -->
+                <div class="space-y-4">
+                    <h3 class="text-xl font-semibold text-indigo-600 border-b pb-2">1. Informações do Estabelecimento</h3>
+                    <div>
+                        <label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome do Estabelecimento</label>
+                        <input type="text" id="establishmentName" required class="mt-1 w-full p-3 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="establishmentId" class="block text-sm font-medium text-gray-700">ID Curto (Para URL de Acesso)</label>
+                        <input type="text" id="establishmentId" required class="mt-1 w-full p-3 border border-gray-300 rounded-lg" placeholder="Ex: kairosrj (sem espaços ou caracteres especiais)">
+                    </div>
+                </div>
+
+                <!-- 2. Dados do Dono (Acesso) -->
+                <div class="space-y-4 pt-4">
+                    <h3 class="text-xl font-semibold text-indigo-600 border-b pb-2">2. Acesso ao Painel (Dono)</h3>
+                    <div>
+                        <label for="ownerEmail" class="block text-sm font-medium text-gray-700">E-mail (Será o seu login)</label>
+                        <input type="email" id="ownerEmail" required class="mt-1 w-full p-3 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="ownerPassword" class="block text-sm font-medium text-gray-700">Senha</label>
+                        <input type="password" id="ownerPassword" required minlength="6" class="mt-1 w-full p-3 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <!-- 3. Pagamento (AQUI ESTÁ A MUDANÇA) -->
+                <div class="space-y-4 pt-4">
+                     <h3 class="text-xl font-semibold text-indigo-600 border-b pb-2">3. Pagamento Recorrente (Mercado Pago)</h3>
+                     <p class="text-sm text-gray-600">Você será redirecionado para o ambiente seguro do Mercado Pago para finalizar a assinatura.</p>
+                </div>
+                <div id="registration-errors" role="alert" class="text-red-500 text-sm mt-2 text-left font-medium"></div>
+
+                <div class="pt-6 border-t flex justify-end">
+                    <button type="submit" id="btn-submit-subscription" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">
+                        Ir para o Pagamento no Mercado Pago
+                    </button>
+                </div>
+            </form>
+            
+        </div>
+    </div>
+
+    <script type="module">
+        import { getPublicPlans, registerEstablishment } from './js/api/public.js';
+
+        // --- VARIAVEIS DOM ---
+        const plansContainer = document.getElementById('plans-container');
+        const modal = document.getElementById('subscriptionModal');
+        const modalPlanName = document.getElementById('modalPlanName');
+        const formPlanId = document.getElementById('formPlanId');
+        const form = document.getElementById('subscriptionForm');
+        const registrationErrors = document.getElementById('registration-errors');
+        const btnSubmit = document.getElementById('btn-submit-subscription');
+        
+        let allPlansData = []; // Cache dos planos
+
+        // --- FUNÇÕES DE UTILDADE E RENDERIZAÇÃO ---
+
+        const formatPrice = (price) => {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
+        }
+
+        const renderPlans = (plans) => {
+            if (!plans || plans.length === 0) {
+                plansContainer.innerHTML = '<p class="col-span-full text-lg text-red-500">Nenhum plano de assinatura encontrado.</p>';
+                return;
+            }
+
+            allPlansData = plans;
+            plansContainer.innerHTML = plans.map(plan => {
+                const isPremium = plan.maxProfessionals > 5 || plan.price > 100;
+                const buttonClass = isPremium ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700';
+                const borderColor = isPremium ? 'border-indigo-500' : 'border-green-500';
+
+                const moduleNames = {
+                    agenda: 'Agenda Online 24/7',
+                    comandas: 'Controlo de Comandas / PDV',
+                    relatorios: 'Relatórios de Vendas',
+                    financial: 'Contas a Pagar e Receber',
+                    servicos: 'Gestão de Serviços',
+                    produtos: 'Gestão de Produtos e Stock',
+                    profissionais: 'Gestão de Equipa',
+                    users: 'Gestão de Usuários Internos'
+                };
+
+                const features = [];
+                if (plan.allowedModules) {
+                    Object.keys(plan.allowedModules).forEach(key => {
+                        if (plan.allowedModules[key] === true && moduleNames[key]) {
+                            features.push(`<li>${moduleNames[key]}</li>`);
+                        }
+                    });
+                }
+                
+                features.unshift(`<li>Até ${plan.maxProfessionals} Profissionais</li>`);
+                features.unshift(`<li>Até ${plan.maxUsers} Usuários</li>`);
+                
+
+                return `
+                    <div class="bg-white p-8 rounded-lg shadow-lg border-t-4 ${borderColor} flex flex-col">
+                        <h2 class="text-2xl font-bold">${plan.name}</h2>
+                        <p class="text-4xl font-extrabold my-4">${formatPrice(plan.price)}<span class="text-xl font-medium">/mês</span></p>
+                        
+                        <div class="flex-grow">
+                             <p class="text-lg font-semibold mb-3">O que inclui:</p>
+                             <ul class="text-left space-y-2 text-gray-700 list-disc list-inside">
+                                 ${features.join('')}
+                             </ul>
+                        </div>
+                        
+                        <button data-plan-id="${plan.id}" class="mt-8 w-full ${buttonClass} text-white font-bold py-3 rounded-lg transition-colors">
+                            Assinar Agora
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        };
+        
+        const loadPlans = async () => {
+            try {
+                plansContainer.innerHTML = '<p class="col-span-full text-lg text-indigo-600">A carregar planos de assinatura...</p>';
+                const plans = await getPublicPlans();
+                renderPlans(plans);
+                
+                plansContainer.querySelectorAll('[data-plan-id]').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const plan = allPlansData.find(p => p.id === button.dataset.planId);
+                        if (plan) openSubscriptionModal(plan);
+                    });
+                });
+
+            } catch (error) {
+                 plansContainer.innerHTML = `<p class="col-span-full text-lg text-red-500">Falha ao carregar os planos: ${error.message}</p>`;
+            }
+        };
+        
+        // --- LÓGICA DO MODAL ---
+
+        const openSubscriptionModal = (plan) => {
+            modalPlanName.textContent = plan.name;
+            formPlanId.value = plan.id;
+            
+            // Limpa o formulário e erros
+            form.reset(); 
+            registrationErrors.textContent = '';
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = 'Ir para o Pagamento no Mercado Pago';
+
+            modal.style.display = 'flex';
+        };
+        
+        const closeSubscriptionModal = () => {
+            modal.style.display = 'none';
+        };
+
+        // Event Listeners para fechar o modal
+        modal.querySelector('[data-action="close-modal"]').addEventListener('click', closeSubscriptionModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target.id === 'subscriptionModal') {
+                closeSubscriptionModal();
+            }
+        });
+        
+        // --- LÓGICA DE SUBMISSÃO (Chama o Pré-Registro e Redireciona) ---
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            registrationErrors.textContent = '';
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Aguardando Redirecionamento...';
+
+            const emailInput = document.getElementById('ownerEmail').value;
+            
+            // Coleta de dados do formulário
+            const formData = {
+                planId: formPlanId.value,
+                establishmentName: document.getElementById('establishmentName').value,
+                establishmentId: document.getElementById('establishmentId').value,
+                ownerEmail: emailInput,
+                ownerPassword: document.getElementById('ownerPassword').value,
+            };
+            
+            // 1. Chama a API de Pré-Registro no Backend
+            try {
+                const response = await registerEstablishment(formData);
+                
+                // 2. Sucesso: Redireciona o usuário para o link de Checkout do Mercado Pago
+                if (response.checkoutUrl) {
+                    // Informa ao usuário
+                    alert(`Pré-registro realizado com sucesso! Você será redirecionado para o Mercado Pago.`);
+                    // Redireciona
+                    window.location.href = response.checkoutUrl;
+                } else {
+                    throw new Error("Erro de integração: URL de checkout não recebida.");
+                }
+
+            } catch (backendError) {
+                 // Erro no backend (ID já existe, e-mail já existe, etc.)
+                 registrationErrors.textContent = `Erro no Registro: ${backendError.message}`;
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = 'Ir para o Pagamento no Mercado Pago';
+            }
+        });
+
+        // Inicia o carregamento quando a página estiver pronta
+        loadPlans();
+    </script>
 </body>
 </html>
