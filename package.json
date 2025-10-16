@@ -11,7 +11,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
     "@types/node": "^22.13.11",
     "axios": "^1.12.2",
     "cors": "^2.8.5",
@@ -19,10 +21,10 @@
     "express": "^5.1.0",
     "faker-br": "^0.5.0",
     "firebase-admin": "^13.4.0",
+    "mercadopago": "^2.0.0",
     "multer": "^2.0.2",
-    "xlsx": "^0.18.5",
     "stripe": "^16.5.0",
-    "mercadopago": "^2.0.0" 
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
