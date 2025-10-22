@@ -8,6 +8,7 @@ import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
 let calculationResults = []; // Cache para os resultados do cálculo
+let calculatedPeriodString = ""; // NOVO: Cache para a string do período
 let pageEventListener = null;
 let lastFilters = {}; // Variavel de cache para filtros
 
@@ -94,13 +95,10 @@ function openCalculationModal() {
         e.preventDefault();
         handleCommissionCalculation();
         
-        // CORREÇÃO: Procura o botão 'X' (data-close-modal) que é garantido existir no modal genérico, 
-        // e clica nele para fechar após o cálculo.
         const closeButton = modalElement.querySelector('[data-close-modal]'); 
         if (closeButton) {
             closeButton.click();
         } else {
-            // Fallback para fechar o elemento principal do modal
             modalElement.style.display = 'none'; 
         }
     });
@@ -149,6 +147,10 @@ async function handleCommissionCalculation() {
         calculationResults = results;
         
         const periodString = `${new Date(startDate+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate+'T00:00:00').toLocaleDateString('pt-BR')}`;
+        
+        // CORREÇÃO: Salva a string do período no cache
+        calculatedPeriodString = periodString; 
+        
         renderResultsView(results, periodString);
 
     } catch (error) {
@@ -163,9 +165,10 @@ async function handleSaveReports() {
         return;
     }
 
-    const startDate = document.getElementById('calc-start-date')?.value;
-    const endDate = document.getElementById('calc-end-date')?.value;
-    const period = `${new Date(startDate+'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(endDate+'T00:00:00').toLocaleDateString('pt-BR')}`;
+    // CORREÇÃO: Usar a string do período guardada no cache,
+    // pois os inputs <input type="date"> não existem mais nesta tela.
+    const period = calculatedPeriodString; 
+    
     const confirmed = await showConfirmation('Salvar Relatórios', `Tem a certeza que deseja salvar ${calculationResults.length} relatório(s) de comissão para o período de ${period}?`);
     
     if(confirmed) {
@@ -174,7 +177,7 @@ async function handleSaveReports() {
                 commissionsApi.saveCommissionReport({
                     professionalId: result.professionalId,
                     professionalName: result.professionalName,
-                    period: period,
+                    period: period, // Usar a variável 'period' corrigida
                     reportData: result
                 })
             );

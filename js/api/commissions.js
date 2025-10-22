@@ -8,7 +8,8 @@ import { authenticatedFetch } from './apiService.js';
  * @returns {Promise<object>} - Uma promessa que resolve com o resultado do cálculo da comissão.
  */
 export const calculateCommission = (commissionData) => {
-    return authenticatedFetch('/api/commissions/calculate', {
+    // CORREÇÃO: O caminho DEVE começar com /api, pois o apiService.js não o inclui.
+    return authenticatedFetch('/api/commissions/calculate', { 
         method: 'POST',
         body: JSON.stringify(commissionData),
     });
@@ -20,6 +21,7 @@ export const calculateCommission = (commissionData) => {
  * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
  */
 export const saveCommissionReport = (reportData) => {
+    // CORREÇÃO: O caminho DEVE começar com /api.
     return authenticatedFetch('/api/commissions/save', {
         method: 'POST',
         body: JSON.stringify(reportData),
@@ -33,6 +35,7 @@ export const saveCommissionReport = (reportData) => {
  */
 export const getCommissionHistory = (filters = {}) => { 
     const queryParams = new URLSearchParams(filters).toString();
+    // CORREÇÃO: O caminho DEVE começar com /api.
     const url = `/api/commissions/history${queryParams ? '?' + queryParams : ''}`;
     return authenticatedFetch(url);
 };
@@ -43,11 +46,8 @@ export const getCommissionHistory = (filters = {}) => {
  * @returns {Promise<null>} - Uma promessa que resolve em caso de sucesso (204 No Content).
  */
 export const deleteCommissionReport = (reportId) => {
-    // CORREÇÃO DE ROTA PARA 404: 
-    // Tentativa de remover o prefixo `/api/commissions` se o apiService.js já o adicionar.
-    // Se a rota do servidor for montada em /api/commissions, o caminho relativo correto seria apenas /report/ID
-    // MANTIDO o prefixo aqui, pois é a implementação padrão.
-    // SE CONTINUAR A FALHAR, TENTE TROCAR A LINHA ABAIXO PARA: `/report/${reportId}`
+    // CORREÇÃO: O caminho DEVE começar com /api.
+    // Esta era a versão original do ficheiro, que estava correta.
     return authenticatedFetch(`/api/commissions/report/${reportId}`, {
         method: 'DELETE',
     });

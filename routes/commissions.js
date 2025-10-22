@@ -191,14 +191,11 @@ router.get('/history', async (req, res) => {
         // Filtro em memória pelo mês/período
         if (period) {
             // Esperamos `period` como 'YYYY-MM' do cliente
-            history = history.filter(report => {
-                // Converte YYYY-MM para MM/AAAA (o formato esperado na string report.period)
-                const [year, month] = period.split('-');
-                const periodMonthYear = `${month}/${year}`; 
-                
-                // Filtra se a string de período do relatório contém o mês/ano
-                return report.period.includes(periodMonthYear); 
-            });
+            const [year, month] = period.split('-');
+            const periodMonthYear = `${month}/${year}`; 
+            
+            // Filtra se a string de período do relatório contém o mês/ano
+            history = history.filter(report => report.period.includes(periodMonthYear)); 
         }
 
         // Ordena os resultados no servidor antes de enviar (mais recente primeiro)
