@@ -1,3 +1,5 @@
+// routes/commissions.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -136,6 +138,12 @@ router.post('/save', async (req, res) => {
             establishmentId, professionalId, professionalName,
             period,
             summary: reportData.summary,
+            // Armazena os itens detalhados para permitir a regeneração do recibo
+            items: reportData.items.map(item => ({
+                ...item,
+                // Garantir que datas que são objetos Date sejam salvas corretamente
+                date: item.date instanceof Date ? admin.firestore.Timestamp.fromDate(item.date) : item.date,
+            })),
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
@@ -147,14 +155,22 @@ router.post('/save', async (req, res) => {
     }
 });
 
-// ROTA CORRIGIDA: Obter histórico de todos os relatórios
+// ROTA ATUALIZADA: Obter histórico de todos os relatórios, com filtros
 router.get('/history', async (req, res) => {
     const { establishmentId } = req.user;
+    const { professionalId, period } = req.query; // Pega os filtros da query string
+
     try {
         const { db } = req;
-        const snapshot = await db.collection('commission_reports')
-            .where('establishmentId', '==', establishmentId)
-            .get();
+        let query = db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId);
+        
+        // Aplica filtro por profissional, se fornecido
+        if (professionalId) {
+            query = query.where('professionalId', '==', professionalId);
+        }
+
+        const snapshot = await query.get();
 
         if (snapshot.empty) {
             return res.status(200).json([]);
@@ -165,18 +181,65 @@ router.get('/history', async (req, res) => {
             return { 
                 id: doc.id, 
                 ...data,
-                // CORREÇÃO DE DATA: Converte com segurança para string ISO
+                // Inclui items no relatório para o recibo (corrigido para o caso de salvar)
+                items: data.items, 
+                // Converte data de criação com segurança
                 createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : data.createdAt 
             };
         });
+        
+        // Filtro em memória pelo mês/período
+        if (period) {
+            // Esperamos `period` como 'YYYY-MM' do cliente
+            history = history.filter(report => {
+                // Converte YYYY-MM para MM/AAAA (o formato esperado na string report.period)
+                const [year, month] = period.split('-');
+                const periodMonthYear = `${month}/${year}`; 
+                
+                // Filtra se a string de período do relatório contém o mês/ano
+                return report.period.includes(periodMonthYear); 
+            });
+        }
 
-        // Ordena os resultados no servidor antes de enviar
+        // Ordena os resultados no servidor antes de enviar (mais recente primeiro)
         history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
         res.status(200).json(history);
     } catch (error) {
         console.error("Erro ao buscar histórico de comissões:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// NOVA ROTA: Excluir um relatório
+router.delete('/report/:reportId', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { reportId } = req.params;
+
+    if (!reportId) {
+        return res.status(400).json({ message: 'ID do relatório é obrigatório para exclusão.' });
+    }
+
+    try {
+        const { db } = req;
+        const reportRef = db.collection('commission_reports').doc(reportId);
+        const reportDoc = await reportRef.get();
+
+        if (!reportDoc.exists) {
+            return res.status(404).json({ message: 'Relatório não encontrado.' });
+        }
+        
+        // Verifica se o relatório pertence ao estabelecimento do utilizador autenticado (segurança)
+        if (reportDoc.data().establishmentId !== establishmentId) {
+            return res.status(403).json({ message: 'Acesso negado. Este relatório não pertence ao seu estabelecimento.' });
+        }
+
+        await reportRef.delete();
+        res.status(204).send(); // 204 No Content indica sucesso na exclusão
+
+    } catch (error) {
+        console.error("Erro ao excluir relatório de comissão:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao excluir o relatório.' });
     }
 });
 

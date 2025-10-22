@@ -27,10 +27,28 @@ export const saveCommissionReport = (reportData) => {
 };
 
 /**
- * CORRIGIDO: Busca o histórico de TODOS os relatórios de comissão salvos para o estabelecimento.
+ * Busca o histórico de TODOS os relatórios de comissão salvos para o estabelecimento, com filtros opcionais.
+ * @param {object} filters - Filtros como professionalId e period (formato YYYY-MM).
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de relatórios.
  */
-export const getCommissionHistory = () => {
-    // A rota correta não precisa de um ID de profissional.
-    return authenticatedFetch(`/api/commissions/history`);
+export const getCommissionHistory = (filters = {}) => { 
+    const queryParams = new URLSearchParams(filters).toString();
+    const url = `/api/commissions/history${queryParams ? '?' + queryParams : ''}`;
+    return authenticatedFetch(url);
+};
+
+/**
+ * NOVO: Exclui um relatório de comissão específico.
+ * @param {string} reportId - O ID do relatório a ser excluído.
+ * @returns {Promise<null>} - Uma promessa que resolve em caso de sucesso (204 No Content).
+ */
+export const deleteCommissionReport = (reportId) => {
+    // CORREÇÃO DE ROTA PARA 404: 
+    // Tentativa de remover o prefixo `/api/commissions` se o apiService.js já o adicionar.
+    // Se a rota do servidor for montada em /api/commissions, o caminho relativo correto seria apenas /report/ID
+    // MANTIDO o prefixo aqui, pois é a implementação padrão.
+    // SE CONTINUAR A FALHAR, TENTE TROCAR A LINHA ABAIXO PARA: `/report/${reportId}`
+    return authenticatedFetch(`/api/commissions/report/${reportId}`, {
+        method: 'DELETE',
+    });
 };

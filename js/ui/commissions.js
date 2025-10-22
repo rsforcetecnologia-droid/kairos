@@ -8,7 +8,8 @@ import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
 let calculationResults = []; // Cache para os resultados do cálculo
-let pageEventListener = null; // <-- ESTA LINHA FOI ADICIONADA PARA CORRIGIR O ERRO
+let pageEventListener = null;
+let lastFilters = {}; // Variavel de cache para filtros
 
 // --- FUNÇÕES DE RECIBO E MODAIS ---
 
@@ -107,6 +108,25 @@ function openCalculationModal() {
 
 // --- FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
 
+/**
+ * NOVO: Lógica para excluir um relatório de comissão.
+ */
+async function handleDeleteReport(reportId) {
+    const confirmed = await showConfirmation('Excluir Relatório', 'Tem a certeza que deseja excluir permanentemente este relatório de comissão? Esta ação não pode ser desfeita.');
+
+    if (confirmed) {
+        try {
+            await commissionsApi.deleteCommissionReport(reportId);
+            showNotification('Sucesso!', 'Relatório de comissão excluído.', 'success');
+            // Re-renderiza o histórico com os filtros atuais
+            fetchAndRenderHistory();
+        } catch (error) {
+            showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
+        }
+    }
+}
+
+
 async function handleCommissionCalculation() {
     const professionalIds = Array.from(document.getElementById('calc-professionals').selectedOptions).map(opt => opt.value);
     const startDate = document.getElementById('calc-start-date').value;
@@ -170,29 +190,48 @@ async function handleSaveReports() {
 async function fetchAndRenderHistory() {
     const historyContainer = document.getElementById('commissionHistory');
     if (!historyContainer) return;
+    
+    // --- LÓGICA DE FILTRO: Leitura dos campos de filtro ---
+    const professionalFilter = document.getElementById('filter-professional')?.value || '';
+    const monthFilter = document.getElementById('filter-month')?.value || ''; 
+    
+    lastFilters = {};
+    if (professionalFilter && professionalFilter !== 'all') {
+        lastFilters.professionalId = professionalFilter;
+    }
+    if (monthFilter) {
+        // O servidor precisa de YYYY-MM para filtrar
+        lastFilters.period = monthFilter; 
+    }
+    // ------------------------------------------------------
+
     historyContainer.innerHTML = '<div class="loader mx-auto my-8"></div>';
 
     try {
-        const history = await commissionsApi.getCommissionHistory();
+        // Uso da nova função da API com filtros
+        const history = await commissionsApi.getCommissionHistory(lastFilters); 
         
         if (history.length === 0) {
-            historyContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Nenhum relatório de comissão salvo ainda.</p>';
+            historyContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Nenhum relatório de comissão salvo encontrado para os filtros.</p>';
             return;
         }
 
         historyContainer.innerHTML = `
             <div class="space-y-3">
                 ${history.map(report => `
-                    <div class="bg-white p-4 rounded-lg shadow-sm border">
+                    <div class="bg-white p-4 rounded-lg shadow-sm border" data-id="${report.id}">
                         <div class="flex flex-wrap justify-between items-center gap-2">
                             <div>
                                 <p class="font-bold text-gray-800">${report.professionalName}</p>
                                 <p class="text-sm text-gray-500">Período: ${report.period}</p>
                                 <p class="text-sm text-gray-600 mt-1">Salvo em: ${new Date(report.createdAt).toLocaleDateString('pt-BR')}</p>
                             </div>
-                            <div class="text-right">
+                            <div class="text-right flex items-center gap-3">
                                 <p class="text-lg font-bold text-green-600">R$ ${report.summary.totalCommission.toFixed(2)}</p>
-                                <button data-action="generate-receipt" data-report='${JSON.stringify(report).replace(/'/g, "&apos;")}' class="mt-1 py-1 px-3 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-200">Gerar Recibo</button>
+                                <div>
+                                    <button data-action="generate-receipt" data-report='${JSON.stringify(report).replace(/'/g, "&apos;")}' class="py-1 px-3 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-200">Recibo</button>
+                                    <button data-action="delete-report" data-id="${report.id}" class="mt-1 py-1 px-3 bg-red-100 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-200">Excluir</button>
+                                </div>
                             </div>
                         </div>
                     </div>`).join('')}
@@ -203,10 +242,54 @@ async function fetchAndRenderHistory() {
 }
 
 function renderHistoryView() {
+    // Garante que a lista de profissionais está carregada
+    if (!state.professionals) {
+        contentDiv.innerHTML = `<div class="p-8 text-center"><div class="loader mx-auto"></div><p class="mt-4">A carregar dados...</p></div>`;
+        return;
+    }
+    
+    // Código para gerar as opções dos profissionais (para o filtro)
+    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    // Gera as opções de mês/ano dos últimos 12 meses (para o filtro)
+    const monthOptions = [];
+    const today = new Date();
+    for(let i = 0; i < 12; i++) {
+        const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const monthString = month.toString().padStart(2, '0');
+        const value = `${year}-${monthString}`; // Formato YYYY-MM
+        const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        monthOptions.push(`<option value="${value}">${label}</option>`);
+    }
+    
+    // Aplica os filtros persistidos (se existirem)
+    const selectedProfessional = lastFilters.professionalId || 'all';
+    const selectedMonth = lastFilters.period || '';
+
+
     contentDiv.innerHTML = `
         <section class="space-y-6">
             <div class="flex justify-between items-center">
                 <h2 class="text-3xl font-bold text-gray-800">Comissões</h2>
+            </div>
+            
+            <div class="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row gap-4">
+                <div class="flex-1">
+                    <label for="filter-professional" class="block text-sm font-medium text-gray-700">Filtrar por Profissional</label>
+                    <select id="filter-professional" class="mt-1 w-full p-2 border rounded-md">
+                        <option value="all">Todos os Profissionais</option>
+                        ${professionalsOptions}
+                    </select>
+                </div>
+                <div class="flex-1">
+                    <label for="filter-month" class="block text-sm font-medium text-gray-700">Filtrar por Mês</label>
+                    <select id="filter-month" class="mt-1 w-full p-2 border rounded-md">
+                        <option value="">Todos os Meses</option>
+                        ${monthOptions.join('')}
+                    </select>
+                </div>
             </div>
             <div id="commissionHistory" class="bg-gray-50 p-4 rounded-lg"></div>
             <button data-action="open-calculator" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
@@ -214,6 +297,15 @@ function renderHistoryView() {
             </button>
         </section>
     `;
+    
+    // Re-seleciona os valores dos filtros se eles foram definidos anteriormente
+    document.getElementById('filter-professional').value = selectedProfessional;
+    document.getElementById('filter-month').value = selectedMonth;
+
+    // Configura os event listeners para os filtros
+    document.getElementById('filter-professional').addEventListener('change', fetchAndRenderHistory);
+    document.getElementById('filter-month').addEventListener('change', fetchAndRenderHistory);
+
     fetchAndRenderHistory();
 }
 
@@ -287,6 +379,10 @@ export async function loadCommissionsPage(params = {}) {
                 const reportData = JSON.parse(button.dataset.report.replace(/&apos;/g, "'"));
                 generateReceipt(reportData);
                 break;
+            case 'delete-report': // Lida com a exclusão de um relatório
+                const reportId = button.dataset.id;
+                handleDeleteReport(reportId);
+                break;
         }
     };
     contentDiv.addEventListener('click', pageEventListener);
@@ -296,15 +392,17 @@ export async function loadCommissionsPage(params = {}) {
         return;
     }
 
-    if (view === 'history' || view === 'main') {
-        renderHistoryView();
-    }
-    
+    // Garante que a lista de profissionais está carregada para os filtros
     if (!state.professionals || state.professionals.length === 0) {
         try {
             state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
         } catch (error) {
             showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
+            state.professionals = [];
         }
+    }
+
+    if (view === 'history' || view === 'main') {
+        renderHistoryView();
     }
 }
