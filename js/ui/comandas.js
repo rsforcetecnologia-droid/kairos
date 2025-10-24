@@ -17,14 +17,18 @@ let localState = {
     allComandas: [],
     catalog: { services: [], products: [], packages: [] },
     clients: [],
-    activeFilter: 'atendimento', // 'atendimento' ou 'finalizadas'
+    activeFilter: 'atendimento',
     selectedComandaId: null,
     isCashierOpen: false,
     activeCashierSessionId: null,
+    paging: {
+        page: 1,
+        limit: 12,
+        total: 0,
+    },
 };
 let pageEventListener = null;
 let contentDiv = null;
-
 
 // --- 3. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
@@ -38,9 +42,32 @@ function renderPageLayout() {
                 <div id="cashier-controls" class="flex items-center gap-2"></div>
             </div>
 
+            ${!localState.isCashierOpen ? `
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">
+                                <strong>Caixa Fechado!</strong> Para realizar vendas, você precisa abrir o caixa primeiro. Clique no botão "Abrir Caixa" acima.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div class="lg:col-span-1 bg-white p-4 rounded-lg shadow-md">
-                    <button data-action="new-sale" class="w-full py-3 px-4 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition shadow-md mb-4">+ NOVA VENDA</button>
+                    <button 
+                        data-action="new-sale" 
+                        class="w-full py-3 px-4 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition shadow-md mb-4 ${!localState.isCashierOpen ? 'opacity-50 cursor-not-allowed' : ''}"
+                        ${!localState.isCashierOpen ? 'disabled' : ''}
+                    >
+                        + NOVA VENDA
+                    </button>
                     
                     <div class="flex bg-gray-100 rounded-lg p-1 mb-4">
                         <button data-filter="atendimento" class="filter-btn flex-1 text-sm font-semibold py-2 rounded-md">Em Atendimento</button>
@@ -86,6 +113,21 @@ function renderCashierControls() {
 function renderComandaList() {
     const listContainer = document.getElementById('comandas-list');
     if (!listContainer) return;
+    
+    // Se o caixa estiver fechado, mostra apenas mensagem
+    if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
+        listContainer.innerHTML = `
+            <div class="text-center py-10">
+                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <p class="mt-2 text-sm font-medium text-gray-700">Caixa Fechado</p>
+                <p class="text-xs text-gray-500">Abra o caixa para acessar as comandas</p>
+            </div>
+        `;
+        return;
+    }
+    
     const statusMap = {
         atendimento: 'confirmed',
         finalizadas: 'completed'
@@ -96,6 +138,7 @@ function renderComandaList() {
 
     if (filteredComandas.length === 0) {
         listContainer.innerHTML = `<p class="text-center text-gray-500 py-10">Nenhuma comanda encontrada.</p>`;
+        renderPaginationControls(listContainer);
         return;
     }
 
@@ -117,12 +160,66 @@ function renderComandaList() {
             </div>
         `;
     }).join('');
+
+    renderPaginationControls(listContainer);
+}
+
+/** Renderiza os controles de paginação */
+function renderPaginationControls(container) {
+    const { page, total, limit } = localState.paging;
+    const totalPages = Math.ceil((total || 0) / limit);
+    
+    if (totalPages <= 1) return;
+
+    let paginationHtml = `<div class="flex gap-2 justify-center mt-4 flex-wrap">`;
+    
+    if (page > 1) {
+        paginationHtml += `<button data-page="${page - 1}" class="px-3 py-1 rounded bg-gray-300 hover:bg-gray-400">&laquo;</button>`;
+    }
+    
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
+            paginationHtml += `<button data-page="${i}" class="px-3 py-1 rounded ${i === page ? 'bg-indigo-600 text-white font-bold' : 'bg-gray-300 hover:bg-gray-400'}">${i}</button>`;
+        } else if (i === page - 3 || i === page + 3) {
+            paginationHtml += `<span class="px-2">...</span>`;
+        }
+    }
+    
+    if (page < totalPages) {
+        paginationHtml += `<button data-page="${page + 1}" class="px-3 py-1 rounded bg-gray-300 hover:bg-gray-400">&raquo;</button>`;
+    }
+    
+    paginationHtml += `</div>`;
+    container.innerHTML += paginationHtml;
+
+    container.querySelectorAll('button[data-page]').forEach(btn => {
+        btn.onclick = () => {
+            localState.paging.page = parseInt(btn.dataset.page, 10);
+            fetchAndDisplayData();
+        };
+    });
 }
 
 /** Renderiza os detalhes da comanda selecionada na coluna da direita */
 function renderComandaDetail() {
     const detailContainer = document.getElementById('comanda-detail-container');
     if (!detailContainer) return;
+    
+    // Se caixa fechado, mostra mensagem
+    if (!localState.isCashierOpen) {
+        detailContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-center text-gray-500">
+                <svg class="w-20 h-20 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <p class="mt-4 font-semibold text-xl">Caixa Fechado</p>
+                <p class="text-sm mt-2">Abra o caixa para começar a realizar vendas</p>
+                <button data-action="open-cashier" class="mt-6 py-3 px-6 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600">Abrir Caixa Agora</button>
+            </div>
+        `;
+        return;
+    }
+    
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
     if (!comanda) {
@@ -137,7 +234,6 @@ function renderComandaDetail() {
     const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
     const isCompleted = comanda.status === 'completed';
 
-    // Agrupa itens para exibição
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
         if (!acc[key]) {
@@ -151,18 +247,18 @@ function renderComandaDetail() {
     const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
 
     detailContainer.innerHTML = `
-        <header class="comanda-detail-header">
+        <header class="mb-4 pb-4 border-b flex justify-between items-start">
             <div>
                 <h3 class="text-2xl font-bold text-gray-800">${comanda.clientName}</h3>
                 <p class="text-sm text-gray-500">com ${comanda.professionalName}</p>
             </div>
-            ${isCompleted ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="action-btn-secondary">Reabrir</button>` : ''}
+            ${isCompleted ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">Reabrir</button>` : ''}
         </header>
 
         <div class="flex-grow overflow-y-auto pr-2">
-            <div class="item-list">
+            <div class="space-y-3">
                 ${Object.values(groupedItems).map(item => `
-                    <div class="comanda-item">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div class="flex-grow">
                             <p class="font-semibold">
                                 <span class="inline-flex items-center justify-center bg-gray-200 text-gray-700 text-xs font-bold w-6 h-6 rounded-full mr-2">${item.quantity}x</span>
@@ -171,21 +267,21 @@ function renderComandaDetail() {
                             </p>
                             <p class="text-sm text-gray-500 ml-8">R$ ${item.price.toFixed(2)} /unid.</p>
                         </div>
-                        ${!isCompleted ? `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="remove-item-btn">&times;</button>` : ''}
+                        ${!isCompleted ? `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="w-8 h-8 flex items-center justify-center bg-red-500 text-white rounded-full hover:bg-red-600 font-bold text-xl">&times;</button>` : ''}
                     </div>
                 `).join('')}
             </div>
         </div>
 
-        <footer class="comanda-detail-footer">
+        <footer class="mt-6 pt-4 border-t">
             <div class="flex justify-between items-center mb-4">
                 <span class="text-lg font-bold">TOTAL</span>
                 <span class="text-3xl font-extrabold text-gray-800">R$ ${total.toFixed(2)}</span>
             </div>
             ${!isCompleted ? `
                 <div class="grid grid-cols-2 gap-4">
-                    <button data-action="add-item" class="action-btn-secondary">Adicionar Item</button>
-                    <button data-action="checkout" class="action-btn-primary">Finalizar Pagamento</button>
+                    <button data-action="add-item" class="py-3 px-4 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 transition">Adicionar Item</button>
+                    <button data-action="checkout" class="py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition">Finalizar Pagamento</button>
                 </div>` : 
                 `<p class="text-center text-green-600 font-semibold bg-green-50 p-3 rounded-lg">Venda finalizada com sucesso!</p>`
             }
@@ -194,8 +290,15 @@ function renderComandaDetail() {
 }
 
 // --- 4. FUNÇÕES DE MODAIS ---
+// (Mantém todas as funções de modais do código anterior: openAddItemModal, openCheckoutModal, openNewSaleModal)
 
 function openAddItemModal() {
+    // Validação: bloqueia se caixa fechado
+    if (!localState.isCashierOpen) {
+        showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
+        return;
+    }
+    
     const { modalElement, setContent, close } = showGenericModal({ 
         title: "Adicionar Item à Comanda", 
         contentHTML: '<div id="add-item-content"></div>', 
@@ -226,9 +329,9 @@ function openAddItemModal() {
                 const listEl = contentContainer.querySelector(`#${listId}`);
                 if (listEl) {
                     listEl.innerHTML = items.map(item => `
-                        <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="item-selection-card">
+                        <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
                             <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons[type]}</div>
-                            <span class="flex-grow text-left ml-3">${item.name}</span>
+                            <span class="flex-grow text-left">${item.name}</span>
                             <span class="font-semibold">R$ ${item.price.toFixed(2)}</span>
                         </button>
                     `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum item.</p>`;
@@ -239,9 +342,9 @@ function openAddItemModal() {
         contentContainer.innerHTML = `
             <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 mb-4 border rounded-lg">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="item-selection-container"></div></div>
-                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="item-selection-container"></div></div>
-                <div><h4 class="font-semibold mb-2 text-center text-purple-600">Pacotes</h4><div id="modal-package-list" class="item-selection-container"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-purple-600">Pacotes</h4><div id="modal-package-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
             </div>`;
         
         renderLists();
@@ -307,8 +410,13 @@ function openAddItemModal() {
     renderCatalogView();
 }
 
-/** Abre o modal de checkout com novo design */
 function openCheckoutModal() {
+    // Validação: bloqueia se caixa fechado
+    if (!localState.isCashierOpen) {
+        showNotification('Caixa Fechado', 'Abra o caixa antes de finalizar pagamentos.', 'error');
+        return;
+    }
+    
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
@@ -448,6 +556,12 @@ function openCheckoutModal() {
 }
 
 async function openNewSaleModal() {
+    // Validação: bloqueia se caixa fechado
+    if (!localState.isCashierOpen) {
+        showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
+        return;
+    }
+    
     const clientsOptions = localState.clients.map(c => `<option value="${c.id}">${c.name} - ${c.phone}</option>`).join('');
     const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
@@ -479,12 +593,152 @@ async function openNewSaleModal() {
     modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
 }
 
+async function openCashierModal() {
+    const contentHTML = `
+        <form id="open-cashier-form" class="space-y-4">
+            <div>
+                <label for="initial-amount" class="block text-sm font-medium text-gray-700">Valor Inicial do Caixa</label>
+                <div class="mt-1 relative">
+                    <span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span>
+                    <input 
+                        type="number" 
+                        step="0.01" 
+                        min="0"
+                        id="initial-amount" 
+                        required 
+                        class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" 
+                        placeholder="0.00"
+                        value="0.00"
+                    >
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Digite o valor inicial disponível no caixa (pode ser R$ 0,00)</p>
+            </div>
+            <div>
+                <label for="cashier-notes" class="block text-sm font-medium text-gray-700">Observações (opcional)</label>
+                <textarea 
+                    id="cashier-notes" 
+                    rows="3" 
+                    class="mt-1 w-full p-2 border rounded-md" 
+                    placeholder="Notas sobre a abertura do caixa..."
+                ></textarea>
+            </div>
+            <div class="pt-4 border-t">
+                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition">Abrir Caixa</button>
+            </div>
+        </form>
+    `;
 
-// --- 5. FUNÇÕES DE MANIPULAÇÃO DE DADOS (HANDLERS) ---
+    const { modalElement } = showGenericModal({ title: "Abrir Caixa", contentHTML, maxWidth: 'max-w-md' });
+
+    modalElement.querySelector('#open-cashier-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const initialAmountInput = document.getElementById('initial-amount');
+        const initialAmountValue = initialAmountInput.value.trim();
+        const notes = document.getElementById('cashier-notes').value.trim();
+
+        const initialAmount = parseFloat(initialAmountValue);
+
+        if (initialAmountValue === '' || isNaN(initialAmount) || initialAmount < 0) {
+            showNotification('Valor Inválido', 'Por favor, insira um valor inicial válido (maior ou igual a R$ 0,00).', 'error');
+            initialAmountInput.focus();
+            return;
+        }
+
+        try {
+            const payload = {
+                establishmentId: state.establishmentId,
+                initialAmount: parseFloat(initialAmount.toFixed(2)),
+            };
+
+            if (notes) {
+                payload.notes = notes;
+            }
+
+            console.log('Abrindo caixa com payload:', payload);
+
+            const session = await cashierApi.openCashier(payload);
+            
+            localState.isCashierOpen = true;
+            localState.activeCashierSessionId = session.id;
+            
+            // Recarrega toda a página para refletir o estado do caixa
+            await loadComandasPage();
+            
+            document.getElementById('genericModal').style.display = 'none';
+            showNotification('Sucesso!', `Caixa aberto com valor inicial de R$ ${initialAmount.toFixed(2)}`, 'success');
+        } catch (error) {
+            console.error('Erro ao abrir caixa:', error);
+            showNotification('Erro', `Não foi possível abrir o caixa: ${error.message}`, 'error');
+        }
+    });
+}
+
+async function handleCloseCashier() {
+    const confirmed = await showConfirmation(
+        'Fechar Caixa',
+        'Tem certeza que deseja fechar o caixa? Certifique-se de que todas as vendas foram finalizadas.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+        await cashierApi.closeCashier(localState.activeCashierSessionId);
+        localState.isCashierOpen = false;
+        localState.activeCashierSessionId = null;
+        
+        // Recarrega a página para refletir o estado
+        await loadComandasPage();
+        
+        showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
+    } catch (error) {
+        showNotification('Erro', `Não foi possível fechar o caixa: ${error.message}`, 'error');
+    }
+}
+
+async function handleViewSalesReport() {
+    try {
+        const report = await salesApi.getSalesReport(state.establishmentId, localState.activeCashierSessionId);
+        
+        const contentHTML = `
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600">Total de Vendas</p>
+                        <p class="text-2xl font-bold text-blue-600">${report.totalSales || 0}</p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600">Faturamento Total</p>
+                        <p class="text-2xl font-bold text-green-600">R$ ${(report.totalRevenue || 0).toFixed(2)}</p>
+                    </div>
+                </div>
+                <div class="border-t pt-4">
+                    <h4 class="font-semibold mb-2">Formas de Pagamento</h4>
+                    <div class="space-y-2">
+                        ${Object.entries(report.paymentMethods || {}).map(([method, amount]) => `
+                            <div class="flex justify-between">
+                                <span class="capitalize">${method}</span>
+                                <span class="font-semibold">R$ ${amount.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        showGenericModal({ title: "Relatório de Vendas", contentHTML, maxWidth: 'max-w-lg' });
+    } catch (error) {
+        showNotification('Erro', `Não foi possível carregar o relatório: ${error.message}`, 'error');
+    }
+}
+
+// --- 5. HANDLERS ---
+// (Manter as mesmas funções do código anterior)
 
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
     localState.activeFilter = filter;
+    localState.paging.page = 1;
     
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
     document.querySelector(`[data-filter="${filter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
@@ -517,15 +771,12 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda.comandaItems.push(...itemsToAdd);
 
     try {
-        // CORREÇÃO: Para permitir a remoção de serviços originais, precisamos atualizar o appointment todo.
-        // A API 'updateComandaItems' só mexe em `comandaItems`. A 'updateAppointment' pode mexer em `services` também.
         await appointmentsApi.updateAppointment(comanda.id, comanda);
         showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
         renderComandaDetail();
         renderComandaList();
     } catch (error) {
         showNotification('Erro', `Não foi possível adicionar o item: ${error.message}`, 'error');
-        // Reverte a alteração local em caso de erro
         comanda.comandaItems.splice(comanda.comandaItems.length - quantity, quantity);
     }
 }
@@ -536,14 +787,11 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     let itemRemoved = false;
 
-    // Tenta remover dos itens adicionados
     let comandaItemIndex = comanda.comandaItems.findIndex(item => item.id === itemId && item.type === itemType);
     if (comandaItemIndex > -1) {
         comanda.comandaItems.splice(comandaItemIndex, 1);
         itemRemoved = true;
-    } 
-    // Se não encontrou, tenta remover dos serviços originais
-    else {
+    } else {
         let serviceIndex = comanda.services.findIndex(item => item.id === itemId);
         if (serviceIndex > -1) {
             comanda.services.splice(serviceIndex, 1);
@@ -553,14 +801,13 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     
     if (itemRemoved) {
         try {
-            // Usa a API de update geral do agendamento, que pode alterar tanto 'services' quanto 'comandaItems'
             await appointmentsApi.updateAppointment(comanda.id, comanda);
             showNotification('Sucesso', 'Item removido!', 'success');
             renderComandaDetail();
-            renderComandaList(); // Atualiza o total na lista
+            renderComandaList();
         } catch (error) {
             showNotification('Erro', `Não foi possível remover o item: ${error.message}`, 'error');
-            await fetchAndDisplayData(); // Recarrega tudo para garantir consistência
+            await fetchAndDisplayData();
         }
     }
 }
@@ -624,8 +871,7 @@ async function handleCreateNewSale(e) {
     renderComandaDetail();
 }
 
-
-// --- 6. FUNÇÕES DE INICIALIZAÇÃO E DADOS ---
+// --- 6. INICIALIZAÇÃO ---
 
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
@@ -636,22 +882,41 @@ async function fetchAndDisplayData() {
         : null;
 
     try {
-        const [comandas, services, products, packages, clients, activeSession] = await Promise.all([
-            comandasApi.getComandas(state.establishmentId, filterDate),
-            servicesApi.getServices(state.establishmentId),
-            productsApi.getProducts(state.establishmentId),
-            packagesApi.getPackages(state.establishmentId),
-            clientsApi.getClients(state.establishmentId),
-            cashierApi.getActiveSession()
-        ]);
-
-        localState.allComandas = comandas;
-        localState.catalog = { services, products, packages };
-        localState.clients = clients;
+        // Primeiro verifica estado do caixa
+        const activeSession = await cashierApi.getActiveSession();
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
         
         renderCashierControls();
+        
+        // Se caixa fechado no modo "atendimento", não carrega comandas
+        if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
+            renderComandaList();
+            renderComandaDetail();
+            return;
+        }
+        
+        const response = await comandasApi.getComandas(
+            state.establishmentId, 
+            filterDate,
+            localState.paging.page,
+            localState.paging.limit
+        );
+        
+        localState.allComandas = response.data || response;
+        localState.paging.total = response.total || response.length;
+        
+        if (localState.catalog.services.length === 0) {
+            const [services, products, packages, clients] = await Promise.all([
+                servicesApi.getServices(state.establishmentId),
+                productsApi.getProducts(state.establishmentId),
+                packagesApi.getPackages(state.establishmentId),
+                clientsApi.getClients(state.establishmentId)
+            ]);
+            localState.catalog = { services, products, packages };
+            localState.clients = clients;
+        }
+        
         renderComandaList();
         renderComandaDetail();
 
@@ -663,6 +928,17 @@ async function fetchAndDisplayData() {
 
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
+    
+    // Verifica primeiro o estado do caixa
+    try {
+        const activeSession = await cashierApi.getActiveSession();
+        localState.isCashierOpen = !!activeSession;
+        localState.activeCashierSessionId = activeSession ? activeSession.id : null;
+    } catch (error) {
+        console.error('Erro ao verificar caixa:', error);
+        localState.isCashierOpen = false;
+    }
+    
     renderPageLayout();
 
     if (pageEventListener) {
@@ -674,6 +950,7 @@ export async function loadComandasPage(params = {}) {
         const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
         
         if (e.target.id === 'filter-date' && localState.activeFilter === 'finalizadas') {
+             localState.paging.page = 1;
              await fetchAndDisplayData();
              return;
         }
@@ -689,9 +966,24 @@ export async function loadComandasPage(params = {}) {
             const comandaId = target.dataset.id;
             
             switch (action) {
-                case 'new-sale': openNewSaleModal(); break;
-                case 'add-item': openAddItemModal(); break;
-                case 'checkout': openCheckoutModal(); break;
+                case 'new-sale': 
+                    openNewSaleModal(); 
+                    break;
+                case 'add-item': 
+                    openAddItemModal(); 
+                    break;
+                case 'checkout': 
+                    openCheckoutModal(); 
+                    break;
+                case 'open-cashier':
+                    openCashierModal();
+                    break;
+                case 'close-cashier':
+                    await handleCloseCashier();
+                    break;
+                case 'view-sales-report':
+                    await handleViewSalesReport();
+                    break;
                 case 'remove-item':
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
                     break;
@@ -724,6 +1016,7 @@ export async function loadComandasPage(params = {}) {
             }
         }
     };
+    
     contentDiv.addEventListener('click', pageEventListener);
     contentDiv.addEventListener('change', pageEventListener);
 

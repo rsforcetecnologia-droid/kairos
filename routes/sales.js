@@ -7,7 +7,7 @@ router.get('/', async (req, res) => {
     res.status(501).json({ message: 'Ainda não implementado' });
 });
 
-// Criar nova venda avulsa (PDV) - COM INTEGRAÇÃO FINANCEIRA
+// Criar nova venda avulsa (PDV) - COM INTEGRAÇÃO FINANCEIRA CORRIGIDA
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
@@ -17,7 +17,6 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ message: "Dados da venda incompletos." });
     }
     
-    // Garante um timestamp consistente para toda a transação
     const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
     try {
@@ -29,11 +28,9 @@ router.post('/', async (req, res) => {
             }
         }
         
-        // --- NOVO: Busca as configurações financeiras padrão do estabelecimento ---
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
-
 
         const saleData = {
             type: 'walk-in',
@@ -59,7 +56,7 @@ router.post('/', async (req, res) => {
         await db.runTransaction(async (transaction) => {
             const productsToUpdate = items.filter(item => item.type === 'product');
             
-            // 1. Validar e Atualizar Estoque (se houver produtos)
+            // 1. Validar e Atualizar Estoque
             if (productsToUpdate.length > 0) {
                 productsToUpdate.forEach((item, index) => {
                     if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
@@ -75,7 +72,6 @@ router.post('/', async (req, res) => {
                     const productDoc = productDocs[i];
                     const productItem = productsToUpdate[i];
                     if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
-                    // A venda avulsa presume 1 unidade por item, subtraímos do estoque.
                     const newStock = (productDoc.data().currentStock || 0) - 1; 
                     if (newStock < 0) throw new Error(`Stock insuficiente para o produto ${productItem.name}.`);
                     updates.push({ ref: productDoc.ref, newStock: newStock });
@@ -84,65 +80,88 @@ router.post('/', async (req, res) => {
                 updates.forEach(update => transaction.update(update.ref, { currentStock: update.newStock }));
             }
             
-            // 2. Criar Registro de Venda (Sales)
+            // 2. Criar Registro de Venda
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA: Criar Contas a Receber (financial_receivables)
+            // 3. INTEGRAÇÃO FINANCEIRA CORRIGIDA
             payments.forEach(payment => {
                 const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
-                const isInstallmentPayment = installmentCount > 1;
+                const paymentMethod = payment.method.toLowerCase();
+                const paidDate = new Date().toISOString().split('T')[0];
 
-                // Se for um pagamento único e não for crediário, o status é 'paid'.
-                if (!isInstallmentPayment && payment.method !== 'crediario') {
-                    const financialRef = db.collection('financial_receivables').doc();
-                    const paidDate = new Date().toISOString().split('T')[0];
-                    transaction.set(financialRef, {
-                        establishmentId,
-                        description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Método: ${payment.method})`,
-                        amount: payment.value,
-                        dueDate: paidDate, 
-                        paymentDate: paidDate,
-                        status: 'paid', // Já está pago
-                        transactionId: saleRef.id,
-                        createdAt: paidAtTimestamp,
-                        naturezaId: defaultNaturezaId || null,
-                        centroDeCustoId: defaultCentroDeCustoId || null,
-                    });
-                    return; // Próximo pagamento
-                }
-
-                // Lógica para parcelamento (Crédito ou Crediário)
-                const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
-                let totalButLast = installmentValue * (installmentCount - 1);
-
-                for (let i = 1; i <= installmentCount; i++) {
-                    const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
-                    const dueDate = new Date();
-                    // Adiciona um mês para cada parcela, exceto a primeira.
-                    if (i > 1) {
-                        dueDate.setMonth(dueDate.getMonth() + (i - 1));
-                    }
-                    const dueDateString = dueDate.toISOString().split('T')[0];
-                    const description = `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Parcela ${i}/${installmentCount} - ${payment.method})`;
+                // CRÉDITO: SEMPRE entra à vista, independente de parcelas
+                if (paymentMethod === 'credito') {
                     const financialRef = db.collection('financial_receivables').doc();
                     
-                    // CORREÇÃO APLICADA AQUI: Parcelamentos são 'pending'
-                    const status = 'pending';
-                    const paymentDate = null; // Fica nulo até a baixa manual
+                    const notes = installmentCount > 1 
+                        ? `Parcelado em ${installmentCount}x no cartão de crédito (estabelecimento recebe à vista)`
+                        : 'Pagamento à vista no cartão de crédito';
 
                     transaction.set(financialRef, {
                         establishmentId,
-                        description,
-                        amount: currentInstallmentValue,
-                        dueDate: dueDateString,
-                        paymentDate: paymentDate,
-                        status: status,
+                        description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Crédito ${installmentCount}x)`,
+                        amount: payment.value, // VALOR TOTAL À VISTA
+                        dueDate: paidDate, 
+                        paymentDate: paidDate,
+                        status: 'paid',
                         transactionId: saleRef.id,
                         createdAt: paidAtTimestamp,
                         naturezaId: defaultNaturezaId || null,
                         centroDeCustoId: defaultCentroDeCustoId || null,
+                        notes: notes,
+                        paymentDetails: {
+                            method: 'credito',
+                            installments: installmentCount
+                        }
                     });
+                    return; // Não processa mais nada para crédito
                 }
+
+                // CREDIÁRIO/FIADO: SEMPRE projeta parcelas
+                if (paymentMethod === 'crediario') {
+                    const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
+                    let totalButLast = installmentValue * (installmentCount - 1);
+
+                    for (let i = 1; i <= installmentCount; i++) {
+                        const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
+                        const dueDate = new Date();
+                        if (i > 1) {
+                            dueDate.setMonth(dueDate.getMonth() + (i - 1));
+                        }
+                        const dueDateString = dueDate.toISOString().split('T')[0];
+                        const description = `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Parcela ${i}/${installmentCount} - Fiado)`;
+                        const financialRef = db.collection('financial_receivables').doc();
+                        
+                        transaction.set(financialRef, {
+                            establishmentId,
+                            description,
+                            amount: currentInstallmentValue,
+                            dueDate: dueDateString,
+                            paymentDate: null,
+                            status: 'pending',
+                            transactionId: saleRef.id,
+                            createdAt: paidAtTimestamp,
+                            naturezaId: defaultNaturezaId || null,
+                            centroDeCustoId: defaultCentroDeCustoId || null,
+                        });
+                    }
+                    return; // Já processou crediário
+                }
+
+                // OUTROS MÉTODOS (Dinheiro, PIX, Débito): SEMPRE à vista
+                const financialRef = db.collection('financial_receivables').doc();
+                transaction.set(financialRef, {
+                    establishmentId,
+                    description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (${payment.method})`,
+                    amount: payment.value,
+                    dueDate: paidDate, 
+                    paymentDate: paidDate,
+                    status: 'paid',
+                    transactionId: saleRef.id,
+                    createdAt: paidAtTimestamp,
+                    naturezaId: defaultNaturezaId || null,
+                    centroDeCustoId: defaultCentroDeCustoId || null,
+                });
             });
         });
         
@@ -154,13 +173,12 @@ router.post('/', async (req, res) => {
     }
 });
 
-// ROTA PARA REABRIR VENDA AVULSA - LÓGICA ATUALIZADA
+// ROTA PARA REABRIR VENDA AVULSA
 router.post('/:saleId/reopen', async (req, res) => {
     const { saleId } = req.params;
     const { db } = req;
     
     const saleRef = db.collection('sales').doc(saleId);
-    // Lista para deletar do financeiro fora da transação principal, pois não é essencial
     const financialEntriesToDelete = [];
 
     try {
@@ -171,13 +189,11 @@ router.post('/:saleId/reopen', async (req, res) => {
             const saleData = saleDoc.data();
             if (saleData.type !== 'walk-in') throw new Error("Esta função só pode ser usada para reabrir vendas avulsas.");
 
-            // Buscar IDs do financeiro para exclusão posterior
             const financialSnapshot = await db.collection('financial_receivables')
                 .where('transactionId', '==', saleId)
                 .get();
             financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
             
-            // Devolve os produtos ao stock
             const productsToRestock = saleData.items.filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
                 productsToRestock.forEach(item => {
@@ -189,19 +205,16 @@ router.post('/:saleId/reopen', async (req, res) => {
                 
                 productDocs.forEach(doc => {
                     if (doc.exists) {
-                        // Devolve 1 item para cada produto vendido
                         transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(1) });
                     }
                 });
             }
 
-            // Apaga a venda antiga
             transaction.delete(saleRef);
             
             return saleData;
         });
 
-        // Deletar entradas financeiras (fora da transação para evitar bloqueios longos)
         const batchDeleteFinancial = db.batch();
         financialEntriesToDelete.forEach(id => {
             batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
