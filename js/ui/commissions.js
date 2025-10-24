@@ -409,3 +409,4 @@ export async function loadCommissionsPage(params = {}) {
         renderHistoryView();
     }
 }
+
