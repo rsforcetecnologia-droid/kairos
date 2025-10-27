@@ -1,3 +1,5 @@
+// js/main.js
+
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -250,21 +252,26 @@ function initialize() {
                     const finalUserName = userName || user.email;
                     setGlobalState(claims.establishmentId, finalUserName, userPermissions);
 
+                    /* ------------------------------------------------------------- */
+                    /* MODIFICAÇÃO AQUI: Forçando a logo do sistema KAIROS */
+                    /* ------------------------------------------------------------- */
                     try {
                         const nameEl = document.getElementById('panelEstablishmentName');
                         const logoEl = document.getElementById('panelEstablishmentLogo');
                         const logoContainer = document.getElementById('panelLogoContainer');
-                        nameEl.innerHTML = `<span class="truncate">${establishmentDetails.name || finalUserName || 'Meu Painel'}</span>`;
-                        if (establishmentDetails.logo) {
-                            logoContainer.classList.remove('bg-gray-700', 'animate-pulse');
-                            logoEl.src = establishmentDetails.logo;
-                            logoEl.classList.remove('opacity-0');
-                        } else {
-                            logoContainer.classList.remove('animate-pulse');
-                        }
+                        
+                        // 1. Define o nome fixo do sistema
+                        nameEl.innerHTML = '<span class="truncate">Kairos</span>';
+                        
+                        // 2. Remove classes de carregamento/fallback e define o logo fixo
+                        logoContainer.classList.remove('bg-gray-700', 'animate-pulse');
+                        logoEl.src = 'img/kairos-logo.png'; // Caminho fixo para a logo Kairos
+                        logoEl.classList.remove('opacity-0');
+
                     } catch (e) {
                           console.error("Não foi possível carregar detalhes do estabelecimento para o cabeçalho:", e);
                     }
+                    /* ------------------------------------------------------------- */
 
                     profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
                     profileName.textContent = finalUserName;

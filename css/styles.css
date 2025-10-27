@@ -32,27 +32,38 @@ margin-right: 0.75rem;
 flex-shrink: 0;
 }
 
+/* ----------------------------------------------- */
+/* ESTILOS DA BARRA LATERAL (Sidebar) - MODIFICADO */
+/* ----------------------------------------------- */
 #sidebar {
-transition: width 0.3s ease-in-out;
+    /* NOVO: Largura reduzida em 10% (16.56rem) */
+    width: 16.56rem; 
+    transition: width 0.3s ease-in-out;
+    /* Propriedades para fixar e permitir rolagem */
+    position: fixed; 
+    height: 100vh; 
+    overflow-y: auto; 
+    z-index: 40; 
 }
 #sidebar.collapsed {
-width: 4.5rem;
+    width: 4.5rem;
 }
 #sidebar.collapsed .sidebar-text {
-display: none;
+    display: none;
 }
 #sidebar.collapsed .sidebar-link {
-justify-content: center;
+    justify-content: center;
 }
 #sidebar.collapsed .sidebar-link svg {
-margin-right: 0;
+    margin-right: 0;
 }
 #sidebarToggle {
-transition: transform 0.3s ease-in-out;
+    transition: transform 0.3s ease-in-out;
 }
 #sidebar.collapsed #sidebarToggle {
-transform: rotate(180deg);
+    transform: rotate(180deg);
 }
+/* ----------------------------------------------- */
 
 
 /* --- COMPONENTES --- */
@@ -820,4 +831,62 @@ body {
     background-repeat: no-repeat;
     background-size: 1.5em 1.5em;
     padding-right: 2.5rem;
+}
+
+/* --- NOVO ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
+
+/* Largura da sidebar ativa: 16.56rem */
+.main-content-shift {
+    margin-left: 16.56rem; 
+    transition: margin-left 0.3s ease-in-out;
+}
+
+/* Largura da sidebar colapsada: 4.5rem */
+.main-content-shift.sidebar-collapsed-shift {
+    margin-left: 4.5rem;
+}
+
+/* --- NOVOS ESTILOS PARA OCULTAR A BARRA DE ROLAGEM DA SIDEBAR --- */
+#sidebar {
+    /* ... (outras regras de sidebar) */
+    /* Regras do Firefox */
+    scrollbar-width: none;
+}
+
+/* Regras do Chrome, Edge e Safari */
+#sidebar::-webkit-scrollbar {
+    display: none;
+}
+
+/* --- NOVOS ESTILOS PARA A LOGO DO SISTEMA NA SIDEBAR - AJUSTADO PARA PREENCHER ESPAÇO --- */
+#sidebarSystemLogo {
+    background-color: #2b2f3a; /* Fundo para o retângulo da logo */
+    padding: 1.25rem 1rem; /* Padding para espaço interno */
+    border-radius: 0.75rem; /* Arredondamento dos cantos */
+    margin: 1rem; /* Margem para separar do topo e das bordas da sidebar */
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
+    height: 5rem; /* Altura total do container da logo */
+    width: auto; 
+    overflow: hidden; /* Garante que nada saia do container */
+}
+
+#sidebarSystemLogo img {
+    /* AJUSTE CHAVE: Faz a imagem ocupar 100% do container e preencher o espaço */
+    height: 100%; 
+    width: 100%; 
+    object-fit: contain; /* Mantém a proporção e garante que toda a imagem seja vista */
+}
+
+/* Ajuste para quando a sidebar estiver colapsada */
+#sidebar.collapsed #sidebarSystemLogo {
+    padding: 0.75rem 0.5rem; 
+    margin: 0.75rem auto; 
+    height: 3.5rem; /* Altura menor quando colapsado */
+}
+
+#sidebar.collapsed #sidebarSystemLogo img {
+    height: 100%; 
 }
