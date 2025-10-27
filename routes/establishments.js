@@ -20,7 +20,22 @@ router.get('/:establishmentId/details', async (req, res) => {
             return res.status(403).json({ message: "Este estabelecimento não está disponível no momento." });
         }
 
-        res.status(200).json(establishmentData);
+        // --- INÍCIO DA MODIFICAÇÃO ---
+        
+        // 1. Busca o logótipo global da plataforma
+        const configDoc = await db.collection('config').doc('plataforma').get();
+        const globalLogoUrl = configDoc.data()?.logoUrl || null;
+
+        // 2. Combina os dados do estabelecimento com o logótipo global
+        const responseData = {
+            ...establishmentData,
+            globalLogoUrl: globalLogoUrl // Envia a URL do logótipo global
+        };
+
+        res.status(200).json(responseData);
+
+        // --- FIM DA MODIFICAÇÃO ---
+
     } catch (error) {
         console.error("Erro ao buscar detalhes do estabelecimento:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
@@ -64,4 +79,3 @@ router.put('/:establishmentId/details', verifyToken, isOwner, async (req, res) =
 });
 
 module.exports = router;
-

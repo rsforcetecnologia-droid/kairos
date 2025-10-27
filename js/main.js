@@ -26,7 +26,6 @@ import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
-// ... (o resto do ficheiro permanece exatamente igual)
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
 const contentDiv = document.getElementById('content');
@@ -57,7 +56,6 @@ const pageLoader = {
     'agenda-section': loadAgendaPage,
     'comandas-section': loadComandasPage,
     'relatorios-section': loadReportsPage,
-    // A linha 'stock-report-section' foi removida
     'servicos-section': loadServicesPage,
     'produtos-section': loadProductsPage,
     'profissionais-section': loadProfessionalsPage,
@@ -71,7 +69,6 @@ const pageLoader = {
     'packages-section': loadPackagesPage,
 };
 
-// ... (o resto do ficheiro main.js permanece igual)
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
 function applyTheme(themeKey) {
@@ -253,24 +250,38 @@ function initialize() {
                     setGlobalState(claims.establishmentId, finalUserName, userPermissions);
 
                     /* ------------------------------------------------------------- */
-                    /* MODIFICAÇÃO AQUI: Forçando a logo do sistema KAIROS */
+                    /* MODIFICAÇÃO PARA USAR O LOGÓTIPO GLOBAL                       */
                     /* ------------------------------------------------------------- */
                     try {
                         const nameEl = document.getElementById('panelEstablishmentName');
                         const logoEl = document.getElementById('panelEstablishmentLogo');
                         const logoContainer = document.getElementById('panelLogoContainer');
                         
-                        // 1. Define o nome fixo do sistema
-                        nameEl.innerHTML = '<span class="truncate">Kairos</span>';
-                        
-                        // 2. Remove classes de carregamento/fallback e define o logo fixo
+                        // 1. Remove classes de carregamento/placeholder
                         logoContainer.classList.remove('bg-gray-700', 'animate-pulse');
-                        logoEl.src = 'img/kairos-logo.png'; // Caminho fixo para a logo Kairos
-                        logoEl.classList.remove('opacity-0');
+                        nameEl.firstElementChild?.remove(); // Remove o div placeholder do nome
+
+                        // 2. Verifica se existe o logótipo global
+                        if (establishmentDetails.globalLogoUrl) {
+                            // Se existe, usa o logótipo global e o nome "Kairos" (ou outro nome fixo se preferir)
+                            nameEl.textContent = 'Kairos'; // Ou o nome da sua plataforma
+                            logoEl.src = establishmentDetails.globalLogoUrl;
+                            logoEl.alt = 'Logótipo da Plataforma';
+                            logoEl.classList.remove('opacity-0');
+                        } else {
+                            // Se NÃO existe, usa o nome do estabelecimento e mantém o placeholder visual (sem animação)
+                            nameEl.textContent = establishmentDetails.name; 
+                            logoContainer.classList.add('bg-gray-700'); // Fundo cinza como fallback
+                            // Opcional: Adicionar um ícone/texto de fallback dentro do logoContainer se desejar
+                        }
 
                     } catch (e) {
-                          console.error("Não foi possível carregar detalhes do estabelecimento para o cabeçalho:", e);
+                         console.error("Não foi possível carregar detalhes do estabelecimento para o cabeçalho:", e);
+                         // Fallback caso ocorra erro ao buscar detalhes
+                         document.getElementById('panelEstablishmentName').textContent = 'Erro';
                     }
+                    /* ------------------------------------------------------------- */
+                    /* FIM DA MODIFICAÇÃO                                            */
                     /* ------------------------------------------------------------- */
 
                     profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
@@ -309,7 +320,7 @@ function initialize() {
                 `;
                 dashboardContent.style.display = 'flex'; 
                 document.getElementById('errorLogoutButton').addEventListener('click', () => {
-                      signOut(auth).then(() => window.location.href = '/login');
+                     signOut(auth).then(() => window.location.href = '/login');
                 });
             }
         } else {
