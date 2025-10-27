@@ -771,12 +771,14 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda.comandaItems.push(...itemsToAdd);
 
     try {
+        // A API de updateAppointment lida com a persistência de itens de comanda no backend
         await appointmentsApi.updateAppointment(comanda.id, comanda);
         showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
         renderComandaDetail();
         renderComandaList();
     } catch (error) {
         showNotification('Erro', `Não foi possível adicionar o item: ${error.message}`, 'error');
+        // Reverte a alteração local em caso de erro
         comanda.comandaItems.splice(comanda.comandaItems.length - quantity, quantity);
     }
 }
@@ -787,11 +789,13 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     let itemRemoved = false;
 
+    // Tenta remover dos itens adicionais (comandaItems)
     let comandaItemIndex = comanda.comandaItems.findIndex(item => item.id === itemId && item.type === itemType);
     if (comandaItemIndex > -1) {
         comanda.comandaItems.splice(comandaItemIndex, 1);
         itemRemoved = true;
     } else {
+        // Tenta remover dos serviços originais (services) - isso é mais arriscado mas a lógica já existe
         let serviceIndex = comanda.services.findIndex(item => item.id === itemId);
         if (serviceIndex > -1) {
             comanda.services.splice(serviceIndex, 1);
@@ -826,6 +830,7 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         if (isAppointment) {
             await appointmentsApi.checkoutAppointment(comanda.id, data);
         } else {
+            // Se for walk-in, usa a API de criação de venda (sales)
             data.clientName = comanda.clientName;
             data.professionalId = comanda.professionalId;
             await salesApi.createSale(data);
@@ -991,9 +996,25 @@ export async function loadComandasPage(params = {}) {
                     const confirmed = await showConfirmation('Reabrir Comanda', 'Tem certeza? O pagamento será estornado e os produtos devolvidos ao estoque.');
                     if (confirmed) {
                         try {
+                            // 1. CHAMA API DO BACKEND
                             await appointmentsApi.reopenAppointment(comandaId);
-                            showNotification('Sucesso!', 'Comanda reaberta para edição.');
-                            await fetchAndDisplayData();
+                            
+                            // 2. AJUSTE CRÍTICO: Limpa o objeto em MEMÓRIA (localState) imediatamente
+                            const reopenedComandaIndex = localState.allComandas.findIndex(c => c.id === comandaId);
+                            if (reopenedComandaIndex !== -1) {
+                                // REMOVE os campos que continham a forma de pagamento anterior
+                                delete localState.allComandas[reopenedComandaIndex].transaction; 
+                                delete localState.allComandas[reopenedComandaIndex].cashierSessionId; 
+                                delete localState.allComandas[reopenedComandaIndex].redeemedReward;
+                                localState.allComandas[reopenedComandaIndex].status = 'confirmed'; // Garante o status correto para reexibição
+                            }
+                            
+                            // 3. Limpa a seleção para forçar o re-render
+                            localState.selectedComandaId = null; 
+                            
+                            showNotification('Sucesso!', 'Comanda reaberta para edição.', 'success');
+                            // 4. Recarrega a lista do backend (obtém os dados mais limpos)
+                            await fetchAndDisplayData(); 
                         } catch (error) {
                             showNotification('Erro', `Não foi possível reabrir: ${error.message}`, 'error');
                         }

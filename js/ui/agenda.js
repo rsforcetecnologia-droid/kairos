@@ -45,6 +45,7 @@ let localState = {
 let newAppointmentState = {
     step: 1, // 1: Cliente, 2: Serviço, 3: Profissional, 4: Data/Hora
     data: {
+        id: null, // <-- AJUSTE FEITO (1/3): Adicionado ID para rastrear a edição
         clientName: '',
         clientPhone: '',
         selectedServiceIds: [],
@@ -969,6 +970,7 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         newAppointmentState = {
             step: 1,
             data: {
+                id: appointment?.id || null, // <-- AJUSTE FEITO (2/3): Salva o ID no estado
                 clientName: appointment?.clientName || '',
                 clientPhone: appointment?.clientPhone || '',
                 // CORREÇÃO: Usa os IDs dos serviços existentes
@@ -1022,7 +1024,7 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             </header>
             
             <form id="appointmentForm" class="flex flex-col h-full">
-                <input type="hidden" id="appointmentId" value="${appointment?.id || ''}">
+                <input type="hidden" id="appointmentId" value="${newAppointmentState.data.id || ''}">
                 <input type="hidden" id="selectedTime" value="${newAppointmentState.data.time || ''}">
                 
                 <div class="flex-1 overflow-y-auto" style="max-height: 80vh;">

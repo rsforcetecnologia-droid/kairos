@@ -44,17 +44,17 @@ router.post('/', async (req, res) => {
             const potentialConflicts = await transaction.get(conflictQuery);
             const actualConflicts = potentialConflicts.docs.filter(doc => doc.data().endTime.toDate() > startDate);
             if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível. Por favor, escolha outro.');
-            
+
             let newAppointment = {
-                establishmentId, 
-                services: servicesDetails, 
-                professionalId, 
+                establishmentId,
+                services: servicesDetails,
+                professionalId,
                 professionalName, // Campo adicionado para consistência
-                clientName, 
+                clientName,
                 clientPhone,
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
-                status: 'confirmed', 
+                status: 'confirmed',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
 
@@ -105,26 +105,26 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
         const { db } = req;
         const start = new Date(startDate);
         const end = new Date(endDate);
-        
+
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('startTime', '>=', start)
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
-            
+
         if (professionalId && professionalId !== 'all') { // Filtro por profissional
             appointmentsQuery = appointmentsQuery.where('professionalId', '==', professionalId);
         }
-        
+
         const [appointmentsSnapshot, professionalsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
             db.collection('professionals').where('establishmentId', '==', establishmentId).get()
         ]);
-        
+
         if (appointmentsSnapshot.empty) return res.status(200).json([]);
-        
+
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
-        
+
         const enrichedAppointments = appointmentsSnapshot.docs.map(doc => {
             const appointment = { id: doc.id, ...doc.data() };
             let serviceName = (appointment.services && Array.isArray(appointment.services)) ? appointment.services.map(s => s.name).join(', ') : appointment.serviceName || 'N/A';
@@ -136,7 +136,7 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
                 professionalName: professionalsMap.get(appointment.professionalId) || 'Profissional não encontrado',
             };
         });
-        
+
         res.status(200).json(enrichedAppointments);
     } catch (error) {
         console.error("Erro ao listar agendamentos:", error);
@@ -318,10 +318,10 @@ router.post('/:appointmentId/comanda', verifyToken, hasAccess, async (req, res) 
     }
 });
 
-// Checkout do agendamento (Rota Privada) - COM CORREÇÃO E INTEGRAÇÃO FINANCEIRA
+// Checkout do agendamento (Rota Privada) - SEM INTEGRAÇÃO FINANCEIRA AUTOMÁTICA
 router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res) => {
     const { appointmentId } = req.params;
-    const { payments, totalAmount, cashierSessionId, items } = req.body; 
+    const { payments, totalAmount, cashierSessionId, items } = req.body;
     const { db } = req;
     const { uid, establishmentId } = req.user;
 
@@ -337,20 +337,16 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
         await db.runTransaction(async (transaction) => {
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
-            
+
             const appointmentData = appointmentDoc.data();
             const establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
-            
-            // --- Obtém as configurações financeiras padrão ---
-            const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
-            const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
 
             const originalServiceIDs = new Set( (appointmentData.services || []).map(s => s.id) );
-            
+
             // CORREÇÃO: Inclui explicitamente 'product' e 'package' no payload de comandaItems.
             const comandaItemsPayload = items.filter(item => {
                 // Inclui Produtos e Pacotes
-                if (item.type === 'product' || item.type === 'package') return true; 
+                if (item.type === 'product' || item.type === 'package') return true;
                 // Inclui Serviços que não estavam no agendamento original
                 if (item.type === 'service') {
                     return !originalServiceIDs.has(item.id);
@@ -374,12 +370,12 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             // 2. Criar Registro de Venda (Sales)
             const saleData = {
                 type: 'appointment', appointmentId, establishmentId,
-                items: items, 
+                items: items,
                 totalAmount: Number(totalAmount),
                 clientName: appointmentData.clientName, clientPhone: appointmentData.clientPhone,
                 professionalId: appointmentData.professionalId,
                 professionalName: appointmentData.professionalName,
-                createdBy: uid, 
+                createdBy: uid,
                 createdAt: paidAtTimestamp,
                 cashierSessionId: cashierSessionId || null,
                 transaction: {
@@ -390,64 +386,9 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             };
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA: Criar Contas a Receber (financial_receivables)
-            payments.forEach(payment => {
-                const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
-                const isInstallmentPayment = installmentCount > 1;
+            // 3. INTEGRAÇÃO FINANCEIRA: REMOVIDA DESTE LOCAL. SERÁ FEITA AO FECHAR O CAIXA OU MANUALMENTE.
 
-                // Se for um pagamento único e não for crediário, o status é 'paid'.
-                if (!isInstallmentPayment && payment.method !== 'crediario') {
-                    const financialRef = db.collection('financial_receivables').doc();
-                    const paidDate = new Date().toISOString().split('T')[0];
-                    transaction.set(financialRef, {
-                        establishmentId,
-                        description: `Venda Agendamento: ${appointmentData.clientName} (Método: ${payment.method})`,
-                        amount: payment.value,
-                        dueDate: paidDate,
-                        paymentDate: paidDate,
-                        status: 'paid',
-                        transactionId: saleRef.id,
-                        createdAt: paidAtTimestamp,
-                        naturezaId: defaultNaturezaId || null,
-                        centroDeCustoId: defaultCentroDeCustoId || null,
-                    });
-                    return; // continue
-                }
-
-                const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
-                let totalButLast = installmentValue * (installmentCount - 1);
-
-                for (let i = 1; i <= installmentCount; i++) {
-                    const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
-                    const dueDate = new Date();
-                     if (i > 1) {
-                        dueDate.setMonth(dueDate.getMonth() + (i - 1));
-                    }
-                    const dueDateString = dueDate.toISOString().split('T')[0];
-                    
-                    const description = `Venda Agendamento: ${appointmentData.clientName} (Parcela ${i}/${installmentCount} - ${payment.method})`;
-
-                    const financialRef = db.collection('financial_receivables').doc();
-                    
-                    const status = 'pending';
-                    const paymentDate = null;
-
-                    transaction.set(financialRef, {
-                        establishmentId,
-                        description,
-                        amount: currentInstallmentValue,
-                        dueDate: dueDateString,
-                        paymentDate: paymentDate,
-                        status: status,
-                        transactionId: saleRef.id,
-                        createdAt: paidAtTimestamp,
-                        naturezaId: defaultNaturezaId || null,
-                        centroDeCustoId: defaultCentroDeCustoId || null,
-                    });
-                }
-            });
-
-            // 4. Fidelidade
+            // 4. Fidelidade (Ainda é um processo que ocorre na finalização)
             if (establishmentDoc.exists) {
                 const loyaltyProgram = establishmentDoc.data().loyaltyProgram;
                 if (loyaltyProgram && loyaltyProgram.enabled && loyaltyProgram.pointsPerCurrency > 0) {
@@ -465,22 +406,19 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
                 }
             }
         });
-        res.status(200).json({ message: 'Checkout realizado e venda registada com sucesso.' });
+        res.status(200).json({ message: 'Checkout realizado e venda registada com sucesso (Integração financeira agendada).' });
     } catch (error) {
         console.error("Erro ao realizar checkout:", error);
         res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
 
-// Reabrir comanda (Rota Privada)
+// Reabrir comanda (Rota Privada) - SEM LIMPEZA FINANCEIRA AUTOMÁTICA
 router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
-    
+
     const appointmentRef = db.collection('appointments').doc(appointmentId);
-    
-    // Lista para deletar do financeiro fora da transação principal, pois não é essencial
-    const financialEntriesToDelete = [];
 
     try {
         await db.runTransaction(async (transaction) => {
@@ -491,44 +429,35 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
 
             const appointmentData = appointmentDoc.data();
             const saleId = appointmentData.transaction?.saleId;
-            
+
             if (saleId) {
                 const saleRef = db.collection('sales').doc(saleId);
+                // Deleta a venda associada
                 transaction.delete(saleRef);
                 
-                // Buscar IDs do financeiro para exclusão posterior
-                const financialSnapshot = await db.collection('financial_receivables')
-                    .where('transactionId', '==', saleId)
-                    .get();
-                financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
+                // INTEGRAÇÃO FINANCEIRA: A exclusão das entradas 'financial_receivables'
+                // é responsabilidade da nova rotina de integração ao reverter o movimento.
             }
 
             // [LÓGICA ADICIONAL: DEVOLVER PONTOS DE RECOMPENSA RESGATADOS]
             if (appointmentData.redeemedReward && appointmentData.redeemedReward.points > 0) {
                 const clientIdentifier = `${appointmentData.clientName.trim()}-${appointmentData.clientPhone.trim()}`;
                 const clientRef = db.collection('clients').doc(clientIdentifier);
-                transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) });
-                // Note: Não estamos revertendo o histórico de fidelidade para simplificar.
+                const clientDoc = await transaction.get(clientRef);
+                if (clientDoc.exists) {
+                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) });
+                }
             }
-            
+
             transaction.update(appointmentRef, {
                 status: 'confirmed',
                 transaction: admin.firestore.FieldValue.delete(),
                 // Se a recompensa foi resgatada, remove a referência no agendamento
-                redeemedReward: admin.firestore.FieldValue.delete() 
+                redeemedReward: admin.firestore.FieldValue.delete()
             });
         });
-        
-        // Deletar entradas financeiras (fora da transação para evitar bloqueios longos)
-        const batchDeleteFinancial = db.batch();
-        financialEntriesToDelete.forEach(id => {
-            batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
-        });
-        if (financialEntriesToDelete.length > 0) {
-             await batchDeleteFinancial.commit();
-        }
 
-        res.status(200).json({ message: 'Comanda reaberta com sucesso e a venda associada foi removida.' });
+        res.status(200).json({ message: 'Comanda reaberta com sucesso. Venda associada removida. (Reversão financeira manual necessária).' });
 
     } catch (error) {
         console.error("Erro ao reabrir comanda:", error);
@@ -556,23 +485,23 @@ router.post('/:appointmentId/awaiting-payment', verifyToken, hasAccess, async (r
 router.patch('/:appointmentId/status', verifyToken, hasAccess, async (req, res) => {
     const { appointmentId } = req.params;
     const { status } = req.body; // Status esperado: 'confirmed'
-    
+
     if (!status) {
         return res.status(400).json({ message: 'O novo status é obrigatório.' });
     }
-    
+
     try {
         const { db } = req;
         const appointmentRef = db.collection('appointments').doc(appointmentId);
         const doc = await appointmentRef.get();
-        
+
         if (!doc.exists || doc.data().establishmentId !== req.user.establishmentId) {
             return res.status(403).json({ message: 'Acesso negado ou agendamento não encontrado.' });
         }
-        
+
         // Atualiza apenas o campo 'status'
         await appointmentRef.update({ status: status });
-        
+
         res.status(200).json({ message: `Status do agendamento ${appointmentId} atualizado para ${status}.` });
     } catch (error) {
         console.error("Erro ao atualizar status do agendamento:", error);
@@ -614,7 +543,7 @@ router.post('/cleanup-invalid', verifyToken, isOwner, async (req, res) => {
 
         const batch = db.batch();
         let deletedCount = 0;
-        
+
         snapshot.docs.forEach(doc => {
             const data = doc.data();
             if (!data.startTime || !(data.startTime instanceof admin.firestore.Timestamp)) {
