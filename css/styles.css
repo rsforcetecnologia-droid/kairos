@@ -7,7 +7,35 @@ font-size: 14px;
 /* --- ESTILOS GERAIS E LAYOUT --- */
 body {
 font-family: 'Inter', sans-serif;
+/* --- MODIFICAÇÃO: Padrão de fonte do corpo --- */
+font-size: 1rem; /* Define o padrão do site para 14px */
+/* Removido padding-top para compensar o header fixo */
+/* padding-top: 4rem; */ 
 }
+
+/* --- NOVO: ESTILOS DA BARRA SUPERIOR (HEADER) --- */
+/* Esta é uma suposição, assumindo que o seu HTML tem um <header class="app-header"> */
+/* A barra superior agora ficará ao lado da sidebar */
+.app-header {
+    position: fixed;
+    top: 0;
+    /* Ajustado para começar depois da sidebar */
+    left: 16.56rem; /* Largura da sidebar */
+    right: 0;
+    height: 4rem; /* 64px - Altura da barra superior */
+    background-color: #ffffff; /* Fundo branco */
+    border-bottom: 1px solid #e5e7eb; /* gray-200 */
+    z-index: 50; /* Acima da sidebar */
+    display: flex;
+    align-items: center;
+    padding: 0 1.5rem;
+    transition: left 0.3s ease-in-out; /* Adicionado para acompanhar a sidebar */
+}
+/* Ajuste para quando a sidebar estiver colapsada */
+body.sidebar-collapsed .app-header {
+    left: 4.5rem; /* Largura da sidebar colapsada */
+}
+
 
 .sidebar-link {
 display: flex;
@@ -41,9 +69,18 @@ flex-shrink: 0;
     transition: width 0.3s ease-in-out;
     /* Propriedades para fixar e permitir rolagem */
     position: fixed; 
-    height: 100vh; 
+    
+    /* --- MODIFICAÇÃO 1: Iniciar no topo --- */
+    top: 0; /* Volta ao topo */
+    height: 100vh; /* Altura total */
+    left: 0; /* Garante que está à esquerda */
+    
     overflow-y: auto; 
     z-index: 40; 
+    
+    /* --- MODIFICAÇÃO 2: Cantos arredondados adicionados --- */
+    border-top-right-radius: 1rem;
+    border-bottom-right-radius: 1rem;
 }
 #sidebar.collapsed {
     width: 4.5rem;
@@ -262,7 +299,8 @@ right: 0.25rem;
 color: white;
 border-radius: 0.5rem; /* Arredondado */
 padding: 0.25rem 0.5rem;
-font-size: 0.75rem;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
 line-height: 1.2;
 overflow: hidden;
 border-left-width: 4px;
@@ -336,7 +374,8 @@ gap: 1rem;
 .status-badge {
 padding: 0.25rem 0.75rem;
 border-radius: 9999px;
-font-size: 0.75rem;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
 font-weight: 500;
 }
 .card-actions {
@@ -557,7 +596,8 @@ border-radius: 9999px;
 display: flex;
 align-items: center;
 justify-content: center;
-font-size: 0.75rem;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
 font-weight: bold;
 border: 2px solid white;
 }
@@ -649,7 +689,8 @@ background-color: #eff6ff; /* blue-50 */
 }
 
 .prof-card-name {
-    font-size: 0.75rem; /* text-xs */
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
     font-weight: 600;
     color: #4b5563; /* gray-600 */
     white-space: nowrap;
@@ -741,7 +782,8 @@ body {
     border: none;
     padding: 12px 16px;
     cursor: pointer;
-    font-size: 0.9em; /* Levemente menor */
+    /* --- MODIFICAÇÃO: Padronização de unidade --- */
+    font-size: 0.9rem; /* Alterado de 0.9em para 0.9rem (12.6px) */
     font-weight: 600;
     color: #555;
     border-bottom: 3px solid transparent;
@@ -839,6 +881,9 @@ body {
 .main-content-shift {
     margin-left: 16.56rem; 
     transition: margin-left 0.3s ease-in-out;
+    
+    /* Adicionado padding-top para compensar o header fixo */
+    padding-top: 4rem; 
 }
 
 /* Largura da sidebar colapsada: 4.5rem */
@@ -848,7 +893,7 @@ body {
 
 /* --- NOVOS ESTILOS PARA OCULTAR A BARRA DE ROLAGEM DA SIDEBAR --- */
 #sidebar {
-    /* ... (outras regras de sidebar) */
+    /* ... (outras regras de sidebar) ... */
     /* Regras do Firefox */
     scrollbar-width: none;
 }
@@ -860,11 +905,14 @@ body {
 
 /* --- NOVOS ESTILOS PARA A LOGO DO SISTEMA NA SIDEBAR - AJUSTADO PARA PREENCHER ESPAÇO --- */
 #sidebarSystemLogo {
+    /* --- MODIFICAÇÃO: Revertido para 'flex' para exibir a logo do Kairos --- */
+    display: flex; 
+    
+    /* Estilos originais */
     background-color: #2b2f3a; /* Fundo para o retângulo da logo */
     padding: 1.25rem 1rem; /* Padding para espaço interno */
     border-radius: 0.75rem; /* Arredondamento dos cantos */
     margin: 1rem; /* Margem para separar do topo e das bordas da sidebar */
-    display: flex; 
     align-items: center; 
     justify-content: center; 
     box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
@@ -890,3 +938,21 @@ body {
 #sidebar.collapsed #sidebarSystemLogo img {
     height: 100%; 
 }
+
+/* -------------------------------------------------------------------------- */
+/* CORREÇÃO FINAL PARA EXIBIR APENAS A LOGO KAIROS */
+/* -------------------------------------------------------------------------- */
+/* 1. Garante que o contentor da sua logo KAIROS está visível */
+#sidebarSystemLogo {
+    display: flex;
+}
+
+/* 2. Oculta todos os elementos relacionados à identidade do cliente (Sr. Baron, etc.) */
+/* Adicionamos #panelEstablishmentName para ocultar o nome que insiste em aparecer */
+#panelLogoContainer, 
+#panelEstablishmentName {
+    display: none !important;
+}
+/* -------------------------------------------------------------------------- */
+/* FIM DA CORREÇÃO DE ESTRUTURA */
+/* -------------------------------------------------------------------------- */
