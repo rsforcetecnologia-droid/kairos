@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const path = require('path');
+const multer = require('multer'); // <-- NOVO: Importa o multer para upload de arquivos
 
 // --- INICIALIZAÇÃO DO FIREBASE (MODIFICADO PARA GOOGLE CLOUD) ---
 try {
@@ -72,7 +73,74 @@ const stripeWebhookRoutes = require('./routes/stripeWebhook'); // ADICIONADO: Im
 // Aplica o parser 'raw' e o middleware de instância para o Webhook do Stripe
 app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); 
 
-// IMPORTANTE: Parser de JSON para rotas comuns (DEPOIS do Webhook)
+// --- 1. ROTA DE UPLOAD DE LOGOTIPO (DEVE VIR ANTES DO express.json()) --- // <-- NOVO BLOCO
+// Configura o multer para upload em memória
+const storage = multer.memoryStorage();
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
+});
+
+// A Rota de Logo DEVE vir ANTES do express.json()
+app.post('/api/admin/config/logo', 
+    addFirebaseInstances, // Adiciona db, auth
+    verifyToken,          // Protege a rota
+    isSuperAdmin,         // Garante que é super-admin
+    upload.single('logoFile'), // Processa o arquivo 'logoFile' do FormData
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
+            }
+            
+            const { db } = req; // Pega o db do middleware
+            
+            // O nome do bucket vem do seu 'firebaseConfig' no admin.html
+            const bucket = admin.storage().bucket('kairos-system.firebasestorage.app'); 
+            const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
+            const fileUpload = bucket.file(fileName);
+
+            const blobStream = fileUpload.createWriteStream({
+                metadata: { contentType: req.file.mimetype }
+            });
+
+            blobStream.on('error', (error) => {
+                console.error("Erro no stream de upload do Storage:", error);
+                res.status(500).json({ message: 'Erro ao fazer upload do ficheiro.' });
+            });
+
+            blobStream.on('finish', async () => {
+                // Torna o ficheiro público
+                await fileUpload.makePublic();
+                
+                // Obtém a URL pública
+                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+
+                // Salva a URL no Firestore (onde a rota de 'establishments' busca)
+                await db.collection('config').doc('plataforma').set({
+                    logoUrl: publicUrl
+                }, { merge: true });
+
+                // Responde ao frontend com sucesso
+                res.status(200).json({ 
+                    message: 'Logótipo atualizado com sucesso!',
+                    logoUrl: publicUrl // O frontend espera por isso
+                });
+            });
+
+            // Inicia o stream
+            blobStream.end(req.file.buffer);
+
+        } catch (error) {
+            console.error("Erro no upload do logótipo:", error);
+            res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        }
+    }
+);
+// --- FIM DO NOVO BLOCO ---
+
+
+// IMPORTANTE: Parser de JSON para rotas comuns (DEPOIS do Webhook e do Upload)
 app.use(express.json({ limit: '10mb' })); 
 
 // Aplica o middleware que adiciona instâncias do Firebase a todas as rotas da API

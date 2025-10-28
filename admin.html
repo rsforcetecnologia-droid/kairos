@@ -9,18 +9,49 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            display: none; 
+            display: none;
+            background-color: #f3f4f6; /* bg-gray-100 */
         }
-        .modal { display: none; transition: opacity 0.3s ease; }
+        .modal {
+            display: none;
+            transition: opacity 0.3s ease;
+            z-index: 100; /* Garante que sobreponha o cabeçalho fixo */
+        }
         .modal.flex { display: flex; }
 
+        /* --- LAYOUT DO CABEÇALHO E MENU --- */
+        #fixed-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5rem; /* h-20 (80px) para acomodar a logo maior */
+            z-index: 30;
+        }
         #sidebar {
-            width: 4.5rem; 
+            width: 4.5rem;
             transition: width 0.3s ease-in-out;
+            position: fixed;
+            top: 5rem; /* Começa abaixo do cabeçalho fixo (5rem = h-20) */
+            left: 0;
+            height: calc(100vh - 5rem); /* Preenche o resto da altura da viewport */
+            z-index: 40;
+        }
+        #main-content-wrapper {
+            margin-left: 4.5rem; /* Espaço para o sidebar colapsado */
+            transition: margin-left 0.3s ease-in-out;
+            padding-top: 5rem; /* Espaço para o cabeçalho fixo (5rem = h-20) */
+            width: calc(100% - 4.5rem);
         }
         #sidebar.expanded {
             width: 16rem;
         }
+        #sidebar.expanded + #main-content-wrapper {
+            margin-left: 16rem; /* Espaço para o sidebar expandido */
+            width: calc(100% - 16rem);
+        }
+        /* --- FIM DAS MODIFICAÇÕES DO LAYOUT --- */
+
         #sidebar:not(.expanded) .sidebar-text,
         #sidebar:not(.expanded) .sidebar-header-text {
             opacity: 0;
@@ -71,17 +102,33 @@
 </head>
 <body class="bg-gray-100">
 
-    <div class="flex h-screen">
-        <aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col">
+
+<header id="fixed-header" class="bg-white text-gray-800 h-20 flex items-center justify-between px-6 shadow">
+        <div class="flex items-center">
+            <img id="platformLogoDisplay" src="" alt="Logotipo do Sistema" class="h-16 w-auto mr-4 rounded p-1 hidden">
+            <h1 class="text-x1 font-bold text-indigo-900">Kairos System</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="userDisplayEmail" class="text-sm text-gray-600"></span>
+            <button id="logoutButton" class="text-sm font-semibold text-red-600 hover:text-red-800 border border-red-200 rounded-md py-1 px-3 hover:bg-red-50 transition-colors">
+                Sair
+            </button>
+        </div>
+    </header>
+
+    <div class="flex">
+
+
+<aside id="sidebar" class="bg-gray-900 text-gray-300 flex flex-col">
             <div class="p-4 flex items-center justify-between border-b border-gray-800 h-16">
                 <div class="sidebar-header-text overflow-hidden transition-all duration-300 ease-in-out">
-                    <h1 class="text-xl font-bold text-white">KAIROS</h1>
+                    <h1 class="text-xl font-bold text-white">MENU</h1>
                 </div>
                 <button id="sidebarToggle" class="p-2 rounded-full hover:bg-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
                 </button>
             </div>
-            <nav class="flex-1 p-4 space-y-2">
+            <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
                  <a href="#establishments" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-white font-semibold active">
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
                      <span class="sidebar-text">Estabelecimentos</span>
@@ -96,7 +143,7 @@
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.25-10.75a.75.75 0 000 1.5h7.5a.75.75 0 000-1.5h-7.5zM6 8.5h8a1 1 0 100-2H6a1 1 0 000 2z" clip-rule="evenodd" /></svg>
                      <span class="sidebar-text">Gerir Planos</span>
                  </a>
-                
+
                  <a href="#config" class="sidebar-link w-full flex items-center gap-3 py-2 px-4 rounded-lg text-gray-300 hover:bg-gray-700 font-semibold">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z" />
@@ -114,13 +161,11 @@
             </nav>
         </aside>
 
-        <div class="flex-1 flex flex-col">
-            <header class="bg-white shadow-sm p-4 flex justify-between items-center h-16">
+        <div class="flex-1 flex flex-col" style="margin-left: 4.5rem;" id="main-content-wrapper">
+
+
+<header class="bg-white shadow-sm p-4 flex justify-between items-center h-16">
                 <h2 id="pageTitle" class="text-xl font-semibold text-gray-800">Estabelecimentos</h2>
-                <div class="flex items-center gap-4">
-                    <span id="userDisplayEmail" class="text-sm text-gray-600"></span>
-                    <button id="logoutButton" class="text-sm font-semibold text-red-600 hover:text-red-800">Sair</button>
-                </div>
             </header>
 
             <main class="flex-1 p-6 sm:p-8 overflow-y-auto">
@@ -185,14 +230,14 @@
 
                 <section id="config-section" class="hidden">
                     <h2 class="text-2xl font-semibold text-gray-700 mb-4">Configurações do Negócio</h2>
-        
+
                     <div class="bg-white p-6 rounded-lg shadow-md max-w-lg">
                         <h3 class="text-lg font-semibold mb-4">Logótipo da Plataforma</h3>
                         <p class="text-sm text-gray-600 mb-4">
                             Este logótipo aparecerá no topo do menu principal para todos os seus clientes (estabelecimentos).
                             Recomenda-se uma imagem PNG transparente ou JPG/WEBP (max 5MB).
                         </p>
-                        
+
                         <form id="logoUploadForm">
                             <div class="mb-4">
                                 <label for="logoFileInput" class="block text-sm font-medium text-gray-700 mb-2">Selecionar ficheiro de logótipo</label>
@@ -204,7 +249,7 @@
                                     hover:file:bg-indigo-100
                                 "/>
                             </div>
-                            
+
                             <div class="flex items-center justify-end gap-4">
                                 <img id="logoUploadPreview" src="" alt="Pré-visualização" class="h-10 w-auto bg-gray-100 rounded hidden"/>
                                 <button type="submit" id="logoUploadButton" class="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
@@ -225,7 +270,7 @@
             <h2 id="modalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Estabelecimento</h2>
             <form id="establishmentForm" class="p-6 space-y-6 overflow-y-auto">
                 <input type="hidden" id="editEstablishmentId">
-                
+
                 <div id="access-links-container" class="hidden">
                     <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">Links de Acesso</h3>
                     <div class="space-y-3 mt-4">
@@ -251,7 +296,7 @@
                         <input type="text" id="establishmentId" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
                     </div>
                 </div>
-                
+
                 <div id="owner-credentials-container">
                     <h3 class="text-lg font-semibold text-gray-700 border-b pb-2 pt-4">Credenciais do Dono</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -287,7 +332,7 @@
             </div>
         </div>
     </div>
-    
+
     <div id="planModal" class="modal fixed inset-0 bg-gray-900 bg-opacity-50 items-center justify-center p-4">
         <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <h2 id="planModalTitle" class="text-2xl font-semibold text-gray-800 p-6 border-b">Novo Plano</h2>
@@ -320,14 +365,14 @@
             </div>
         </div>
     </div>
-    
+
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] space-y-2"></div>
 
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        
+
         const firebaseConfig = {
             apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
             authDomain: "kairos-system.firebaseapp.com",
@@ -337,12 +382,12 @@
             appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
             measurementId: "G-SVHFXKV5EC"
         };
-        
-        const GRACE_PERIOD_DAYS = 5; 
-        
+
+        const GRACE_PERIOD_DAYS = 5;
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        
+
         let idToken = null;
         let allEstablishments = [];
         let trashedEstablishments = [];
@@ -352,74 +397,94 @@
             'agenda': 'Agenda / Calendário',
             'comandas': 'Comandas / PDV',
             'relatorios': 'Relatórios (Analytics)',
-            'sales-report': 'Relatório de Vendas', 
-            'financial': 'Financeiro', 
+            'sales-report': 'Relatório de Vendas',
+            'financial': 'Financeiro',
             'servicos': 'Serviços',
-            'produtos': 'Produtos', 
-            'profissionais': 'Profissionais', 
+            'produtos': 'Produtos',
+            'profissionais': 'Profissionais',
             'clientes': 'Clientes',
-            'estabelecimento': 'Configurações', 
-            'users': 'Usuários Internos', 
+            'estabelecimento': 'Configurações',
+            'users': 'Usuários Internos',
             'mobileApp': 'Acesso App Mobile'
         };
 
+        // LÓGICA DE INICIALIZAÇÃO CORRIGIDA PARA EVITAR O LOOP DE LOGIN
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                let userIsSuperAdmin = false;
                 try {
                     const idTokenResult = await user.getIdTokenResult(true);
-                    if (idTokenResult.claims.role !== 'super-admin') {
-                        await signOut(auth);
-                        window.location.href = '/admin-login';
-                        return;
+                    if (idTokenResult.claims.role === 'super-admin') {
+                        userIsSuperAdmin = true;
+                        idToken = await user.getIdToken();
+
+                        // Inicialização SÍNCRONA da UI e listeners (antes de carregar dados)
+                        setupSidebar();
+                        setupNavigation();
+                        setupEventListeners();
+
+                        document.getElementById('userDisplayEmail').textContent = user.email;
+                        document.body.style.display = 'block';
                     }
-                    idToken = await user.getIdToken();
-                    document.body.style.display = 'flex';
-                    document.getElementById('userDisplayEmail').textContent = user.email;
-                    initializePage();
                 } catch (error) {
+                    console.error("Falha na verificação de autenticação:", error);
+                }
+
+                if (!userIsSuperAdmin) {
+                    // Se a verificação falhou ou o papel está errado, forçar logoff
                     await signOut(auth);
                     window.location.href = '/admin-login';
+                    return;
                 }
+
+                // --- CARREGAMENTO DE DADOS (ASSÍNCRONO, NÃO-CRÍTICO) ---
+                await Promise.all([
+                    loadPlatformLogo(),
+                    loadEstablishments(),
+                    loadPlans(),
+                ]);
+
             } else {
                 window.location.href = '/admin-login';
             }
         });
 
-        function initializePage() {
-            document.getElementById('logoutButton').addEventListener('click', () => signOut(auth));
-            document.getElementById('establishmentForm').addEventListener('submit', handleFormSubmit);
-            document.getElementById('planForm').addEventListener('submit', handlePlanFormSubmit);
-            document.getElementById('searchInput').addEventListener('input', renderEstablishmentsTable);
-            
-            // ADICIONADO: Listener para o novo formulário de logo
-            document.getElementById('logoUploadForm').addEventListener('submit', handleLogoUpload);
-            setupLogoPreview(); // ADICIONADO: Chamar a função de setup do preview
-            
-            document.body.addEventListener('click', handlePageClick);
-            
-            setupSidebar();
-            setupNavigation();
+        // CORREÇÃO: Função para agrupar todos os event listeners com CHECAGEM DE NULL
+        function setupEventListeners() {
+            // Elementos no cabeçalho fixo
+            const logoutButton = document.getElementById('logoutButton');
+            if (logoutButton) logoutButton.addEventListener('click', () => signOut(auth));
 
-            loadEstablishments();
-            loadPlans();
+            // Elementos nos modais e seções
+            const establishmentForm = document.getElementById('establishmentForm');
+            if (establishmentForm) establishmentForm.addEventListener('submit', handleFormSubmit);
+
+            const planForm = document.getElementById('planForm');
+            if (planForm) planForm.addEventListener('submit', handlePlanFormSubmit);
+
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.addEventListener('input', renderEstablishmentsTable);
+
+            const logoUploadForm = document.getElementById('logoUploadForm');
+            if (logoUploadForm) logoUploadForm.addEventListener('submit', handleLogoUpload);
+
+            // Funções que dependem de elementos (elas precisam lidar com null internamente ou ser chamadas aqui)
+            setupLogoPreview();
+
+            document.body.addEventListener('click', handlePageClick);
         }
 
         function setupSidebar() {
             const sidebar = document.getElementById('sidebar');
             const sidebarToggle = document.getElementById('sidebarToggle');
+            const mainContent = document.getElementById('main-content-wrapper');
             let isManuallyExpanded = false;
 
             const updateSidebarState = (expanded) => {
                 sidebar.classList.toggle('expanded', expanded);
+                mainContent.style.marginLeft = expanded ? '16rem' : '4.5rem';
+                mainContent.style.width = expanded ? 'calc(100% - 16rem)' : 'calc(100% - 4.5rem)';
             };
-            
-            sidebar.addEventListener('mouseenter', () => {
-                if (!isManuallyExpanded && window.innerWidth >= 1024) updateSidebarState(true);
-            });
-
-            sidebar.addEventListener('mouseleave', () => {
-               if (!isManuallyExpanded && window.innerWidth >= 1024) updateSidebarState(false);
-            });
 
             sidebarToggle.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -441,15 +506,14 @@
                     if (href.startsWith('#')) {
                         navLinks.forEach(l => l.classList.remove('active'));
                         link.classList.add('active');
-                        
+
                         const targetId = href.substring(1);
                         document.querySelectorAll('main > section').forEach(section => {
                             section.classList.add('hidden');
                         });
-                        
+
                         document.getElementById('pageTitle').textContent = link.querySelector('.sidebar-text').textContent;
-                        
-                        // ADICIONADO: Condição para a nova secção de config
+
                         const targetSection = document.getElementById(targetId + '-section');
                         if (targetSection) {
                             targetSection.classList.remove('hidden');
@@ -464,20 +528,20 @@
                 });
             });
         }
-        
+
         function updateModuleCheckboxes() {
             const planId = document.getElementById('subscriptionPlan').value;
             const selectedPlan = allPlans.find(p => p.id === planId);
             const modulesContainer = document.getElementById('modulesContainer');
             const establishmentModules = JSON.parse(modulesContainer.dataset.modules || '{}');
-            
+
             modulesContainer.innerHTML = '';
-            
+
             Object.entries(additionalModulesDefinition).forEach(([key, label]) => {
                 const isFromPlan = selectedPlan?.allowedModules?.[key] === true;
                 const isManuallyAdded = establishmentModules?.[key] === true;
                 const isChecked = isFromPlan || isManuallyAdded;
-                
+
                 const moduleHtml = `
                     <label for="module-${key}" class="flex items-center space-x-2 cursor-pointer ${isFromPlan ? 'bg-indigo-50 p-2 rounded-md' : ''}">
                         <div class="relative">
@@ -492,9 +556,7 @@
             });
         }
 
-        // MODIFICADO: URL Base da API
-        // Usar /api/ pois o frontend está servido do mesmo local que o backend
-        const API_BASE_URL = ''; 
+        const API_BASE_URL = '';
         const getAuthHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` });
 
         async function apiCall(endpoint, options = {}) {
@@ -506,18 +568,18 @@
             if (response.status === 204 || response.headers.get('content-length') === '0') return null;
             return response.json();
         }
-        
+
         const establishmentModal = document.getElementById('establishmentModal');
         const planModal = document.getElementById('planModal');
-        
+
         async function openModal(establishment = null) {
             const form = document.getElementById('establishmentForm');
             form.reset();
             const isEditing = !!establishment;
-            
+
             const modulesContainer = document.getElementById('modulesContainer');
             modulesContainer.dataset.modules = JSON.stringify(establishment?.modules || {});
-            
+
             document.getElementById('access-links-container').classList.toggle('hidden', !isEditing);
             if (isEditing) {
                 const schedulingLink = `${window.location.origin}/agendar?id=${establishment.id}`;
@@ -531,11 +593,11 @@
             document.getElementById('establishmentName').value = establishment?.name || '';
             document.getElementById('establishmentId').value = establishment?.id || '';
             document.getElementById('establishmentId').disabled = isEditing;
-            
+
             const ownerEmailInput = document.getElementById('ownerEmail');
             const ownerPasswordInput = document.getElementById('ownerPassword');
             const credentialsContainer = document.getElementById('owner-credentials-container');
-            
+
             ownerEmailInput.value = establishment?.ownerEmail || '';
             credentialsContainer.style.display = isEditing ? 'none' : 'block';
 
@@ -559,7 +621,7 @@
                 ownerPasswordInput.disabled = false;
                 ownerEmailInput.disabled = false;
             }
-            
+
             const planSelect = document.getElementById('subscriptionPlan');
             planSelect.innerHTML = allPlans.map(plan => `<option value="${plan.id}">${plan.name}</option>`).join('');
             if (establishment?.subscription?.planId) {
@@ -567,13 +629,13 @@
             } else if (allPlans.length > 0) {
                  planSelect.value = allPlans[0].id;
             }
-            
+
             updateModuleCheckboxes();
 
             establishmentModal.classList.add('flex');
             setTimeout(() => establishmentModal.style.opacity = "1", 10);
         }
-        
+
         function closeModal() {
             establishmentModal.style.opacity = "0";
             setTimeout(() => establishmentModal.classList.remove('flex'), 300);
@@ -583,38 +645,38 @@
             e.preventDefault();
             const editId = document.getElementById('editEstablishmentId').value;
             const isEditing = !!editId;
-        
+
             const modules = {};
             document.querySelectorAll('input[name="modules"]').forEach(checkbox => {
                 modules[checkbox.value] = checkbox.checked;
             });
-        
+
             const data = {
                 establishmentId: document.getElementById('establishmentId').value,
                 name: document.getElementById('establishmentName').value,
                 ownerEmail: document.getElementById('ownerEmail').value,
                 modules: modules
             };
-        
+
             if (!isEditing) {
                 data.ownerPassword = document.getElementById('ownerPassword').value;
             }
-            
+
             const planId = document.getElementById('subscriptionPlan').value;
             const expiryDate = document.getElementById('subscriptionExpiry').value;
             if (planId && expiryDate) {
                  data.subscription = { planId, expiryDate };
             }
-        
+
             try {
                 if (isEditing) {
                     await apiCall(`/api/admin/establishments/${editId}/modules`, { method: 'PATCH', body: JSON.stringify({ modules: data.modules }) });
                     await apiCall(`/api/admin/establishments/${editId}/details`, { method: 'PUT', body: JSON.stringify({ name: data.name }) });
-                    
+
                     if (planId && expiryDate) {
                          await apiCall(`/api/subscriptions/assign/${editId}`, { method: 'PATCH', body: JSON.stringify({ planId, expiryDate }) });
                     }
-                    
+
                     showToast('Estabelecimento atualizado com sucesso!', 'success');
                 } else {
                     await apiCall('/api/admin/establishments', { method: 'POST', body: JSON.stringify(data) });
@@ -626,36 +688,39 @@
                 showToast(`Erro: ${error.message}`, 'error');
             }
         }
-        
+
         async function loadEstablishments() {
             const listDiv = document.getElementById('establishmentsList');
+            if (!listDiv) return;
+
             listDiv.innerHTML = '<tr><td colspan="6" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
             try {
                 allEstablishments = await apiCall('/api/admin/establishments');
                 renderEstablishmentsTable();
             } catch (error) {
                 listDiv.innerHTML = '<tr><td colspan="6" class="text-center p-4"><p class="text-red-500">Erro ao carregar estabelecimentos.</p></td></tr>';
+                console.error("Erro em loadEstablishments:", error);
             }
         }
 
         function renderEstablishmentsTable() {
             const listDiv = document.getElementById('establishmentsList');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = allEstablishments.filter(est => 
+            const filtered = allEstablishments.filter(est =>
                 est.name.toLowerCase().includes(searchTerm) || est.id.toLowerCase().includes(searchTerm)
             );
-        
+
             if (filtered.length > 0) {
                 listDiv.innerHTML = filtered.map(est => {
                     const isActive = est.status === 'active';
                     const planName = allPlans.find(p => p.id === est.subscription?.planId)?.name || 'N/A';
-                    
+
                     const expiryDateRaw = est.subscription?.expiryDate ? new Date(est.subscription.expiryDate._seconds * 1000) : null;
                     const expiryDate = expiryDateRaw ? expiryDateRaw.toLocaleDateString('pt-BR') : 'N/A';
-                    
+
                     let subStatus = 'N/A';
                     let subStatusClass = 'bg-gray-200 text-gray-800';
-                    
+
                     if (expiryDateRaw) {
                         const today = new Date();
                         const gracePeriodEnd = new Date(expiryDateRaw);
@@ -703,15 +768,18 @@
                 listDiv.innerHTML = `<tr><td colspan="6" class="text-center p-4">Nenhum estabelecimento encontrado.</td></tr>`;
             }
         }
-        
+
         async function loadTrash() {
             const trashList = document.getElementById('trashList');
+            if (!trashList) return;
+
             trashList.innerHTML = '<tr><td colspan="3" class="text-center p-4"><div class="loader mx-auto"></div></td></tr>';
             try {
                 trashedEstablishments = await apiCall('/api/admin/establishments?includeDeleted=true');
                 renderTrashTable();
             } catch (error) {
                 trashList.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-red-500">Erro ao carregar lixeira.</td></tr>';
+                console.error("Erro em loadTrash:", error);
             }
         }
 
@@ -745,7 +813,7 @@
             e.stopPropagation();
             const action = target.dataset.action;
             const id = target.dataset.id;
-            
+
             switch(action) {
                 case 'open-create-modal':
                     openModal();
@@ -772,10 +840,10 @@
                             method: 'PATCH', body: JSON.stringify({ status: statusToSubmit }),
                         });
                         showToast(`Status atualizado para ${statusToSubmit}.`, 'success');
-                        loadEstablishments(); 
+                        loadEstablishments();
                     } catch (error) {
                         showToast(`Erro ao atualizar status: ${error.message}`, 'error');
-                        loadEstablishments(); 
+                        loadEstablishments();
                     }
                     break;
                 }
@@ -831,18 +899,21 @@
                 }
             }
         }
-        
+
         async function loadPlans() {
             const listDiv = document.getElementById('plansList');
+            if (!listDiv) return;
+
             listDiv.innerHTML = '<div class="p-4 text-center">A carregar planos...</div>';
             try {
                 allPlans = await apiCall('/api/subscriptions/plans');
                 renderPlansTable();
             } catch (error) {
                  listDiv.innerHTML = '<div class="p-4 text-center text-red-500">Erro ao carregar planos.</div>';
+                 console.error("Erro em loadPlans:", error);
             }
         }
-        
+
         function renderPlansTable() {
             const listDiv = document.getElementById('plansList');
             let tableHTML = `<div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-500">
@@ -853,7 +924,7 @@
                     <th class="px-6 py-3">Módulos</th>
                     <th class="px-6 py-3">Ações</th>
                 </tr></thead><tbody>`;
-            
+
             if (allPlans.length > 0) {
                 allPlans.forEach(plan => {
                     const modulesCount = plan.allowedModules ? Object.values(plan.allowedModules).filter(v => v).length : 0;
@@ -887,7 +958,7 @@
             document.getElementById('planPrice').value = plan?.price || '';
             document.getElementById('planMaxProfessionals').value = plan?.maxProfessionals || '';
             document.getElementById('planMaxUsers').value = plan?.maxUsers || '';
-            
+
             const modulesContainer = document.getElementById('planModulesContainer');
             modulesContainer.innerHTML = Object.entries(additionalModulesDefinition).map(([key, label]) => `
                 <label for="plan-module-${key}" class="flex items-center space-x-2 cursor-pointer">
@@ -899,7 +970,7 @@
                     <span class="text-sm font-medium text-gray-700">${label}</span>
                 </label>
             `).join('');
-            
+
             planModal.classList.add('flex');
             setTimeout(() => planModal.style.opacity = "1", 10);
         }
@@ -941,7 +1012,7 @@
                 showToast(`Erro: ${error.message}`, 'error');
             }
         }
-        
+
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -952,7 +1023,6 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        // ADICIONADO: Lógica de upload do logótipo
         async function handleLogoUpload(e) {
             e.preventDefault();
             const fileInput = document.getElementById('logoFileInput');
@@ -975,12 +1045,11 @@
                 const token = await auth.currentUser.getIdToken();
                 const formData = new FormData();
                 formData.append('logoFile', file);
-                
+
                 const response = await fetch(`${API_BASE_URL}/api/admin/config/logo`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`
-                        // Não defina 'Content-Type', o browser fá-lo-á por si com o FormData
                     },
                     body: formData
                 });
@@ -993,8 +1062,14 @@
 
                 statusEl.textContent = 'Logótipo atualizado com sucesso!';
                 statusEl.className = 'text-sm mt-4 text-green-600';
-                // Força a atualização do cache do browser na pré-visualização
-                document.getElementById('logoUploadPreview').src = data.logoUrl + `?t=${new Date().getTime()}`;
+
+                const logoUrl = data.logoUrl + `?t=${new Date().getTime()}`;
+                document.getElementById('logoUploadPreview').src = logoUrl;
+
+                // Atualiza o logo no cabeçalho fixo
+                const platformLogo = document.getElementById('platformLogoDisplay');
+                platformLogo.src = logoUrl;
+                platformLogo.classList.remove('hidden');
 
             } catch (error) {
                 console.error('Erro no upload do logótipo:', error);
@@ -1006,26 +1081,39 @@
             }
         }
 
-        // ADICIONADO: Lógica de pré-visualização do logótipo
         function setupLogoPreview() {
             const fileInput = document.getElementById('logoFileInput');
             const previewEl = document.getElementById('logoUploadPreview');
-            
-            if(fileInput) {
-                fileInput.addEventListener('change', () => {
-                    const file = fileInput.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            previewEl.src = e.target.result;
-                            previewEl.classList.remove('hidden');
-                        };
-                        reader.readAsDataURL(file);
-                    } else {
-                        previewEl.src = '';
-                        previewEl.classList.add('hidden');
-                    }
-                });
+
+            if(!fileInput) return;
+
+            fileInput.addEventListener('change', () => {
+                const file = fileInput.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        previewEl.src = e.target.result;
+                        previewEl.classList.remove('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    previewEl.src = '';
+                    previewEl.classList.add('hidden');
+                }
+            });
+        }
+
+        async function loadPlatformLogo() {
+            try {
+                const response = await apiCall('/api/admin/config', { method: 'GET' });
+                if (response && response.logoUrl) {
+                    const platformLogo = document.getElementById('platformLogoDisplay');
+                    platformLogo.src = response.logoUrl;
+                    platformLogo.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.warn('Não foi possível carregar o logótipo da plataforma.', error.message);
+                document.getElementById('platformLogoDisplay').classList.add('hidden');
             }
         }
 

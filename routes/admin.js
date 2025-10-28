@@ -17,6 +17,23 @@ const defaultModules = {
     mobileApp: true
 };
 
+// NOVO: Rota para obter configurações da plataforma (ex: URL do Logotipo)
+router.get('/config', async (req, res) => {
+    try {
+        const { db } = req;
+        const configDoc = await db.collection('config').doc('plataforma').get();
+        
+        // Retorna a URL do logo se ela existir, caso contrário retorna um objeto vazio
+        if (configDoc.exists && configDoc.data().logoUrl) {
+            return res.status(200).json({ logoUrl: configDoc.data().logoUrl });
+        }
+        return res.status(200).json({});
+    } catch (error) {
+        console.error("Erro ao buscar configurações da plataforma:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
 router.get('/dashboard-stats', async (req, res) => {
     try {
         const { db } = req;
