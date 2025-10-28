@@ -250,7 +250,7 @@ function initialize() {
                     setGlobalState(claims.establishmentId, finalUserName, userPermissions);
 
                     /* ------------------------------------------------------------- */
-                    /* MODIFICAÇÃO PARA USAR O LOGÓTIPO GLOBAL                       */
+                    /* LÓGICA ORIGINAL DO LOGO (VAI IGNORAR O BLOCO FIXO DO HTML)    */
                     /* ------------------------------------------------------------- */
                     try {
                         const nameEl = document.getElementById('panelEstablishmentName');
@@ -266,7 +266,7 @@ function initialize() {
                             // Se existe, usa o logótipo global e o nome "Kairos" (ou outro nome fixo se preferir)
                             nameEl.textContent = 'Kairos'; // Ou o nome da sua plataforma
                             logoEl.src = establishmentDetails.globalLogoUrl;
-                            logoEl.alt = 'Logótipo da Plataforma';
+                            logoEl.alt = 'Logotipo da Plataforma';
                             logoEl.classList.remove('opacity-0');
                         } else {
                             // Se NÃO existe, usa o nome do estabelecimento e mantém o placeholder visual (sem animação)
@@ -281,7 +281,7 @@ function initialize() {
                          document.getElementById('panelEstablishmentName').textContent = 'Erro';
                     }
                     /* ------------------------------------------------------------- */
-                    /* FIM DA MODIFICAÇÃO                                            */
+                    /* FIM DA LÓGICA ORIGINAL                                        */
                     /* ------------------------------------------------------------- */
 
                     profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
