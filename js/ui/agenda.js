@@ -15,6 +15,9 @@ import { navigateTo } from '../main.js';
 const contentDiv = document.getElementById('content');
 const API_BASE_URL = window.location.origin;
 let currentTimeInterval = null;
+// NOVO: Variável de controlo para prevenir múltiplos ouvintes
+let hasContentDelegationInitialized = false; 
+
 // NOVA PALETA DE CORES DE ALTO CONTRASTE
 const colorPalette = [
     { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5' }, // Indigo
@@ -267,7 +270,7 @@ function renderWeekView(allEvents) {
                         <div class="cursor-pointer flex-grow" data-action="open-comanda" data-appointment='${apptDataString}'>
                             <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${event.clientName}</p>
                             <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
-                            ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate de Prémio</p>' : ''}
+                            <p class="text-xs text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}</p> ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate de Prémio</p>' : ''}
                         </div>
                         <div class="flex items-center justify-end gap-2 mt-2 pt-1 border-t border-black border-opacity-10">
                             ${!isCompleted ? `
@@ -1259,83 +1262,91 @@ export async function loadAgendaPage() {
         fetchAndDisplayAgenda(); // Adiciona o fetch para reatualizar a agenda com base nos inativos/ativos
     });
     
-    contentDiv.addEventListener('click', async (e) => {
-        const targetElement = e.target.closest('[data-action]');
-        
-        // CORREÇÃO (BUG 1): Adiciona o listener para seleção do profissional
-        if (e.target.closest('[data-action="select-professional"]')) {
-            const selectedProfCard = e.target.closest('[data-action="select-professional"]');
-            const profId = selectedProfCard.dataset.profId;
+    // --- INÍCIO DA CORREÇÃO PRINCIPAL: Previne que o listener de delegação seja anexado múltiplas vezes ---
+    if (!hasContentDelegationInitialized) {
+        contentDiv.addEventListener('click', async (e) => {
+            const targetElement = e.target.closest('[data-action]');
             
-            // Verifica se está deselecionando o profissional atual
-            const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
-            
-            localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
-
-            // Limpa o termo de busca se um profissional foi selecionado
-            if (profId !== 'all') {
-                document.getElementById('profSearchInput').value = '';
-                localState.profSearchTerm = '';
-            }
-            
-            await fetchAndDisplayAgenda(); // Atualiza a agenda com o novo filtro
-            return;
-        }
-
-        if (!targetElement) return;
-
-        const action = targetElement.dataset.action;
-        let apptData = null;
-        const card = e.target.closest('[data-appointment]');
-        if (card) {
-            apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-        }
-        
-        switch (action) {
-            case 'new-appointment':
-                openAppointmentModal();
-                break;
-            case 'edit-appointment':
-                if (!apptData) return;
+            // LÓGICA DE SELEÇÃO DE PROFISSIONAL
+            if (e.target.closest('[data-action="select-professional"]')) {
+                const selectedProfCard = e.target.closest('[data-action="select-professional"]');
+                const profId = selectedProfCard.dataset.profId;
                 
-                // --- CORREÇÃO SOLICITADA: Bloquear edição se finalizada ---
-                if (apptData.status === 'completed') {
-                    showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
-                    return;
-                }
-                // --- FIM CORREÇÃO SOLICITADA ---
+                // Verifica se está deselecionando o profissional atual
+                const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
+                
+                localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
 
-                openAppointmentModal(apptData);
-                break;
-            case 'delete-appointment': {
-                const id = targetElement.dataset.id;
-                const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem a certeza que deseja apagar este agendamento?');
-                if (confirmed) {
-                    try {
-                        await appointmentsApi.deleteAppointment(id);
-                        showNotification('Agendamento apagado!', 'success');
-                        fetchAndDisplayAgenda();
-                    } catch (error) {
-                        showNotification(`Não foi possível apagar: ${error.message}`, 'error');
+                // Limpa o termo de busca se um profissional foi selecionado
+                if (profId !== 'all') {
+                    const searchInput = document.getElementById('profSearchInput');
+                    if(searchInput) {
+                        searchInput.value = '';
                     }
+                    localState.profSearchTerm = '';
                 }
-                break;
+                
+                await fetchAndDisplayAgenda(); // Atualiza a agenda com o novo filtro
+                return;
             }
-            case 'open-comanda':
-                if (apptData) {
-                    const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
-                    const params = { 
-                        selectedAppointmentId: apptData.id,
-                        initialFilter: initialFilter
-                    };
-                    if (initialFilter === 'finalizadas') {
-                        params.filterDate = apptData.startTime; 
+
+            if (!targetElement) return;
+
+            const action = targetElement.dataset.action;
+            let apptData = null;
+            const card = e.target.closest('[data-appointment]');
+            if (card) {
+                apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
+            }
+            
+            switch (action) {
+                case 'new-appointment':
+                    openAppointmentModal();
+                    break;
+                case 'edit-appointment':
+                    if (!apptData) return;
+                    
+                    // --- CORREÇÃO SOLICITADA: Bloquear edição se finalizada ---
+                    if (apptData.status === 'completed') {
+                        showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
+                        return;
                     }
-                    navigateTo('comandas-section', params);
+                    // --- FIM CORREÇÃO SOLICITADA ---
+
+                    openAppointmentModal(apptData);
+                    break;
+                case 'delete-appointment': {
+                    const id = targetElement.dataset.id;
+                    const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem a certeza que deseja apagar este agendamento?');
+                    if (confirmed) {
+                        try {
+                            await appointmentsApi.deleteAppointment(id);
+                            showNotification('Agendamento apagado!', 'success');
+                            fetchAndDisplayAgenda();
+                        } catch (error) {
+                            showNotification(`Não foi possível apagar: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
                 }
-                break;
-        }
-    });
+                case 'open-comanda':
+                    if (apptData) {
+                        const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
+                        const params = { 
+                            selectedAppointmentId: apptData.id,
+                            initialFilter: initialFilter
+                        };
+                        if (initialFilter === 'finalizadas') {
+                            params.filterDate = apptData.startTime; 
+                        }
+                        navigateTo('comandas-section', params);
+                    }
+                    break;
+            }
+        });
+        hasContentDelegationInitialized = true; // Define a flag após anexar
+    }
+    // --- FIM DA CORREÇÃO PRINCIPAL ---
 
     await populateFilters();
     await fetchAndDisplayAgenda();

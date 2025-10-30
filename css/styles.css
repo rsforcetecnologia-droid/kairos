@@ -882,8 +882,11 @@ body {
     margin-left: 16.56rem; 
     transition: margin-left 0.3s ease-in-out;
     
-    /* Adicionado padding-top para compensar o header fixo */
-    padding-top: 4rem; 
+    /* DOCUMENTAÇÃO (CSS) - CORREÇÃO PRINCIPAL:
+      - A linha 'padding-top: 4rem;' foi REMOVIDA daqui.
+      - O layout do seu HTML (header e main) flui normalmente,
+        pelo que este padding-top não era necessário e quebrava o layout.
+    */
 }
 
 /* Largura da sidebar colapsada: 4.5rem */
@@ -903,56 +906,21 @@ body {
     display: none;
 }
 
-/* --- NOVOS ESTILOS PARA A LOGO DO SISTEMA NA SIDEBAR - AJUSTADO PARA PREENCHER ESPAÇO --- */
-#sidebarSystemLogo {
-    /* --- MODIFICAÇÃO: Revertido para 'flex' para exibir a logo do Kairos --- */
-    display: flex; 
-    
-    /* Estilos originais */
-    background-color: #2b2f3a; /* Fundo para o retângulo da logo */
-    padding: 1.25rem 1rem; /* Padding para espaço interno */
-    border-radius: 0.75rem; /* Arredondamento dos cantos */
-    margin: 1rem; /* Margem para separar do topo e das bordas da sidebar */
-    align-items: center; 
-    justify-content: center; 
-    box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
-    height: 5rem; /* Altura total do container da logo */
-    width: auto; 
-    overflow: hidden; /* Garante que nada saia do container */
+/* --- NOVO: AJUSTE DE TAMANHO DO LOGOTIPO KAIROS --- */
+/* DOCUMENTAÇÃO (CSS):
+  - Aumenta o logótipo para 200% (de 40px para 80px)
+    APENAS quando a sidebar NÃO está colapsada.
+*/
+#sidebar:not(.collapsed) #panelLogoContainer,
+#sidebar:not(.collapsed) #panelEstablishmentLogo {
+    height: 5rem; /* h-20 (80px) */
+    width: 5rem;  /* w-20 (80px) */
+    /* Adicionamos uma transição para suavizar a mudança de tamanho */
+    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
 }
 
-#sidebarSystemLogo img {
-    /* AJUSTE CHAVE: Faz a imagem ocupar 100% do container e preencher o espaço */
-    height: 100%; 
-    width: 100%; 
-    object-fit: contain; /* Mantém a proporção e garante que toda a imagem seja vista */
+/* Também adicionamos a transição para o estado colapsado (voltando ao normal) */
+#sidebar.collapsed #panelLogoContainer,
+#sidebar.collapsed #panelEstablishmentLogo {
+    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
 }
-
-/* Ajuste para quando a sidebar estiver colapsada */
-#sidebar.collapsed #sidebarSystemLogo {
-    padding: 0.75rem 0.5rem; 
-    margin: 0.75rem auto; 
-    height: 3.5rem; /* Altura menor quando colapsado */
-}
-
-#sidebar.collapsed #sidebarSystemLogo img {
-    height: 100%; 
-}
-
-/* -------------------------------------------------------------------------- */
-/* CORREÇÃO FINAL PARA EXIBIR APENAS A LOGO KAIROS */
-/* -------------------------------------------------------------------------- */
-/* 1. Garante que o contentor da sua logo KAIROS está visível */
-#sidebarSystemLogo {
-    display: flex;
-}
-
-/* 2. Oculta todos os elementos relacionados à identidade do cliente (Sr. Baron, etc.) */
-/* Adicionamos #panelEstablishmentName para ocultar o nome que insiste em aparecer */
-#panelLogoContainer, 
-#panelEstablishmentName {
-    display: none !important;
-}
-/* -------------------------------------------------------------------------- */
-/* FIM DA CORREÇÃO DE ESTRUTURA */
-/* -------------------------------------------------------------------------- */

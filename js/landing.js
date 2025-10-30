@@ -2,6 +2,31 @@
 
 document.addEventListener("DOMContentLoaded", () => {
     
+    // --- CÓDIGO PARA MENU MOBILE (NOVO) ---
+    const mobileMenu = document.getElementById('mobile-menu');
+    const menuToggle = document.querySelector('.menu-toggle');
+    const menuClose = document.querySelector('.menu-close');
+    const mobileLinks = document.querySelectorAll('.mobile-nav-list a');
+
+    // Abre o menu
+    menuToggle.addEventListener('click', () => {
+        mobileMenu.classList.add('active');
+    });
+
+    // Fecha o menu
+    menuClose.addEventListener('click', () => {
+        mobileMenu.classList.remove('active');
+    });
+
+    // Fecha o menu ao clicar em um link (para navegação)
+    mobileLinks.forEach(link => {
+        link.addEventListener('click', () => {
+            mobileMenu.classList.remove('active');
+        });
+    });
+    // --- FIM CÓDIGO MENU MOBILE ---
+
+
     // --- CÓDIGO PARA ANIMAÇÃO HERO (TYPING EFFECT E SWAP) ---
     const typingTextElement = document.getElementById('typing-text');
     const subTextElement = document.getElementById('sub-text');
