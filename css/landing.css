@@ -1,0 +1,366 @@
+/* Dentro de css/landing.css */
+
+/* Estilos Gerais */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    color: #333;
+    scroll-behavior: smooth;
+    /* Remove o padding-top, pois o menu é transparente no início */
+    /* padding-top: 80px; */ 
+}
+
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.secao {
+    padding: 60px 0;
+    text-align: center;
+}
+
+.secao h2 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+}
+
+.secao p {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 40px;
+}
+
+
+/* 1. Menu de Navegação (MODERNIZADO) */
+.navbar {
+    background: transparent;
+    padding: 15px 0; /* Padding inicial mantido */
+    position: fixed; 
+    top: 0;
+    left: 0;
+    width: 100%; 
+    z-index: 1000;
+    transition: background-color 0.3s ease, border-bottom 0.3s ease, padding 0.3s ease; 
+    border-bottom: none; 
+    box-shadow: none;
+}
+.navbar .container {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+}
+.navbar .logo {
+    height: 60px; 
+    transition: height 0.3s ease; 
+}
+
+.navbar nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+.navbar nav li {
+    /* MUDANÇA: Aumenta o espaçamento entre os itens */
+    margin-left: 35px; 
+}
+.navbar nav a {
+    text-decoration: none;
+    color: #fff; 
+    /* MUDANÇA: Aumenta o tamanho da fonte */
+    font-size: 1.1rem; /* Era implícito, agora é maior */
+    font-weight: bold;
+    transition: color 0.3s;
+    /* MUDANÇA: Adiciona posição relativa para a animação do sublinhado */
+    position: relative;
+    padding-bottom: 5px; /* Espaço para o sublinhado */
+}
+
+/* MUDANÇA: Animação de sublinhado */
+.navbar nav a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: 0;
+    left: 0;
+    background-color: #fff; /* Cor do sublinhado (branco no início) */
+    transition: width 0.3s ease-out; /* Animação da largura */
+}
+
+.navbar nav a:hover::after {
+    width: 100%; /* Sublinhado aparece no hover */
+}
+
+/* FIM Animação */
+
+.navbar nav a:hover {
+    color: #ddd; 
+}
+.navbar .botao-login {
+    background-color: transparent;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    text-decoration: none;
+    border: 1px solid #fff; 
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+     /* MUDANÇA: Aumenta um pouco a fonte do botão também */
+    font-size: 1rem;
+}
+.navbar .botao-login:hover {
+    background-color: #fff; 
+    color: #007bff; 
+}
+
+/* Estilo do Navbar QUANDO ROLADO */
+.navbar.scrolled {
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    padding: 5px 0;
+}
+.navbar.scrolled .logo {
+    height: 40px; 
+}
+
+.navbar.scrolled nav a {
+    color: #555; 
+     /* MUDANÇA: Tamanho da fonte pode ser mantido ou ajustado */
+    font-size: 1.1rem; 
+}
+
+/* MUDANÇA: Cor do sublinhado quando rolado */
+.navbar.scrolled nav a::after {
+    background-color: #007bff; /* Azul quando rolado */
+}
+
+.navbar.scrolled nav a:hover {
+    color: #007bff;
+}
+.navbar.scrolled .botao-login {
+    background-color: #007bff; 
+    color: #fff;
+    border-color: #007bff;
+}
+.navbar.scrolled .botao-login:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
+}
+/* FIM DO NAVBAR */
+
+
+/* 2. SEÇÃO "HERO" (Slider - Volta a ser 100vh) */
+.hero {
+    height: 100vh; 
+    text-align: center;
+    color: #fff; 
+    position: relative;
+    overflow: hidden; 
+    display: flex; 
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0; 
+}
+
+/* Estilos do Slider */
+.hero-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.hero-slider .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out; 
+}
+
+.hero-slider .slide.active {
+    opacity: 1; 
+}
+
+/* Conteúdo do Hero (texto) */
+.hero-content {
+    position: relative;
+    z-index: 2; 
+    color: #fff;
+}
+
+/* Estilos da Navegação do Slider (Bolinhas) */
+.slider-nav {
+    position: absolute;
+    bottom: 30px; 
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3; 
+    display: flex;
+}
+
+.slider-nav-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5); 
+    margin: 0 8px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.slider-nav-dot:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.slider-nav-dot.active {
+    background: #fff; 
+}
+
+
+/* Estilos do CONTEÚDO do Hero (h1, p) */
+.hero h1 {
+    color: #fff;
+    font-size: 3rem;
+    margin-bottom: 20px;
+}
+.hero p {
+    color: #f0f0f0; 
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+}
+.botao-principal {
+    background: #28a745; 
+    color: #fff;
+    padding: 15px 30px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+.botao-principal:hover {
+    background: #218838;
+}
+
+/* 3. Seção "Sobre" */
+#sobre {
+    padding-top: 80px; 
+}
+
+
+/* 4. Seção "Funções" */
+.grid-funcionalidades {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    text-align: left;
+}
+.funcionalidade-item {
+    background: #fff;
+    border: 1px solid #eee;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    transition: transform 0.3s;
+}
+.funcionalidade-item:hover {
+    transform: translateY(-5px);
+}
+.funcionalidade-item h3 {
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+}
+
+/* 5. Seção "Preços" */
+.secao-precos {
+    background: #f9f9f9; 
+}
+.grid-precos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+.plano-item {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+.plano-item:hover {
+    transform: scale(1.03); 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+.plano-item.plano-destaque {
+    border: 2px solid #007bff; 
+    transform: scale(1.05); 
+}
+.plano-item h3 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+}
+.plano-item .preco {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #007bff;
+}
+.plano-item .periodo {
+    color: #777;
+    margin-bottom: 20px;
+    display: block;
+}
+.plano-item ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+    text-align: left;
+    min-height: 100px; 
+}
+.plano-item li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.plano-item li::before {
+    content: '✔';
+    color: #28a745;
+    margin-right: 10px;
+}
+
+.botao-assinar {
+    background: #28a745; 
+    color: #fff;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+}
+.botao-assinar:hover {
+    background: #218838;
+}
+
+/* 6. Rodapé */
+.rodape {
+    background: #333;
+    color: #aaa;
+    padding: 30px 0;
+    text-align: center;
+}
+

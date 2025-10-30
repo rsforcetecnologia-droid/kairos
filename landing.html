@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kairos - Seu Sistema de Gestão</title>
+    
+    <!-- Seus arquivos de estilo -->
+    <link rel="stylesheet" href="css/landing.css">
+    <link rel="stylesheet" href="css/styles.css"> 
+</head>
+<body>
+
+    <!-- 1. MENU DE NAVEGAÇÃO (COM LOGO DENTRO) -->
+    <header class="navbar">
+        <div class="container">
+            <!-- INÍCIO DA MUDANÇA: Logo voltou para dentro do container -->
+            <img src="images/logo_kairos.png" alt="Logo Kairos" class="logo">
+            <!-- FIM DA MUDANÇA -->
+            
+            <nav>
+                <ul>
+                    <li><a href="#hero">Home</a></li>
+                    <li><a href="#sobre">Sobre</a></li>
+                    <li><a href="#funcoes">Funções</a></li>
+                    <li><a href="#precos">Preços</a></li>
+                    <li><a href="#">Blog</a></li>
+                    <li><a href="/login.html" class="botao-login">Acessar</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 2. SEÇÃO "HERO" (Slider) -->
+    <section id="hero" class="hero">
+        
+        <!-- Contêiner dos Slides de Fundo -->
+        <div class="hero-slider">
+            <div class="slide active" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero.jpg');"></div>
+            <div class="slide" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero-2.jpg');"></div>
+            <div class="slide" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero-3.jpg');"></div>
+        </div>
+
+        <!-- Contêiner do Conteúdo (Texto) -->
+        <div class="hero-content">
+            <h1>Uma nova experiência para [o seu negócio]</h1>
+            <p>Tudo que você precisa para gerenciar sua empresa, otimizar processos e faturar mais.</p>
+            <a href="#precos" class="botao-principal">Inicie essa Experiência</a>
+        </div>
+        
+        <!-- Navegação do Slider (Bolinhas) -->
+        <div class="slider-nav">
+            <span class="slider-nav-dot active" data-slide-index="0"></span>
+            <span class="slider-nav-dot" data-slide-index="1"></span>
+            <span class="slider-nav-dot" data-slide-index="2"></span>
+        </div>
+
+    </section>
+
+
+    <!-- 3. SEÇÃO "SOBRE" -->
+    <section id="sobre" class="secao">
+        <div class="container">
+            <h2>Sobre o Kairos</h2>
+            <p>O Kairos é um sistema de gestão on-line para [seu tipo de negócio] que permite [principal benefício do seu sistema].</p>
+            <p>Nosso objetivo é otimizar seu tempo, fidelizar seus clientes e aumentar seu faturamento.</p>
+        </div>
+    </section>
+
+    <!-- 4. SEÇÃO "FUNÇÕES" -->
+    <section id="funcoes" class="secao">
+        <div class="container">
+            <h2>Funções do Kairos</h2>
+            <p>Veja o que nosso sistema pode fazer por você.</p>
+            
+            <div class="grid-funcionalidades">
+                <div class="funcionalidade-item">
+                    <h3>Gestão Financeira</h3>
+                    <p>Controle total de entradas, saídas, e fluxo de caixa.</p>
+                </div>
+                <div class="funcionalidade-item">
+                    <h3>Agenda Online</h3>
+                    <p>Gerencie seus compromissos e dos seus clientes facilmente.</p>
+                </div>
+                <div class="funcionalidade-item">
+                    <h3>Controle de Clientes</h3>
+                    <p>Histórico completo e relacionamento com o cliente.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. SEÇÃO "PREÇOS" -->
+    <section id="precos" class="secao secao-precos">
+        <div class="container">
+            <h2>Preços</h2>
+            <p>Escolha o plano que melhor se encaixa no seu negócio.</p>
+
+            <div class="grid-precos">
+                <!-- Plano 1 -->
+                <div class="plano-item">
+                    <h3>Plano Básico</h3>
+                    <span class="preco">R$ 49,90</span>
+                    <span class="periodo">/mês</span>
+                    <ul>
+                        <li>Até 5 usuários</li>
+                        <li>Funcionalidade A</li>
+                        <li>Funcionalidade B</li>
+                    </ul>
+                    <button class="botao-assinar" data-price-id="price_ID_DO_PLANO_BASICO_NO_STRIPE">
+                        Assinar Agora
+                    </button>
+                </div>
+
+                <!-- Plano 2 -->
+                <div class="plano-item plano-destaque">
+                    <h3>Plano Profissional</h3>
+                    <span class="preco">R$ 99,90</span>
+                    <span class="periodo">/mês</span>
+                    <ul>
+                        <li>Usuários Ilimitados</li>
+                        <li>Todas as funcionalidades</li>
+                        <li>Suporte Prioritário</li>
+                    </ul>
+                    <button class="botao-assinar" data-price-id="price_ID_DO_PLANO_PRO_NO_STRIPE">
+                        Assinar Agora
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. RODAPÉ -->
+    <footer class="rodape">
+        <div class="container">
+            <p>© 2025 Kairos - Todos os direitos reservados.</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="js/landing.js"></script>
+
+</body>
+</html>
+
