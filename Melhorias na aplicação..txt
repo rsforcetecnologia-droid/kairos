@@ -1,0 +1,14 @@
+-Acréscimo de carrinho somar itens com o premio fidelizado.
+
+
+
+- Premiação;
+
+
+
+- Api whatsapp
+
+- Notificação de necessidade de compra
+
+Otimização de agenda.
+

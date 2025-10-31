@@ -3,7 +3,57 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// Listar clientes
+// --- NOVA FUNÇÃO HELPER ---
+/**
+ * Busca a data do último serviço concluído para um cliente específico.
+ * Baseado na estrutura de dados do seu arquivo original (busca por nome e telefone).
+ */
+const getLastService = async (db, establishmentId, clientName, clientPhone) => {
+    try {
+        const apptSnap = await db.collection('appointments')
+            .where('establishmentId', '==', establishmentId)
+            .where('clientName', '==', clientName)
+            .where('clientPhone', '==', clientPhone)
+            .where('status', '==', 'completed') // Filtro da nova funcionalidade
+            // .orderBy('startTime', 'desc') // Evitado para não causar erro de índice
+            .get();
+
+        if (apptSnap.empty) return null;
+
+        // Ordena no servidor para achar o mais recente
+        const appointments = apptSnap.docs.map(doc => doc.data());
+        appointments.sort((a, b) => b.startTime.toDate() - a.startTime.toDate()); // Mais recente primeiro
+
+        // Retorna o timestamp do Firestore
+        return appointments[0].startTime; 
+    } catch (error) {
+        console.error("Erro ao buscar último serviço:", error);
+        return null; // Retorna nulo se houver erro
+    }
+};
+
+// --- NOVA FUNÇÃO HELPER ---
+/**
+ * Recebe a lista de documentos de clientes e anexa a data do último serviço a cada um.
+ */
+const attachLastService = async (db, establishmentId, clientDocs) => {
+    // Mapeia cada documento para uma promessa que resolve com os dados do cliente + lastService
+    const clientDataPromises = clientDocs.map(async (clientDoc) => {
+        const client = clientDoc.data();
+        client.id = clientDoc.id;
+        
+        // Busca o último serviço para este cliente
+        client.lastService = await getLastService(db, establishmentId, client.name, client.phone); 
+        
+        return client;
+    });
+    
+    // Espera todas as buscas terminarem
+    return Promise.all(clientDataPromises);
+};
+
+
+// Listar clientes (MODIFICADA PARA INCLUIR 'lastService')
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     try {
@@ -16,7 +66,10 @@ router.get('/:establishmentId', async (req, res) => {
         if (snapshot.empty) {
             return res.status(200).json([]);
         }
-        const clientsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // --- NOVA LÓGICA ---
+        // Em vez de mapear direto, chama a função helper para anexar os dados
+        const clientsList = await attachLastService(db, establishmentId, snapshot.docs);
         
         // ADICIONADO: Ordena a lista de clientes por nome no servidor.
         clientsList.sort((a, b) => a.name.localeCompare(b.name));
@@ -28,7 +81,7 @@ router.get('/:establishmentId', async (req, res) => {
     }
 });
 
-// Criar um novo cliente
+// Criar um novo cliente (Original)
 router.post('/', async (req, res) => {
     const { establishmentId, name, phone, email, dob, notes } = req.body;
     if (!establishmentId || !name || !phone) {
@@ -54,7 +107,7 @@ router.post('/', async (req, res) => {
             name,
             phone,
             email: email || null,
-            dob: dob || null,
+            dob: dob || null, // data de nascimento
             notes: notes || null,
             loyaltyPoints: 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -69,14 +122,16 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Atualizar um cliente
+// Atualizar um cliente (Original)
 router.put('/:clientId', async (req, res) => {
     const { clientId } = req.params;
-    const clientData = req.body;
-     try {
+    // Renomeado para clientData para clareza
+    const clientData = req.body; 
+    try {
         const { db } = req;
         const clientRef = db.collection('clients').doc(clientId);
-        await clientRef.update(clientData);
+        // Atualiza os dados recebidos no corpo da requisição
+        await clientRef.update(clientData); 
         res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
     } catch (error) {
         console.error("Erro ao atualizar cliente:", error);
@@ -84,7 +139,7 @@ router.put('/:clientId', async (req, res) => {
     }
 });
 
-// Apagar um cliente
+// Apagar um cliente (Original)
 router.delete('/:clientId', async (req, res) => {
     const { clientId } = req.params;
     try {
@@ -109,7 +164,7 @@ router.delete('/:clientId', async (req, res) => {
 });
 
 
-// Obter histórico de agendamentos de um cliente
+// Obter histórico de agendamentos de um cliente (Original)
 router.get('/history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -125,15 +180,23 @@ router.get('/history/:establishmentId', async (req, res) => {
             // .orderBy('startTime', 'desc') // LINHA REMOVIDA PARA RESOLVER O ERRO DE ÍNDICE COMPOSTO
             .get();
         if (snapshot.empty) return res.status(200).json([]);
+        
         const history = snapshot.docs.map(doc => {
             const data = doc.data();
             return {
                 id: doc.id,
                 // Garantir que a data é uma string ISO para o frontend ordenar e filtrar
                 date: data.startTime.toDate().toISOString(), 
-                serviceName: (data.services || []).map(s => s.name).join(', ')
+                serviceName: (data.services || []).map(s => s.name).join(', '),
+                // Adicionando status para o modal de histórico
+                status: data.status || 'pendente',
+                professionalName: data.professionalName || 'N/A'
             };
         });
+        
+        // Ordena no servidor, já que não foi possível no DB
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
         res.status(200).json(history);
     } catch (error) {
         console.error("Erro ao buscar histórico do cliente:", error);
@@ -141,7 +204,7 @@ router.get('/history/:establishmentId', async (req, res) => {
     }
 });
 
-// Obter histórico de pontos de fidelidade
+// Obter histórico de pontos de fidelidade (Original)
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -175,7 +238,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
 });
 
-// Resgatar prêmio de fidelidade
+// Resgatar prêmio de fidelidade (Original)
 router.post('/redeem', async (req, res) => {
     const { establishmentId, clientName, clientPhone, rewardData } = req.body;
     if (!establishmentId || !clientName || !clientPhone || !rewardData) {
