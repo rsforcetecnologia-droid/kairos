@@ -56,7 +56,10 @@ let newAppointmentState = {
         professionalName: '',
         date: null,
         time: null,
-        redeemedReward: null
+        redeemedReward: null,
+        // (NOVO) Campos para controlar a fidelidade no modal
+        clientHasRewards: false,
+        clientLoyaltyPoints: 0
     }
 };
 
@@ -130,8 +133,8 @@ function renderProfessionalSelector() {
                 
                 ${prof.id === 'all' 
                     ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
-                        ${initials}
-                       </div>`
+                           ${initials}
+                          </div>`
                     : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${borderStyle}" />`
                 }
                 
@@ -187,6 +190,9 @@ function renderListView(allEvents) {
         // --- Verifica se há resgate de prêmio ---
         const isRedeemed = event.redeemedReward?.points > 0;
         
+        // --- (MODIFICADO) Verifica se tem prêmios a resgatar (e não resgatou ainda) ---
+        const hasRewards = event.hasRewards && !isRedeemed;
+
         // --- Cria o link do WhatsApp ---
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
 
@@ -195,7 +201,7 @@ function renderListView(allEvents) {
             <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
                 <div class="time-info" data-action="open-comanda"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
                 <div class="details-info" data-action="open-comanda">
-                    <p class="font-bold text-gray-800">${event.clientName}</p>
+                    <p class="font-bold text-gray-800">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
                     <p class="text-sm text-gray-600">${event.serviceName}</p>
                     <p class="text-sm text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}
                         ${isRedeemed ? '<span class="text-xs font-semibold text-purple-600 ml-1">(Resgate de Prémio)</span>' : ''}
@@ -260,6 +266,9 @@ function renderWeekView(allEvents) {
                 // --- Verifica se há resgate de prêmio ---
                 const isRedeemed = event.redeemedReward?.points > 0;
 
+                // --- (MODIFICADO) Verifica se tem prêmios a resgatar (e não resgatou ainda) ---
+                const hasRewards = event.hasRewards && !isRedeemed;
+
                 // --- Cria o link do WhatsApp para a Visão Semanal ---
                 const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
                 const isCompleted = event.status === 'completed';
@@ -268,7 +277,7 @@ function renderWeekView(allEvents) {
                     <div class="p-2 rounded-lg border-l-4 flex flex-col justify-between" 
                          style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};">
                         <div class="cursor-pointer flex-grow" data-action="open-comanda" data-appointment='${apptDataString}'>
-                            <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${event.clientName}</p>
+                            <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
                             <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
                             <p class="text-xs text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}</p> ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate de Prémio</p>' : ''}
                         </div>
@@ -530,6 +539,82 @@ async function updateTimesAndDuration() {
     }
 }
 
+// --- (NOVO) LÓGICA DE FIDELIDADE NO MODAL (STEP 4) ---
+function renderLoyaltyRewards() {
+    const container = document.getElementById('loyaltyRewardsContainer');
+    if (!container) return;
+
+    const { clientHasRewards, clientLoyaltyPoints, redeemedReward } = newAppointmentState.data;
+    const { enabled, rewards, pointsPerCurrency } = loyaltySettingsForModal;
+    
+    // Esconde o container se a fidelidade estiver desativada, ou o cliente não tiver prêmios, ou não houver prêmios cadastrados
+    if (!enabled || !clientHasRewards || !rewards || rewards.length === 0) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+
+    container.classList.remove('hidden');
+    
+    const availableRewards = rewards.filter(r => clientLoyaltyPoints >= r.points);
+
+    let rewardsHTML = `
+        <h4 class="text-md font-semibold text-gray-700 mb-2">🎁 Prêmios Disponíveis (${clientLoyaltyPoints} pontos)</h4>
+    `;
+
+    if (availableRewards.length > 0) {
+        rewardsHTML += '<div class="space-y-2">';
+        rewardsHTML += availableRewards.map(reward => {
+            const isChecked = redeemedReward?.reward === reward.reward; // Verifica se este prêmio está selecionado
+            return `
+                <label class="flex items-center p-3 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
+                    <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600" 
+                           value="${reward.reward}" 
+                           data-points="${reward.points}"
+                           ${isChecked ? 'checked' : ''}>
+                    <span class="ml-3">
+                        <span class="font-semibold text-gray-800">${reward.reward}</span>
+                        <span class="text-sm text-gray-600"> (-${reward.points} pontos)</span>
+                    </span>
+                </label>
+            `;
+        }).join('');
+        rewardsHTML += '</div>';
+    } else {
+        rewardsHTML += `<p class="text-sm text-gray-600">Pontos insuficientes para resgatar os prêmios disponíveis.</p>`;
+    }
+
+    container.innerHTML = rewardsHTML;
+
+    // Anexa listeners de seleção aos inputs de rádio
+    container.querySelectorAll('input[name="loyaltyReward"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                newAppointmentState.data.redeemedReward = {
+                    reward: e.target.value,
+                    points: parseInt(e.target.dataset.points, 10)
+                };
+            }
+        });
+    });
+    
+    // Adiciona uma opção para "Nenhum" (para desmarcar)
+    container.insertAdjacentHTML('beforeend', `
+        <label class="flex items-center p-3 mt-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
+            <input type="radio" name="loyaltyReward" class="form-radio text-gray-400" 
+                   value="none" 
+                   ${!redeemedReward ? 'checked' : ''}>
+            <span class="ml-3 text-gray-600">Não resgatar prêmio agora</span>
+        </label>
+    `);
+    container.querySelector('input[value="none"]').addEventListener('change', (e) => {
+        if (e.target.checked) {
+            newAppointmentState.data.redeemedReward = null;
+        }
+    });
+}
+
+
 // --- FUNÇÃO DE SUBMISSÃO FINAL ---
 async function handleAppointmentFormSubmit(e) {
     e.preventDefault();
@@ -639,9 +724,28 @@ async function handleClientSearch(searchTerm) {
             const clientName = card.dataset.clientName;
             const clientPhone = card.dataset.clientPhone;
             
+            // (NOVO) Busca o cliente completo no cache para verificar pontos
+            const client = allClientsData.find(c => c.phone === clientPhone && c.name === clientName);
+
             // Atualiza o estado
             newAppointmentState.data.clientName = clientName;
             newAppointmentState.data.clientPhone = clientPhone;
+            
+            // (MODIFICADO) Usa a lógica de verificação de prêmio do backend (loyaltyPoints >= minPoints)
+            if (client) {
+                const loyaltyProgram = loyaltySettingsForModal; // Pega as regras do modal
+                const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
+                
+                newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
+                newAppointmentState.data.clientHasRewards = (
+                    loyaltyProgram.enabled && 
+                    minPointsToRedeem !== Infinity && 
+                    newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
+                );
+            } else {
+                newAppointmentState.data.clientHasRewards = false;
+                newAppointmentState.data.clientLoyaltyPoints = 0;
+            }
             
             // Atualiza a UI da etapa 1 (Inputs e Resultados)
             document.getElementById('apptClientName').value = clientName;
@@ -686,6 +790,8 @@ async function handleClientRegistration(e) {
         // ATUALIZAÇÃO DO ESTADO DE AGENDAMENTO
         newAppointmentState.data.clientName = clientData.name;
         newAppointmentState.data.clientPhone = clientData.phone;
+        newAppointmentState.data.clientHasRewards = false; // Novo cliente
+        newAppointmentState.data.clientLoyaltyPoints = 0; // Novo cliente
         
         showNotification('Cliente cadastrado com sucesso!', 'success');
         
@@ -759,7 +865,7 @@ function renderStep1_Client(appointment, isNavigating) {
                     <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
                 </div>
             </div>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
                 <div class="relative flex-grow">
                     <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -795,20 +901,20 @@ function renderStep2_Service() {
             
             <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
                  ${availableServicesForModal.map(service => {
-                    const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
-                    const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-                    
-                    return `
-                        <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
-                            <div class="flex items-center">
-                                <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
-                                <div class="flex-1">
-                                    <p class="font-semibold text-sm text-gray-800">${service.name}</p>
-                                    <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
-                                </div>
-                            </div>
-                        </div>`;
-                }).join('')}
+                     const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
+                     const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
+                     
+                     return `
+                         <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
+                             <div class="flex items-center">
+                                 <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
+                                 <div class="flex-1">
+                                     <p class="font-semibold text-sm text-gray-800">${service.name}</p>
+                                     <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
+                                 </div>
+                             </div>
+                         </div>`;
+                 }).join('')}
             </div>
         </div>
         
@@ -828,19 +934,19 @@ function renderStep3_Professional() {
              <h3 class="text-xl font-bold text-gray-800">3. Profissional</h3>
              <div id="apptProfessionalContainer" class="mt-4 flex flex-wrap gap-3 max-h-48 overflow-y-auto p-1 professional-step-cards">
                  ${availableProfessionalsForModal.map(prof => {
-                    const isChecked = newAppointmentState.data.professionalId === prof.id;
-                    const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
-                    
-                    return `
+                     const isChecked = newAppointmentState.data.professionalId === prof.id;
+                     const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
+                     
+                     return `
                          <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
                              <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
                              <p class="text-xs font-semibold text-gray-800">${prof.name.split(' ')[0]}</p>
                              <p class="text-[10px] text-gray-500">${prof.specialty || 'Profissional'}</p>
                          </div>`;
-                    }).join('')}
+                 }).join('')}
              </div>
              <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
+                 <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
              </div>
         </div>
         
@@ -982,7 +1088,10 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
                 professionalName: appointment?.professionalName || '',
                 date: initialDateString,
                 time: initialTimeString,
-                redeemedReward: appointment?.redeemedReward || null
+                redeemedReward: appointment?.redeemedReward || null,
+                // (NOVO) Define o status de fidelidade com base no agendamento (para edição)
+                clientHasRewards: appointment?.hasRewards || false,
+                clientLoyaltyPoints: 0 // Será preenchido na Etapa 1 se buscar cliente
             }
         };
     }
@@ -1000,6 +1109,15 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         availableServicesForModal = servicesData;
         availableProfessionalsForModal = professionalsData;
         allClientsData = clientsData; // NOVO: Salva clientes no cache
+        
+        // (NOVO) Se estiver editando ou navegando com cliente, busca os pontos reais do cliente
+        const clientIdentifier = `${newAppointmentState.data.clientName.trim()}-${newAppointmentState.data.clientPhone.trim()}`;
+        if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
+            const client = allClientsData.find(c => c.phone === newAppointmentState.data.clientPhone && c.name === newAppointmentState.data.clientName);
+            if(client) {
+                newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
+            }
+        }
 
     } catch (error) {
         showNotification('Erro Crítico', 'Não foi possível carregar os dados para o agendamento. Verifique a conexão.', 'error');
@@ -1141,10 +1259,8 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         // Chamada inicial (após a renderização)
         updateTimesAndDuration();
 
-        // Lógica de Fidelidade (Disparada no carregamento da Step 4)
-        const clientPhoneInput = modal.querySelector('#apptClientPhone');
-        if (clientPhoneInput) clientPhoneInput.dispatchEvent(new Event('blur'));
-
+        // (NOVO) Lógica de Fidelidade (Disparada no carregamento da Step 4)
+        renderLoyaltyRewards();
     }
 }
 
@@ -1179,18 +1295,18 @@ export async function loadAgendaPage() {
             
             <div class="bg-white p-4 rounded-xl shadow-lg mb-6">
                  <div class="prof-search-bar flex items-center gap-4">
-                    <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="flex-grow p-2 border rounded-md shadow-sm">
-                    <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
-                        <div class="relative">
-                            <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
-                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                        </div>
-                        <span class="text-sm font-medium text-gray-700">Inativos</span>
-                    </label>
-                </div>
-                <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
-                    <div class="loader mx-auto"></div>
-                </div>
+                     <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="flex-grow p-2 border rounded-md shadow-sm">
+                     <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
+                         <div class="relative">
+                             <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
+                             <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                         </div>
+                         <span class="text-sm font-medium text-gray-700">Inativos</span>
+                     </label>
+                 </div>
+                 <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
+                     <div class="loader mx-auto"></div>
+                 </div>
             </div>
             <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
             
@@ -1313,6 +1429,12 @@ export async function loadAgendaPage() {
                     }
                     // --- FIM CORREÇÃO SOLICITADA ---
 
+                    // --- (MODIFICADO) NOTIFICAÇÃO DE PRÊMIOS ---
+                    if (apptData.hasRewards && !apptData.redeemedReward) {
+                        showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos para resgatar. Verifique a Etapa 4 do agendamento.', 'info');
+                    }
+                    // --- FIM DA NOTIFICAÇÃO ---
+
                     openAppointmentModal(apptData);
                     break;
                 case 'delete-appointment': {
@@ -1331,6 +1453,13 @@ export async function loadAgendaPage() {
                 }
                 case 'open-comanda':
                     if (apptData) {
+                        
+                        // --- (MODIFICADO) NOTIFICAÇÃO DE PRÊMIOS ---
+                        if (apptData.hasRewards && !apptData.redeemedReward && apptData.status !== 'completed') {
+                             showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos de fidelidade para resgatar.', 'info');
+                        }
+                        // --- FIM DA NOTIFICAÇÃO ---
+
                         const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
                         const params = { 
                             selectedAppointmentId: apptData.id,
@@ -1351,3 +1480,4 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
+

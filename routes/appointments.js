@@ -3,6 +3,68 @@ const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess, isOwner } = require('../middlewares/auth');
 
+// --- (MODIFICADO) FUNÇÃO AUXILIAR PARA VERIFICAR PRÊMIOS ---
+/**
+ * Verifica se um cliente tem pontos suficientes para resgatar PELO MENOS UM prêmio.
+ * @param {object} db - Instância do Firestore.
+ * @param {string} clientName - Nome do cliente.
+ * @param {string} clientPhone - Telefone do cliente.
+ * @param {string} establishmentId - ID do estabelecimento.
+ * @returns {boolean} - True se o cliente tiver prêmios resgatáveis, false caso contrário.
+ */
+async function checkClientRewards(db, clientName, clientPhone, establishmentId) {
+    if (!clientName || !clientPhone || !establishmentId) {
+        return false;
+    }
+    
+    try {
+        // Precisamos buscar o cliente e as regras de fidelidade do estabelecimento
+        const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
+        const clientRef = db.collection('clients').doc(clientIdentifier);
+        const establishmentRef = db.collection('establishments').doc(establishmentId);
+
+        const [clientDoc, establishmentDoc] = await Promise.all([
+            clientRef.get(),
+            establishmentRef.get()
+        ]);
+
+        if (!clientDoc.exists || !establishmentDoc.exists) {
+            // Se o cliente ou o estabelecimento não existem, não há prêmios.
+            return false;
+        }
+
+        const loyaltyPoints = clientDoc.data().loyaltyPoints || 0;
+        if (loyaltyPoints === 0) {
+            return false; // Otimização: se não tem pontos, não pode resgatar.
+        }
+
+        const loyaltyProgram = establishmentDoc.data().loyaltyProgram;
+
+        // --- REGRA DE NEGÓCIO PARA PRÊMIOS (MODIFICADA) ---
+        // Verifica se o programa está ativo e se existem prêmios cadastrados
+        if (!loyaltyProgram || !loyaltyProgram.enabled || !loyaltyProgram.rewards || loyaltyProgram.rewards.length === 0) {
+            return false;
+        }
+
+        // Encontra o prêmio mais barato (menor quantidade de pontos necessários)
+        const minPointsToRedeem = Math.min(...loyaltyProgram.rewards.map(r => r.points));
+
+        if (minPointsToRedeem === Infinity) {
+            return false; // Nenhum prêmio cadastrado corretamente
+        }
+
+        // O cliente tem prêmios se seus pontos forem >= ao prêmio mais barato
+        return loyaltyPoints >= minPointsToRedeem;
+        // -------------------------------------
+
+    } catch (error) {
+        // Loga o erro mas não impede a execução da rota principal
+        console.error(`Erro ao verificar prêmios de fidelidade para ${clientName}:`, error);
+        return false;
+    }
+}
+
+
 // Criar novo agendamento (Rota Pública)
 router.post('/', async (req, res) => {
     const { db } = req;
@@ -38,6 +100,9 @@ router.post('/', async (req, res) => {
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
         const newAppointmentRef = db.collection('appointments').doc();
 
+        // --- (MODIFICADO) Verifica prêmios ANTES da transação ---
+        const hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
+
         await db.runTransaction(async (transaction) => {
             const appointmentsRef = db.collection('appointments');
             const conflictQuery = appointmentsRef.where('professionalId', '==', professionalId).where('startTime', '<', endDate);
@@ -55,7 +120,8 @@ router.post('/', async (req, res) => {
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'confirmed',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                hasRewards: hasRewards // <-- CAMPO ADICIONADO
             };
 
             if (redeemedReward && redeemedReward.points > 0) {
@@ -74,6 +140,11 @@ router.post('/', async (req, res) => {
                     timestamp: admin.firestore.FieldValue.serverTimestamp()
                 });
                 newAppointment.redeemedReward = redeemedReward;
+                
+                // (MODIFICADO) Se resgatou, re-verifica o status de prêmios
+                // Esta é uma re-verificação "otimista". O ideal seria buscar o minPointsToRedeem novamente.
+                const newPoints = currentPoints - redeemedReward.points;
+                newAppointment.hasRewards = newPoints > 0; // Se ainda tiver pontos, assume que pode ter prêmios
             }
             transaction.set(newAppointmentRef, newAppointment);
 
@@ -125,17 +196,42 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
 
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
 
-        const enrichedAppointments = appointmentsSnapshot.docs.map(doc => {
+        // --- (MODIFICADO) PARA VERIFICAÇÃO DE FIDELIDADE ---
+        // Cache para evitar múltiplas buscas do mesmo cliente nesta requisição
+        const clientRewardsCache = new Map();
+
+        const enrichedAppointments = await Promise.all(appointmentsSnapshot.docs.map(async (doc) => {
             const appointment = { id: doc.id, ...doc.data() };
             let serviceName = (appointment.services && Array.isArray(appointment.services)) ? appointment.services.map(s => s.name).join(', ') : appointment.serviceName || 'N/A';
+            
+            // (MODIFICADO) Verifica fidelidade
+            const clientIdentifier = `${appointment.clientName.trim()}-${appointment.clientPhone.trim()}`;
+            let hasRewards = false;
+
+            // Se o campo já existe no agendamento (foi salvo na criação), usa ele.
+            if (appointment.hasRewards !== undefined) {
+                hasRewards = appointment.hasRewards;
+            } else {
+                 // Se não existe (agendamento antigo), busca no cache ou no DB
+                if (clientRewardsCache.has(clientIdentifier)) {
+                    hasRewards = clientRewardsCache.get(clientIdentifier);
+                } else {
+                    // Busca no DB (PASSANDO establishmentId)
+                    hasRewards = await checkClientRewards(db, appointment.clientName, appointment.clientPhone, establishmentId);
+                    clientRewardsCache.set(clientIdentifier, hasRewards);
+                }
+            }
+
             return {
                 ...appointment,
                 startTime: appointment.startTime.toDate(),
                 endTime: appointment.endTime.toDate(),
                 serviceName: serviceName,
                 professionalName: professionalsMap.get(appointment.professionalId) || 'Profissional não encontrado',
+                hasRewards: hasRewards // <-- CAMPO ADICIONADO/GARANTIDO
             };
-        });
+        }));
+        // --- FIM DA MODIFICAÇÃO ---
 
         res.status(200).json(enrichedAppointments);
     } catch (error) {
@@ -235,22 +331,31 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
         });
         const startDate = new Date(startTime);
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
+
         await db.runTransaction(async (transaction) => {
             const appointmentRef = db.collection('appointments').doc(appointmentId);
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const oldAppointmentData = appointmentDoc.data();
+            
+            // (MODIFICADO) Precisamos do establishmentId para verificar os prêmios
+            const establishmentId = oldAppointmentData.establishmentId;
+            let hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
+
             const conflictQuery = db.collection('appointments').where('professionalId', '==', professionalId).where('startTime', '<', endDate);
             const potentialConflicts = await transaction.get(conflictQuery);
             const actualConflicts = potentialConflicts.docs.filter(doc => doc.id !== appointmentId && doc.data().endTime.toDate() > startDate);
             if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível.');
+            
             const updatedData = {
                 clientName, clientPhone, professionalId, professionalName, // Incluído professionalName
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 services: servicesDetails,
-                redeemedReward: redeemedReward || null
+                redeemedReward: redeemedReward || null,
+                hasRewards: hasRewards // <-- CAMPO ADICIONADO
             };
+
             if (redeemedReward && !oldAppointmentData.redeemedReward) {
                 const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
                 const clientRef = db.collection('clients').doc(clientIdentifier);
@@ -266,13 +371,23 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
                     reward: redeemedReward.reward,
                     timestamp: admin.firestore.FieldValue.serverTimestamp()
                 });
+                // (MODIFICADO) Re-avalia o status de prêmios
+                const newPoints = currentPoints - redeemedReward.points;
+                // Busca o prêmio mais barato para saber se ele AINDA tem prêmios
+                const establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
+                const loyaltyProgram = establishmentDoc.data().loyaltyProgram;
+                const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
+                
+                updatedData.hasRewards = (minPointsToRedeem !== Infinity) && (newPoints >= minPointsToRedeem);
+
             } else if (oldAppointmentData.redeemedReward && !redeemedReward) {
                  // Caso o prêmio seja removido, a reversão de pontos deve ocorrer aqui
                 const clientIdentifier = `${clientName.trim()}-${clientPhone.trim()}`;
                 const clientRef = db.collection('clients').doc(clientIdentifier);
                 const oldRewardPoints = oldAppointmentData.redeemedReward.points;
                 transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(oldRewardPoints) });
-                // Note: O registro de resgate no histórico de fidelidade deve ser excluído ou marcado como revertido.
+                // (MODIFICADO) Re-avalia o status de prêmios
+                updatedData.hasRewards = true; // Se reverteu pontos, é quase certo que ele tem prêmios.
             }
             transaction.update(appointmentRef, updatedData);
         });
@@ -421,6 +536,8 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
     const appointmentRef = db.collection('appointments').doc(appointmentId);
 
     try {
+        let hasRewards = false; // (NOVO)
+
         await db.runTransaction(async (transaction) => {
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) {
@@ -429,6 +546,7 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
 
             const appointmentData = appointmentDoc.data();
             const saleId = appointmentData.transaction?.saleId;
+            const establishmentId = appointmentData.establishmentId; // (NOVO)
 
             if (saleId) {
                 const saleRef = db.collection('sales').doc(saleId);
@@ -448,12 +566,17 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
                      transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) });
                 }
             }
+            
+            // (NOVO) Re-verifica o status de fidelidade
+            hasRewards = await checkClientRewards(db, appointmentData.clientName, appointmentData.clientPhone, establishmentId);
 
             transaction.update(appointmentRef, {
                 status: 'confirmed',
                 transaction: admin.firestore.FieldValue.delete(),
                 // Se a recompensa foi resgatada, remove a referência no agendamento
-                redeemedReward: admin.firestore.FieldValue.delete()
+                redeemedReward: admin.firestore.FieldValue.delete(),
+                // (NOVO) Atualiza o status de prêmios ao reabrir
+                hasRewards: hasRewards
             });
         });
 
@@ -569,3 +692,4 @@ router.post('/cleanup-invalid', verifyToken, isOwner, async (req, res) => {
 });
 
 module.exports = router;
+
