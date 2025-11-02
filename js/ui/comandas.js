@@ -11,6 +11,7 @@ import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { navigateTo } from '../main.js'; // <-- Importa a função de navegação
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
@@ -987,7 +988,14 @@ export async function loadComandasPage(params = {}) {
                     await handleCloseCashier();
                     break;
                 case 'view-sales-report':
-                    await handleViewSalesReport();
+                    if (localState.isCashierOpen && localState.activeCashierSessionId) {
+                        // Se o caixa estiver ABERTO, mostra o relatório da SESSÃO de caixa em um modal
+                        await handleViewSalesReport();
+                    } else {
+                        // Se o caixa estiver FECHADO, navega para a página de Relatório de Vendas ('sales-report-section')
+                        // onde o histórico de caixas pode ser visto.
+                        navigateTo('sales-report-section'); 
+                    }
                     break;
                 case 'remove-item':
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
@@ -1003,9 +1011,10 @@ export async function loadComandasPage(params = {}) {
                             const reopenedComandaIndex = localState.allComandas.findIndex(c => c.id === comandaId);
                             if (reopenedComandaIndex !== -1) {
                                 // REMOVE os campos que continham a forma de pagamento anterior
+                                // *** ESTA É A CORREÇÃO DE SINTAXE ***
                                 delete localState.allComandas[reopenedComandaIndex].transaction; 
                                 delete localState.allComandas[reopenedComandaIndex].cashierSessionId; 
-                                delete localState.allComandas[reopenedComandaIndex].redeemedReward;
+                                delete localState.allComandas[reopenedComandaIndex].redeemedReward; // <-- LINHA CORRIGIDA
                                 localState.allComandas[reopenedComandaIndex].status = 'confirmed'; // Garante o status correto para reexibição
                             }
                             
