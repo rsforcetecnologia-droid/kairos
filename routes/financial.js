@@ -1,13 +1,13 @@
 // routes/financial.js
-// (CORRIGIDO: Corrigido o escopo da transação na função markAsPaid)
+// (MODIFICADO: 'createEntry' cria 2 lançamentos se 'isRecurring' for 'true')
+// (MODIFICADO: Adicionados logs de depuração em 'createEntry')
 
 const express = require('express');
 const router = express.Router();
 const { addMonths, format, startOfMonth, endOfMonth, parseISO, isBefore, addWeeks, addDays } = require('date-fns');
 
 // --- ROTAS (Naturezas e Centros de Custo) ---
-
-// Função auxiliar para rotas hierárquicas
+// (Sem alterações)
 const setupHierarchyRoutes = (collectionName) => {
     const hierarchyRouter = express.Router();
     
@@ -84,19 +84,24 @@ const setupHierarchyRoutes = (collectionName) => {
     return hierarchyRouter;
 };
 
-// Aplica o middleware de hierarquia
 router.use('/natures', setupHierarchyRoutes('financialNatures'));
 router.use('/cost-centers', setupHierarchyRoutes('financialCostCenters'));
 
 
 // --- CONTAS A PAGAR / RECEBER ---
 
-// (Refatorado para aceitar req, res)
+// ==================================================================
+// === AQUI ESTÁ A LÓGICA ALTERADA (createEntry) ===
+// ==================================================================
 const createEntry = async (req, res, collectionName) => {
     try {
         const { db } = req; 
         const { establishmentId } = req.user;
         const data = req.body;
+
+        // --- LOG DE DEBUG PARA O TESTE ---
+        console.log("\n[createEntry] DADOS RECEBIDOS DO FRONTEND:", JSON.stringify(data, null, 2));
+
         data.establishmentId = establishmentId;
         data.createdAt = new Date();
 
@@ -109,41 +114,60 @@ const createEntry = async (req, res, collectionName) => {
 
         const installments = data.installments ? parseInt(data.installments, 10) : 1;
         const isRecurring = data.isRecurring === true;
+        
+        // --- LOG DE DEBUG PARA O TESTE ---
+        console.log("[createEntry] A flag 'isRecurring' foi lida como:", isRecurring);
+        
         const totalAmount = parseFloat(data.amount);
 
         // --- 1. LANÇAMENTO FIXO (RECORRENTE) ---
         if (isRecurring) {
-            const newDocRef = collectionRef.doc();
             
+            console.log("[createEntry] SUCESSO: 'isRecurring' é true. A criar dois lançamentos.");
+            
+            // Este é o ID que vai ligar todos os lançamentos recorrentes
+            const groupId = collectionRef.doc().id; 
+
+            // --- LANÇAMENTO 1 (MÊS ATUAL) ---
+            const newDocRef = collectionRef.doc(groupId); // Usamos o ID do grupo como ID do primeiro doc
             const entryData = {
                 ...data,
                 amount: totalAmount, 
                 isRecurring: true, 
                 recurringFrequency: 'monthly',
-                recurringGroupId: newDocRef.id, 
+                recurringGroupId: groupId, // Define o ID do grupo
                 installments: 1, 
             };
             
+            // Se o utilizador não marcou como 'pago' na criação, força 'pendente'
+            if (entryData.status !== 'paid') {
+                 entryData.status = 'pending';
+                 entryData.paymentDate = null;
+            }
+            
             batch.set(newDocRef, entryData);
             
-            if (entryData.status === 'paid') {
-                 const nextDueDate = addMonths(parseISO(entryData.dueDate), 1);
-                 const nextEntryData = {
-                     ...entryData, 
-                     dueDate: format(nextDueDate, 'yyyy-MM-dd'),
-                     status: 'pending',
-                     paymentDate: null,
-                     createdAt: new Date(),
-                 };
-                 delete nextEntryData.id;
-                 delete nextEntryData.installmentInfo;
-                 
-                 const nextDocRef = collectionRef.doc();
-                 batch.set(nextDocRef, nextEntryData);
-            }
+            // --- LANÇAMENTO 2 (MÊS DA FRENTE) ---
+            // (Esta é a nova lógica do teu teste)
+            const nextDueDate = addMonths(parseISO(entryData.dueDate), 1);
+            const nextEntryData = {
+                ...entryData, // Copia dados (descrição, valor, naturezaId...)
+                dueDate: format(nextDueDate, 'yyyy-MM-dd'),
+                status: 'pending',     // O próximo é sempre pendente
+                paymentDate: null,
+                createdAt: new Date(),
+                recurringGroupId: groupId, // Mesmo ID de grupo
+            };
+            delete nextEntryData.id;
+            delete nextEntryData.installmentInfo;
+            
+            const nextDocRef = collectionRef.doc();
+            batch.set(nextDocRef, nextEntryData);
+            
             
         // --- 2. LANÇAMENTO PARCELADO ---
         } else if (installments > 1) {
+            console.log("[createEntry] AVISO: 'isRecurring' é false. A criar lançamento parcelado.");
             const installmentAmount = (totalAmount / installments);
             const originalDueDate = parseISO(data.dueDate);
             const frequency = data.frequency || 'monthly';
@@ -187,6 +211,7 @@ const createEntry = async (req, res, collectionName) => {
             
         // --- 3. LANÇAMENTO SIMPLES ---
         } else {
+            console.log("[createEntry] AVISO: 'isRecurring' é false. A criar um lançamento simples.");
             const newDocRef = collectionRef.doc();
             batch.set(newDocRef, { ...data, amount: totalAmount, installments: 1, isRecurring: false });
         }
@@ -200,7 +225,7 @@ const createEntry = async (req, res, collectionName) => {
     }
 };
 
-// (Refatorado para aceitar req, res)
+// (getEntries, updateEntry, deleteEntry sem alterações)
 const getEntries = async (req, res, collectionName) => {
     try {
         const { db } = req; 
@@ -239,11 +264,9 @@ const getEntries = async (req, res, collectionName) => {
 
     } catch (error) {
         console.error(`Erro ao buscar ${collectionName}:`, error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Erro ao buscar dados.' });
     }
 };
-
-// (Refatorado para aceitar req, res)
 const updateEntry = async (req, res, collectionName) => {
     try {
         const { db } = req; 
@@ -275,8 +298,6 @@ const updateEntry = async (req, res, collectionName) => {
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 };
-
-// (Refatorado para aceitar req, res)
 const deleteEntry = async (req, res, collectionName) => {
     try {
         const { db } = req; 
@@ -322,14 +343,14 @@ const deleteEntry = async (req, res, collectionName) => {
 
     } catch (error) {
         console.error(`Erro ao excluir ${collectionName}:`, error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Erro ao excluir item.' });
     }
 };
 
-// (Refatorado para aceitar req, res)
+// (markAsPaid modificado para a lógica original de duplicação APÓS o pagamento)
 const markAsPaid = async (req, res, collectionName) => {
      try {
-        const { db } = req; // <--- CORREÇÃO
+        const { db } = req; 
         const { id } = req.params;
         const { establishmentId } = req.user;
         const { status, paymentDate } = req.body;
@@ -341,9 +362,6 @@ const markAsPaid = async (req, res, collectionName) => {
         const docRef = db.collection(collectionName).doc(id);
         
         await db.runTransaction(async (transaction) => {
-            // ==================================================================
-            // === A CORREÇÃO ESTÁ AQUI: 'collectionRef' definida DENTRO da transação ===
-            // ==================================================================
             const collectionRef = db.collection(collectionName);
             const doc = await transaction.get(docRef);
             
@@ -354,7 +372,7 @@ const markAsPaid = async (req, res, collectionName) => {
             const entryData = doc.data();
             
             if (entryData.status === 'paid') {
-                return; 
+                return; // Já foi pago, não faz nada
             }
 
             // 1. Atualiza o documento atual para "pago"
@@ -363,7 +381,7 @@ const markAsPaid = async (req, res, collectionName) => {
                 paymentDate: paymentDate
             });
             
-            // 2. LÓGICA DE RECORRÊNCIA AO PAGAR
+            // 2. LÓGICA DE RECORRÊNCIA (Apenas se 'isRecurring' ou 'recurringGroupId' estiverem presentes)
             const recurringGroupId = entryData.recurringGroupId || (entryData.isRecurring ? doc.id : null);
 
             if (recurringGroupId) {
@@ -396,8 +414,8 @@ const markAsPaid = async (req, res, collectionName) => {
     }
 };
 
-// --- ROTAS PRINCIPAIS (Contas a Pagar e Receber) ---
-// (Refatoradas para passar req, res)
+// --- ROTAS PRINCIPAIS ---
+// (Sem alterações)
 router.post('/payables', (req, res) => createEntry(req, res, 'financialPayables'));
 router.get('/payables', (req, res) => getEntries(req, res, 'financialPayables'));
 router.put('/payables/:id', (req, res) => updateEntry(req, res, 'financialPayables'));
@@ -411,12 +429,11 @@ router.delete('/receivables/:id', (req, res) => deleteEntry(req, res, 'financial
 router.patch('/receivables/:id/status', (req, res) => markAsPaid(req, res, 'financialReceivables'));
 
 
-// --- ROTAS DE RELATÓRIOS (Baseadas no seu código original) ---
-
-// GET /today-summary
+// --- ROTAS DE RELATÓRIOS ---
+// (Sem alterações)
 router.get('/today-summary', async (req, res) => {
     try {
-        const { db } = req; // <--- CORREÇÃO
+        const { db } = req; 
         const { establishmentId } = req.user;
         const today = format(new Date(), 'yyyy-MM-dd');
         
@@ -444,24 +461,15 @@ router.get('/today-summary', async (req, res) => {
     }
 });
 
-// GET /cash-flow
 router.get('/cash-flow', async (req, res) => {
      try {
-        const { db } = req; // <--- CORREÇÃO
+        const { db } = req; 
         const { establishmentId } = req.user;
         const { startDate, endDate } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ message: 'Datas de início e fim são obrigatórias.' });
         }
-
-        const queryPaidEntries = (collectionName) => db.collection(collectionName)
-            .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'paid')
-            .where('paymentDate', '>=', startDate)
-            .where('paymentDate', '>=', startDate) // Erro do código original, corrigido abaixo
-            .where('paymentDate', '<=', endDate)
-            .get();
             
         const queryPaidEntriesFixed = (collectionName) => db.collection(collectionName)
             .where('establishmentId', '==', establishmentId)

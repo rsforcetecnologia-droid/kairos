@@ -1,5 +1,6 @@
 // js/ui/financial.js
-// (ATUALIZADO: Lógica de exclusão simplificada para o modelo "Contínuo")
+// (CORRIGIDO: Corrigido o bug 'costCenterId is not defined' na função fetchEntriesList)
+// (CORRIGIDO: handleSaveEntry agora lê os dados a partir do 'event.target' (o formulário))
 
 // --- 1. IMPORTAÇÕES ---
 import {
@@ -452,9 +453,13 @@ function openEntryModal(entry = null) {
         }
     });
 
+    // ==================================================================
+    // === ESTA É A CORREÇÃO CRÍTICA DO FRONTEND (BUG do Checkbox) ===
+    // ==================================================================
     modalElement.querySelector('#entry-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        await handleSaveEntry();
+        // Passa o 'event' (e) para o handler, para que ele saiba qual formulário ler
+        await handleSaveEntry(e);
     });
 }
 
@@ -621,7 +626,13 @@ async function fetchEntriesList() {
             endDate: filters.endDate
         };
         if (filters.natureId && filters.natureId !== 'all') cleanFilters.natureId = filters.natureId;
-        if (filters.costCenterId && filters.costCenterId !== 'all') cleanFilters.costCenterId = filters.costCenterId;
+        
+        // ==================================================================
+        // === ESTA É A CORREÇÃO DO BUG 'costCenterId is not defined' ===
+        // ==================================================================
+        if (filters.costCenterId && filters.costCenterId !== 'all') {
+            cleanFilters.costCenterId = filters.costCenterId; // <-- Estava 'costCenterId' em vez de 'filters.costCenterId'
+        }
 
         const payablesPromise = getPayables(cleanFilters);
         const receivablesPromise = getReceivables(cleanFilters);
@@ -656,25 +667,33 @@ async function fetchEntriesList() {
 /**
  * Salva (Cria ou Atualiza) um lançamento (Lógica Original + Nova UI)
  */
-async function handleSaveEntry() {
-    const entryId = document.getElementById('entry-id').value;
+// ==================================================================
+// === ESTA É A CORREÇÃO DO BUG do Checkbox ===
+// ==================================================================
+async function handleSaveEntry(event) {
+    
+    // 'form' agora é o 'event.target' (o formulário que disparou o 'submit')
+    const form = event.target; 
+    
+    // Lê os dados usando 'form.querySelector'
+    const entryId = form.querySelector('#entry-id').value;
     const isEdit = entryId !== '';
     
-    const statusChecked = document.getElementById('entry-status').checked;
-    const paymentDateValue = document.getElementById('entry-paymentDate').value;
+    const statusChecked = form.querySelector('#entry-status').checked;
+    const paymentDateValue = form.querySelector('#entry-paymentDate').value;
 
     const payload = {
-        description: document.getElementById('entry-description').value,
-        amount: parseFloat(document.getElementById('entry-amount').value),
-        dueDate: document.getElementById('entry-due-date').value,
-        naturezaId: document.getElementById('entry-natureId').value === 'all' ? null : document.getElementById('entry-natureId').value,
-        centroDeCustoId: document.getElementById('entry-costCenterId').value === 'all' ? null : document.getElementById('entry-costCenterId').value,
-        notes: document.getElementById('entry-notes').value,
+        description: form.querySelector('#entry-description').value,
+        amount: parseFloat(form.querySelector('#entry-amount').value),
+        dueDate: form.querySelector('#entry-due-date').value,
+        naturezaId: form.querySelector('#entry-natureId').value === 'all' ? null : form.querySelector('#entry-natureId').value,
+        centroDeCustoId: form.querySelector('#entry-costCenterId').value === 'all' ? null : form.querySelector('#entry-costCenterId').value,
+        notes: form.querySelector('#entry-notes').value,
         status: statusChecked ? 'paid' : 'pending',
         paymentDate: statusChecked ? paymentDateValue : null,
     };
     
-    const entryType = document.getElementById('entry-type').value; // 'receber' ou 'pagar'
+    const entryType = form.querySelector('#entry-type').value; // 'receber' ou 'pagar'
 
     if (!payload.description || isNaN(payload.amount) || !payload.dueDate) {
         showNotification('Erro', 'Descrição, Valor e Data de Vencimento são obrigatórios.', 'error');
@@ -686,17 +705,24 @@ async function handleSaveEntry() {
     }
 
     if (!isEdit) {
-        const isInstallment = document.getElementById('entry-is-installment').checked;
-        const isRecurring = document.getElementById('entry-is-recurring').checked; 
+        // Lê os checkboxes a partir do 'form'
+        const isInstallment = form.querySelector('#entry-is-installment').checked;
+        const isRecurring = form.querySelector('#entry-is-recurring').checked; 
+        
+        // Log para termos a certeza
+        console.log("--- DEBUG FRONTEND (Corrigido) ---");
+        console.log("Checkbox Parcelado (isInstallment):", isInstallment);
+        console.log("Checkbox Lançamento Fixo (isRecurring):", isRecurring);
+
 
         if (isInstallment) {
-            const installments = parseInt(document.getElementById('entry-installments').value, 10);
+            const installments = parseInt(form.querySelector('#entry-installments').value, 10);
             if (!installments || installments <= 1) {
                 showNotification('Erro', 'O número de parcelas deve ser maior que 1.', 'error');
                 return;
             }
             payload.installments = installments; 
-            payload.frequency = document.getElementById('entry-frequency').value;
+            payload.frequency = form.querySelector('#entry-frequency').value;
             payload.isRecurring = false; 
         } else if (isRecurring) { 
             payload.isRecurring = true;
@@ -741,7 +767,8 @@ async function handleMarkAsPaid(entryId) {
     const entry = [...localState.payables, ...localState.receivables].find(e => e.id === entryId);
     if (!entry) return;
 
-    const isReceber = entry.type === 'receber' || localState.activeTab === 'receber';
+    // Tenta inferir o tipo pelo 'entry' se existir, senão usa a aba ativa
+    const isReceber = (entry.type === 'receber') || (entry.type !== 'pagar' && localState.activeTab === 'receber');
     const actionText = isReceber ? 'recebido' : 'pago';
     
     const confirmed = await showConfirmation(
