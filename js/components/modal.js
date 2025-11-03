@@ -284,16 +284,27 @@ export function openCancellationHistoryModal() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
+    // ### ALTERAÇÃO PRINCIPAL (RESPONSIVIDADE) ###
     const contentHTML = `
-        <div class="flex items-center gap-4 bg-gray-100 p-3 rounded-lg mb-4">
-            <div><label for="cancelStartDate" class="text-sm font-medium">De:</label><input type="date" id="cancelStartDate" value="${thirtyDaysAgoStr}" class="p-2 border rounded-md"></div>
-            <div><label for="cancelEndDate" class="text-sm font-medium">Até:</label><input type="date" id="cancelEndDate" value="${today}" class="p-2 border rounded-md"></div>
-            <button id="searchCancellationsBtn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Buscar</button>
+        <div class="flex flex-col sm:flex-row sm:items-end gap-4 bg-gray-100 p-3 rounded-lg mb-4">
+            
+            <div class="w-full sm:flex-grow">
+                <label for="cancelStartDate" class="text-sm font-medium">De:</label>
+                <input type="date" id="cancelStartDate" value="${thirtyDaysAgoStr}" class="w-full p-2 border rounded-md">
+            </div>
+            
+            <div class="w-full sm:flex-grow">
+                <label for="cancelEndDate" class="text-sm font-medium">Até:</label>
+                <input type="date" id="cancelEndDate" value="${today}" class="w-full p-2 border rounded-md">
+            </div>
+            
+            <button id="searchCancellationsBtn" class="w-full sm:w-auto flex-shrink-0 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Buscar</button>
         </div>
         <div id="cancellationListContainer" class="space-y-3 max-h-96 overflow-y-auto pr-2">
             <div class="loader mx-auto"></div>
         </div>
     `;
+    // ### FIM DA ALTERAÇÃO ###
 
     const { modalElement } = showGenericModal({
         title: "Histórico de Cancelamentos",

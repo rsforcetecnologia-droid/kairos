@@ -176,9 +176,17 @@ function renderListView(allEvents) {
         if (event.type === 'blockage') {
             return `
                 <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
-                    <div class="time-info"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
-                    <div class="details-info"><p class="font-bold text-red-800">${event.reason}</p><p class="text-sm text-gray-600">com ${event.professionalName}</p></div>
-                    <div class="status-info"><span class="status-badge bg-red-100 text-red-800">Bloqueio</span></div>
+                    <div class="time-info">
+                        <p class="font-bold text-md">${startTimeStr}</p>
+                        <p class="text-xs text-gray-500">${endTimeStr}</p>
+                    </div>
+                    <div class="details-info min-w-0">
+                        <p class="font-bold text-red-800 truncate">${event.reason}</p>
+                        <p class="text-sm text-gray-600 truncate">com ${event.professionalName}</p>
+                    </div>
+                    <div class="status-info">
+                        <span class="status-badge bg-red-100 text-red-800">Bloqueio</span>
+                    </div>
                 </div>`;
         }
 
@@ -187,28 +195,29 @@ function renderListView(allEvents) {
         const statusText = isCompleted ? 'Finalizado' : 'Aberto';
         const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
         
-        // --- Verifica se há resgate de prêmio ---
         const isRedeemed = event.redeemedReward?.points > 0;
-        
-        // --- (MODIFICADO) Verifica se tem prêmios a resgatar (e não resgatou ainda) ---
         const hasRewards = event.hasRewards && !isRedeemed;
-
-        // --- Cria o link do WhatsApp ---
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
 
 
         return `
             <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
-                <div class="time-info" data-action="open-comanda"><p class="font-bold text-lg">${startTimeStr}</p><p class="text-sm text-gray-500">${endTimeStr}</p></div>
-                <div class="details-info" data-action="open-comanda">
-                    <p class="font-bold text-gray-800">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
-                    <p class="text-sm text-gray-600">${event.serviceName}</p>
-                    <p class="text-sm text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}
-                        ${isRedeemed ? '<span class="text-xs font-semibold text-purple-600 ml-1">(Resgate de Prémio)</span>' : ''}
-                    </p>
+                
+                <div class="time-info" data-action="open-comanda">
+                    <p class="font-bold text-md">${startTimeStr}</p>
+                    <p class="text-xs text-gray-500">${endTimeStr}</p>
                 </div>
+
+                <div class="details-info min-w-0" data-action="open-comanda">
+                    <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
+                    <p class="text-sm text-gray-600 truncate">${event.serviceName}</p>
+                    <p class="text-xs text-gray-500 truncate">com ${event.professionalName || 'Indefinido'}</p>
+                    
+                    ${isRedeemed ? '<p class="text-xs font-semibold text-purple-600">Resgate de Prémio</p>' : ''}
+                </div>
+
                 <div class="status-info">
-                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    <span class="status-badge ${statusClass} mb-1">${statusText}</span>
                     <div class="card-actions flex gap-1 items-center">
                         ${!isCompleted ? `
                             <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
@@ -226,13 +235,29 @@ function renderListView(allEvents) {
     agendaView.innerHTML = `<div class="list-view-container">${cardsHTML}</div>`;
 }
 
+// ### ALTERAÇÃO 1 (Helper Function) ###
+// Esta função verifica se estamos no mobile e retorna 3 dias
+// caso contrário, retorna a seleção do utilizador
+function getActiveWeekDays() {
+    const isMobile = window.innerWidth < 768;
+    // Se for mobile E a vista for 'semana', força 3 dias
+    if (isMobile && localState.currentView === 'week') {
+        return 3;
+    }
+    // Caso contrário, usa o estado normal (3, 5 ou 7)
+    return localState.weekViewDays;
+}
+
+
+// ### ALTERAÇÃO 2: Compactar o card da VISTA SEMANAL ###
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
     const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    // CORREÇÃO (BUG 3): Usa getWeekStart para calcular a data inicial do bloco
     const weekStart = getWeekStart(localState.currentDate);
-    const numDays = localState.weekViewDays;
+    
+    const numDays = getActiveWeekDays();
 
+    // Reduzido grid-template-columns para 3 no mobile (feito por getActiveWeekDays)
     let weekHTML = `<div class="grid divide-x divide-gray-200 min-h-[60vh]" style="grid-template-columns: repeat(${numDays}, minmax(0, 1fr));">`;
 
     for (let i = 0; i < numDays; i++) {
@@ -245,7 +270,7 @@ function renderWeekView(allEvents) {
             .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
-        let eventsHTML = '<div class="p-2 space-y-2">';
+        let eventsHTML = '<div class="p-1 space-y-2">'; // Reduzido padding para p-1
         if (dayEvents.length > 0) {
             eventsHTML += dayEvents.map(event => {
                 const startTime = new Date(event.startTime);
@@ -253,48 +278,42 @@ function renderWeekView(allEvents) {
                 const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
                 
                 if (event.type === 'blockage') {
+                    // Card de BLOQUEIO compactado
                     return `
-                        <div class="p-2 rounded-lg border-l-4 flex flex-col justify-between bg-red-100" style="border-left-color: ${profColor.border};">
-                            <p class="font-bold text-sm text-red-800">${startTimeStr} - ${event.reason}</p>
-                            <p class="text-xs text-gray-600 truncate">com ${event.professionalName}</p>
+                        <div class="p-2 rounded-lg border-l-4 flex flex-col bg-red-100" style="border-left-color: ${profColor.border};">
+                            <span class="font-bold text-xs text-red-900">${startTimeStr}</span>
+                            <div class="mt-1 min-w-0">
+                                <p class="font-semibold text-sm text-red-800 truncate">${event.reason}</p>
+                                <p class="text-xs text-red-600 truncate">com ${event.professionalName}</p>
+                            </div>
                         </div>
                     `;
                 }
 
                 const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
-                
-                // --- Verifica se há resgate de prêmio ---
                 const isRedeemed = event.redeemedReward?.points > 0;
-
-                // --- (MODIFICADO) Verifica se tem prêmios a resgatar (e não resgatou ainda) ---
                 const hasRewards = event.hasRewards && !isRedeemed;
-
-                // --- Cria o link do WhatsApp para a Visão Semanal ---
-                const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
                 const isCompleted = event.status === 'completed';
 
+                // Card de AGENDAMENTO compactado
                 return `
-                    <div class="p-2 rounded-lg border-l-4 flex flex-col justify-between" 
-                         style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};">
-                        <div class="cursor-pointer flex-grow" data-action="open-comanda" data-appointment='${apptDataString}'>
-                            <p class="font-bold text-sm text-gray-800">${startTimeStr} - ${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
+                    <div class="p-2 rounded-lg border-l-4 flex flex-col cursor-pointer" 
+                         style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};"
+                         data-action="open-comanda" data-appointment='${apptDataString}'>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-xs text-gray-900">${startTimeStr}</span>
+                            ${isCompleted ? '<span class="text-[10px] font-semibold bg-green-200 text-green-800 px-1 rounded-sm">OK</span>' : ''}
+                        </div>
+
+                        <div class="mt-1 min-w-0">
+                            <p class="font-semibold text-sm text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
                             <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
-                            <p class="text-xs text-gray-500 mt-1">com ${event.professionalName || 'Indefinido'}</p> ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate de Prémio</p>' : ''}
+                            <p class="text-xs text-gray-500 truncate">com ${event.professionalName || 'Indefinido'}</p>
+                            ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate</p>' : ''}
                         </div>
-                        <div class="flex items-center justify-end gap-2 mt-2 pt-1 border-t border-black border-opacity-10">
-                            ${!isCompleted ? `
-                                <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
-                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
-                                </a>
-                                ` : ''}
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="text-gray-600 hover:text-blue-600 p-1 ${isCompleted ? 'opacity-40 cursor-not-allowed' : ''}" title="Editar">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
-                            </button>
-                            <button data-action="delete-appointment" data-id="${event.id}" class="text-gray-600 hover:text-red-600 p-1" title="Apagar">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
+                        
                         </div>
-                    </div>
                 `;
             }).join('');
         } else {
@@ -316,6 +335,7 @@ function renderWeekView(allEvents) {
     weekHTML += '</div>';
     agendaView.innerHTML = weekHTML;
 }
+// ### FIM DA ALTERAÇÃO ###
 
 function renderAgenda() {
     const filteredEvents = state.allEvents.filter(event => {
@@ -347,10 +367,11 @@ async function fetchAndDisplayAgenda() {
         // ATUALIZAÇÃO: Usa o formato reduzido
         weekRangeSpan.textContent = formatDateReduced(start);
     } else {
-        // CORREÇÃO (BUG 3): Usa getWeekStart para calcular a data inicial do bloco
+        const numDays = getActiveWeekDays(); // Obtém 3, 5 ou 7
+        
         start = getWeekStart(new Date(localState.currentDate)); 
         end = new Date(start);
-        end.setDate(start.getDate() + (localState.weekViewDays - 1));
+        end.setDate(start.getDate() + (numDays - 1)); // Calcula o fim com base no numDays correto
         end.setHours(23, 59, 59, 999);
         weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} - ${end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}`;
     }
@@ -865,12 +886,12 @@ function renderStep1_Client(appointment, isNavigating) {
                     <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
                 </div>
             </div>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                <div class="relative flex-grow">
+             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+                <div class="relative w-full sm:flex-grow">
                     <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
-                <button type="button" data-action="open-client-registration" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center gap-2">
+                <button type="button" data-action="open-client-registration" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center justify-center gap-2 w-full sm:w-auto flex-shrink-0">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
                     Cadastrar
                 </button>
@@ -976,7 +997,7 @@ function renderStep4_Schedule(appointment) {
                 <p class="text-sm text-gray-700">Profissional: ${newAppointmentState.data.professionalName}</p>
             </div>
 
-            <div class="grid grid-cols-2 gap-4 border-t pt-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
                 <div>
                     <label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label>
                     <input type="date" id="apptDate" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500" value="${initialDate}">
@@ -989,7 +1010,7 @@ function renderStep4_Schedule(appointment) {
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Horários Disponíveis</label>
-                <div id="availableTimesContainer" class="mt-2 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
+                <div id="availableTimesContainer" class="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
                     <p class="col-span-full text-center text-gray-500">Selecione serviço(s), profissional e data.</p>
                 </div>
             </div>
@@ -1275,28 +1296,32 @@ export async function loadAgendaPage() {
 
     contentDiv.innerHTML = `
         <section>
-            <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <div class="flex items-center gap-4">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-6 gap-4">
+                
+                <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
+
+                <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
                     <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
                         <button data-view="list" class="view-btn active">Lista</button>
                         <button data-view="week" class="view-btn">Semana</button>
                     </div>
                     <div id="week-days-toggle" class="hidden items-center gap-1 rounded-lg bg-gray-200 p-1">
                         <button data-days="3" class="week-days-btn view-btn">3 dias</button>
-                        <button data-days="5" class="week-days-btn view-btn">5 dias</button>
-                        <button data-days="7" class="week-days-btn view-btn active">7 dias</button>
+                        <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
+                        <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
                     </div>
-                    <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
-                    <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
-                    <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
-                    <span id="weekRange" class="font-semibold text-lg"></span>
+                    <div class="flex items-center gap-2">
+                        <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
+                        <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                        <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                    </div>
                 </div>
             </div>
             
             <div class="bg-white p-4 rounded-xl shadow-lg mb-6">
-                 <div class="prof-search-bar flex items-center gap-4">
-                     <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="flex-grow p-2 border rounded-md shadow-sm">
-                     <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
+                 <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
+                     <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm">
+                     <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 self-start sm:self-center">
                          <div class="relative">
                              <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
                              <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
@@ -1310,7 +1335,7 @@ export async function loadAgendaPage() {
             </div>
             <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
             
-            <button data-action="new-appointment" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
+            <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
@@ -1327,6 +1352,15 @@ export async function loadAgendaPage() {
             const weekDaysToggle = document.getElementById('week-days-toggle');
             if (localState.currentView === 'week') {
                 weekDaysToggle.style.display = 'flex';
+                
+                // ### ALTERAÇÃO 6 (Forçar 3 dias JS) ###
+                // Se for mobile, força o estado para 3 dias e atualiza os botões
+                if (window.innerWidth < 768) {
+                    localState.weekViewDays = 3;
+                    document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
+                    const btn3dias = document.querySelector('.week-days-btn[data-days="3"]');
+                    if (btn3dias) btn3dias.classList.add('active');
+                }
             } else {
                 weekDaysToggle.style.display = 'none';
             }
@@ -1337,6 +1371,8 @@ export async function loadAgendaPage() {
 
     document.querySelectorAll('.week-days-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            // A lógica de esconder os botões 5 e 7 no HTML/CSS já previne cliques indesejados no mobile.
+            // Esta lógica original pode ser mantida.
             document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             localState.weekViewDays = parseInt(btn.dataset.days, 10);
@@ -1349,10 +1385,12 @@ export async function loadAgendaPage() {
         fetchAndDisplayAgenda();
     });
     
-    // CORREÇÃO (BUG 3): Lógica unificada para navegação semanal
+    // Lógica unificada para navegação semanal
     const handleNavigationClick = (e) => {
         const amount = parseInt(e.currentTarget.dataset.amount, 10);
-        const step = localState.currentView === 'week' ? localState.weekViewDays : 1;
+        // ### ALTERAÇÃO 7 (Usa a Helper Function) ###
+        // Usa a nova função para que o "pulo" (step) seja de 3 dias no mobile
+        const step = localState.currentView === 'week' ? getActiveWeekDays() : 1;
         
         const newDate = new Date(localState.currentDate);
         newDate.setDate(newDate.getDate() + amount * step);
@@ -1480,4 +1518,3 @@ export async function loadAgendaPage() {
     await populateFilters();
     await fetchAndDisplayAgenda();
 }
-

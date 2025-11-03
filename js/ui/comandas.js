@@ -60,8 +60,8 @@ function renderPageLayout() {
                 </div>
             ` : ''}
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-1 bg-white p-4 rounded-lg shadow-md">
+            <div id="comandas-layout">
+                <div id="comandas-list-column" class="bg-white p-4 rounded-lg shadow-md">
                     <button 
                         data-action="new-sale" 
                         class="w-full py-3 px-4 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 transition shadow-md mb-4 ${!localState.isCashierOpen ? 'opacity-50 cursor-not-allowed' : ''}"
@@ -85,7 +85,8 @@ function renderPageLayout() {
                     </div>
                 </div>
 
-                <div id="comanda-detail-container" class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col min-h-[75vh]"></div>
+                <div id="comanda-detail-container" class="bg-white p-4 lg:p-6 rounded-lg shadow-md flex flex-col min-h-[75vh]">
+                    </div>
             </div>
         </section>
     `;
@@ -148,12 +149,12 @@ function renderComandaList() {
         const isSelected = comanda.id === localState.selectedComandaId;
         return `
             <div data-action="select-comanda" data-comanda-id="${comanda.id}" class="comanda-card p-3 rounded-lg border-l-4 cursor-pointer transition-all ${isSelected ? 'bg-indigo-50 border-indigo-500 shadow' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <p class="font-bold text-gray-800">${comanda.clientName}</p>
-                        <p class="text-xs text-gray-500">${comanda.professionalName}</p>
+                <div class="flex justify-between items-center min-w-0 gap-2">
+                    <div class="min-w-0">
+                        <p class="font-bold text-gray-800 truncate">${comanda.clientName}</p>
+                        <p class="text-xs text-gray-500 truncate">${comanda.professionalName}</p>
                     </div>
-                    <div class="text-right">
+                    <div class="text-right flex-shrink-0">
                         <p class="font-bold text-gray-900">R$ ${total.toFixed(2)}</p>
                         <p class="text-xs text-gray-500">${new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                     </div>
@@ -209,7 +210,10 @@ function renderComandaDetail() {
     // Se caixa fechado, mostra mensagem
     if (!localState.isCashierOpen) {
         detailContainer.innerHTML = `
-            <div class="flex flex-col items-center justify-center h-full text-center text-gray-500">
+            <div class="flex flex-col items-center justify-center h-full text-center text-gray-500 relative">
+                <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
                 <svg class="w-20 h-20 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
@@ -224,7 +228,10 @@ function renderComandaDetail() {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
     if (!comanda) {
-        detailContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-center text-gray-500">
+        detailContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-center text-gray-500 relative">
+            <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
             <svg class="w-16 h-16 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
             <p class="mt-4 font-semibold">Selecione uma comanda</p>
             <p class="text-sm">Ou crie uma nova venda para começar.</p>
@@ -248,27 +255,30 @@ function renderComandaDetail() {
     const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
 
     detailContainer.innerHTML = `
-        <header class="mb-4 pb-4 border-b flex justify-between items-start">
-            <div>
-                <h3 class="text-2xl font-bold text-gray-800">${comanda.clientName}</h3>
-                <p class="text-sm text-gray-500">com ${comanda.professionalName}</p>
+        <header class="relative mb-4 pb-4 border-b flex justify-between items-start">
+            <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <div class="lg:pl-0 pl-10 min-w-0">
+                <h3 class="text-2xl font-bold text-gray-800 truncate">${comanda.clientName}</h3>
+                <p class="text-sm text-gray-500 truncate">com ${comanda.professionalName}</p>
             </div>
-            ${isCompleted ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600">Reabrir</button>` : ''}
+            ${isCompleted ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 flex-shrink-0">Reabrir</button>` : ''}
         </header>
 
         <div class="flex-grow overflow-y-auto pr-2">
             <div class="space-y-3">
                 ${Object.values(groupedItems).map(item => `
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div class="flex-grow">
-                            <p class="font-semibold">
+                        <div class="flex-grow min-w-0">
+                            <p class="font-semibold truncate">
                                 <span class="inline-flex items-center justify-center bg-gray-200 text-gray-700 text-xs font-bold w-6 h-6 rounded-full mr-2">${item.quantity}x</span>
                                 ${item.name}
                                 ${item.isOriginalService ? '<span class="text-xs text-indigo-500 font-normal ml-2">(Agendado)</span>' : ''}
                             </p>
-                            <p class="text-sm text-gray-500 ml-8">R$ ${item.price.toFixed(2)} /unid.</p>
+                            <p class="text-sm text-gray-500">${item.price.toFixed(2)} /unid.</p>
                         </div>
-                        ${!isCompleted ? `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="w-8 h-8 flex items-center justify-center bg-red-500 text-white rounded-full hover:bg-red-600 font-bold text-xl">&times;</button>` : ''}
+                        ${!isCompleted ? `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-red-500 text-white rounded-full hover:bg-red-600 font-bold text-xl">&times;</button>` : ''}
                     </div>
                 `).join('')}
             </div>
@@ -280,9 +290,9 @@ function renderComandaDetail() {
                 <span class="text-3xl font-extrabold text-gray-800">R$ ${total.toFixed(2)}</span>
             </div>
             ${!isCompleted ? `
-                <div class="grid grid-cols-2 gap-4">
-                    <button data-action="add-item" class="py-3 px-4 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 transition">Adicionar Item</button>
-                    <button data-action="checkout" class="py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition">Finalizar Pagamento</button>
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button data-action="add-item" class="flex-1 py-3 px-4 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 transition">Adicionar Item</button>
+                    <button data-action="checkout" class="flex-1 py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition">Finalizar Pagamento</button>
                 </div>` : 
                 `<p class="text-center text-green-600 font-semibold bg-green-50 p-3 rounded-lg">Venda finalizada com sucesso!</p>`
             }
@@ -291,7 +301,6 @@ function renderComandaDetail() {
 }
 
 // --- 4. FUNÇÕES DE MODAIS ---
-// (Mantém todas as funções de modais do código anterior: openAddItemModal, openCheckoutModal, openNewSaleModal)
 
 function openAddItemModal() {
     // Validação: bloqueia se caixa fechado
@@ -332,8 +341,8 @@ function openAddItemModal() {
                     listEl.innerHTML = items.map(item => `
                         <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
                             <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons[type]}</div>
-                            <span class="flex-grow text-left">${item.name}</span>
-                            <span class="font-semibold">R$ ${item.price.toFixed(2)}</span>
+                            <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                            <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
                         </button>
                     `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum item.</p>`;
                 }
@@ -365,7 +374,7 @@ function openAddItemModal() {
         };
 
         contentContainer.innerHTML = `
-            <div class="text-center p-8">
+            <div class="text-center p-8 relative">
                 <button data-action="back-to-catalog" class="absolute top-5 left-5 text-gray-600 hover:text-gray-900">&larr; Voltar</button>
                 <h3 class="font-bold text-2xl text-gray-800">${item.name}</h3>
                 <p class="text-lg text-gray-500">R$ ${item.price.toFixed(2)}</p>
@@ -749,12 +758,20 @@ async function handleFilterClick(filter) {
     await fetchAndDisplayData();
     localState.selectedComandaId = null;
     renderComandaDetail();
+
+    // ATUALIZAÇÃO RESPONSIVA: Garante que a lista esteja visível ao trocar de filtro
+    const layout = document.getElementById('comandas-layout');
+    if (layout) layout.classList.remove('detail-view-active');
 }
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
     renderComandaList();
     renderComandaDetail();
+
+    // ATUALIZAÇÃO RESPONSIVA: Ativa a view de detalhe no mobile
+    const layout = document.getElementById('comandas-layout');
+    if (layout) layout.classList.add('detail-view-active');
 }
 
 async function handleAddItemToComanda(itemData, quantity) {
@@ -838,6 +855,12 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         }
         showNotification('Sucesso!', 'Venda finalizada com sucesso!', 'success');
         document.getElementById('genericModal').style.display = 'none';
+
+        // ATUALIZAÇÃO RESPONSIVA: Volta para a lista após finalizar
+        const layout = document.getElementById('comandas-layout');
+        if (layout) layout.classList.remove('detail-view-active');
+        localState.selectedComandaId = null;
+
         await fetchAndDisplayData();
     } catch (error) {
         showNotification('Erro no Checkout', error.message, 'error');
@@ -875,6 +898,10 @@ async function handleCreateNewSale(e) {
     document.getElementById('genericModal').style.display = 'none';
     renderComandaList();
     renderComandaDetail();
+    
+    // ATUALIZAÇÃO RESPONSIVA: Mostra o detalhe da nova comanda
+    const layout = document.getElementById('comandas-layout');
+    if (layout) layout.classList.add('detail-view-active');
 }
 
 // --- 6. INICIALIZAÇÃO ---
@@ -898,7 +925,7 @@ async function fetchAndDisplayData() {
         // Se caixa fechado no modo "atendimento", não carrega comandas
         if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
             renderComandaList();
-            renderComandaDetail();
+            renderComandaDetail(); // Isso vai mostrar o placeholder de "caixa fechado"
             return;
         }
         
@@ -924,7 +951,17 @@ async function fetchAndDisplayData() {
         }
         
         renderComandaList();
-        renderComandaDetail();
+        
+        // ATUALIZAÇÃO RESPONSIVA: Só renderiza o detalhe se um ID estiver selecionado
+        // (No desktop, isso mostra o placeholder. No mobile, não faz nada até um clique)
+        if (localState.selectedComandaId) {
+            renderComandaDetail();
+        } else {
+             // Garante que o placeholder seja renderizado no desktop
+            if (window.innerWidth >= 1024) {
+                renderComandaDetail();
+            }
+        }
 
     } catch (error) {
         showNotification('Erro de Carregamento', `Não foi possível carregar os dados: ${error.message}`, 'error');
@@ -944,6 +981,9 @@ export async function loadComandasPage(params = {}) {
         console.error('Erro ao verificar caixa:', error);
         localState.isCashierOpen = false;
     }
+    
+    // Limpa o estado de seleção ao carregar a página
+    localState.selectedComandaId = params.selectedAppointmentId || null;
     
     renderPageLayout();
 
@@ -972,6 +1012,14 @@ export async function loadComandasPage(params = {}) {
             const comandaId = target.dataset.id;
             
             switch (action) {
+                // ATUALIZAÇÃO RESPONSIVA: Adicionado 'back-to-list'
+                case 'back-to-list': {
+                    const layout = document.getElementById('comandas-layout');
+                    if (layout) layout.classList.remove('detail-view-active');
+                    localState.selectedComandaId = null;
+                    renderComandaList(); // Re-renderiza para tirar o highlight
+                    break;
+                }
                 case 'new-sale': 
                     openNewSaleModal(); 
                     break;
@@ -1021,6 +1069,10 @@ export async function loadComandasPage(params = {}) {
                             // 3. Limpa a seleção para forçar o re-render
                             localState.selectedComandaId = null; 
                             
+                            // ATUALIZAÇÃO RESPONSIVA: Volta para a lista
+                            const layout = document.getElementById('comandas-layout');
+                            if (layout) layout.classList.remove('detail-view-active');
+
                             showNotification('Sucesso!', 'Comanda reaberta para edição.', 'success');
                             // 4. Recarrega a lista do backend (obtém os dados mais limpos)
                             await fetchAndDisplayData(); 
@@ -1036,6 +1088,12 @@ export async function loadComandasPage(params = {}) {
                         try {
                             await salesApi.reopenSale(comandaId);
                             showNotification('Sucesso!', 'Venda revertida.');
+                            
+                            // ATUALIZAÇÃO RESPONSIVA: Volta para a lista
+                            const layout = document.getElementById('comandas-layout');
+                            if (layout) layout.classList.remove('detail-view-active');
+                            localState.selectedComandaId = null;
+
                             await fetchAndDisplayData();
                         } catch (error) {
                             showNotification('Erro', `Não foi possível reabrir: ${error.message}`, 'error');
@@ -1066,4 +1124,11 @@ export async function loadComandasPage(params = {}) {
     }
 
     await fetchAndDisplayData();
+
+    // ATUALIZAÇÃO RESPONSIVA: Se uma comanda foi passada por parâmetro (ex: vindo da agenda),
+    // ativa a view de detalhe imediatamente.
+    if (localState.selectedComandaId) {
+        const layout = document.getElementById('comandas-layout');
+        if (layout) layout.classList.add('detail-view-active');
+    }
 }

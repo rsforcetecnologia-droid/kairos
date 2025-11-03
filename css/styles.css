@@ -333,19 +333,21 @@ padding: 4px;
 display: flex;
 }
 
-/* Visão de Lista (Dia) */
+/* --- Visão de Lista (Dia) - ALTERAÇÕES AQUI --- */
 .list-view-container {
 display: flex;
 flex-direction: column;
 gap: 0.75rem;
-padding: 1rem;
+/* ALTERAÇÃO: Padding reduzido para se ajustar à tela principal */
+padding: 0.5rem; 
 }
 .appointment-list-card {
 display: flex;
 align-items: center;
 background-color: #f9fafb;
 border-radius: 0.75rem; /* Arredondado */
-padding: 1rem;
+/* ALTERAÇÃO: Padding reduzido de 1rem para 0.75rem (p-3) */
+padding: 0.75rem;
 border-left-width: 4px;
 box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 transition: all 0.2s ease-in-out;
@@ -357,19 +359,23 @@ transform: translateY(-4px);
 }
 .time-info {
 flex-shrink: 0;
-width: 80px;
+/* ALTERAÇÃO: Largura reduzida de 80px para 72px (w-18) */
+width: 72px;
 text-align: center;
 border-right: 1px solid #e5e7eb;
-padding-right: 1rem;
-margin-right: 1rem;
+/* ALTERAÇÃO: Espaçamento reduzido de 1rem para 0.75rem (pr-3, mr-3) */
+padding-right: 0.75rem;
+margin-right: 0.75rem;
 }
 .details-info {
 flex-grow: 1;
 }
 .status-info {
 display: flex;
-align-items: center;
-gap: 1rem;
+/* ALTERAÇÃO: Alterado para coluna e alinhado à direita */
+flex-direction: column;
+align-items: flex-end;
+gap: 0.5rem; /* Reduzido de 1rem */
 }
 .status-badge {
 padding: 0.25rem 0.75rem;
@@ -923,4 +929,130 @@ body {
 #sidebar.collapsed #panelLogoContainer,
 #sidebar.collapsed #panelEstablishmentLogo {
     transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
+}
+
+/* --- INÍCIO DA NOVA SEÇÃO: ESTILOS PARA O MENU MOBILE (OVERLAY) --- */
+@media (max-width: 767px) { 
+
+    /* 1. Esconde o botão de toggle original do desktop */
+    #sidebarToggle {
+        display: none;
+    }
+
+    /* 2. Remove o "empurrão" do conteúdo principal */
+    .main-content-shift {
+        margin-left: 0 !important;
+    }
+    
+    .main-content-shift.sidebar-collapsed-shift {
+        margin-left: 0 !important;
+    }
+
+    /* 3. Transforma a sidebar num overlay fixo */
+    #sidebar {
+        position: fixed; /* Fica por cima de tudo */
+        top: 0;
+        left: 0;
+        height: 100vh; /* Altura total */
+        z-index: 40; /* Acima do conteúdo, abaixo do overlay */
+        
+        /* Começa escondida fora do ecrã */
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        
+        /* Garante que não está colapsada no modo mobile */
+        width: 16.56rem !important;
+    }
+    
+    #sidebar.collapsed {
+        /* Remove o estado colapsado no mobile */
+        width: 16.56rem !important;
+    }
+    
+    #sidebar.collapsed .sidebar-text {
+        display: block; /* Garante que o texto aparece */
+    }
+    #sidebar.collapsed .sidebar-link {
+        justify-content: flex-start; /* Alinhamento normal */
+    }
+    #sidebar.collapsed .sidebar-link svg {
+        margin-right: 0.75rem; /* Margem normal */
+    }
+
+
+    /* 4. Estado "Aberto" da sidebar no mobile */
+    #sidebar.mobile-open {
+        transform: translateX(0); /* Move para dentro do ecrã */
+    }
+
+    /* 5. Mostra o overlay quando o menu está aberto */
+    #mobile-overlay.visible {
+        display: block;
+        z-index: 39; /* Fica atrás da sidebar */
+    }
+}
+/* --- FIM DA NOVA SEÇÃO --- */
+
+
+/* --- NOVO: ESTILOS PARA A PÁGINA DE COMANDAS (Mobile-First) --- */
+/* O container principal terá 'overflow-x: hidden' para permitir a transição */
+#comandas-layout {
+    display: flex;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Em desktop (lg), volta ao grid normal */
+@media (min-width: 1024px) {
+    #comandas-layout {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem; /* gap-8 */
+    }
+
+    #comandas-list-column {
+        grid-column: span 1 / span 1;
+    }
+
+    #comanda-detail-container {
+        grid-column: span 2 / span 2;
+    }
+}
+
+/* Em mobile (até lg) */
+@media (max-width: 1023px) {
+    #comandas-layout {
+        flex-direction: row;
+        width: 100%;
+    }
+
+    /* Ambas as colunas terão 100% da largura e transição */
+    #comandas-list-column,
+    #comanda-detail-container {
+        width: 100%;
+        flex-shrink: 0;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    /* Por defeito, a lista está visível e o detalhe está fora do ecrã à direita */
+    #comandas-list-column {
+        transform: translateX(0);
+    }
+    #comanda-detail-container {
+        transform: translateX(100%);
+        /* Garante que o detalhe não está 'display: none' para a animação funcionar */
+        display: flex; 
+    }
+    
+    /* Quando a classe 'detail-view-active' é adicionada ao layout: */
+    
+    /* 1. A Lista desliza para a esquerda */
+    #comandas-layout.detail-view-active #comandas-list-column {
+        transform: translateX(-100%);
+    }
+
+    /* 2. O Detalhe desliza para o centro */
+    #comandas-layout.detail-view-active #comanda-detail-container {
+        transform: translateX(-100%); /* Move 100% para a esquerda (da sua posição original de +100%) */
+    }
 }
