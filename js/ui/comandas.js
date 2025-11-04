@@ -256,7 +256,7 @@ function renderComandaDetail() {
 
     detailContainer.innerHTML = `
         <header class="relative mb-4 pb-4 border-b flex justify-between items-start">
-            <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+             <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
             </button>
             <div class="lg:pl-0 pl-10 min-w-0">
