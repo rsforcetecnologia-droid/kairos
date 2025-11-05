@@ -239,6 +239,9 @@ function renderComandaDetail() {
         return;
     }
 
+    // Garante que o container tenha o loader enquanto os detalhes estão sendo preparados (caso a busca de dados demore)
+    detailContainer.innerHTML = `<div class="loader mx-auto my-auto"></div>`;
+
     const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
     const isCompleted = comanda.status === 'completed';
 
@@ -257,8 +260,8 @@ function renderComandaDetail() {
     detailContainer.innerHTML = `
         <header class="relative mb-4 pb-4 border-b flex justify-between items-start">
              <button data-action="back-to-list" class="lg:hidden absolute top-0 left-0 p-2 bg-gray-100 rounded-full hover:bg-gray-200">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            </button>
+                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+             </button>
             <div class="lg:pl-0 pl-10 min-w-0">
                 <h3 class="text-2xl font-bold text-gray-800 truncate">${comanda.clientName}</h3>
                 <p class="text-sm text-gray-500 truncate">com ${comanda.professionalName}</p>
@@ -757,22 +760,42 @@ async function handleFilterClick(filter) {
     
     await fetchAndDisplayData();
     localState.selectedComandaId = null;
-    renderComandaDetail();
-
+    
     // ATUALIZAÇÃO RESPONSIVA: Garante que a lista esteja visível ao trocar de filtro
     const layout = document.getElementById('comandas-layout');
     if (layout) layout.classList.remove('detail-view-active');
+    
+    // Renderiza o placeholder no desktop
+    if (window.innerWidth >= 1024) {
+        renderComandaDetail();
+    }
 }
 
+// ####################################################################
+// ### CORREÇÃO APLICADA AQUI ###
+// ####################################################################
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
-    renderComandaList();
-    renderComandaDetail();
+    renderComandaList(); // Apenas atualiza o highlight da lista
 
     // ATUALIZAÇÃO RESPONSIVA: Ativa a view de detalhe no mobile
     const layout = document.getElementById('comandas-layout');
     if (layout) layout.classList.add('detail-view-active');
+
+    // CORREÇÃO DE TIMING (Bug do Estouro):
+    // Espera a animação de slide de 300ms (definida no styles.css) terminar
+    // ANTES de tentar renderizar o conteúdo do painel de detalhes.
+    setTimeout(() => {
+        // Só renderiza se o usuário ainda estiver nesta comanda (evita race condition)
+        if (localState.selectedComandaId === comandaId) {
+            renderComandaDetail(); // Renderiza o conteúdo DEPOIS da animação
+        }
+    }, 300); // 300ms = tempo da transição em css/styles.css
 }
+// ####################################################################
+// ### FIM DA CORREÇÃO ###
+// ####################################################################
+
 
 async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
@@ -896,12 +919,9 @@ async function handleCreateNewSale(e) {
     localState.selectedComandaId = newComanda.id;
     
     document.getElementById('genericModal').style.display = 'none';
-    renderComandaList();
-    renderComandaDetail();
     
-    // ATUALIZAÇÃO RESPONSIVA: Mostra o detalhe da nova comanda
-    const layout = document.getElementById('comandas-layout');
-    if (layout) layout.classList.add('detail-view-active');
+    // Aplica a mesma lógica de clique para a nova comanda
+    handleComandaClick(newComanda.id);
 }
 
 // --- 6. INICIALIZAÇÃO ---
@@ -953,14 +973,14 @@ async function fetchAndDisplayData() {
         renderComandaList();
         
         // ATUALIZAÇÃO RESPONSIVA: Só renderiza o detalhe se um ID estiver selecionado
-        // (No desktop, isso mostra o placeholder. No mobile, não faz nada até um clique)
-        if (localState.selectedComandaId) {
-            renderComandaDetail();
+        // E NÃO ESTIVERMOS EM MODO MOBILE (pois o 'handleComandaClick' cuidará disso)
+        if (localState.selectedComandaId && window.innerWidth >= 1024) {
+             renderComandaDetail();
         } else {
              // Garante que o placeholder seja renderizado no desktop
-            if (window.innerWidth >= 1024) {
-                renderComandaDetail();
-            }
+             if (window.innerWidth >= 1024) {
+                 renderComandaDetail();
+             }
         }
 
     } catch (error) {
@@ -1126,9 +1146,8 @@ export async function loadComandasPage(params = {}) {
     await fetchAndDisplayData();
 
     // ATUALIZAÇÃO RESPONSIVA: Se uma comanda foi passada por parâmetro (ex: vindo da agenda),
-    // ativa a view de detalhe imediatamente.
+    // ativa a view de detalhe imediatamente, mas com o atraso para a animação.
     if (localState.selectedComandaId) {
-        const layout = document.getElementById('comandas-layout');
-        if (layout) layout.classList.add('detail-view-active');
+        handleComandaClick(localState.selectedComandaId);
     }
 }
