@@ -53,47 +53,113 @@ function openCalculationModal() {
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
     const todayStr = today.toISOString().split('T')[0];
 
-    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    // GERAÇÃO DOS CARDS MODERNOS DE PROFISSIONAIS
+    const professionalsOptions = state.professionals.map(p => `
+        <label class="flex items-center p-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-indigo-50 transition">
+            <input type="checkbox" value="${p.id}" class="professional-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+            <span class="ml-3 text-sm font-medium text-gray-700">${p.name}</span>
+        </label>
+    `).join('');
 
     const contentHTML = `
         <form id="calculation-form" class="space-y-6">
+            
             <div>
-                <label for="calc-professionals" class="block text-sm font-medium text-gray-700">Profissionais</label>
-                <select id="calc-professionals" multiple class="mt-1 w-full p-2 border rounded-md h-32">
-                    <option value="all">Todos os Profissionais</option>
+                <label class="block text-sm font-bold text-gray-800 mb-3">Profissionais Selecionados</label>
+                <div class="mb-3">
+                    <label class="flex items-center p-3 bg-indigo-50 rounded-lg border border-indigo-300 cursor-pointer hover:bg-indigo-100 transition shadow-sm">
+                        <input type="checkbox" id="calc-professionals-all" class="h-5 w-5 text-indigo-700 border-indigo-400 rounded focus:ring-indigo-600">
+                        <span class="ml-4 text-md font-semibold text-indigo-800">Selecionar Todos</span>
+                    </label>
+                </div>
+
+                <div id="professionals-cards-container" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border rounded-lg bg-gray-50">
                     ${professionalsOptions}
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700">Período</label>
-                <div class="mt-1 grid grid-cols-2 gap-4">
-                    <input type="date" id="calc-start-date" value="${firstDayOfMonth}" class="w-full p-2 border rounded-md">
-                    <input type="date" id="calc-end-date" value="${todayStr}" class="w-full p-2 border rounded-md">
                 </div>
             </div>
+
             <div>
-                <label class="block text-sm font-medium text-gray-700">Incluir no cálculo</label>
+                <label class="block text-sm font-bold text-gray-800">Período de Cálculo</label>
+                <div class="mt-2 grid grid-cols-2 gap-4">
+                    <input type="date" id="calc-start-date" value="${firstDayOfMonth}" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm">
+                    <input type="date" id="calc-end-date" value="${todayStr}" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm">
+                </div>
+            </div>
+            
+            <div class="p-4 bg-gray-100 rounded-lg border">
+                <label class="block text-sm font-bold text-gray-800 mb-2">Itens para Incluir</label>
                 <div class="mt-2 space-y-2">
-                    <label class="flex items-center"><input type="checkbox" id="calc-type-services" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Serviços</span></label>
-                    <label class="flex items-center"><input type="checkbox" id="calc-type-products" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Produtos</span></label>
-                    <label class="flex items-center"><input type="checkbox" id="calc-type-packages" class="h-4 w-4 rounded border-gray-300 text-indigo-600"> <span class="ml-2">Pacotes</span></label>
+                    <label class="flex items-center text-sm font-medium text-gray-700">
+                        <input type="checkbox" id="calc-type-services" checked class="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"> 
+                        <span class="ml-2">Serviços</span>
+                    </label>
+                    <label class="flex items-center text-sm font-medium text-gray-700">
+                        <input type="checkbox" id="calc-type-products" checked class="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"> 
+                        <span class="ml-2">Produtos</span>
+                    </label>
+                    <label class="flex items-center text-sm font-medium text-gray-700">
+                        <input type="checkbox" id="calc-type-packages" class="h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-green-500"> 
+                        <span class="ml-2">Pacotes</span>
+                    </label>
                 </div>
             </div>
+            
             <div class="pt-4 border-t">
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Calcular Previsão</button>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-extrabold py-3 rounded-xl shadow-lg hover:bg-indigo-700 transition transform hover:scale-[1.01] flex items-center justify-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m-3 3v6m-3-9h6m-6 9h6m3-9a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Calcular Previsão
+                </button>
             </div>
         </form>
     `;
 
     const { modalElement } = showGenericModal({
-        title: "Calcular Comissões",
+        title: "✨ Novo Cálculo de Comissões",
         contentHTML: contentHTML,
-        maxWidth: 'max-w-md'
+        maxWidth: 'max-w-xl' // Aumenta um pouco para a visualização dos cards
     });
 
-    modalElement.querySelector('#calculation-form').addEventListener('submit', (e) => {
+    const form = modalElement.querySelector('#calculation-form');
+    const allCheckbox = modalElement.querySelector('#calc-professionals-all');
+    const professionalCheckboxes = modalElement.querySelectorAll('.professional-checkbox');
+    
+    // Lógica para selecionar todos os profissionais
+    allCheckbox.addEventListener('change', (e) => {
+        professionalCheckboxes.forEach(checkbox => {
+            checkbox.checked = e.target.checked;
+        });
+    });
+    
+    // Lógica para desmarcar 'Selecionar Todos' se um for desmarcado
+    professionalCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            if (!checkbox.checked) {
+                allCheckbox.checked = false;
+            } else {
+                // Se todos estiverem marcados, marca o 'Selecionar Todos'
+                const allChecked = Array.from(professionalCheckboxes).every(cb => cb.checked);
+                if (allChecked) {
+                    allCheckbox.checked = true;
+                }
+            }
+        });
+    });
+
+    form.addEventListener('submit', (e) => {
         e.preventDefault();
-        handleCommissionCalculation();
+        
+        // Coleta apenas os IDs dos checkboxes marcados
+        const professionalIds = Array.from(professionalCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        if (professionalIds.length === 0) {
+            showNotification('Atenção', 'Selecione pelo menos um profissional para o cálculo.', 'error');
+            return;
+        }
+
+        // Simula o formato de dados anterior
+        handleCommissionCalculation({ professionalIds });
         
         const closeButton = modalElement.querySelector('[data-close-modal]'); 
         if (closeButton) {
@@ -107,7 +173,7 @@ function openCalculationModal() {
 // --- FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
 
 /**
- * NOVO: Lógica para excluir um relatório de comissão.
+ * Lógica para excluir um relatório de comissão.
  */
 async function handleDeleteReport(reportId) {
     const confirmed = await showConfirmation('Excluir Relatório', 'Tem a certeza que deseja excluir permanentemente este relatório de comissão? Esta ação não pode ser desfeita.');
@@ -125,20 +191,24 @@ async function handleDeleteReport(reportId) {
 }
 
 
-async function handleCommissionCalculation() {
-    const professionalIds = Array.from(document.getElementById('calc-professionals').selectedOptions).map(opt => opt.value);
-    const startDate = document.getElementById('calc-start-date').value;
-    const endDate = document.getElementById('calc-end-date').value;
+async function handleCommissionCalculation(data) {
+    // Agora recebe os IDs dos profissionais já filtrados pelo novo modal
+    const { professionalIds } = data;
+    
+    // Obtém os dados restantes diretamente dos inputs da modal (que agora está fechada, então usamos o DOM)
+    const startDate = document.getElementById('calc-start-date')?.value;
+    const endDate = document.getElementById('calc-end-date')?.value;
     const calculationTypes = {
-        services: document.getElementById('calc-type-services').checked,
-        products: document.getElementById('calc-type-products').checked,
-        packages: document.getElementById('calc-type-packages').checked,
+        services: document.getElementById('calc-type-services')?.checked,
+        products: document.getElementById('calc-type-products')?.checked,
+        packages: document.getElementById('calc-type-packages')?.checked,
     };
-
-    if (professionalIds.length === 0) {
-        showNotification('Atenção', 'Selecione pelo menos um profissional.', 'error');
+    
+    if (!startDate || !endDate) {
+        showNotification('Erro', 'As datas não foram capturadas corretamente.', 'error');
         return;
     }
+
 
     navigateTo('commissions-section', { view: 'results', isLoading: true });
 
@@ -223,17 +293,20 @@ async function fetchAndRenderHistory() {
             <div class="space-y-3">
                 ${history.map(report => `
                     <div class="bg-white p-4 rounded-lg shadow-sm border" data-id="${report.id}">
-                        <div class="flex flex-wrap justify-between items-center gap-2">
-                            <div>
-                                <p class="font-bold text-gray-800">${report.professionalName}</p>
+                        <div class="flex flex-row justify-between items-start gap-4"> 
+                            
+                            <div class="flex-shrink min-w-0">
+                                <p class="font-bold text-gray-800 truncate">${report.professionalName}</p>
                                 <p class="text-sm text-gray-500">Período: ${report.period}</p>
-                                <p class="text-sm text-gray-600 mt-1">Salvo em: ${new Date(report.createdAt).toLocaleDateString('pt-BR')}</p>
+                                <p class="text-xs text-gray-600 mt-1 hidden sm:block">Salvo em: ${new Date(report.createdAt).toLocaleDateString('pt-BR')}</p>
                             </div>
-                            <div class="text-right flex items-center gap-3">
+                            
+                            <div class="text-right flex flex-col items-end gap-2 flex-shrink-0">
                                 <p class="text-lg font-bold text-green-600">R$ ${report.summary.totalCommission.toFixed(2)}</p>
-                                <div>
+                                
+                                <div class="flex gap-2"> 
                                     <button data-action="generate-receipt" data-report='${JSON.stringify(report).replace(/'/g, "&apos;")}' class="py-1 px-3 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-200">Recibo</button>
-                                    <button data-action="delete-report" data-id="${report.id}" class="mt-1 py-1 px-3 bg-red-100 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-200">Excluir</button>
+                                    <button data-action="delete-report" data-id="${report.id}" class="py-1 px-3 bg-red-100 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-200">Excluir</button>
                                 </div>
                             </div>
                         </div>
@@ -295,8 +368,8 @@ function renderHistoryView() {
                 </div>
             </div>
             <div id="commissionHistory" class="bg-gray-50 p-4 rounded-lg"></div>
-            <button data-action="open-calculator" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-3 3v6m-3-9h6m-6 9h6m3-9a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <button data-action="open-calculator" class="fixed bottom-10 right-10 bg-indigo-600 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl hover:bg-indigo-700 transition transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
             </button>
         </section>
     `;
@@ -318,9 +391,9 @@ function renderResultsView(results, period) {
 
     contentDiv.innerHTML = `
         <section>
-            <div class="flex justify-between items-center mb-6">
+            <div class="flex flex-wrap justify-between items-center mb-6 gap-2"> 
                 <button data-action="back-to-history" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300"> < Voltar </button>
-                <h2 class="text-2xl font-bold text-gray-800 text-center">Previsão de Comissão</h2>
+                <h2 class="text-2xl font-bold text-gray-800 text-center flex-grow">Previsão de Comissão</h2>
                 <button data-action="save-reports" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Salvar Relatórios</button>
             </div>
             <div class="bg-white p-6 rounded-lg shadow-md">
@@ -335,7 +408,7 @@ function renderResultsView(results, period) {
                             <p class="text-lg font-bold text-green-600">R$ ${result.summary.totalCommission.toFixed(2)}</p>
                         </summary>
                         <div class="mt-4 pt-4 border-t overflow-x-auto">
-                            <table class="min-w-full text-xs">
+                            <table class="min-w-full text-xs"> 
                                 <thead class="bg-gray-100"><tr>
                                     <th class="px-2 py-1 text-left">Data</th><th class="px-2 py-1 text-left">Item</th>
                                     <th class="px-2 py-1 text-right">Valor</th><th class="px-2 py-1 text-right">Taxa</th><th class="px-2 py-1 text-right">Comissão</th>
@@ -409,4 +482,3 @@ export async function loadCommissionsPage(params = {}) {
         renderHistoryView();
     }
 }
-

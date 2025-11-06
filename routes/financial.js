@@ -1,6 +1,7 @@
 // routes/financial.js
 // (MODIFICADO: 'createEntry' cria 2 lançamentos se 'isRecurring' for 'true')
 // (MODIFICADO: Adicionados logs de depuração em 'createEntry')
+// (CORRIGIDO: O 'catch' agora loga o erro completo para mostrar o link do índice no console do VS Code)
 
 const express = require('express');
 const router = express.Router();
@@ -22,8 +23,20 @@ const setupHierarchyRoutes = (collectionName) => {
             const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             res.status(200).json(items);
         } catch (error) {
-            console.error(`Erro ao buscar ${collectionName}:`, error);
-            res.status(500).json({ message: 'Erro ao buscar dados.' });
+            
+            // --- INÍCIO DA CORREÇÃO ---
+            // Isto irá imprimir o objeto de erro detalhado do Firebase no seu terminal do VS Code,
+            // que inclui a URL para criação do índice.
+            console.error(`\n[ERRO DE ÍNDICE NO FIRESTORE]`);
+            console.error(`Falha ao buscar '${collectionName}'. Provavelmente falta um índice composto.`);
+            console.error(`Mensagem: ${error.message}`);
+            console.error(`Detalhes Completos (procure o link aqui):`, error);
+            // --- FIM DA CORREÇÃO ---
+            
+            res.status(500).json({ 
+                message: 'Erro ao buscar dados. Verifique o console do servidor para detalhes.',
+                detail: error.message // Envia a mensagem de erro (com o link) também para o frontend
+            });
         }
     });
 

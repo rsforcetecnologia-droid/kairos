@@ -520,7 +520,12 @@ async function renderTodaySummary() {
     } catch (error) {
         console.error("Erro ao buscar resumo do dia:", error);
         const summaryContainer = document.getElementById('today-summary-container');
-        if (summaryContainer) summaryContainer.innerHTML = '<p class="text-red-500 text-center col-span-2">Não foi possível carregar o resumo do dia.</p>';
+        if (summaryContainer) {
+             // Limpa os loaders se falhar
+             payablesEl.textContent = `R$ 0,00`; 
+             receivablesEl.textContent = `R$ 0,00`;
+             showNotification('Aviso', 'Não foi possível carregar o resumo do dia.', 'warning');
+        }
     }
 }
 
@@ -631,7 +636,7 @@ async function fetchEntriesList() {
         // === ESTA É A CORREÇÃO DO BUG 'costCenterId is not defined' ===
         // ==================================================================
         if (filters.costCenterId && filters.costCenterId !== 'all') {
-            cleanFilters.costCenterId = filters.costCenterId; // <-- Estava 'costCenterId' em vez de 'filters.costCenterId'
+            cleanFilters.costCenterId = filters.costCenterId; 
         }
 
         const payablesPromise = getPayables(cleanFilters);
@@ -659,8 +664,11 @@ async function fetchEntriesList() {
         renderList();     
 
     } catch (error) {
+        // CORREÇÃO 2: Adicionando log detalhado para o erro capturado
+        console.error("ERRO CAPTURADO EM fetchEntriesList:", error);
+        
         showNotification('Erro', `Não foi possível carregar os lançamentos: ${error.message}`, 'error');
-        listContainer.innerHTML = `<p class="text-red-500 p-4">${error.message}</p>`;
+        listContainer.innerHTML = `<p class="text-red-500 p-4">${error.message || 'Erro de API desconhecido.'}</p>`;
     }
 }
 
@@ -958,11 +966,36 @@ export async function loadFinancialPage() {
     contentDiv.addEventListener('click', pageEventListener);
 
     // --- CARREGAMENTO INICIAL ---
+    const listContainer = document.getElementById('financial-list');
+
     handleTabClick(localState.activeTab); // Define a aba
     handleStatusFilterClick(localState.currentStatusFilter); // Define o filtro de status
     
-    await Promise.all([
-        renderTodaySummary(),
-        fetchEntriesList() 
-    ]);
+    // CORREÇÃO 1: Adiciona try/catch para capturar falhas externas
+    try {
+        await Promise.all([
+            renderTodaySummary(),
+            fetchEntriesList() 
+        ]);
+    } catch (error) {
+         // Log detalhado para o console
+         console.error("ERRO CRÍTICO no carregamento inicial da página Financeiro:", error);
+
+         // Notificação ao usuário
+         showNotification(
+            'Erro de Inicialização', 
+            `Não foi possível carregar o dashboard inicial. Detalhe: ${error.message || 'Erro de comunicação com a API.'}`, 
+            'error'
+        );
+        
+        // Exibe mensagem no local do loader
+        if (listContainer) {
+             listContainer.innerHTML = `
+                <div class="text-center p-10 bg-red-50 rounded-lg border border-red-300">
+                    <p class="text-lg font-semibold text-red-800 mb-2">Falha ao carregar o Financeiro</p>
+                    <p class="text-sm text-red-700">Verifique o console para detalhes do erro. A causa pode ser uma falha na API.</p>
+                </div>
+            `;
+        }
+    }
 }
