@@ -7,22 +7,22 @@ const multer = require('multer'); // <-- NOVO: Importa o multer para upload de a
 
 // --- INICIALIZAÇÃO DO FIREBASE (MODIFICADO PARA GOOGLE CLOUD) ---
 try {
-    let serviceAccount;
-    // No Cloud Run, usa o secret. Localmente, usa o arquivo.
-    if (process.env.FIREBASE_CONFIG_SECRET) {
-        serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_SECRET);
-    } else {
-        serviceAccount = require('./firebase-credentials.json');
-    }
+    let serviceAccount;
+    // No Cloud Run, usa o secret. Localmente, usa o arquivo.
+    if (process.env.FIREBASE_CONFIG_SECRET) {
+        serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_SECRET);
+    } else {
+        serviceAccount = require('./firebase-credentials.json');
+    }
 
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log("Firebase Admin SDK inicializado com sucesso!");
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("Firebase Admin SDK inicializado com sucesso!");
 } catch (error) {
-    console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error);
-    console.log("VERIFIQUE: Você criou o arquivo 'firebase-credentials.json' e o colocou na mesma pasta que o 'index.js'?");
-    process.exit(1); // Encerra a aplicação se o Firebase não puder ser inicializado
+    console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error);
+    console.log("VERIFIQUE: Você criou o arquivo 'firebase-credentials.json' e o colocou na mesma pasta que o 'index.js'?");
+    process.exit(1); // Encerra a aplicação se o Firebase não puder ser inicializado
 }
 
 // --- CONFIGURAÇÃO DO EXPRESS ---
@@ -31,12 +31,12 @@ app.use(cors());
 
 // --- MIDDLEWARES ---
 const {
-    addFirebaseInstances,
-    verifyToken,
-    isSuperAdmin,
-    isOwner,
-    hasAccess,
-    checkSubscription
+    addFirebaseInstances,
+    verifyToken,
+    isSuperAdmin,
+    isOwner,
+    hasAccess,
+    checkSubscription
 } = require('./middlewares/auth');
 
 // --- IMPORTAÇÃO E MONTAGEM DAS ROTAS DA API ---
@@ -58,7 +58,7 @@ const serviceRoutes = require('./routes/services');
 const userRoutes = require('./routes/users');
 const comandasRoutes = require('./routes/comandas');
 const clientPortalRoutes = require('./routes/clientPortal');
-// const financialRoutes = require('./routes/financial'); // CORREÇÃO: Removido - Este é um arquivo de frontend (ESM) e não pode ser carregado por require() (CJS)
+const financialRoutes = require('./routes/financial');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
 const dbexplorerRoutes = require('./routes/dbexplorer');
@@ -77,65 +77,65 @@ app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes);
 // Configura o multer para upload em memória
 const storage = multer.memoryStorage();
 const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
 });
 
 // A Rota de Logo DEVE vir ANTES do express.json()
 app.post('/api/admin/config/logo', 
-    addFirebaseInstances, // Adiciona db, auth
-    verifyToken,          // Protege a rota
-    isSuperAdmin,         // Garante que é super-admin
-    upload.single('logoFile'), // Processa o arquivo 'logoFile' do FormData
-    async (req, res) => {
-        try {
-            if (!req.file) {
-                return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
-            }
-            
-            const { db } = req; // Pega o db do middleware
-            
-            // O nome do bucket vem do seu 'firebaseConfig' no admin.html
-            const bucket = admin.storage().bucket('kairos-system.firebasestorage.app'); 
-            const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
-            const fileUpload = bucket.file(fileName);
+    addFirebaseInstances, // Adiciona db, auth
+    verifyToken,          // Protege a rota
+    isSuperAdmin,         // Garante que é super-admin
+    upload.single('logoFile'), // Processa o arquivo 'logoFile' do FormData
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
+            }
+            
+            const { db } = req; // Pega o db do middleware
+            
+            // O nome do bucket vem do seu 'firebaseConfig' no admin.html
+            const bucket = admin.storage().bucket('kairos-system.firebasestorage.app'); 
+            const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
+            const fileUpload = bucket.file(fileName);
 
-            const blobStream = fileUpload.createWriteStream({
-                metadata: { contentType: req.file.mimetype }
-            });
+            const blobStream = fileUpload.createWriteStream({
+                metadata: { contentType: req.file.mimetype }
+            });
 
-            blobStream.on('error', (error) => {
-                console.error("Erro no stream de upload do Storage:", error);
-                res.status(500).json({ message: 'Erro ao fazer upload do ficheiro.' });
-            });
+            blobStream.on('error', (error) => {
+                console.error("Erro no stream de upload do Storage:", error);
+                res.status(500).json({ message: 'Erro ao fazer upload do ficheiro.' });
+            });
 
-            blobStream.on('finish', async () => {
-                // Torna o ficheiro público
-                await fileUpload.makePublic();
-                
-                // Obtém a URL pública
-                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+            blobStream.on('finish', async () => {
+                // Torna o ficheiro público
+                await fileUpload.makePublic();
+                
+                // Obtém a URL pública
+                const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-                // Salva a URL no Firestore (onde a rota de 'establishments' busca)
-                await db.collection('config').doc('plataforma').set({
-                    logoUrl: publicUrl
-                }, { merge: true });
+                // Salva a URL no Firestore (onde a rota de 'establishments' busca)
+                await db.collection('config').doc('plataforma').set({
+                    logoUrl: publicUrl
+                }, { merge: true });
 
-                // Responde ao frontend com sucesso
-                res.status(200).json({ 
-                    message: 'Logótipo atualizado com sucesso!',
-                    logoUrl: publicUrl // O frontend espera por isso
-                });
-            });
+                // Responde ao frontend com sucesso
+                res.status(200).json({ 
+                    message: 'Logótipo atualizado com sucesso!',
+                    logoUrl: publicUrl // O frontend espera por isso
+                });
+            });
 
-            // Inicia o stream
-            blobStream.end(req.file.buffer);
+            // Inicia o stream
+            blobStream.end(req.file.buffer);
 
-        } catch (error) {
-            console.error("Erro no upload do logótipo:", error);
-            res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-        }
-    }
+        } catch (error) {
+            console.error("Erro no upload do logótipo:", error);
+            res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        }
+    }
 );
 // --- FIM DO NOVO BLOCO ---
 
@@ -169,7 +169,7 @@ app.use('/api/products', verifyToken, checkSubscription, hasAccess, productRoute
 app.use('/api/reports', verifyToken, checkSubscription, hasAccess, reportRoutes);
 app.use('/api/sales', verifyToken, checkSubscription, hasAccess, saleRoutes);
 app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRoutes);
-// app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes); // CORREÇÃO: Removido - A lógica do financeiro é frontend e fala direto com o Firebase
+app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
 
@@ -214,13 +214,13 @@ app.get('/datadictionary', (req, res) => { res.sendFile(path.join(__dirname, 'da
 
 // --- TRATAMENTO DE ERROS ---
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).send('Algo deu errado no servidor!');
+    console.error(err.stack);
+    res.status(500).send('Algo deu errado no servidor!');
 });
 
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
