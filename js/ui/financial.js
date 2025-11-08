@@ -1,8 +1,9 @@
 // ui/financial.js
 // Interface e componentes visuais da tela de financeiro
 
-import * as FinancialRoutes from '../routes/financial.js';
-import * as FinancialAPI from '../api/financial.js';
+// CORREÇÃO: Caminho de importação para as Rotas e API (adicionado 'js/' ou ajustado o caminho relativo)
+import * as FinancialRoutes from '../../routes/financial.js'; 
+import * as FinancialAPI from '../api/financial.js'; 
 
 // ==================== ELEMENTOS DOM ====================
 
@@ -345,9 +346,14 @@ export function renderizarContasPagar() {
  * Renderiza uma linha da tabela
  */
 function renderizarLinhaConta(conta, tipo) {
-  const diasAtraso = conta.data_vencimento < new Date().getTime() 
-    ? Math.floor((new Date().getTime() - conta.data_vencimento) / (24 * 60 * 60 * 1000))
-    : 0;
+  const dataVencimento = conta.data_vencimento;
+  const hoje = new Date().getTime();
+  
+  // Calcula dias atrasados apenas se o status for 'atrasado'
+  let diasAtraso = 0;
+  if (conta.status === 'atrasado') {
+      diasAtraso = Math.floor((hoje - dataVencimento) / (24 * 60 * 60 * 1000));
+  }
 
   const statusClass = FinancialAPI.obterCorStatus(conta.status);
   const nomeParty = tipo === 'receber' ? conta.cliente : conta.fornecedor;
@@ -356,7 +362,7 @@ function renderizarLinhaConta(conta, tipo) {
     <tr>
       <td class="nome-party">${nomeParty}</td>
       <td class="descricao">${conta.descricao}</td>
-      <td class="data">${FinancialAPI.formatarData(conta.data_vencimento)}</td>
+      <td class="data">${FinancialAPI.formatarData(dataVencimento)}</td>
       <td class="valor">${FinancialAPI.formatarMoeda(conta.valor_total)}</td>
       <td class="valor pendente">${FinancialAPI.formatarMoeda(conta.valor_pendente)}</td>
       <td>
@@ -465,6 +471,7 @@ function abrirModalNovaConta(tipo) {
     ? renderizarFormularioNovaContaReceber()
     : renderizarFormularioNovaContaPagar();
 
+  FinancialRoutes.abrirModal('novo', { tipo: tipo }); // CORREÇÃO: Registra no estado da rota
   renderizarModal(titulo, formulario, 'novo');
 }
 
@@ -480,6 +487,8 @@ async function abrirModalPagamento(contaId, tipo) {
     mostrarErro('Conta não encontrada');
     return;
   }
+
+  FinancialRoutes.abrirModal('pagamento', conta); // CORREÇÃO: Registra no estado da rota
 
   const formulario = renderizarFormularioPagamento(conta, tipo);
   renderizarModal('Registrar Pagamento', formulario, 'pagamento');
@@ -497,6 +506,8 @@ async function abrirModalEditar(contaId, tipo) {
     mostrarErro('Conta não encontrada');
     return;
   }
+
+  FinancialRoutes.abrirModal('editar', conta); // CORREÇÃO: Registra no estado da rota
 
   const formulario = renderizarFormularioEditarConta(conta, tipo);
   renderizarModal('Editar Conta', formulario, 'editar');
@@ -524,6 +535,8 @@ function abrirModalCancelar(contaId, tipo) {
       </div>
     </div>
   `;
+
+  FinancialRoutes.abrirModal('cancelar', { id: contaId, tipo: tipo }); // CORREÇÃO: Registra no estado da rota
 
   renderizarModal('Cancelar Conta', html, 'cancelar');
 
@@ -554,6 +567,8 @@ async function abrirModalDetalhes(contaId, tipo) {
     mostrarErro('Conta não encontrada');
     return;
   }
+
+  FinancialRoutes.abrirModal('detalhes', conta); // CORREÇÃO: Registra no estado da rota
 
   const html = renderizarDetalhesCompletos(conta, tipo);
   renderizarModal('Detalhes da Conta', html, 'detalhes');
@@ -762,6 +777,10 @@ function renderizarFormularioPagamento(conta, tipo) {
 function renderizarFormularioEditarConta(conta, tipo) {
   const eh_receber = tipo === 'receber';
   
+  // Converte o timestamp de volta para formato YYYY-MM-DD para preencher o input type="date"
+  const dataEmissaoString = conta.data_emissao ? new Date(conta.data_emissao).toISOString().split('T')[0] : '';
+  const dataVencimentoString = conta.data_vencimento ? new Date(conta.data_vencimento).toISOString().split('T')[0] : '';
+
   return `
     <form id="form-editar-conta" class="form-financeiro">
       <div class="form-group">
@@ -783,11 +802,16 @@ function renderizarFormularioEditarConta(conta, tipo) {
             ${eh_receber ? `
               <option value="dinheiro" ${conta.forma_pagamento === 'dinheiro' ? 'selected' : ''}>Dinheiro</option>
               <option value="cartao_credito" ${conta.forma_pagamento === 'cartao_credito' ? 'selected' : ''}>Cartão de Crédito</option>
+              <option value="cartao_debito" ${conta.forma_pagamento === 'cartao_debito' ? 'selected' : ''}>Cartão de Débito</option>
+              <option value="boleto" ${conta.forma_pagamento === 'boleto' ? 'selected' : ''}>Boleto</option>
               <option value="pix" ${conta.forma_pagamento === 'pix' ? 'selected' : ''}>PIX</option>
+              <option value="transferencia" ${conta.forma_pagamento === 'transferencia' ? 'selected' : ''}>Transferência</option>
             ` : `
               <option value="aluguel" ${conta.categoria === 'aluguel' ? 'selected' : ''}>Aluguel</option>
               <option value="servicos" ${conta.categoria === 'servicos' ? 'selected' : ''}>Serviços</option>
               <option value="produtos" ${conta.categoria === 'produtos' ? 'selected' : ''}>Produtos</option>
+              <option value="utilidades" ${conta.categoria === 'utilidades' ? 'selected' : ''}>Utilidades</option>
+              <option value="outros" ${conta.categoria === 'outros' ? 'selected' : ''}>Outros</option>
             `}
           </select>
         </div>
@@ -795,11 +819,11 @@ function renderizarFormularioEditarConta(conta, tipo) {
       <div class="form-row">
         <div class="form-group">
           <label>Data de Emissão</label>
-          <input type="date" name="data_emissao" value="${new Date(conta.data_emissao).toISOString().split('T')[0]}">
+          <input type="date" name="data_emissao" value="${dataEmissaoString}">
         </div>
         <div class="form-group">
           <label>Data de Vencimento</label>
-          <input type="date" name="data_vencimento" value="${new Date(conta.data_vencimento).toISOString().split('T')[0]}" required>
+          <input type="date" name="data_vencimento" value="${dataVencimentoString}" required>
         </div>
       </div>
       <div class="form-group">
@@ -823,10 +847,12 @@ function renderizarFormularioEditarConta(conta, tipo) {
 function renderizarDetalhesCompletos(conta, tipo) {
   const eh_receber = tipo === 'receber';
   const dataAgora = new Date().getTime();
-  const diasAtraso = conta.data_vencimento < dataAgora 
-    ? Math.floor((dataAgora - conta.data_vencimento) / (24 * 60 * 60 * 1000))
-    : 0;
-
+  let diasAtraso = 0;
+  
+  if (conta.status === 'atrasado') {
+    diasAtraso = Math.floor((dataAgora - conta.data_vencimento) / (24 * 60 * 60 * 1000));
+  }
+  
   let pagamentosHTML = '';
   if (conta.pagamentos && Object.keys(conta.pagamentos).length > 0) {
     pagamentosHTML = `
@@ -957,6 +983,13 @@ async function submitRegistroPagamento() {
   const form = document.getElementById('form-pagamento');
   const formData = new FormData(form);
   const estado = FinancialRoutes.obterEstado();
+  
+  // CORREÇÃO: Checagem de segurança para evitar erro fatal (conta_selecionada é nulo)
+  if (!estado.conta_selecionada || !estado.conta_selecionada.id) {
+      mostrarErro('Erro: Nenhuma conta selecionada para pagamento.');
+      FinancialRoutes.fecharModal();
+      return;
+  }
 
   const pagamento = {
     valor: parseFloat(formData.get('valor')),
@@ -982,12 +1015,21 @@ async function submitEdicaoConta() {
   const formData = new FormData(form);
   const tipo = formData.get('tipo');
   const contaId = formData.get('conta_id');
+  
+  // Converte a string de data (YYYY-MM-DD) para timestamp
+  const dataVencimentoTimestamp = formData.get('data_vencimento') 
+    ? new Date(formData.get('data_vencimento')).getTime() 
+    : undefined;
+  const dataEmissaoTimestamp = formData.get('data_emissao') 
+    ? new Date(formData.get('data_emissao')).getTime() 
+    : undefined;
 
   const dados = {
     [tipo === 'receber' ? 'cliente' : 'fornecedor']: formData.get('nome'),
     descricao: formData.get('descricao'),
     valor_total: parseFloat(formData.get('valor_total')),
-    data_vencimento: new Date(formData.get('data_vencimento')).getTime(),
+    data_vencimento: dataVencimentoTimestamp,
+    data_emissao: dataEmissaoTimestamp,
     observacoes: formData.get('observacoes')
   };
 

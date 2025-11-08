@@ -1,7 +1,10 @@
 // routes/financial.js
 // Roteamento e controle de fluxo da tela de financeiro
 
-import * as FinancialAPI from '../api/financial.js';
+// CORREÇÃO: Caminho de importação para a API (adicionado 'js/')
+import * as FinancialAPI from '../js/api/financial.js';
+// CORREÇÃO: Importação do módulo de UI (necessário para as chamadas de renderização)
+import * as FinancialUI from '../js/ui/financial.js'; 
 
 let estadoAtual = {
   tela_ativa: 'dashboard', // dashboard, receber, pagar
@@ -65,19 +68,19 @@ export async function mostrarTela(tela) {
     switch(tela) {
       case 'dashboard':
         await carregarResumoFinanceiro();
-        renderizarDashboard();
+        FinancialUI.renderizarDashboard(); // CORREÇÃO: Chama a função da UI
         break;
         
       case 'receber':
         estadoAtual.filtros_ativos.tipo = 'receber';
         await carregarContasReceber();
-        renderizarContasReceber();
+        FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
         break;
         
       case 'pagar':
         estadoAtual.filtros_ativos.tipo = 'pagar';
         await carregarContasPagar();
-        renderizarContasPagar();
+        FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
         break;
     }
   } catch (error) {
@@ -152,10 +155,10 @@ export async function aplicarFiltros(filtros) {
   try {
     if (estadoAtual.filtros_ativos.tipo === 'receber') {
       await carregarContasReceber();
-      renderizarContasReceber();
+      FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
     } else {
       await carregarContasPagar();
-      renderizarContasPagar();
+      FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
     }
   } catch (error) {
     console.error('Erro ao aplicar filtros:', error);
@@ -180,10 +183,10 @@ export async function limparFiltros() {
   try {
     if (estadoAtual.filtros_ativos.tipo === 'receber') {
       await carregarContasReceber();
-      renderizarContasReceber();
+      FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
     } else {
       await carregarContasPagar();
-      renderizarContasPagar();
+      FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
     }
   } catch (error) {
     console.error('Erro ao limpar filtros:', error);
@@ -208,7 +211,7 @@ export async function criarNovaContaReceber(dados) {
     
     fecharModal();
     mostrarSucesso('Conta a receber criada com sucesso');
-    renderizarContasReceber();
+    FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
     
     return contaId;
   } catch (error) {
@@ -234,7 +237,7 @@ export async function criarNovaContaPagar(dados) {
     
     fecharModal();
     mostrarSucesso('Conta a pagar criada com sucesso');
-    renderizarContasPagar();
+    FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
     
     return contaId;
   } catch (error) {
@@ -262,7 +265,7 @@ export async function atualizarContaReceber(contaId, dados) {
     
     fecharModal();
     mostrarSucesso('Conta atualizada com sucesso');
-    renderizarContasReceber();
+    FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao atualizar conta:', error);
     mostrarErro('Erro ao atualizar conta');
@@ -288,7 +291,7 @@ export async function atualizarContaPagar(contaId, dados) {
     
     fecharModal();
     mostrarSucesso('Conta atualizada com sucesso');
-    renderizarContasPagar();
+    FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao atualizar conta:', error);
     mostrarErro('Erro ao atualizar conta');
@@ -314,7 +317,7 @@ export async function registrarPagamentoReceber(contaId, pagamento) {
     
     fecharModal();
     mostrarSucesso('Pagamento registrado com sucesso');
-    renderizarContasReceber();
+    FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao registrar pagamento:', error);
     mostrarErro('Erro ao registrar pagamento');
@@ -340,7 +343,7 @@ export async function registrarPagamentoPagar(contaId, pagamento) {
     
     fecharModal();
     mostrarSucesso('Pagamento registrado com sucesso');
-    renderizarContasPagar();
+    FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao registrar pagamento:', error);
     mostrarErro('Erro ao registrar pagamento');
@@ -366,7 +369,7 @@ export async function cancelarContaReceber(contaId, motivo) {
     
     fecharModal();
     mostrarSucesso('Conta cancelada com sucesso');
-    renderizarContasReceber();
+    FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao cancelar conta:', error);
     mostrarErro('Erro ao cancelar conta');
@@ -392,7 +395,7 @@ export async function cancelarContaPagar(contaId, motivo) {
     
     fecharModal();
     mostrarSucesso('Conta cancelada com sucesso');
-    renderizarContasPagar();
+    FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
   } catch (error) {
     console.error('Erro ao cancelar conta:', error);
     mostrarErro('Erro ao cancelar conta');
@@ -411,8 +414,8 @@ export function abrirModal(tipo, dados = null) {
   estadoAtual.modal_aberto = tipo;
   estadoAtual.conta_selecionada = dados;
   
-  // Renderizar modal na UI
-  renderizarModal(tipo, dados);
+  // O modal é renderizado pela camada de UI
+  // FinancialUI.renderizarModal(tipo, dados); // A chamada será feita na UI
 }
 
 /**
@@ -439,9 +442,9 @@ export async function irParaPagina(pagina) {
   estadoAtual.pagina_atual = pagina;
   
   if (estadoAtual.filtros_ativos.tipo === 'receber') {
-    renderizarContasReceber();
+    FinancialUI.renderizarContasReceber(); // CORREÇÃO: Chama a função da UI
   } else {
-    renderizarContasPagar();
+    FinancialUI.renderizarContasPagar(); // CORREÇÃO: Chama a função da UI
   }
 }
 
@@ -474,36 +477,34 @@ function obterTotalPaginas() {
 
 // ==================== RENDERIZAÇÃO (Delegado para ui/financial.js) ====================
 
+// Funções de renderização delegadas corretamente para FinancialUI.
 export function renderizarDashboard() {
-  // Será implementado em ui/financial.js
-  console.log('Renderizar Dashboard');
+  FinancialUI.renderizarDashboard();
 }
 
 export function renderizarContasReceber() {
-  // Será implementado em ui/financial.js
-  console.log('Renderizar Contas a Receber');
+  FinancialUI.renderizarContasReceber();
 }
 
 export function renderizarContasPagar() {
-  // Será implementado em ui/financial.js
-  console.log('Renderizar Contas a Pagar');
+  FinancialUI.renderizarContasPagar();
 }
 
 export function renderizarModal(tipo, dados) {
-  // Será implementado em ui/financial.js
+  // Chamada de renderização removida, pois a UI se encarrega
   console.log(`Renderizar Modal: ${tipo}`);
 }
 
 // ==================== FEEDBACK AO USUÁRIO ====================
 
 function mostrarSucesso(mensagem) {
+  // Implementação em ui/financial.js ou no sistema de notificação global
   console.log('✓ Sucesso:', mensagem);
-  // Implementar toast/notificação visual
 }
 
 function mostrarErro(mensagem) {
+  // Implementação em ui/financial.js ou no sistema de notificação global
   console.error('✗ Erro:', mensagem);
-  // Implementar toast/notificação visual
 }
 
 // ==================== GETTERS E SETTERS ====================

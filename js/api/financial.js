@@ -1,6 +1,7 @@
 // api/financial.js
 // Funções de integração com Firebase para Contas a Receber e Contas a Pagar
 
+// CORREÇÃO: Revertido para URL da CDN para que o NAVEGADOR possa encontrar os arquivos
 import { 
   ref, 
   child, 
@@ -10,18 +11,22 @@ import {
   remove, 
   push,
   query,
-  where,
+//  where, // 'where' não existe no Realtime Database, mantido removido
   orderByChild,
   limitToLast,
   startAt,
   endAt,
   onValue,
   off
-} from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
+} from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js'; // Usando a versão 11.6.1 que estava no seu config
 
-import { database, auth } from './firebase-config.js';
+// O caminho relativo para o config está CORRETO para o navegador
+import { database, auth } from '../firebase-config.js'; 
 
 const FINANCIAL_TYPES = {
+// ... (restante do arquivo 'js/api/financial.js' permanece o mesmo)
+// ... (copiando o conteúdo da "Most up-to-date file")
+
   RECEBER: 'contas_receber',
   PAGAR: 'contas_pagar',
   CATEGORIES: 'categorias_despesa'
@@ -90,7 +95,7 @@ export async function obterContasReceber(establishmentId, filtros = {}) {
       }
     });
 
-    // Aplicar filtros
+    // Aplicar filtros (que também atualiza status 'atrasado' dinamicamente)
     contas = aplicarFiltrosFinanceiro(contas, filtros);
     
     // Ordenar por data de vencimento (próximas primeiro)
@@ -281,6 +286,7 @@ export async function obterContasPagar(establishmentId, filtros = {}) {
       }
     });
 
+    // Aplicar filtros (que também atualiza status 'atrasado' dinamicamente)
     contas = aplicarFiltrosFinanceiro(contas, filtros);
     contas.sort((a, b) => a.data_vencimento - b.data_vencimento);
 
@@ -413,8 +419,13 @@ export async function cancelarContaPagar(establishmentId, contaId, motivo) {
  */
 export async function obterResumoFinanceiro(establishmentId) {
   try {
-    const contas_receber = await obterContasReceber(establishmentId);
-    const contas_pagar = await obterContasPagar(establishmentId);
+    // Busca as contas, que agora terão o status 'atrasado' definido na função aplicarFiltrosFinanceiro
+    const contas_receber_com_status = await obterContasReceber(establishmentId, { skip_filter: true });
+    const contas_pagar_com_status = await obterContasPagar(establishmentId, { skip_filter: true });
+
+    const contas_receber = aplicarFiltrosFinanceiro(contas_receber_com_status, {});
+    const contas_pagar = aplicarFiltrosFinanceiro(contas_pagar_com_status, {});
+    
     const agora = new Date().getTime();
     const diasAfrente = 7 * 24 * 60 * 60 * 1000; // 7 dias em ms
 
@@ -450,12 +461,13 @@ export async function obterResumoFinanceiro(establishmentId) {
         resumo.contas_receber.total_recebido += conta.valor_pago;
         resumo.contas_receber.total_pendente += conta.valor_pendente;
 
-        if (conta.status === 'aberto' || conta.status === 'parcialmente_pago') {
+        if (conta.status === 'atrasado') {
+            resumo.contas_receber.quantidade_atrasados++;
+            resumo.contas_receber.quantidade_abertos++;
+        } else if (conta.status === 'aberto' || conta.status === 'parcialmente_pago') {
           resumo.contas_receber.quantidade_abertos++;
 
-          if (conta.data_vencimento < agora) {
-            resumo.contas_receber.quantidade_atrasados++;
-          } else if (conta.data_vencimento <= agora + diasAfrente) {
+          if (conta.data_vencimento <= agora + diasAfrente && conta.data_vencimento > agora) { // Próximos 7 dias
             resumo.contas_receber.vencimentos_proximamente.push({
               id: conta.id,
               cliente: conta.cliente,
@@ -477,12 +489,13 @@ export async function obterResumoFinanceiro(establishmentId) {
         resumo.contas_pagar.total_pagos += conta.valor_pago;
         resumo.contas_pagar.total_pendente += conta.valor_pendente;
 
-        if (conta.status === 'aberto' || conta.status === 'parcialmente_pago') {
+        if (conta.status === 'atrasado') {
+            resumo.contas_pagar.quantidade_atrasados++;
+            resumo.contas_pagar.quantidade_abertos++;
+        } else if (conta.status === 'aberto' || conta.status === 'parcialmente_pago') {
           resumo.contas_pagar.quantidade_abertos++;
 
-          if (conta.data_vencimento < agora) {
-            resumo.contas_pagar.quantidade_atrasados++;
-          } else if (conta.data_vencimento <= agora + diasAfrente) {
+          if (conta.data_vencimento <= agora + diasAfrente && conta.data_vencimento > agora) { // Próximos 7 dias
             resumo.contas_pagar.vencimentos_proximamente.push({
               id: conta.id,
               fornecedor: conta.fornecedor,
@@ -499,11 +512,11 @@ export async function obterResumoFinanceiro(establishmentId) {
 
     // Calcular resumo geral
     resumo.resumo_geral.saldo_liquido = 
-      resumo.contas_receber.total_pendente - resumo.contas_pagar.total_pendente;
+      resumo.contas_receber.total_recebido - resumo.contas_pagar.total_pagos; // Saldo de caixa (recebido - pago)
 
-    const totalReceber = resumo.contas_receber.total_a_receber || 1;
+    const totalAbertosReceber = resumo.contas_receber.quantidade_abertos || 1;
     resumo.resumo_geral.taxa_inadimplencia = 
-      (resumo.contas_receber.quantidade_atrasados / (resumo.contas_receber.quantidade_abertos || 1)) * 100;
+      (resumo.contas_receber.quantidade_atrasados / totalAbertosReceber) * 100;
 
     return resumo;
   } catch (error) {
@@ -515,13 +528,32 @@ export async function obterResumoFinanceiro(establishmentId) {
 // ==================== FUNÇÕES AUXILIARES ====================
 
 /**
- * Aplica filtros ao array de contas
+ * Aplica filtros ao array de contas e atualiza o status de contas atrasadas
  * @param {Array} contas
  * @param {Object} filtros
  * @returns {Array}
  */
 function aplicarFiltrosFinanceiro(contas, filtros) {
-  return contas.filter(conta => {
+  const agora = new Date().getTime(); // Obtém o timestamp atual
+  
+  // 1. CORREÇÃO: Atualiza o status para 'atrasado' se aplicável
+  // Criamos uma nova lista de contas com status atualizado para evitar mutação do estado original
+  let contasComStatusAtualizado = contas.map(conta => {
+    // Ignora se já estiver pago ou cancelado
+    if (conta.status === 'pago' || conta.status === 'cancelado') {
+        return conta;
+    }
+    
+    // Se o vencimento passou E o valor pendente for > 0
+    if (conta.data_vencimento < agora && conta.valor_pendente > 0) {
+      return { ...conta, status: 'atrasado' };
+    }
+    
+    return conta;
+  });
+
+  // 2. Aplica filtros
+  return contasComStatusAtualizado.filter(conta => {
     // Filtro por status
     if (filtros.status && conta.status !== filtros.status) {
       return false;
@@ -566,6 +598,7 @@ function aplicarFiltrosFinanceiro(contas, filtros) {
  * @returns {string}
  */
 export function formatarData(timestamp) {
+  if (!timestamp) return '-';
   const data = new Date(timestamp);
   return data.toLocaleDateString('pt-BR');
 }
