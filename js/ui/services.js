@@ -514,8 +514,7 @@ function renderServicesList() {
             listDiv.appendChild(card);
         });
     } else {
-        // CORREÇÃO: Espaçamento reduzido de py-10 para py-4
-        listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500 py-4">Nenhum serviço encontrado.</p>`;
+        listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500 py-10">Nenhum serviço encontrado.</p>`;
     }
 }
 
@@ -559,6 +558,7 @@ function renderServiceIndicators() {
 function renderServicesView() {
     const container = document.getElementById('services-content-container');
     container.innerHTML = `
+        <!-- ALTERAÇÃO: Título removido e botão padronizado com ícone + -->
         <div class="flex flex-col sm:flex-row gap-4 justify-end items-stretch sm:items-center mb-6">
             <div class="flex items-center gap-2">
                 <button data-action="new-service" class="w-full sm:w-auto flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
@@ -595,8 +595,7 @@ function renderServicesView() {
         </div>
 
         <div id="servicesList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            <!-- CORREÇÃO: Espaçamento reduzido de my-10 para my-4 -->
-            <div class="loader col-span-full mx-auto my-4"></div>
+            <div class="loader col-span-full mx-auto my-10"></div>
         </div>
     `;
 
@@ -625,9 +624,6 @@ async function fetchBaseData() {
     if (contentContainer) {
         const loader = contentContainer.querySelector('.loader');
         if (loader) loader.style.display = 'block';
-    } else {
-        // Se o container não existe (p.e. a página acabou de carregar)
-        // O loader principal em loadServicesPage já está visível
     }
     
     try {
@@ -650,18 +646,17 @@ async function fetchBaseData() {
         switchTab(currentView);
 
     } catch (error) {
-        const targetContainer = contentContainer || contentDiv; // Garante que temos onde mostrar o erro
-        targetContainer.innerHTML = '<p class="text-red-500 col-span-full text-center py-10">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
+        if (contentContainer) {
+            contentContainer.innerHTML = '<p class="text-red-500 col-span-full text-center py-10">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
+        }
         showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
     }
 }
 
 function switchTab(targetView) {
-    const container = document.getElementById('services-content-container');
-    if (!container) return;
+    if (!document.getElementById('services-content-container')) return;
     
-    // Se já estamos na view e o conteúdo existe, apenas atualiza
-    if (currentView === targetView && container.children.length > 1 && container.querySelector('.loader') === null) {
+    if (currentView === targetView && document.getElementById('services-content-container').children.length > 1) {
          if(currentView === 'services') {
             renderServiceIndicators();
             renderServicesList();
@@ -673,7 +668,7 @@ function switchTab(targetView) {
     activeServiceFilter = 'all'; 
 
     document.querySelectorAll('#services-tabs button.tab-button').forEach(button => {
-        const isTarget = button.dataset.view === targetView || button.dataset.action === targetView;
+        const isTarget = button.dataset.view === targetView;
         button.classList.toggle('border-indigo-500', isTarget);
         button.classList.toggle('text-indigo-600', isTarget);
         button.classList.toggle('border-transparent', !isTarget);
@@ -682,7 +677,6 @@ function switchTab(targetView) {
 
     if (targetView === 'services') renderServicesView();
     else if (targetView === 'reports') renderServiceReportsView();
-    // Se for 'manage-categories', o listener de clique tratará de abrir o modal
 }
 
 
@@ -744,15 +738,6 @@ function setupEventListeners() {
                 break;
 
             case 'manage-categories': 
-                // Assegura que a aba de categorias fica ativa
-                document.querySelectorAll('#services-tabs button.tab-button').forEach(btn => {
-                     btn.classList.toggle('border-indigo-500', btn.dataset.action === 'manage-categories');
-                     btn.classList.toggle('text-indigo-600', btn.dataset.action === 'manage-categories');
-                     btn.classList.toggle('border-transparent', btn.dataset.action !== 'manage-categories');
-                     btn.classList.toggle('text-gray-500', btn.dataset.action !== 'manage-categories');
-                });
-                // Limpa o container e abre o modal
-                document.getElementById('services-content-container').innerHTML = '';
                 openCategoryModal();
                 break;
             
@@ -802,7 +787,7 @@ export async function loadServicesPage() {
                 </div>
                 
                 <div id="services-content-container" class="p-4 sm:p-6">
-                    <div class="loader mx-auto my-4"></div>
+                    <div class="loader mx-auto"></div>
                 </div>
             </div>
         </section>`;
