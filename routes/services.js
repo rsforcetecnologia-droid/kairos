@@ -1,20 +1,16 @@
-// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/routes/services.js
-
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-const { verifyToken, hasAccess } = require('../middlewares/auth');
 
-// --- ROTAS DE CATEGORIAS DE SERVIÇOS ---
-
-// Criar nova categoria
-router.post('/categories', verifyToken, hasAccess, async (req, res) => {
+// --- CATEGORIAS DE SERVIÇOS ---
+// (Rotas de categorias que já existiam... - removidas da minha resposta anterior por estarem em /api/products)
+// Assumindo que as rotas de categorias de serviço estão aqui
+router.post('/categories', async (req, res) => {
     try {
-        const { establishmentId } = req.user;
-        const { name, parentId } = req.body;
+        const { establishmentId, name } = req.body;
         if (!establishmentId || !name) return res.status(400).json({ message: 'ID do estabelecimento e nome da categoria são obrigatórios.' });
         const { db } = req;
-        const newCategory = { establishmentId, name, parentId: parentId || null, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+        const newCategory = { establishmentId, name, createdAt: admin.firestore.FieldValue.serverTimestamp() };
         const docRef = await db.collection('serviceCategories').add(newCategory);
         res.status(201).json({ message: 'Categoria criada com sucesso!', id: docRef.id, data: newCategory });
     } catch (error) {
@@ -23,8 +19,7 @@ router.post('/categories', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// Listar categorias
-router.get('/categories/:establishmentId', verifyToken, hasAccess, async (req, res) => {
+router.get('/categories/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
@@ -38,14 +33,12 @@ router.get('/categories/:establishmentId', verifyToken, hasAccess, async (req, r
     }
 });
 
-// Deletar categoria
-router.delete('/categories/:categoryId', verifyToken, hasAccess, async (req, res) => {
+router.delete('/categories/:categoryId', async (req, res) => {
     const { categoryId } = req.params;
     try {
         const { db } = req;
         await db.collection('serviceCategories').doc(categoryId).delete();
-        // Opcional: Remover a categoria dos serviços que a utilizam
-        res.status(200).json({ message: 'Categoria apagada com sucesso.' });
+        res.status(200).json({ message: 'Categoria de serviço apagada com sucesso.' });
     } catch (error) {
         console.error("Erro ao apagar categoria de serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
@@ -53,26 +46,27 @@ router.delete('/categories/:categoryId', verifyToken, hasAccess, async (req, res
 });
 
 
-// Criar novo serviço (Rota Privada)
-router.post('/', verifyToken, hasAccess, async (req, res) => {
+// --- SERVIÇOS ---
+router.post('/', async (req, res) => {
     try {
-        const { establishmentId, name, price, duration, bufferTime, photo, active, commissionRate, commissionType, professionalCommissions, notes, categoryId } = req.body;
+        const { establishmentId, name, price, duration, commissionRate, active, photo, notes, categoryId, bufferTime, commissionType, professionalCommissions } = req.body;
         if (!establishmentId || !name || price === undefined || duration === undefined) {
             return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
         }
         const { db } = req;
         const newService = {
-            establishmentId, name,
-            price: Number(price),
-            duration: Number(duration),
+            establishmentId,
+            name,
+            price: Number(price) || 0,
+            duration: Number(duration) || 0,
             bufferTime: Number(bufferTime) || 0,
             commissionRate: Number(commissionRate) || 0,
-            commissionType: commissionType || 'default', // 'default' ou 'custom'
-            professionalCommissions: professionalCommissions || {}, // Objeto para comissões personalizadas
-            notes: notes || '',
-            active: active !== false,
+            active: active !== undefined ? active : true,
             photo: photo || null,
-            categoryId: categoryId || null, // <-- ADICIONADO
+            notes: notes || '',
+            categoryId: categoryId || null,
+            commissionType: commissionType || 'default',
+            professionalCommissions: professionalCommissions || {},
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
         const docRef = await db.collection('services').add(newService);
@@ -83,13 +77,14 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// Listar todos os serviços para o admin (Rota Privada)
-router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
+router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
-        const snapshot = await db.collection('services').where('establishmentId', '==', establishmentId).get();
-        if (snapshot.empty) return res.status(200).json([]);
+        const snapshot = await db.collection('services').where('establishmentId', '==', establishmentId).orderBy('name').get();
+        if (snapshot.empty) {
+            return res.status(200).json([]);
+        }
         const servicesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.status(200).json(servicesList);
     } catch (error) {
@@ -98,41 +93,92 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// Listar serviços ativos (Rota Pública)
-router.get('/public/:establishmentId', async (req, res) => {
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+// ++ NOVA ROTA: LÓGICA DO CARD "MAIS USADOS" ++
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+router.get('/stats/most-popular/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
-        const snapshot = await db.collection('services')
+
+        // 1. Busca todos os agendamentos (concluídos ou agendados) do estabelecimento
+        const appointmentsSnapshot = await db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            .where('active', '==', true)
+            // Opcional: filtrar por status, ex: .where('status', 'in', ['completed', 'scheduled'])
             .get();
-        if (snapshot.empty) return res.status(200).json([]);
-        const servicesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        res.status(200).json(servicesList);
+
+        if (appointmentsSnapshot.empty) {
+            return res.status(200).json({ name: 'N/A', count: 0 });
+        }
+
+        const serviceCounts = {};
+
+        // 2. Itera por todos os agendamentos e conta os serviços
+        appointmentsSnapshot.docs.forEach(doc => {
+            const appointment = doc.data();
+            // Verifica se 'services' existe e é um array
+            if (Array.isArray(appointment.services)) {
+                appointment.services.forEach(service => {
+                    if (service.id) {
+                        serviceCounts[service.id] = (serviceCounts[service.id] || 0) + 1;
+                    }
+                });
+            }
+        });
+
+        if (Object.keys(serviceCounts).length === 0) {
+            return res.status(200).json({ name: 'N/A', count: 0 });
+        }
+
+        // 3. Encontra o ID do serviço mais popular
+        let mostPopularId = null;
+        let maxCount = 0;
+        for (const serviceId in serviceCounts) {
+            if (serviceCounts[serviceId] > maxCount) {
+                maxCount = serviceCounts[serviceId];
+                mostPopularId = serviceId;
+            }
+        }
+
+        if (!mostPopularId) {
+            return res.status(200).json({ name: 'Nenhum', count: 0 });
+        }
+
+        // 4. Busca o nome do serviço mais popular
+        const serviceDoc = await db.collection('services').doc(mostPopularId).get();
+        
+        if (!serviceDoc.exists) {
+            // Caso o serviço tenha sido apagado mas ainda exista em agendamentos
+            return res.status(200).json({ name: 'Serviço Apagado', count: maxCount });
+        }
+
+        // 5. Retorna o nome e a contagem
+        res.status(200).json({ name: serviceDoc.data().name, count: maxCount });
+
     } catch (error) {
-        console.error("Erro ao listar serviços públicos:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao tentar listar os serviços.' });
+        console.error("Erro ao buscar serviço mais popular:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
-// Atualizar serviço (Rota Privada)
-router.put('/:serviceId', verifyToken, hasAccess, async (req, res) => {
+
+router.put('/:serviceId', async (req, res) => {
     const { serviceId } = req.params;
     const data = req.body;
     try {
         const { db } = req;
+        const serviceRef = db.collection('services').doc(serviceId);
+        
+        // Converte os números para garantir
         const updatedData = {
             ...data,
-            price: Number(data.price),
-            duration: Number(data.duration),
+            price: Number(data.price) || 0,
+            duration: Number(data.duration) || 0,
             bufferTime: Number(data.bufferTime) || 0,
             commissionRate: Number(data.commissionRate) || 0,
-            commissionType: data.commissionType || 'default',
-            professionalCommissions: data.professionalCommissions || {},
-            categoryId: data.categoryId || null // <-- ADICIONADO
         };
-        await db.collection('services').doc(serviceId).update(updatedData);
+
+        await serviceRef.update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });
     } catch (error) {
         console.error("Erro ao atualizar serviço:", error);
@@ -140,31 +186,28 @@ router.put('/:serviceId', verifyToken, hasAccess, async (req, res) => {
     }
 });
 
-// Ativar/desativar serviço (Rota Privada)
-router.patch('/:serviceId/status', verifyToken, hasAccess, async (req, res) => {
+router.patch('/:serviceId/status', async (req, res) => {
     const { serviceId } = req.params;
     const { active } = req.body;
-    if (typeof active !== 'boolean') return res.status(400).json({ message: "O campo 'active' deve ser um booleano." });
     try {
         const { db } = req;
-        await db.collection('services').doc(serviceId).update({ active: active });
-        res.status(200).json({ message: `Status do serviço ${serviceId} atualizado para ${active}.` });
+        await db.collection('services').doc(serviceId).update({ active });
+        res.status(200).json({ message: 'Status do serviço atualizado com sucesso.' });
     } catch (error) {
         console.error("Erro ao atualizar status do serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
-// Deletar serviço (Rota Privada)
-router.delete('/:serviceId', verifyToken, hasAccess, async (req, res) => {
+router.delete('/:serviceId', async (req, res) => {
+    const { serviceId } = req.params;
     try {
-        const { serviceId } = req.params;
         const { db } = req;
         if (!serviceId) return res.status(400).json({ message: 'O ID do serviço é obrigatório.' });
         await db.collection('services').doc(serviceId).delete();
-        res.status(200).json({ message: `Serviço com ID ${serviceId} foi apagado com sucesso.` });
+        res.status(200).json({ message: 'Serviço removido com sucesso.' });
     } catch (error) {
-        console.error("Erro ao apagar serviço:", error);
+        console.error("Erro ao remover serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });

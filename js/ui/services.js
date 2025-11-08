@@ -4,14 +4,17 @@
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js'; // Importado showGenericModal
+import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import * as categoriesApi from '../api/categories.js'; 
+import { navigateTo } from '../main.js'; // Adicionado para consistência
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
+let pageEventListener = null;
+let currentView = 'services'; // Define a aba inicial
+let activeServiceFilter = 'all'; // 'all', 'active', 'inactive'
 
-// --- 3. FUNÇÕES DE LÓGICA E RENDERIZAÇÃO ---
-
-// NOVO: Funções de Lógica de Categoria (Replicada e adaptada do modelo de Produtos)
+// --- 3. LÓGICA DE CATEGORIAS (MODAL) ---
 async function handleCategoryFormSubmit(e) {
     e.preventDefault();
     const form = e.target.closest('#categoryForm');
@@ -19,11 +22,11 @@ async function handleCategoryFormSubmit(e) {
     const name = categoryNameInput.value;
     if (!name) return;
     try {
-        await servicesApi.createServiceCategory({ establishmentId: state.establishmentId, name });
+        await categoriesApi.createCategory({ establishmentId: state.establishmentId, name }, 'services');
         categoryNameInput.value = '';
         showNotification('Sucesso', 'Categoria criada!', 'success');
         await fetchAndDisplayCategoriesInModal();
-        await fetchBaseData(); // Atualiza a lista principal de serviços
+        await fetchBaseData(); 
     } catch (error) {
         showNotification('Erro', `Não foi possível criar a categoria: ${error.message}`, 'error');
     }
@@ -33,10 +36,10 @@ async function handleDeleteCategory(categoryId) {
     const confirmed = await showConfirmation('Apagar Categoria', 'Tem a certeza? Os serviços nesta categoria ficarão sem categoria.');
     if (confirmed) {
         try {
-            await servicesApi.deleteServiceCategory(categoryId);
+            await categoriesApi.deleteCategory(categoryId, 'services');
             showNotification('Sucesso', 'Categoria apagada.', 'success');
             await fetchAndDisplayCategoriesInModal();
-            await fetchBaseData(); // Atualiza a lista principal de serviços
+            await fetchBaseData(); 
         } catch (error) {
             showNotification('Erro', 'Não foi possível apagar a categoria.', 'error');
         }
@@ -48,8 +51,8 @@ async function fetchAndDisplayCategoriesInModal() {
     if (!listDiv) return;
     listDiv.innerHTML = '<div class="loader mx-auto my-4"></div>';
     try {
-        const categories = await servicesApi.getServiceCategories(state.establishmentId);
-        state.serviceCategories = categories; // Armazena no state para uso no modal de serviço
+        const categories = await categoriesApi.getCategories(state.establishmentId, 'services');
+        state.serviceCategories = categories; 
         listDiv.innerHTML = '';
         if (categories.length > 0) {
             listDiv.innerHTML = categories.map(cat => `
@@ -66,16 +69,15 @@ async function fetchAndDisplayCategoriesInModal() {
 }
 
 function openCategoryModal() {
-    // Reutilizando o modal genérico para a gestão de categorias
     const contentHTML = `
         <div class="space-y-4">
             <div class="mb-4">
-                <form id="categoryForm" class="flex gap-4 items-end">
-                    <div class="flex-1">
+                <form id="categoryForm" class="flex flex-col sm:flex-row gap-4 sm:items-end">
+                    <div class="flex-1 w-full">
                         <label for="categoryName" class="block text-sm font-medium text-gray-700">Nova Categoria</label>
                         <input type="text" id="categoryName" placeholder="Nome da categoria" required class="mt-1 w-full p-2 border rounded-md">
                     </div>
-                    <button type="submit" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Adicionar</button>
+                    <button type="submit" class="w-full sm:w-auto py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Adicionar</button>
                 </form>
             </div>
             <div id="categoryList" class="space-y-2 max-h-64 overflow-y-auto p-2 border rounded-md"></div>
@@ -93,7 +95,7 @@ function openCategoryModal() {
         const categoryForm = modalElement.querySelector('#categoryForm');
         if (categoryForm) {
              categoryForm.addEventListener('submit', handleCategoryFormSubmit);
-             categoryForm.addEventListener('click', (e) => {
+             modalElement.addEventListener('click', (e) => {
                  const button = e.target.closest('button[data-action="delete-category"]');
                  if (button) {
                      e.preventDefault(); 
@@ -106,82 +108,12 @@ function openCategoryModal() {
     fetchAndDisplayCategoriesInModal();
 }
 
-
-function renderServicesList() {
-    const listDiv = document.getElementById('servicesList');
-    const searchInput = document.getElementById('serviceSearchInput');
-    if (!listDiv || !searchInput) return;
-
-    const searchTerm = searchInput.value.toLowerCase();
-    const filteredServices = state.services.filter(s => s.name.toLowerCase().includes(searchTerm));
-
-    const categoryMap = new Map((state.serviceCategories || []).map(c => [c.id, c.name]));
-
-    listDiv.innerHTML = '';
-    if (filteredServices.length > 0) {
-        filteredServices.forEach(service => {
-            const card = document.createElement('div');
-            card.className = `service-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300 ${service.active ? 'opacity-100' : 'opacity-50 bg-gray-100'}`;
-            const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
-            const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
-            const categoryName = categoryMap.get(service.categoryId) || 'N/A';
-
-            card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-full h-24 object-cover">
-                <div class="p-3 flex flex-col flex-grow">
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-start mb-1">
-                            <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${service.name}</h3>
-                            <label class="flex items-center cursor-pointer">
-                                <div class="relative">
-                                    <input type="checkbox" data-action="toggle-service-status" data-id="${service.id}" class="sr-only" ${service.active ? 'checked' : ''}>
-                                    <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                                </div>
-                            </label>
-                        </div>
-                        <p class="text-xl font-bold text-indigo-600 mb-1 text-left">R$ ${service.price.toFixed(2)}</p>
-                        <p class="text-xs text-gray-500 text-left mb-2">Categoria: ${categoryName}</p>
-                        <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
-                    </div>
-                    <div class="mt-2 pt-2 border-t flex items-center justify-end gap-2">
-                        <button data-action="edit-service" data-service='${serviceDataString}' class="text-gray-500 hover:text-blue-600 p-1" title="Editar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        <button data-action="delete-service" data-id="${service.id}" class="text-gray-500 hover:text-red-600 p-1" title="Apagar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                    </div>
-                </div>`;
-            listDiv.appendChild(card);
-        });
-    } else {
-        listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum serviço encontrado.</p>`;
-    }
-}
-
-async function fetchBaseData() {
-     const listDiv = document.getElementById('servicesList');
-    if (!listDiv) return;
-    listDiv.innerHTML = '<div class="loader col-span-full mx-auto my-10"></div>';
-    try {
-        // Busca serviços, profissionais E CATEGORIAS
-        const [servicesData, professionalsData, categoriesData] = await Promise.all([
-            servicesApi.getServices(state.establishmentId),
-            professionalsApi.getProfessionals(state.establishmentId),
-            servicesApi.getServiceCategories(state.establishmentId) // <-- NOVA BUSCA
-        ]);
-        state.services = servicesData;
-        state.professionals = professionalsData;
-        state.serviceCategories = categoriesData; // <-- SALVA NO ESTADO
-        renderServicesList();
-    } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
-        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
-    }
-}
-
+// --- LÓGICA DE SERVIÇOS (MODAL) ---
 async function handleServiceFormSubmit(e) {
     e.preventDefault();
     const form = e.target.closest('#serviceModal');
     const serviceId = form.querySelector('#serviceId').value;
     
-    // ... (restante da lógica de comissões inalterada) ...
     const professionalCommissions = {};
     const commissionType = form.querySelector('input[name="commissionType"]:checked').value;
     if (commissionType === 'custom') {
@@ -200,10 +132,10 @@ async function handleServiceFormSubmit(e) {
         name: form.querySelector('#serviceName').value,
         price: parseFloat(form.querySelector('#servicePrice').value),
         duration: parseInt(form.querySelector('#serviceDurationMinutes').value, 10),
-        bufferTime: parseInt(form.querySelector('#serviceBufferTimeMinutes').value, 10) || 0, // <-- CAPTURA bufferTime
-        categoryId: form.querySelector('#serviceCategory').value || null, // <-- CAPTURA A CATEGORIA
+        bufferTime: parseInt(form.querySelector('#serviceBufferTimeMinutes').value, 10) || 0,
+        categoryId: form.querySelector('#serviceCategory').value || null,
         commissionRate: parseFloat(form.querySelector('#serviceCommissionRate').value) || 0,
-        active: true,
+        active: form.querySelector('#serviceStatus').value === 'true', 
         photo: form.querySelector('#servicePhotoBase64').value,
         notes: form.querySelector('#serviceNotes').value,
         commissionType: commissionType,
@@ -218,27 +150,63 @@ async function handleServiceFormSubmit(e) {
         }
         document.getElementById('serviceModal').style.display = 'none';
         showNotification('Sucesso', `Serviço ${serviceId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
-        await fetchBaseData(); // Recarrega com categorias
+        await fetchBaseData(); 
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
 }
 
+function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 'image/jpeg', quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            return reject(new Error('O ficheiro selecionado não é uma imagem.'));
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL(format, quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(new Error('Não foi possível carregar a imagem.'));
+            img.src = event.target.result;
+        };
+        reader.onerror = (err) => reject(new Error('Não foi possível ler o ficheiro.'));
+        reader.readAsDataURL(file);
+    });
+}
+
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
-    const categories = state.serviceCategories || []; // Pega a lista de categorias do estado
+    const categories = state.serviceCategories || []; 
 
     const durationInMinutes = service?.duration || 0; 
-    // CORREÇÃO: Pega o bufferTime do serviço, se existir.
     const bufferTimeInMinutes = service?.bufferTime || 0; 
     
-    // Constrói as opções de categoria
     const categoryOptions = categories.map(c => 
         `<option value="${c.id}" ${service?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
     ).join('');
 
     modal.innerHTML = `
-    <div class="modal-content max-w-3xl">
+    <div class="modal-content max-w-3xl overflow-y-auto max-h-screen">
         <form id="serviceForm">
             <input type="hidden" id="serviceId" value="${service?.id || ''}">
             <input type="hidden" id="servicePhotoBase64" value="${service?.photo || ''}">
@@ -249,13 +217,23 @@ function openServiceModal(service = null) {
             </div>
 
             <div class="border-b border-gray-200 mb-6">
-                <nav class="-mb-px flex space-x-6" aria-label="Tabs">
+                <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                     <button type="button" data-tab="dados" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">Dados do serviço</button>
                     <button type="button" data-tab="comissoes" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Personalizar comissões</button>
                 </nav>
             </div>
 
             <div id="tab-content-dados" class="tab-content space-y-4">
+                
+                <div class="space-y-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Foto do Serviço</label>
+                    <div class="mt-1 flex flex-col items-center">
+                        <img id="servicePhotoPreview" src="${service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto'}" alt="Foto do Serviço" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
+                        <input type="file" id="servicePhotoInput" class="hidden" accept="image/*">
+                        <button type="button" id="servicePhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="serviceName" class="block text-sm font-medium text-gray-700">Nome do serviço</label>
@@ -268,25 +246,32 @@ function openServiceModal(service = null) {
                     <div>
                         <label for="serviceCategory" class="block text-sm font-medium text-gray-700">Categoria</label>
                         <select id="serviceCategory" class="mt-1 w-full p-2 border rounded-md bg-white">
-                             <option value="">Sem Categoria</option>
+                            <option value="">Sem Categoria</option>
                             ${categoryOptions}
                         </select>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
-                         <div>
+                        <div>
                             <label for="serviceDurationMinutes" class="block text-sm font-medium text-gray-700">Duração (minutos)</label>
                             <input type="number" id="serviceDurationMinutes" min="0" value="${durationInMinutes}" class="mt-1 w-full p-2 border rounded-md" required>
-                         </div>
-                         <div>
+                        </div>
+                        <div>
                             <label for="serviceBufferTimeMinutes" class="block text-sm font-medium text-gray-700">Minutos Extras</label>
                             <input type="number" id="serviceBufferTimeMinutes" min="0" value="${bufferTimeInMinutes}" class="mt-1 w-full p-2 border rounded-md">
-                         </div>
+                        </div>
                     </div>
                 </div>
                 <div>
                     <label for="serviceNotes" class="block text-sm font-medium text-gray-700">Observações</label>
                     <textarea id="serviceNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${service?.notes || ''}</textarea>
+                </div>
+                <div>
+                    <label for="serviceStatus" class="block text-sm font-medium text-gray-700">Status</label>
+                    <select id="serviceStatus" class="mt-1 w-full p-2 border rounded-md bg-white">
+                        <option value="true" ${service?.active !== false ? 'selected' : ''}>Ativo</option>
+                        <option value="false" ${service?.active === false ? 'selected' : ''}>Inativo</option>
+                    </select>
                 </div>
             </div>
             
@@ -313,20 +298,32 @@ function openServiceModal(service = null) {
                      <label class="block text-lg font-medium text-gray-800">Comissão por Profissional</label>
                      <p class="text-sm text-gray-500 mb-2">Selecione os profissionais que fazem este serviço e informe a comissão de cada um deles.</p>
                      <div class="border rounded-lg overflow-hidden">
-                        <div class="grid grid-cols-[1fr_auto] items-center p-2 bg-gray-50 font-semibold text-xs text-gray-600">
-                           <span>Profissional</span>
-                           <span class="text-center">Comissão</span>
-                        </div>
-                        <div id="professionalCommissionsList" class="space-y-1 max-h-48 overflow-y-auto p-2"></div>
+                         <div class="grid grid-cols-[1fr_auto] items-center p-2 bg-gray-50 font-semibold text-xs text-gray-600">
+                             <span>Profissional</span>
+                             <span class="text-center">Comissão</span>
+                         </div>
+                         <div id="professionalCommissionsList" class="space-y-1 max-h-48 overflow-y-auto p-2"></div>
                      </div>
                 </div>
             </div>
 
-            <div class="mt-6 pt-6 border-t flex justify-between items-center">
-                <button type="button" data-action="delete-service" data-id="${service?.id || ''}" class="text-red-600 font-semibold hover:underline ${!service ? 'hidden' : ''}">Excluir Serviço</button>
-                <div class="flex gap-4">
-                    <button type="button" data-action="close-modal" data-target="serviceModal" class="py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
-                    <button type="submit" class="py-2 px-6 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-700">Salvar</button>
+            <div class="mt-6 pt-6 border-t flex flex-col-reverse sm:flex-row justify-between items-center gap-3">
+                
+                <button 
+                    type="button" 
+                    data-action="delete-service" 
+                    data-id="${service?.id || ''}" 
+                    class="w-full sm:w-auto text-red-600 hover:text-red-800 transition-colors ${!service ? 'hidden' : ''}"
+                    title="Excluir Serviço"
+                >
+                    <svg class="w-6 h-6 mx-auto sm:mx-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+                
+                <div class="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
+                    <button type="button" data-action="close-modal" data-target="serviceModal" class="w-full sm:w-auto py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
+                    <button type="submit" class="w-full sm:w-auto py-2 px-6 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-700">Salvar</button>
                 </div>
             </div>
         </form>
@@ -334,7 +331,37 @@ function openServiceModal(service = null) {
 
     modal.style.display = 'flex';
 
-    // Lógica das abas
+    modal.addEventListener('click', async (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+
+        const action = button.dataset.action;
+        const serviceId = button.dataset.id;
+
+        if (action === 'close-modal') {
+            modal.style.display = 'none';
+        }
+
+        if (action === 'delete-service') {
+            if (!serviceId) return;
+            
+            modal.style.display = 'none'; 
+            
+            const confirmed = await showConfirmation('Apagar Serviço', 'Tem a certeza que deseja apagar este serviço?');
+            if (confirmed) {
+                try {
+                    await servicesApi.deleteService(serviceId);
+                    showNotification('Sucesso', 'Serviço apagado com sucesso!', 'success');
+                    await fetchBaseData(); 
+                } catch (error) {
+                    showNotification('Erro', `Não foi possível apagar o serviço: ${error.message}`, 'error');
+                }
+            } else {
+                 modal.style.display = 'flex'; // Reabre o modal se cancelar
+            }
+        }
+    });
+
     const tabs = modal.querySelectorAll('.tab-btn');
     const tabContents = modal.querySelectorAll('.tab-content');
     tabs.forEach(tab => {
@@ -350,7 +377,6 @@ function openServiceModal(service = null) {
         });
     });
 
-    // CORREÇÃO: Utiliza document.getElementById que é mais seguro
     const commissionTypeRadios = modal.querySelectorAll('input[name="commissionType"]');
     const defaultCommissionContainer = document.getElementById('defaultCommissionRateContainer');
     const customCommissionContainer = document.getElementById('professionalCommissionsContainer');
@@ -364,78 +390,317 @@ function openServiceModal(service = null) {
     commissionTypeRadios.forEach(radio => radio.addEventListener('change', toggleCommissionView));
     
     const profListContainer = document.getElementById('professionalCommissionsList');
-    profListContainer.innerHTML = state.professionals.map(prof => {
-        const isChecked = service?.professionalCommissions?.[prof.id] !== undefined;
-        const rate = service?.professionalCommissions?.[prof.id] || 0;
-        return `
-            <div class="professional-commission-row flex items-center justify-between p-2 rounded-md ${isChecked ? 'bg-blue-50' : ''}" data-prof-id="${prof.id}">
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                    <img src="${prof.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${prof.name.charAt(0)}`}" class="w-8 h-8 rounded-full object-cover">
-                    <span class="text-sm font-medium">${prof.name}</span>
-                </label>
-                <div class="flex items-center gap-1">
-                    <input type="number" value="${rate}" class="w-20 p-1 border rounded-md text-sm text-center" ${!isChecked ? 'disabled' : ''}>
-                    <span class="text-sm font-semibold">%</span>
+    if (profListContainer) {
+        profListContainer.innerHTML = (state.professionals || []).map(prof => {
+            const isChecked = service?.professionalCommissions?.[prof.id] !== undefined;
+            const rate = service?.professionalCommissions?.[prof.id] || 0;
+            return `
+                <div class="professional-commission-row flex items-center justify-between p-2 rounded-md ${isChecked ? 'bg-blue-50' : ''}" data-prof-id="${prof.id}">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <img src="${prof.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${prof.name.charAt(0)}`}" class="w-8 h-8 rounded-full object-cover">
+                        <span class="text-sm font-medium">${prof.name}</span>
+                    </label>
+                    <div class="flex items-center gap-1">
+                        <input type="number" value="${rate}" class="w-20 p-1 border rounded-md text-sm text-center" ${!isChecked ? 'disabled' : ''}>
+                        <span class="text-sm font-semibold">%</span>
+                    </div>
                 </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
 
-    profListContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-        checkbox.addEventListener('change', (e) => {
-            const row = e.target.closest('.professional-commission-row');
-            row.querySelector('input[type="number"]').disabled = !e.target.checked;
-            row.classList.toggle('bg-blue-50', e.target.checked);
+        profListContainer.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const row = e.target.closest('.professional-commission-row');
+                row.querySelector('input[type="number"]').disabled = !e.target.checked;
+                row.classList.toggle('bg-blue-50', e.target.checked);
+            });
         });
-    });
+    }
 
-    toggleCommissionView();
+    toggleCommissionView(); 
 
     const form = modal.querySelector('#serviceForm');
     
-    const serviceStatusInput = document.createElement('input');
-    serviceStatusInput.type = 'hidden';
-    serviceStatusInput.id = 'serviceStatus';
-    serviceStatusInput.checked = service ? service.active : true;
-    form.appendChild(serviceStatusInput);
+    const photoInput = modal.querySelector('#servicePhotoInput');
+    const photoPreview = modal.querySelector('#servicePhotoPreview');
+    const photoBase64Input = modal.querySelector('#servicePhotoBase64');
+    const originalPhotoSrc = service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto';
+    const originalBase64 = service?.photo || '';
+    
+    modal.querySelector('#servicePhotoButton').addEventListener('click', () => photoInput.click());
+
+    photoInput.onchange = async () => {
+        const file = photoInput.files[0];
+        if (!file) return;
+        photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...'; 
+        try {
+            const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 'image/jpeg', 0.8);
+            const stringLength = resizedBase64.length;
+            const sizeInBytes = (stringLength * 3) / 4; 
+            const maxSizeInBytes = 1000 * 1024; // 1MB
+            if (sizeInBytes > maxSizeInBytes) {
+                throw new Error('A imagem é muito grande mesmo após a compressão.');
+            }
+            photoPreview.src = resizedBase64;
+            photoBase64Input.value = resizedBase64;
+        } catch (error) {
+            console.error("Erro ao processar imagem:", error);
+            showNotification('Erro de Imagem', error.message || 'Não foi possível processar a imagem.', 'error');
+            photoPreview.src = originalPhotoSrc;
+            photoBase64Input.value = originalBase64;
+            photoInput.value = '';
+        }
+    };
     
     form.addEventListener('submit', handleServiceFormSubmit);
+}
+
+// --- SECÇÃO DE RENDERIZAÇÃO DA PÁGINA PRINCIPAL ---
+
+function renderServicesList() {
+    const listDiv = document.getElementById('servicesList');
+    if (!listDiv) return;
+
+    const searchTerm = document.getElementById('serviceSearchInput')?.value.toLowerCase() || '';
+    const categoryFilterValue = document.getElementById('serviceCategoryFilter')?.value || 'all';
+    
+    const categoryMap = new Map((state.serviceCategories || []).map(c => [c.id, c.name]));
+    
+    let filteredServices = (state.services || []).filter(Boolean);
+
+    if (activeServiceFilter !== 'all') {
+        const isActive = activeServiceFilter === 'active';
+        filteredServices = filteredServices.filter(s => (s.active !== false) === isActive); 
+    }
+
+    filteredServices = filteredServices.filter(s => {
+        const nameMatch = s.name.toLowerCase().includes(searchTerm);
+        const categoryMatch = categoryFilterValue === 'all' || s.categoryId === categoryFilterValue;
+        return nameMatch && categoryMatch;
+    });
+
+    listDiv.innerHTML = '';
+    if (filteredServices.length > 0) {
+        filteredServices.forEach(service => {
+            const card = document.createElement('div');
+            const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
+            
+            card.className = `service-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:bg-gray-50 ${service.active !== false ? 'opacity-100' : 'opacity-50 bg-gray-100'}`;
+            card.dataset.action = 'edit-service'; 
+            card.dataset.service = serviceDataString; 
+
+            const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
+            const categoryName = categoryMap.get(service.categoryId) || 'N/A';
+
+            card.innerHTML = `
+                <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-full h-24 object-cover">
+                <div class="p-3 flex flex-col flex-grow">
+                    <div class="flex-grow">
+                        <div class="flex justify-between items-start mb-1">
+                            <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${service.name}</h3>
+                            <label class="flex items-center cursor-pointer" data-action-stop-propagation="true">
+                                <div class="relative">
+                                    <input type="checkbox" data-action="toggle-service-status" data-id="${service.id}" class="sr-only" ${service.active !== false ? 'checked' : ''}>
+                                    <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                                </div>
+                            </label>
+                        </div>
+                        <p class="text-xl font-bold text-indigo-600 mb-1 text-left">R$ ${service.price.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500 text-left mb-2">Categoria: ${categoryName}</p>
+                        <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
+                    </div>
+                </div>`;
+            listDiv.appendChild(card);
+        });
+    } else {
+        // CORREÇÃO: Espaçamento reduzido de py-10 para py-4
+        listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500 py-4">Nenhum serviço encontrado.</p>`;
+    }
+}
+
+function renderServiceIndicators() {
+    const indicators = { active: 0, inactive: 0, total: 0 };
+    
+    const validServices = (state.services || []).filter(Boolean);
+    
+    validServices.forEach(s => {
+        if (s.active === false) {
+            indicators.inactive++;
+        } else {
+            indicators.active++;
+        }
+    });
+    indicators.total = validServices.length; 
+
+    const totalEl = document.getElementById('indicator-total');
+    const activeEl = document.getElementById('indicator-active');
+    const inactiveEl = document.getElementById('indicator-inactive');
+    const popularEl = document.getElementById('indicator-popular');
+
+    if (totalEl) totalEl.textContent = indicators.total;
+    if (activeEl) activeEl.textContent = indicators.active;
+    if (inactiveEl) inactiveEl.textContent = indicators.inactive;
+    
+    if (popularEl) {
+        if (state.mostPopularService && state.mostPopularService.name !== 'N/A') {
+            const serviceName = state.mostPopularService.name.length > 18 ? 
+                state.mostPopularService.name.substring(0, 18) + '...' : 
+                state.mostPopularService.name;
+            popularEl.textContent = serviceName;
+            popularEl.closest('.indicator-card').title = `${state.mostPopularService.name} (${state.mostPopularService.count} agendamentos)`;
+        } else {
+            popularEl.textContent = 'N/A';
+            popularEl.closest('.indicator-card').title = 'Nenhum serviço agendado ainda';
+        }
+    }
+}
+
+function renderServicesView() {
+    const container = document.getElementById('services-content-container');
+    container.innerHTML = `
+        <div class="flex flex-col sm:flex-row gap-4 justify-end items-stretch sm:items-center mb-6">
+            <div class="flex items-center gap-2">
+                <button data-action="new-service" class="w-full sm:w-auto flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    <span>Novo Serviço</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 mb-6">
+            <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full sm:w-64 p-2 border rounded-md shadow-sm">
+            <select id="serviceCategoryFilter" class="w-full sm:w-auto p-2 border rounded-md bg-white shadow-sm">
+                <option value="all">Todas as categorias</option>
+            </select>
+        </div>
+        
+        <div class="flex gap-3 mb-4 overflow-x-auto py-2 lg:grid lg:grid-cols-4 lg:overflow-visible lg:py-0 lg:gap-4">
+            <div data-action="filter-service" data-filter-type="total" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-blue-50 border-l-4 border-blue-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+                <div class="bg-blue-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M5 11v2m14-2v2"></path></svg></div>
+                <div><p class="text-sm text-gray-500 whitespace-nowrap">Total de Serviços</p><p id="indicator-total" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+            </div>
+            <div data-action="filter-service" data-filter-type="active" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-green-50 border-l-4 border-green-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+                <div class="bg-green-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                <div><p class="text-sm text-gray-500 whitespace-nowrap">Serviços Ativos</p><p id="indicator-active" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+            </div>
+            <div data-action="filter-service" data-filter-type="inactive" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-red-50 border-l-4 border-red-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+                <div class="bg-red-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg></div>
+                <div><p class="text-sm text-gray-500 whitespace-nowrap">Serviços Inativos</p><p id="indicator-inactive" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+            </div>
+            <div id="popular-card" data-action="filter-service" data-filter-type="popular" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-gray-50 border-l-4 border-gray-400 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 transition-all opacity-70" title="Carregando...">
+                <div class="bg-gray-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118L2.05 10.1c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg></div>
+                <div><p class="text-sm text-gray-500 whitespace-nowrap">Mais Usados</p><p id="indicator-popular" class="text-xl lg:text-2xl font-bold text-gray-800">...</p></div>
+            </div>
+        </div>
+
+        <div id="servicesList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <!-- CORREÇÃO: Espaçamento reduzido de my-10 para my-4 -->
+            <div class="loader col-span-full mx-auto my-4"></div>
+        </div>
+    `;
+
+    const categoryFilter = document.getElementById('serviceCategoryFilter');
+    if (categoryFilter) {
+        categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
+        (state.serviceCategories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${cat.name}</option>`);
+    }
+
+    renderServiceIndicators();
+    renderServicesList();
+}
+
+function renderServiceReportsView() {
+    const container = document.getElementById('services-content-container');
+    container.innerHTML = `
+        <div class="p-8 text-center">
+            <h3 class="text-xl font-bold text-gray-700">Relatórios de Serviços</h3>
+            <p class="text-gray-500 mt-2">Em breve, aqui poderás ver relatórios detalhados sobre os teus serviços mais rentáveis, mais agendados e muito mais.</p>
+        </div>
+    `;
+}
+
+async function fetchBaseData() {
+    const contentContainer = document.getElementById('services-content-container');
+    if (contentContainer) {
+        const loader = contentContainer.querySelector('.loader');
+        if (loader) loader.style.display = 'block';
+    } else {
+        // Se o container não existe (p.e. a página acabou de carregar)
+        // O loader principal em loadServicesPage já está visível
+    }
+    
+    try {
+        const [servicesData, professionalsData, categoriesData, mostPopularData] = await Promise.all([
+            servicesApi.getServices(state.establishmentId),
+            professionalsApi.getProfessionals(state.establishmentId),
+            categoriesApi.getCategories(state.establishmentId, 'services'), 
+            servicesApi.getMostPopularService(state.establishmentId) 
+        ]);
+        
+        state.services = (servicesData || []).filter(Boolean);
+        state.professionals = (professionalsData || []).filter(Boolean);
+        state.serviceCategories = (categoriesData || []).filter(Boolean);
+        state.mostPopularService = mostPopularData || { name: 'N/A', count: 0 }; 
+        
+        state.services.forEach(s => {
+            if (s.active === undefined) s.active = true;
+        });
+
+        switchTab(currentView);
+
+    } catch (error) {
+        const targetContainer = contentContainer || contentDiv; // Garante que temos onde mostrar o erro
+        targetContainer.innerHTML = '<p class="text-red-500 col-span-full text-center py-10">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
+        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
+    }
+}
+
+function switchTab(targetView) {
+    const container = document.getElementById('services-content-container');
+    if (!container) return;
+    
+    // Se já estamos na view e o conteúdo existe, apenas atualiza
+    if (currentView === targetView && container.children.length > 1 && container.querySelector('.loader') === null) {
+         if(currentView === 'services') {
+            renderServiceIndicators();
+            renderServicesList();
+         }
+         return;
+    }
+    
+    currentView = targetView;
+    activeServiceFilter = 'all'; 
+
+    document.querySelectorAll('#services-tabs button.tab-button').forEach(button => {
+        const isTarget = button.dataset.view === targetView || button.dataset.action === targetView;
+        button.classList.toggle('border-indigo-500', isTarget);
+        button.classList.toggle('text-indigo-600', isTarget);
+        button.classList.toggle('border-transparent', !isTarget);
+        button.classList.toggle('text-gray-500', !isTarget);
+    });
+
+    if (targetView === 'services') renderServicesView();
+    else if (targetView === 'reports') renderServiceReportsView();
+    // Se for 'manage-categories', o listener de clique tratará de abrir o modal
 }
 
 
 // --- 5. EVENT LISTENERS E INICIALIZAÇÃO DA PÁGINA ---
 
 function setupEventListeners() {
-    const pageHandler = async (e) => {
-        const button = e.target.closest('button[data-action]');
-        const toggle = e.target.closest('input[type="checkbox"][data-action="toggle-service-status"]');
-
-        if (button) {
-            const action = button.dataset.action;
-            const serviceId = button.dataset.id;
-
-            if (action === 'new-service') {
-                openServiceModal();
-            } else if (action === 'edit-service') {
-                const serviceData = JSON.parse(button.dataset.service);
-                openServiceModal(serviceData);
-            } else if (action === 'delete-service') {
-                if(!serviceId) return;
-                const confirmed = await showConfirmation('Apagar Serviço', 'Tem a certeza que deseja apagar este serviço?');
-                if (confirmed) {
-                    try {
-                        await servicesApi.deleteService(serviceId);
-                        showNotification('Sucesso', 'Serviço apagado com sucesso!', 'success');
-                        await fetchBaseData();
-                    } catch (error) {
-                        showNotification('Erro', `Não foi possível apagar o serviço: ${error.message}`, 'error');
-                    }
-                }
-            } else if (action === 'manage-categories') { // <-- NOVA AÇÃO
-                 openCategoryModal();
-            }
-        } else if (toggle) {
+    if (pageEventListener) {
+        contentDiv.removeEventListener('click', pageEventListener);
+        contentDiv.removeEventListener('input', pageEventListener);
+        contentDiv.removeEventListener('change', pageEventListener);
+    }
+    
+    pageEventListener = async (e) => {
+        const target = e.target;
+        
+        if (target.closest('[data-action="toggle-service-status"]')) {
+            e.stopPropagation(); 
+            const toggle = target.closest('[data-action="toggle-service-status"]');
             const serviceId = toggle.dataset.id;
             const newStatus = toggle.checked;
             try {
@@ -443,48 +708,118 @@ function setupEventListeners() {
                 const serviceIndex = state.services.findIndex(s => s.id === serviceId);
                 if (serviceIndex > -1) state.services[serviceIndex].active = newStatus;
                 renderServicesList();
+                renderServiceIndicators();
             } catch (error) {
                 showNotification('Erro', `Não foi possível atualizar o status: ${error.message}`, 'error');
                 toggle.checked = !newStatus;
                 renderServicesList();
             }
+            return; 
+        }
+
+        const button = target.closest('button[data-action], button[data-view], .indicator-card[data-action], .service-card[data-action]');
+        
+        if (target.id === 'serviceSearchInput' || target.id === 'serviceCategoryFilter') {
+            renderServicesList();
+            return;
+        }
+
+        if (!button) return; 
+
+        if (button.hasAttribute('data-view')) {
+            switchTab(button.dataset.view);
+            return;
+        }
+
+        const action = button.dataset.action;
+        
+        switch (action) {
+            case 'new-service':
+                openServiceModal();
+                break;
+            
+            case 'edit-service':
+                const serviceData = JSON.parse(button.dataset.service);
+                openServiceModal(serviceData);
+                break;
+
+            case 'manage-categories': 
+                // Assegura que a aba de categorias fica ativa
+                document.querySelectorAll('#services-tabs button.tab-button').forEach(btn => {
+                     btn.classList.toggle('border-indigo-500', btn.dataset.action === 'manage-categories');
+                     btn.classList.toggle('text-indigo-600', btn.dataset.action === 'manage-categories');
+                     btn.classList.toggle('border-transparent', btn.dataset.action !== 'manage-categories');
+                     btn.classList.toggle('text-gray-500', btn.dataset.action !== 'manage-categories');
+                });
+                // Limpa o container e abre o modal
+                document.getElementById('services-content-container').innerHTML = '';
+                openCategoryModal();
+                break;
+            
+            case 'filter-service':
+                const filterType = button.dataset.filterType;
+                if (filterType === 'popular') return; 
+                
+                activeServiceFilter = (filterType === 'total') ? 'all' : filterType;
+                
+                document.querySelectorAll('.indicator-card[data-action="filter-service"]').forEach(card => {
+                    const cardType = card.dataset.filterType;
+                    const isTotalOrAll = (cardType === 'total' && activeServiceFilter === 'all');
+                    const isSelected = (cardType === activeServiceFilter) || isTotalOrAll;
+
+                    card.classList.toggle('ring-2', isSelected);
+                    card.classList.toggle('ring-indigo-500', isSelected);
+                    card.classList.toggle('shadow-lg', isSelected);
+                });
+                renderServicesList();
+                break;
         }
     };
 
-    contentDiv.addEventListener('click', pageHandler);
-    contentDiv.addEventListener('input', e => {
-        if (e.target.id === 'serviceSearchInput') {
-            renderServicesList();
-        }
-    });
+    contentDiv.addEventListener('click', pageEventListener);
+    contentDiv.addEventListener('input', pageEventListener);
+    contentDiv.addEventListener('change', pageEventListener);
 }
 
 // --- 6. FUNÇÃO PRINCIPAL EXPORTADA ---
 
 export async function loadServicesPage() {
     contentDiv.innerHTML = `
-        <section>
-            <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
-                <h2 class="text-3xl font-bold text-gray-800">Gerir Serviços</h2>
-                <div class="flex items-center gap-4 w-full md:w-auto">
-                    <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
-                    <button data-action="manage-categories" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">
-                         Gerir Categorias
-                    </button>
-                    <button data-action="new-service" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                        Novo Serviço
-                    </button>
+        <section class="p-4 sm:p-6">
+            <div class="bg-white rounded-lg shadow-md">
+                <div id="services-tabs" class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-6 px-4 sm:px-6 overflow-x-auto" aria-label="Tabs">
+                        <button data-view="services" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">
+                            Serviços
+                        </button>
+                        <button data-action="manage-categories" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Categorias
+                        </button>
+                        <button data-view="reports" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Relatórios
+                        </button>
+                    </nav>
+                </div>
+                
+                <div id="services-content-container" class="p-4 sm:p-6">
+                    <div class="loader mx-auto my-4"></div>
                 </div>
             </div>
-            <div id="servicesList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4"></div>
         </section>`;
 
     setupEventListeners();
     
-    // Garante que os profissionais estejam carregados antes de abrir qualquer modal
-    if (!state.professionals || state.professionals.length === 0) {
-        state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
+    try {
+        if (!state.professionals || state.professionals.length === 0) {
+            state.professionals = await professionalsApi.getProfessionals(state.establishmentId) || [];
+        }
+    } catch (error) {
+        console.error("Falha ao carregar profissionais:", error);
+        showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
+        state.professionals = [];
     }
     
-    await fetchBaseData(); // Alterado para a nova função que busca categorias
+    currentView = 'services';
+    activeServiceFilter = 'all';
+    await fetchBaseData();
 }
