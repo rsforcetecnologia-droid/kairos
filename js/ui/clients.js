@@ -136,9 +136,9 @@ function renderDetailTabs(activeTab = 'cadastro') {
 
     // Adiciona listeners de clique às abas
     tabContainer.querySelectorAll('.tab-btn').forEach(button => {
-        button.addEventListener('click', (e) => { // CORREÇÃO: Adicionado 'e'
-            e.preventDefault(); // CORREÇÃO: Previne o comportamento padrão do botão
-            e.stopPropagation(); // CORREÇÃO: Impede que o clique suba e feche o modal
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             renderDetailContent(button.dataset.tab);
         });
     });
@@ -357,13 +357,31 @@ function openClientDetailModal(client) {
             </footer>
         </div>
     `;
+    
+    // (NOVA) Lógica de Modal Responsivo
+    const isMobile = window.innerWidth < 768; // Tailwind 'md' breakpoint
+    const modalMaxWidth = isMobile ? 'max-w-full' : 'max-w-3xl';
 
-    // Utiliza showGenericModal para renderizar a estrutura
+    // (MODIFICADO) Utiliza showGenericModal com maxWidth dinâmico
     showGenericModal({
         title: title,
         contentHTML: modalContent,
-        maxWidth: 'max-w-3xl'
+        maxWidth: modalMaxWidth
     });
+    
+    // (NOVO) Se for mobile, força o modal a ter 100% de altura/sem bordas
+    if (isMobile) {
+        const modalElement = document.getElementById('genericModal');
+        if (modalElement) {
+            // Encontra a "caixa" do modal (assumindo que é o div com a classe maxWidth)
+            const modalBox = modalElement.querySelector(`.${modalMaxWidth.replace(':', '\\:')}`);
+            if (modalBox) {
+                modalBox.style.height = '100vh'; // Ocupa a altura toda
+                modalBox.style.maxHeight = '100vh';
+                modalBox.style.borderRadius = '0'; // Remove bordas arredondadas
+            }
+        }
+    }
     
     // Renderiza o conteúdo inicial (Cadastro)
     renderDetailContent('cadastro');
@@ -377,10 +395,8 @@ function openClientDetailModal(client) {
         });
     }
     
-    // --- CORREÇÃO APLICADA AQUI: Adiciona listeners diretos aos botões de Ação Global ---
     const cancelBtn = document.getElementById('cancelDetailViewBtn');
     if (cancelBtn) {
-        // Redefine a ação do botão Cancelar para fechar o modal e carregar a lista
         cancelBtn.addEventListener('click', (e) => {
             e.preventDefault();
             document.getElementById('genericModal').style.display = 'none';
@@ -390,7 +406,6 @@ function openClientDetailModal(client) {
     
     const deleteBtn = document.getElementById('deleteClientBtn');
     if (deleteBtn) {
-        // Redefine a ação do botão Excluir para chamar a função de exclusão
         deleteBtn.addEventListener('click', async () => {
             await handleDeleteClient();
         });
@@ -449,7 +464,7 @@ async function handleDeleteClient() {
 
 // --- FUNÇÃO PRINCIPAL E CARREGAMENTO DA PÁGINA ---
 
-// NOVO: Renderiza a lista de clientes com filtros aplicados
+// (MODIFICADO) Renderiza a lista de clientes com cards responsivos
 function renderClientListWithFilters(filteredClients, totalClients) {
     const listDiv = document.getElementById('clientsList');
     if (!listDiv) return;
@@ -459,75 +474,70 @@ function renderClientListWithFilters(filteredClients, totalClients) {
 
     if (filteredClients.length > 0) {
         
-        // Verifica se o filtro de inativos está ativo
         const isInactiveFilterActive = activeFilterKey === 'inactive';
-        // NOVO: Verifica se o filtro de aniversariantes está ativo
         const isBirthdayFilterActive = activeFilterKey === 'birthdays';
 
         filteredClients.forEach(client => {
             const clientCard = document.createElement('div');
+            // (MODIFICADO) O card agora é flex-col por padrão
             clientCard.className = `client-card bg-white rounded-lg shadow p-4 flex flex-col cursor-pointer`;
             clientCard.dataset.clientId = client.id;
             
-            // Simulação de Saldo (O valor 'loyaltyPoints' será usado como Saldo/Pontos para simulação)
             const balance = client.loyaltyPoints || 0;
-            const balanceText = balance > 0 ? `R$ ${balance.toFixed(2)}` : 'Não informado';
+            // (MODIFICADO) Formato do saldo
+            const balanceText = loyaltySettings.enabled ? `${balance} pts` : `R$ ${balance.toFixed(2)}`;
 
-            // Lógica do WhatsApp:
+            // Lógica do WhatsApp (Original)
             let whatsappButton = '';
             const cleanedPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
             const whatsappLinkBase = `https://wa.me/55${cleanedPhone}?text=`;
             
             if (isInactiveFilterActive) {
-                // Botão de Recuperação (para clientes inativos)
                 const whatsappMessage = encodeURIComponent(INACTIVE_MESSAGE_TEMPLATE(client.name, establishmentName));
-                
                 whatsappButton = `
                     <a href="${whatsappLinkBase + whatsappMessage}" target="_blank" title="Enviar Mensagem de Recuperação (WhatsApp)" class="text-white bg-blue-500 hover:bg-blue-600 p-2 rounded-full flex-shrink-0 ml-2 shadow-md">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-                    </a>
-                `;
+                    </a>`;
             } else if (isBirthdayFilterActive) {
-                // Botão de Aniversário (só aparece nesta aba, e apenas para quem faz aniversário hoje)
                 const isTodayBirthday = isClientBirthdayToday(client);
-
                 if (isTodayBirthday) {
                     const whatsappMessage = encodeURIComponent(BIRTHDAY_MESSAGE_TEMPLATE(client.name, establishmentName));
-                    
                     whatsappButton = `
                         <a href="${whatsappLinkBase + whatsappMessage}" target="_blank" title="Enviar Parabéns por WhatsApp" class="text-white bg-green-500 hover:bg-green-600 p-2 rounded-full flex-shrink-0 ml-2 shadow-md">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.333 0 2-1 2-2s-.667-2-2-2-2 1-2 2 .667 2 2 2zM2 15h20M7 15l2 6h6l2-6M7 15a2 2 0 01-2-2V7a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2"/></svg>
-                        </a>
-                    `;
+                        </a>`;
                 }
             }
 
-
+            // --- (NOVO) HTML do Card Responsivo ---
             clientCard.innerHTML = `
                 <div class="flex items-center mb-3">
-                    <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl">
+                    <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xl flex-shrink-0">
                         ${client.name.charAt(0).toUpperCase()}
                     </div>
                     <div class="ml-4 flex-grow min-w-0">
                         <p class="font-bold text-gray-800 truncate">${client.name}</p>
-                        <p class="text-sm text-gray-500">${client.phone}</p>
+                        <p class="text-sm text-gray-500 md:hidden">${client.phone}</p>
                     </div>
                     ${whatsappButton}
                 </div>
-                <div class="grid grid-cols-[1fr_1fr_3rem] items-center text-sm pt-2 border-t">
-                    <div class="flex items-center gap-1">
+                
+                <div class="flex md:grid md:grid-cols-[1fr_1fr_3rem] items-center text-sm pt-2 border-t">
+                    <div class="flex-1 md:w-auto">
                         <span class="font-semibold text-gray-700">Saldo/Pontos:</span>
-                        <span class="font-bold text-indigo-600">${balanceText}</span>
+                        <span class="font-bold text-indigo-600 ml-1">${balanceText}</span>
                     </div>
-                    <div class="flex justify-end items-center">
+                    <div class="hidden md:flex justify-start md:justify-end items-center">
                         <span class="font-semibold text-gray-700">Telefone:</span>
                         <span class="text-gray-600 ml-1">${client.phone}</span>
                     </div>
-                    <button class="text-gray-500 hover:text-indigo-600 p-1 rounded-full justify-self-end" title="Ação">
+                    <button class="text-gray-500 hover:text-indigo-600 p-1 rounded-full justify-self-end ml-2 md:ml-0" title="Ação">
                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M18 12a6 6 0 11-12 0 6 6 0 0112 0z" /></svg>
                     </button>
                 </div>
             `;
+            // --- Fim do Card ---
+
             clientCard.addEventListener('click', () => openClientDetailModal(client));
             listDiv.appendChild(clientCard);
         });
@@ -536,32 +546,39 @@ function renderClientListWithFilters(filteredClients, totalClients) {
     }
 }
 
-// NOVO: Lógica de Filtragem (Atualizada para incluir clientes inativos)
+// (MODIFICADO) Lógica de Filtragem (lê os selects corretos)
 function getFilteredClients(searchTerm = '', filterKey = 'all') {
     const term = searchTerm.toLowerCase();
     const isSearching = term.length > 0;
     
-    let selectedMonth = 0; // 0 significa 'Todos os meses'
-    let selectedDays = 90; // Valor padrão para inativos
+    let selectedMonth = 0;
+    let selectedDays = 90;
+    
+    // (NOVO) Detecta se está em ecrã mobile
+    const isMobile = window.innerWidth < 768;
     
     if (filterKey === 'birthdays') {
-        const monthSelect = document.getElementById('birthMonthFilter');
+        // (MODIFICADO) Lê o ID do select correto (mobile ou desktop)
+        const selectId = isMobile ? 'mobileBirthMonthFilter' : 'birthMonthFilter';
+        const monthSelect = document.getElementById(selectId);
         if (monthSelect) {
             selectedMonth = parseInt(monthSelect.value, 10);
         }
     } else if (filterKey === 'inactive') {
-        const daysSelect = document.getElementById('inactiveDaysFilter');
+        // (MODIFICADO) Lê o ID do select correto (mobile ou desktop)
+        const selectId = isMobile ? 'mobileInactiveDaysFilter' : 'inactiveDaysFilter';
+        const daysSelect = document.getElementById(selectId);
         if (daysSelect) {
             selectedDays = parseInt(daysSelect.value, 10);
         }
     }
 
-    // 1. Filtrar por termo de pesquisa (se houver)
+    // 1. Filtrar por termo de pesquisa
     let filteredBySearch = allClientsData.filter(c => 
         !isSearching || c.name.toLowerCase().includes(term) || (c.phone || '').includes(term)
     );
     
-    // 2. Aplicar filtro de chave
+    // 2. Aplicar filtro de chave (Lógica original)
     switch (filterKey) {
         case 'birthdays':
             const today = new Date();
@@ -570,42 +587,35 @@ function getFilteredClients(searchTerm = '', filterKey = 'all') {
             
             return filteredBySearch.filter(c => {
                 if (!c.dob) return false;
-                
                 const dobParts = c.dob.split('/');
                 if (dobParts.length !== 2) return false;
-                
                 const dobDay = parseInt(dobParts[0], 10);
                 const dobMonth = parseInt(dobParts[1], 10);
                 
                 if (selectedMonth === 99) {
-                     return dobDay === currentDay && dobMonth === currentMonth; // Filtro de Hoje
+                     return dobDay === currentDay && dobMonth === currentMonth;
                 } else if (selectedMonth === 0) {
-                     return dobMonth >= 1 && dobMonth <= 12; // Todos que têm DOB preenchido
+                     return dobMonth >= 1 && dobMonth <= 12;
                 } else {
-                    return dobMonth === selectedMonth; // Filtro por Mês
+                    return dobMonth === selectedMonth;
                 }
             });
             
         case 'inactive':
-            // Simulação: Filtra clientes que "não agendam há mais de X dias"
             return filteredBySearch.filter(c => {
-                // NO CÓDIGO REAL, VOCÊ USARIA c.lastAppointmentDaysAgo.
-                // Aqui, usamos um mock para simular o comportamento de filtragem.
+                // (Lembre-se da nossa conversa anterior sobre 'lastAppointmentDaysAgo' vs 'lastService')
+                // Esta lógica usa a simulação até o backend ser ajustado.
                 const daysAgo = c.lastAppointmentDaysAgo || mockLastAppointmentDaysAgo(); 
                 return daysAgo > selectedDays;
             });
             
         case 'scheduled':
-            // Simulação: Clientes que têm "próximo agendamento" (apenas simulação)
-            return filteredBySearch.filter(c => c.loyaltyPoints > 50); 
+            return filteredBySearch.filter(c => c.loyaltyPoints > 50); // Simulação
         case 'credit':
-            // Simulação: Clientes com algum saldo positivo (ex: pontos fidelidade > 0)
-            return filteredBySearch.filter(c => (c.loyaltyPoints || 0) > 0); 
+            return filteredBySearch.filter(c => (c.loyaltyPoints || 0) > 0); // Simulação
         case 'debit':
-            // Simulação: Clientes com algum débito (não implementado no modelo de dados, ignorado)
             return filteredBySearch.filter(c => false);
         case 'package':
-            // Simulação: Clientes com pacote (não implementado no modelo de dados, ignorado)
             return filteredBySearch.filter(c => false); 
         case 'all':
         default:
@@ -613,58 +623,104 @@ function getFilteredClients(searchTerm = '', filterKey = 'all') {
     }
 }
 
+// (MODIFICADO) Atualiza ambos os menus de filtro (desktop e mobile)
 async function handleFilterClick(newFilterKey) {
     
-    // Referências aos containers dos seletores
+    // (MODIFICADO) Referências para os containers de select (desktop E mobile)
     const monthFilterContainer = document.getElementById('birthMonthFilterContainer');
-    const monthSelect = document.getElementById('birthMonthFilter');
+    const mobileMonthFilterContainer = document.getElementById('mobileBirthMonthFilterContainer');
     const daysFilterContainer = document.getElementById('inactiveDaysFilterContainer');
-    const daysSelect = document.getElementById('inactiveDaysFilter');
+    const mobileDaysFilterContainer = document.getElementById('mobileInactiveDaysFilterContainer');
     
-    // 1. Gerenciar a visibilidade dos seletores
+    // 1. Gerenciar a visibilidade dos seletores (em ambos os menus)
     if (newFilterKey === 'birthdays') {
         monthFilterContainer?.classList.remove('hidden');
+        mobileMonthFilterContainer?.classList.remove('hidden'); // (NOVO)
         daysFilterContainer?.classList.add('hidden');
-        // Força a seleção para 'Hoje' (99) no primeiro clique
-        if (monthSelect && activeFilterKey !== 'birthdays') monthSelect.value = 99;
+        mobileDaysFilterContainer?.classList.add('hidden'); // (NOVO)
+        
+        if (activeFilterKey !== 'birthdays') {
+            // Força 'Hoje' no desktop
+            const monthSelect = document.getElementById('birthMonthFilter');
+            if (monthSelect) monthSelect.value = 99;
+            // Força 'Hoje' no mobile
+            const mobileMonthSelect = document.getElementById('mobileBirthMonthFilter');
+            if (mobileMonthSelect) mobileMonthSelect.value = 99;
+        }
+
     } else if (newFilterKey === 'inactive') {
         daysFilterContainer?.classList.remove('hidden');
+        mobileDaysFilterContainer?.classList.remove('hidden'); // (NOVO)
         monthFilterContainer?.classList.add('hidden');
-        // Força a seleção para '90 dias'
-        if (daysSelect && activeFilterKey !== 'inactive') daysSelect.value = 90;
+        mobileMonthFilterContainer?.classList.add('hidden'); // (NOVO)
+
+        if (activeFilterKey !== 'inactive') {
+             // Força '90 dias' no desktop
+            const daysSelect = document.getElementById('inactiveDaysFilter');
+            if (daysSelect) daysSelect.value = 90;
+            // Força '90 dias' no mobile
+            const mobileDaysSelect = document.getElementById('mobileInactiveDaysFilter');
+            if (mobileDaysSelect) mobileDaysSelect.value = 90;
+        }
     } else {
         monthFilterContainer?.classList.add('hidden');
+        mobileMonthFilterContainer?.classList.add('hidden'); // (NOVO)
         daysFilterContainer?.classList.add('hidden');
+        mobileDaysFilterContainer?.classList.add('hidden'); // (NOVO)
     }
 
-    // Se o filtro não for 'birthdays' ou 'inactive' e a chave for a mesma, retorna.
     if (activeFilterKey === newFilterKey && newFilterKey !== 'birthdays' && newFilterKey !== 'inactive') return;
     
     activeFilterKey = newFilterKey;
     
-    // 2. Atualiza o estilo dos botões de filtro
+    // 2. Atualiza o estilo de TODOS os botões de filtro (desktop e mobile)
     document.querySelectorAll('.client-filter-btn').forEach(btn => {
         btn.classList.remove('bg-white', 'text-indigo-600', 'shadow');
         btn.classList.add('bg-gray-100', 'text-gray-600');
     });
     
-    const activeBtn = document.querySelector(`[data-filter-key="${newFilterKey}"]`);
-    if (activeBtn) {
-        activeBtn.classList.remove('bg-gray-100', 'text-gray-600');
-        activeBtn.classList.add('bg-white', 'text-indigo-600', 'shadow');
-    }
+    const activeBtns = document.querySelectorAll(`[data-filter-key="${newFilterKey}"]`);
+    activeBtns.forEach(activeBtn => {
+        if (activeBtn) {
+            activeBtn.classList.remove('bg-gray-100', 'text-gray-600');
+            activeBtn.classList.add('bg-white', 'text-indigo-600', 'shadow');
+        }
+    });
 
     const searchTerm = document.getElementById('clientSearchInput').value;
     const filtered = getFilteredClients(searchTerm, activeFilterKey);
     renderClientListWithFilters(filtered, allClientsData.length);
 }
 
-
+// (MODIFICADO) Esta é a função principal, agora com o HTML e lógica de filtro atualizados
 export async function loadClientsPage() {
     currentView = 'list';
+    
+    // --- (NOVO) HTML Otimizado para Mobile ---
     contentDiv.innerHTML = `
-        <section id="client-list-view">
-            <div class="flex flex-wrap gap-2 p-4 bg-gray-100 border-b">
+        <section id="client-list-view" class="flex flex-col h-full">
+            
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 bg-white md:bg-transparent md:shadow-none shadow-sm">
+                <div class="flex-grow">
+                    <input type="text" id="clientSearchInput" placeholder="Pesquisar por nome ou telefone..." class="w-full p-3 border border-gray-300 rounded-lg text-sm">
+                </div>
+                <div class="flex gap-2">
+                    <button id="openFilterSheetBtn" class="flex-1 md:hidden py-3 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                        Filtros
+                    </button>
+                    <button data-action="new-client" class="flex-1 py-3 px-4 bg-green-100 text-green-700 font-semibold rounded-lg hover:bg-green-200 flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                        <span class="hidden md:inline">Adicionar cliente</span>
+                    </button>
+                    <button data-action="print-list" class="hidden md:flex py-3 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 whitespace-nowrap items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0v2a2 2 0 002 2h6a2 2 0 002-2v-2M9 17h6" /></svg>
+                        Imprimir
+                    </button>
+                </div>
+            </div>
+
+            <div id="desktop-filter-bar" class="hidden md:flex flex-wrap gap-2 p-4 bg-gray-100 border-b">
                 <button data-filter-key="all" class="client-filter-btn bg-white text-indigo-600 shadow font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                     Total de clientes
@@ -677,7 +733,6 @@ export async function loadClientsPage() {
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.5a9.5 9.5 0 1019 0 9.5 9.5 0 00-19 0z" /></svg>
                     Clientes com crédito
                 </button>
-                
                 <div class="flex items-center gap-2">
                     <button data-filter-key="birthdays" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.333 0 2-1 2-2s-.667-2-2-2-2 1-2 2 .667 2 2 2zM2 15h20M7 15l2 6h6l2-6M7 15a2 2 0 01-2-2V7a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2"/></svg>
@@ -710,25 +765,11 @@ export async function loadClientsPage() {
                 </button>
             </div>
             
-            <div class="flex flex-wrap gap-4 justify-between items-center mb-4 p-4 bg-white rounded-lg shadow-sm">
-                <div class="flex-1 min-w-[200px]">
-                    <input type="text" id="clientSearchInput" placeholder="Pesquisar..." class="w-full p-3 border border-gray-300 rounded-lg">
-                </div>
-                <div class="flex items-center gap-3 flex-shrink-0">
-                    <button data-action="new-client" class="py-3 px-4 bg-green-100 text-green-700 font-semibold rounded-lg hover:bg-green-200 whitespace-nowrap flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-                        Adicionar cliente
-                    </button>
-                    <button data-action="print-list" class="py-3 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 whitespace-nowrap flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0v2a2 2 0 002 2h6a2 2 0 002-2v-2M9 17h6" /></svg>
-                        Imprimir
-                    </button>
-                </div>
+            <div class="px-4 md:px-1">
+                <p id="client-count" class="text-sm text-gray-500 my-4">A carregar clientes...</p>
             </div>
             
-            <p id="client-count" class="text-sm text-gray-500 mb-4 px-1">A carregar clientes...</p>
-            
-            <div class="grid grid-cols-[3rem_2fr_1fr_1fr_3rem] gap-4 p-2 font-semibold text-xs text-gray-500 uppercase border-b mb-3">
+            <div class="hidden md:grid grid-cols-[3rem_2fr_1fr_1fr_3rem] gap-4 p-2 font-semibold text-xs text-gray-500 uppercase border-b mb-3">
                 <span>Foto</span>
                 <span>Nome</span>
                 <span>Saldo/Pontos</span>
@@ -736,10 +777,65 @@ export async function loadClientsPage() {
                 <span>Ação</span>
             </div>
 
-            <div id="clientsList" class="space-y-3">
+            <div id="clientsList" class="flex-1 overflow-y-auto space-y-3 p-2 md:p-0">
                 <div class="loader col-span-full mx-auto"></div>
             </div>
         </section>
+
+        <div id="filter-overlay" class="fixed inset-0 bg-black bg-opacity-50 hidden" style="z-index: 39;"></div>
+        
+        <div id="filter-sheet" class="fixed bottom-0 left-0 right-0 p-4 bg-white rounded-t-2xl shadow-lg" style="z-index: 40;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-800">Filtrar por</h3>
+                <button id="closeFilterSheetBtn" class="text-gray-500 hover:text-gray-800">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div id="mobile-filter-list" class="space-y-2 max-h-[60vh] overflow-y-auto">
+                <button data-filter-key="all" class="client-filter-btn bg-white text-indigo-600 shadow font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    Total de clientes
+                </button>
+                <button data-filter-key="scheduled" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Agendados
+                </button>
+                <button data-filter-key="credit" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.5a9.5 9.5 0 1019 0 9.5 9.5 0 00-19 0z" /></svg>
+                    Clientes com crédito
+                </button>
+                <div class="flex items-center gap-2">
+                    <button data-filter-key="birthdays" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.333 0 2-1 2-2s-.667-2-2-2-2 1-2 2 .667 2 2 2zM2 15h20M7 15l2 6h6l2-6M7 15a2 2 0 01-2-2V7a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2"/></svg>
+                        Aniversariantes
+                    </button>
+                    <span id="mobileBirthMonthFilterContainer" class="hidden">
+                        <select id="mobileBirthMonthFilter" class="p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 font-semibold shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            ${getMonthOptionsHTML()}
+                        </select>
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button data-filter-key="inactive" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Clientes Inativos
+                    </button>
+                    <span id="mobileInactiveDaysFilterContainer" class="hidden">
+                        <select id="mobileInactiveDaysFilter" class="p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 font-semibold shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            ${getInactiveDaysOptionsHTML()}
+                        </select>
+                    </span>
+                </div>
+                <button data-filter-key="debit" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    Clientes em débito
+                </button>
+                <button data-filter-key="package" class="client-filter-btn bg-gray-100 text-gray-600 font-semibold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                    Clientes com pacote
+                </button>
+            </div>
+        </div>
     `;
 
     try {
@@ -759,43 +855,75 @@ export async function loadClientsPage() {
         document.getElementById('clientsList').innerHTML = '<p class="text-red-500 col-span-full text-center">Erro ao carregar dados dos clientes.</p>';
     }
 
-    // --- GESTOR DE EVENTOS GLOBAL DA PÁGINA ---
+    // --- (NOVA) LÓGICA DO BOTTOM SHEET E FILTROS ---
     
-    // Adiciona listener para o seletor de meses
-    const monthFilterSelect = document.getElementById('birthMonthFilter');
-    if (monthFilterSelect) {
-        monthFilterSelect.addEventListener('change', () => {
-            // Se o filtro de aniversariantes estiver ativo, refiltra ao mudar o mês
-            if (activeFilterKey === 'birthdays') {
-                const searchTerm = document.getElementById('clientSearchInput').value;
-                const filtered = getFilteredClients(searchTerm, activeFilterKey);
-                renderClientListWithFilters(filtered, allClientsData.length);
-            }
-        });
-    }
+    // Referências aos elementos do sheet
+    const filterSheet = document.getElementById('filter-sheet');
+    const filterOverlay = document.getElementById('filter-overlay');
+    const openFilterBtn = document.getElementById('openFilterSheetBtn');
+    const closeFilterBtn = document.getElementById('closeFilterSheetBtn');
 
-    // NOVO: Adiciona listener para o seletor de dias inativos
-    const daysFilterSelect = document.getElementById('inactiveDaysFilter');
-    if (daysFilterSelect) {
-        daysFilterSelect.addEventListener('change', () => {
-            // Se o filtro de inativos estiver ativo, refiltra ao mudar a quantidade de dias
-            if (activeFilterKey === 'inactive') {
-                const searchTerm = document.getElementById('clientSearchInput').value;
-                const filtered = getFilteredClients(searchTerm, activeFilterKey);
-                renderClientListWithFilters(filtered, allClientsData.length);
-            }
-        });
-    }
+    // Funções para abrir/fechar
+    const openSheet = () => {
+        filterSheet.classList.add('show');
+        filterOverlay.classList.remove('hidden');
+    };
+    const closeSheet = () => {
+        filterSheet.classList.remove('show');
+        filterOverlay.classList.add('hidden');
+    };
 
-    contentDiv.addEventListener('click', async (e) => {
-        const actionTarget = e.target.closest('[data-action]');
+    // Listeners para abrir/fechar
+    if(openFilterBtn) openFilterBtn.addEventListener('click', openSheet);
+    if(closeFilterBtn) closeFilterBtn.addEventListener('click', closeSheet);
+    if(filterOverlay) filterOverlay.addEventListener('click', closeSheet);
+
+    // (NOVO) Handler de clique genérico para filtros
+    const filterClickHandler = (e) => {
         const filterBtn = e.target.closest('.client-filter-btn');
-        const cardTarget = e.target.closest('.client-card');
-
         if (filterBtn) {
             handleFilterClick(filterBtn.dataset.filterKey);
-            return;
+            // Fecha o sheet se estiver em mobile
+            if (window.innerWidth < 768) closeSheet();
         }
+    };
+
+    // (MODIFICADO) Anexa o handler aos DOIS containers de filtro
+    const desktopFilterBar = document.getElementById('desktop-filter-bar');
+    const mobileFilterList = document.getElementById('mobile-filter-list');
+    
+    if (desktopFilterBar) desktopFilterBar.addEventListener('click', filterClickHandler);
+    if (mobileFilterList) mobileFilterList.addEventListener('click', filterClickHandler);
+
+    // (NOVO) Função para configurar listeners de selects (para ambos os menus)
+    const setupSelectListener = (selectId) => {
+        const select = document.getElementById(selectId);
+        if (select) {
+            select.addEventListener('change', () => {
+                // Se o filtro relevante (aniversário ou inativo) estiver ativo, refiltra
+                if (activeFilterKey === 'birthdays' || activeFilterKey === 'inactive') {
+                    const searchTerm = document.getElementById('clientSearchInput').value;
+                    const filtered = getFilteredClients(searchTerm, activeFilterKey);
+                    renderClientListWithFilters(filtered, allClientsData.length);
+                }
+            });
+        }
+    };
+
+    // (MODIFICADO) Configura os listeners para os 4 selects
+    setupSelectListener('birthMonthFilter');
+    setupSelectListener('mobileBirthMonthFilter');
+    setupSelectListener('inactiveDaysFilter');
+    setupSelectListener('mobileInactiveDaysFilter');
+
+    // --- (FIM DA NOVA LÓGICA) ---
+
+
+    // --- GESTOR DE EVENTOS GLOBAL DA PÁGINA (Original, mas modificado) ---
+    
+    contentDiv.addEventListener('click', async (e) => {
+        const actionTarget = e.target.closest('[data-action]');
+        const cardTarget = e.target.closest('.client-card');
 
         if (currentView === 'list') {
             if (actionTarget) {

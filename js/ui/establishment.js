@@ -1,3 +1,5 @@
+// js/ui/establishment.js
+
 import * as establishmentApi from '../api/establishments.js';
 import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
@@ -14,6 +16,21 @@ const colorThemes = {
     sky: { name: 'Azul Céu', main: '#0284c7', light: '#e0f2fe', text: '#ffffff' },
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
+
+// (NOVO) Menu de itens (definido globalmente para ser acessível por todas as funções)
+const menuItems = [
+    { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
+    { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
+    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
+    { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
+    { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
+    { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
+    { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
+    { id: 'delete-account', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m-7-10V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3M4 7h16', label: 'Excluir conta' },
+];
+
+// (NOVO) Variável para guardar os dados do estabelecimento
+let establishmentData = null; 
 
 // --- 1. FUNÇÕES AUXILIARES ---
 
@@ -50,7 +67,8 @@ async function handleSave(formData, event) {
         saveButton.textContent = 'A Salvar...';
     }
     try {
-        const existingData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
+        // (MODIFICADO) Usa a variável 'establishmentData' em cache
+        const existingData = establishmentData || await establishmentApi.getEstablishmentDetails(state.establishmentId);
         const updatePromises = [];
         
         const { ownerName, ...firestoreData } = formData; // Separa ownerName
@@ -59,12 +77,12 @@ async function handleSave(formData, event) {
         if (ownerName && ownerName !== state.userName) {
              const user = auth.currentUser;
              if (user) {
-                 updatePromises.push(updateProfile(user, { displayName: ownerName })
-                     .then(() => {
-                         state.userName = ownerName;
-                         // A atualização do nome no sidebar é feita pelo main.js após o re-render
-                     })
-                 );
+                  updatePromises.push(updateProfile(user, { displayName: ownerName })
+                        .then(() => {
+                            state.userName = ownerName;
+                            // A atualização do nome no sidebar é feita pelo main.js após o re-render
+                        })
+                  );
              }
         }
         
@@ -74,6 +92,9 @@ async function handleSave(formData, event) {
 
         await Promise.all(updatePromises);
         
+        // (NOVO) Atualiza os dados em cache
+        establishmentData = updatedData;
+
         showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
         
         if (firestoreData.name) {
@@ -92,11 +113,12 @@ async function handleSave(formData, event) {
 }
 
 // --- 2. FUNÇÕES DE RENDERIZAÇÃO DAS SECÇÕES ---
+// (MODIFICADO) Todas as funções 'render' agora recebem um 'container' para renderizar
+// e os seus seletores internos (getElementById) são alterados para 'container.querySelector'
 
-function renderPersonalDataSection(data) {
-    const container = document.getElementById('settings-content');
+function renderPersonalDataSection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Dados Gerais e de Contato</h3>
                 <button type="submit" form="personal-data-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
@@ -141,25 +163,24 @@ function renderPersonalDataSection(data) {
             </form>
         </div>
     `;
-    document.getElementById('personal-data-form').addEventListener('submit', (e) => {
+    container.querySelector('#personal-data-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
-            ownerName: document.getElementById('ownerName').value, // Novo campo
-            name: document.getElementById('establishmentName').value,
-            phone: document.getElementById('establishmentPhone').value,
-            document: document.getElementById('establishmentCnpjCpf').value,
-            email: document.getElementById('establishmentEmail').value,
-            address: document.getElementById('establishmentAddress').value,
-            website: document.getElementById('establishmentWebsite').value,
+            ownerName: container.querySelector('#ownerName').value, // Novo campo
+            name: container.querySelector('#establishmentName').value,
+            phone: container.querySelector('#establishmentPhone').value,
+            document: container.querySelector('#establishmentCnpjCpf').value,
+            email: container.querySelector('#establishmentEmail').value,
+            address: container.querySelector('#establishmentAddress').value,
+            website: container.querySelector('#establishmentWebsite').value,
         };
         handleSave(formData, e);
     });
 }
 
-function renderChangePasswordSection() {
-    const container = document.getElementById('settings-content');
+function renderChangePasswordSection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Alterar Senha</h3>
                 <button type="submit" form="change-password-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Nova Senha</button>
@@ -176,10 +197,10 @@ function renderChangePasswordSection() {
             </form>
         </div>
     `;
-    document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+    container.querySelector('#change-password-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const newPassword = document.getElementById('newPassword').value;
-        const confirmPassword = document.getElementById('confirmPassword').value;
+        const newPassword = container.querySelector('#newPassword').value;
+        const confirmPassword = container.querySelector('#confirmPassword').value;
         if (newPassword !== confirmPassword) {
             showNotification('Erro', 'As senhas não coincidem.', 'error');
             return;
@@ -205,10 +226,9 @@ function renderChangePasswordSection() {
     });
 }
 
-function renderBrandingSection(data) {
-    const container = document.getElementById('settings-content');
+function renderBrandingSection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Identidade Visual e Cores</h3>
                 <button type="submit" form="branding-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
@@ -216,7 +236,7 @@ function renderBrandingSection(data) {
             <form id="branding-form" class="space-y-8">
                 <input type="hidden" id="establishmentLogoBase64">
                 <input type="hidden" id="establishmentThemeColor">
-                <div class="flex items-center gap-6">
+                <div class="flex flex-col md:flex-row items-center gap-6">
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Logotipo</label>
                         <img id="establishmentLogoPreview" src="${data.logo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Logo'}" class="mt-2 h-24 w-24 rounded-lg object-contain border p-1 bg-gray-50">
@@ -240,35 +260,34 @@ function renderBrandingSection(data) {
             </form>
         </div>
     `;
-    document.getElementById('establishmentLogoBase64').value = data.logo || '';
-    renderColorPalette(data.themeColor || 'indigo');
-    document.getElementById('establishmentLogoButton').onclick = () => document.getElementById('establishmentLogoInput').click();
-    document.getElementById('establishmentLogoInput').onchange = (e) => {
+    container.querySelector('#establishmentLogoBase64').value = data.logo || '';
+    renderColorPalette(data.themeColor || 'indigo', container); // Passa o container
+    container.querySelector('#establishmentLogoButton').onclick = () => container.querySelector('#establishmentLogoInput').click();
+    container.querySelector('#establishmentLogoInput').onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = (ev) => {
-                document.getElementById('establishmentLogoPreview').src = ev.target.result;
-                document.getElementById('establishmentLogoBase64').value = ev.target.result;
+                container.querySelector('#establishmentLogoPreview').src = ev.target.result;
+                container.querySelector('#establishmentLogoBase64').value = ev.target.result;
             };
             reader.readAsDataURL(file);
         }
     };
-    document.getElementById('branding-form').addEventListener('submit', (e) => {
+    container.querySelector('#branding-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
-            logo: document.getElementById('establishmentLogoBase64').value,
-            welcomeMessage: document.getElementById('establishmentWelcomeMessage').value,
-            themeColor: document.getElementById('establishmentThemeColor').value
+            logo: container.querySelector('#establishmentLogoBase64').value,
+            welcomeMessage: container.querySelector('#establishmentWelcomeMessage').value,
+            themeColor: container.querySelector('#establishmentThemeColor').value
         };
         handleSave(formData, e);
     });
 }
 
-function renderBookingSection(data) {
-    const container = document.getElementById('settings-content');
+function renderBookingSection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Agendamento Online</h3>
                 <button type="submit" form="booking-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
@@ -283,20 +302,19 @@ function renderBookingSection(data) {
             </form>
         </div>
     `;
-    renderSlotIntervalSelector(data.slotInterval || 30);
-    document.getElementById('booking-form').addEventListener('submit', (e) => {
+    renderSlotIntervalSelector(data.slotInterval || 30, container); // Passa o container
+    container.querySelector('#booking-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
-            slotInterval: parseInt(document.getElementById('establishmentSlotInterval').value, 10)
+            slotInterval: parseInt(container.querySelector('#establishmentSlotInterval').value, 10)
         };
         handleSave(formData, e);
     });
 }
 
-function renderWorkingHoursSection(data) {
-    const container = document.getElementById('settings-content');
+function renderWorkingHoursSection(data, container) {
     container.innerHTML = `
-         <div class="bg-white p-6 rounded-lg shadow-md">
+         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Horário de Funcionamento</h3>
                 <button type="submit" form="working-hours-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Horários</button>
@@ -306,7 +324,7 @@ function renderWorkingHoursSection(data) {
             </form>
         </div>
     `;
-    const workingHoursContainer = document.getElementById('establishmentWorkingHoursContainer');
+    const workingHoursContainer = container.querySelector('#establishmentWorkingHoursContainer');
     const scheduleData = data.workingHours || {};
     Object.keys(daysOfWeek).forEach(dayKey => {
         const dayData = scheduleData[dayKey] || {};
@@ -339,26 +357,25 @@ function renderWorkingHoursSection(data) {
             card.classList.toggle('disabled', !toggle.checked);
         }
     });
-    document.getElementById('working-hours-form').addEventListener('submit', (e) => {
+    container.querySelector('#working-hours-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const workingHours = {};
         Object.keys(daysOfWeek).forEach(dayKey => {
             workingHours[dayKey] = {
-                active: document.getElementById(`est-${dayKey}-active`).checked,
-                start: document.getElementById(`est-${dayKey}-start`).value,
-                end: document.getElementById(`est-${dayKey}-end`).value,
-                breakStart: document.getElementById(`est-${dayKey}-breakStart`).value,
-                breakEnd: document.getElementById(`est-${dayKey}-breakEnd`).value,
+                active: container.querySelector(`#est-${dayKey}-active`).checked,
+                start: container.querySelector(`#est-${dayKey}-start`).value,
+                end: container.querySelector(`#est-${dayKey}-end`).value,
+                breakStart: container.querySelector(`#est-${dayKey}-breakStart`).value,
+                breakEnd: container.querySelector(`#est-${dayKey}-breakEnd`).value,
             };
         });
         handleSave({ workingHours }, e);
     });
 }
 
-function renderLoyaltySection(data) {
-    const container = document.getElementById('settings-content');
+function renderLoyaltySection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
              <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Plano de Fidelidade</h3>
                 <button type="submit" form="loyalty-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
@@ -379,57 +396,77 @@ function renderLoyaltySection(data) {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Prémios (Níveis de Pontuação)</label>
-                    <div class="grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
+                    
+                    <div class="hidden md:grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
                         <span>Pontos</span>
                         <span>Descrição do Prémio</span>
                         <span>Valor do Desconto (R$)</span>
                         <span></span>
                     </div>
-                    <div id="loyaltyTiersContainer"></div>
+                    
+                    <div id="loyaltyTiersContainer" class="space-y-4 md:space-y-2"></div>
+                    
                     <button type="button" id="add-loyalty-tier" class="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Adicionar Prémio</button>
                 </div>
             </form>
         </div>
     `;
     const loyaltyProgram = data.loyaltyProgram || {};
-    document.getElementById('loyaltyEnabled').checked = loyaltyProgram.enabled || false;
-    document.getElementById('loyaltyPointsPerCurrency').value = loyaltyProgram.pointsPerCurrency || 10;
-    const tiersContainer = document.getElementById('loyaltyTiersContainer');
-    tiersContainer.innerHTML = (loyaltyProgram.tiers || []).map(tier => `
-        <div class="loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2">
-            <input type="number" placeholder="Pontos" data-field="points" value="${tier.points || ''}" class="w-full p-2 border rounded-md">
-            <input type="text" placeholder="Descrição do Prémio" data-field="reward" value="${tier.reward || ''}" class="w-full p-2 border rounded-md">
-            <div class="flex items-center"><span class="mr-1">R$</span><input type="number" placeholder="Valor" data-field="discount" value="${tier.discount || ''}" class="w-full p-2 border rounded-md"></div>
-            <button type="button" class="remove-loyalty-tier bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200">&times;</button>
-        </div>
-    `).join('');
-    document.getElementById('add-loyalty-tier').addEventListener('click', () => {
+    container.querySelector('#loyaltyEnabled').checked = loyaltyProgram.enabled || false;
+    container.querySelector('#loyaltyPointsPerCurrency').value = loyaltyProgram.pointsPerCurrency || 10;
+    const tiersContainer = container.querySelector('#loyaltyTiersContainer');
+    
+    // (NOVO) Função para criar uma linha (card) de prémio
+    const createTierRow = (tier = {}) => {
         const newTier = document.createElement('div');
-        newTier.className = 'loyalty-tier-row grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-2';
+        // (MODIFICADO) Classes responsivas para a grelha
+        newTier.className = 'loyalty-tier-row'; // A classe CSS fará o resto
         newTier.innerHTML = `
-            <input type="number" placeholder="Pontos" data-field="points" class="w-full p-2 border rounded-md">
-            <input type="text" placeholder="Descrição do Prémio" data-field="reward" class="w-full p-2 border rounded-md">
-            <div class="flex items-center"><span class="mr-1">R$</span><input type="number" placeholder="Valor" data-field="discount" class="w-full p-2 border rounded-md"></div>
-            <button type="button" class="remove-loyalty-tier bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200">&times;</button>
+            <div>
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Pontos</label>
+                <input type="number" placeholder="Pontos" data-field="points" value="${tier.points || ''}" class="w-full p-2 border rounded-md">
+            </div>
+            <div>
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Descrição do Prémio</label>
+                <input type="text" placeholder="Descrição do Prémio" data-field="reward" value="${tier.reward || ''}" class="w-full p-2 border rounded-md">
+            </div>
+            <div>
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Valor do Desconto (R$)</label>
+                <div class="flex items-center"><span class="mr-1">R$</span><input type="number" placeholder="Valor" data-field="discount" value="${tier.discount || ''}" class="w-full p-2 border rounded-md"></div>
+            </div>
+            <button type="button" class="remove-loyalty-tier bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 md:bg-transparent md:text-red-500 md:hover:bg-red-100">&times;</button>
         `;
-        tiersContainer.appendChild(newTier);
+        return newTier;
+    };
+    
+    // Renderiza prémios existentes
+    (loyaltyProgram.tiers || []).forEach(tier => {
+        tiersContainer.appendChild(createTierRow(tier));
     });
+    
+    // Adiciona novo prémio
+    container.querySelector('#add-loyalty-tier').addEventListener('click', () => {
+        tiersContainer.appendChild(createTierRow());
+    });
+    
     tiersContainer.addEventListener('click', e => {
-        if (e.target.classList.contains('remove-loyalty-tier')) {
-            e.target.closest('.loyalty-tier-row').remove();
+        const removeButton = e.target.closest('.remove-loyalty-tier');
+        if (removeButton) {
+            removeButton.closest('.loyalty-tier-row').remove();
         }
     });
-    document.getElementById('loyalty-form').addEventListener('submit', e => {
+    
+    container.querySelector('#loyalty-form').addEventListener('submit', e => {
         e.preventDefault();
-        const loyaltyTiers = Array.from(document.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => ({
+        const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => ({
             points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0,
             reward: row.querySelector('input[data-field="reward"]').value,
             discount: parseFloat(row.querySelector('input[data-field="discount"]').value) || 0
         }));
         const formData = {
             loyaltyProgram: {
-                enabled: document.getElementById('loyaltyEnabled').checked,
-                pointsPerCurrency: parseFloat(document.getElementById('loyaltyPointsPerCurrency').value) || 1,
+                enabled: container.querySelector('#loyaltyEnabled').checked,
+                pointsPerCurrency: parseFloat(container.querySelector('#loyaltyPointsPerCurrency').value) || 1,
                 tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward)
             }
         };
@@ -437,10 +474,9 @@ function renderLoyaltySection(data) {
     });
 }
 
-async function renderFinancialIntegrationSection(data) {
-    const container = document.getElementById('settings-content');
+async function renderFinancialIntegrationSection(data, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Integração Financeira Padrão</h3>
                 <button type="submit" form="financial-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
@@ -469,18 +505,18 @@ async function renderFinancialIntegrationSection(data) {
             financialApi.getCostCenters()
         ]);
         const financialIntegration = data.financialIntegration || {};
-        document.getElementById('financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
-        document.getElementById('financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
+        container.querySelector('#financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
+        container.querySelector('#financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar os dados para a integração financeira.', 'error');
     }
 
-    document.getElementById('financial-form').addEventListener('submit', (e) => {
+    container.querySelector('#financial-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
             financialIntegration: {
-                defaultNaturezaId: document.getElementById('financialNatureId').value || null,
-                defaultCentroDeCustoId: document.getElementById('financialCostCenterId').value || null,
+                defaultNaturezaId: container.querySelector('#financialNatureId').value || null,
+                defaultCentroDeCustoId: container.querySelector('#financialCostCenterId').value || null,
             }
         };
         handleSave(formData, e);
@@ -488,10 +524,9 @@ async function renderFinancialIntegrationSection(data) {
 }
 
 
-function renderPlaceholderSection(title) {
-    const container = document.getElementById('settings-content');
+function renderPlaceholderSection(title, container) {
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-lg shadow-md">
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <h3 class="text-xl font-bold text-gray-800">${title}</h3>
             <p class="mt-4 text-gray-500">Esta secção ainda não foi implementada.</p>
         </div>
@@ -500,12 +535,12 @@ function renderPlaceholderSection(title) {
 
 // --- Funções Auxiliares ---
 
-function renderColorPalette(currentThemeKey = 'indigo') {
-    const container = document.getElementById('color-palette-container');
-    const themeInput = document.getElementById('establishmentThemeColor');
-    if (!container || !themeInput) return;
+function renderColorPalette(currentThemeKey = 'indigo', container) {
+    const paletteContainer = container.querySelector('#color-palette-container');
+    const themeInput = container.querySelector('#establishmentThemeColor');
+    if (!paletteContainer || !themeInput) return;
     
-    container.innerHTML = '';
+    paletteContainer.innerHTML = '';
     Object.entries(colorThemes).forEach(([key, theme]) => {
         const isSelected = key === currentThemeKey;
         const swatch = document.createElement('div');
@@ -518,37 +553,37 @@ function renderColorPalette(currentThemeKey = 'indigo') {
         `;
         swatch.addEventListener('click', () => {
             themeInput.value = key;
-            renderColorPalette(key);
+            renderColorPalette(key, container); // Passa o container recursivamente
         });
-        container.appendChild(swatch);
+        paletteContainer.appendChild(swatch);
     });
     themeInput.value = currentThemeKey;
 }
 
-function renderSlotIntervalSelector(currentValue) {
-    const container = document.getElementById('slotIntervalContainer');
-    const intervalInput = document.getElementById('establishmentSlotInterval');
-    if (!container || !intervalInput) return;
+function renderSlotIntervalSelector(currentValue, container) {
+    const slotContainer = container.querySelector('#slotIntervalContainer');
+    const intervalInput = container.querySelector('#establishmentSlotInterval');
+    if (!slotContainer || !intervalInput) return;
 
     const intervals = [
         { label: '10 min', value: 10 }, { label: '15 min', value: 15 }, { label: '20 min', value: 20 }, 
         { label: '30 min', value: 30 }, { label: '45 min', value: 45 }, { label: '1 hora', value: 60 }
     ];
 
-    container.innerHTML = intervals.map(interval => {
+    slotContainer.innerHTML = intervals.map(interval => {
         const isSelected = interval.value === currentValue;
         return `<button type="button" data-value="${interval.value}" 
-                        class="interval-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors 
-                               ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                    class="interval-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors 
+                           ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
                     ${interval.label}
                 </button>`;
     }).join('');
     intervalInput.value = currentValue;
 
-    container.querySelectorAll('.interval-btn').forEach(btn => {
+    slotContainer.querySelectorAll('.interval-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             intervalInput.value = btn.dataset.value;
-            container.querySelectorAll('.interval-btn').forEach(b => {
+            slotContainer.querySelectorAll('.interval-btn').forEach(b => {
                 b.classList.remove('bg-indigo-600', 'text-white');
                 b.classList.add('bg-gray-200', 'text-gray-700');
             });
@@ -560,7 +595,55 @@ function renderSlotIntervalSelector(currentValue) {
 
 // --- 2. FUNÇÃO PRINCIPAL E NAVEGAÇÃO ---
 
+// (NOVA) Função para renderizar a tela de "Detalhe" (o formulário)
+async function showSettingsDetailView(sectionId) {
+    const menuItem = menuItems.find(item => item.id === sectionId);
+    if (!menuItem) {
+        console.error("Secção de definições não encontrada:", sectionId);
+        return;
+    }
+
+    // Renderiza a estrutura da página de detalhe
+    contentDiv.innerHTML = `
+        <div class="bg-white p-4 shadow-md sticky top-0 z-10 md:relative">
+            <button data-action="back-to-list" class="flex items-center gap-2 font-semibold text-indigo-600 hover:text-indigo-800">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                Voltar
+            </button>
+        </div>
+        
+        <div id="settings-content-detail" class="p-4">
+            <div class="flex justify-center items-center h-full"><div class="loader"></div></div>
+        </div>
+    `;
+
+    // Adiciona o listener para o botão "Voltar"
+    contentDiv.querySelector('button[data-action="back-to-list"]').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadEstablishmentPage(); // Volta para a lista
+    });
+
+    // Pega o novo container de conteúdo
+    const detailContainer = document.getElementById('settings-content-detail');
+
+    // Chama a função de renderização específica para preencher o container
+    switch (sectionId) {
+        case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
+        case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
+        case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
+        case 'booking': renderBookingSection(establishmentData, detailContainer); break;
+        case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
+        case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
+        case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
+        default:
+            renderPlaceholderSection(menuItem ? menuItem.label : 'Definições', detailContainer);
+    }
+}
+
+// (MODIFICADO) Esta função agora renderiza a "Lista Mestra"
 export async function loadEstablishmentPage() {
+    
+    // (MODIFICADO) Mostra um loader na página inteira
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -568,76 +651,58 @@ export async function loadEstablishmentPage() {
                 Definições
             </h2>
         </div>
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            <div class="lg:col-span-1">
-                <div class="bg-white p-4 rounded-lg shadow-md">
-                    <div class="text-center mb-4">
-                         <div class="relative w-24 h-24 mx-auto">
-                            <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${state.userName ? state.userName.charAt(0) : 'U'}" class="w-24 h-24 rounded-full object-cover">
-                        </div>
-                        <h3 class="font-bold mt-2 text-lg">${state.userName}</h3>
-                        <p class="text-sm text-gray-500">${auth.currentUser.email || 'Não disponível'}</p>
-                    </div>
-                    <nav id="settings-menu" class="space-y-1">
-                    </nav>
-                </div>
+        <div class="flex justify-center items-center h-64"><div class="loader"></div></div>
+    `;
+
+    // (MODIFICADO) Busca os dados apenas uma vez e armazena na variável global
+    if (!establishmentData) {
+        try {
+            establishmentData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
+        } catch (error) {
+            showNotification('Erro Fatal', 'Não foi possível carregar os dados do estabelecimento.', 'error');
+            contentDiv.innerHTML = '<p class="text-red-500">Erro ao carregar dados.</p>';
+            return;
+        }
+    }
+
+    // (NOVO) Renderiza a "Lista Mestra"
+    contentDiv.innerHTML = `
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" /></svg>
+                Definições
+            </h2>
+        </div>
+        
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+            <div class="text-center">
+                 <div class="relative w-24 h-24 mx-auto">
+                    <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${state.userName ? state.userName.charAt(0) : 'U'}" class="w-24 h-24 rounded-full object-cover">
+                 </div>
+                 <h3 class="font-bold mt-2 text-lg">${state.userName}</h3>
+                 <p class="text-sm text-gray-500">${auth.currentUser.email || 'Não disponível'}</p>
             </div>
-            <div id="settings-content" class="lg:col-span-3">
-                <div class="flex justify-center items-center h-full"><div class="loader"></div></div>
-            </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-lg shadow-md">
+            <nav id="settings-menu-list" class="space-y-1">
+                ${menuItems.map(item => `
+                    <button data-section="${item.id}" class="w-full flex items-center gap-3 p-3 rounded-lg text-gray-700 hover:bg-gray-100 font-semibold text-sm">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${item.icon}"></path></svg>
+                        <span class="flex-1 text-left">${item.label}</span>
+                        <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                `).join('')}
+            </nav>
         </div>
     `;
 
-    const establishmentData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
-
-    const menuItems = [
-        { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
-        { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
-        { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
-        { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
-        { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
-        { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
-        { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
-        { id: 'delete-account', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m-7-10V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3M4 7h16', label: 'Excluir conta' },
-    ];
-
-    const menuContainer = document.getElementById('settings-menu');
-    menuContainer.innerHTML = menuItems.map(item => `
-        <button data-section="${item.id}" class="w-full flex items-center gap-3 p-3 rounded-lg text-gray-700 hover:bg-gray-100 font-semibold text-sm">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${item.icon}"></path></svg>
-            <span class="flex-1 text-left">${item.label}</span>
-            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-        </button>
-    `).join('');
-
-    const navigate = async (sectionId) => {
-        document.querySelectorAll('#settings-menu button').forEach(btn => btn.classList.remove('bg-gray-200', 'text-indigo-600'));
-        const activeButton = document.querySelector(`#settings-menu button[data-section="${sectionId}"]`);
-        if(activeButton) {
-            activeButton.classList.add('bg-gray-200', 'text-indigo-600');
-        }
-
-        switch (sectionId) {
-            case 'personal-data': renderPersonalDataSection(establishmentData); break;
-            case 'change-password': renderChangePasswordSection(); break;
-            case 'branding': renderBrandingSection(establishmentData); break;
-            case 'booking': renderBookingSection(establishmentData); break;
-            case 'working-hours': renderWorkingHoursSection(establishmentData); break;
-            case 'loyalty': renderLoyaltySection(establishmentData); break;
-            case 'financial': await renderFinancialIntegrationSection(establishmentData); break; // Adicionado await
-            default:
-                const menuItem = menuItems.find(item => item.id === sectionId);
-                renderPlaceholderSection(menuItem ? menuItem.label : 'Definições');
-        }
-    };
-
-    menuContainer.addEventListener('click', (e) => {
+    // (NOVO) Adiciona o listener para a lista mestre
+    contentDiv.querySelector('#settings-menu-list').addEventListener('click', (e) => {
         const button = e.target.closest('button[data-section]');
         if (button) {
-            navigate(button.dataset.section);
+            e.preventDefault();
+            showSettingsDetailView(button.dataset.section);
         }
     });
-
-    // Inicia na primeira secção
-    navigate('personal-data');
 }

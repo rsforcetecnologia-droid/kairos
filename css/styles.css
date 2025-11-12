@@ -889,10 +889,10 @@ body {
     transition: margin-left 0.3s ease-in-out;
     
     /* DOCUMENTAÇÃO (CSS) - CORREÇÃO PRINCIPAL:
-      - A linha 'padding-top: 4rem;' foi REMOVIDA daqui.
-      - O layout do seu HTML (header e main) flui normalmente,
-        pelo que este padding-top não era necessário e quebrava o layout.
-    */
+     - A linha 'padding-top: 4rem;' foi REMOVIDA daqui.
+     - O layout do seu HTML (header e main) flui normalmente,
+       pelo que este padding-top não era necessário e quebrava o layout.
+     */
 }
 
 /* Largura da sidebar colapsada: 4.5rem */
@@ -1054,5 +1054,123 @@ body {
     /* 2. O Detalhe desliza para o centro */
     #comandas-layout.detail-view-active #comanda-detail-container {
         transform: translateX(-100%); /* Move 100% para a esquerda (da sua posição original de +100%) */
+    }
+}
+
+/* ============================================== */
+/* == CSS para o Bottom Sheet de Filtros Mobile == */
+/* ============================================== */
+
+/* O "sheet" (menu) que desliza de baixo */
+#filter-sheet {
+    transform: translateY(100%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 40; /* Acima do overlay, abaixo do modal principal */
+}
+#filter-sheet.show {
+    transform: translateY(0);
+}
+
+/* O fundo escuro que cobre a página */
+#filter-overlay {
+    z-index: 39;
+}
+
+/* Ajustes para os botões de filtro dentro do sheet mobile */
+#mobile-filter-list .client-filter-btn,
+#mobile-filter-list .flex.items-center.gap-2 {
+    width: 100%;
+    justify-content: start; /* Alinha o texto à esquerda */
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+#mobile-filter-list .flex.items-center.gap-2 {
+    flex-direction: column; /* Empilha o select abaixo do botão */
+    align-items: flex-start;
+}
+
+#mobile-filter-list .flex.items-center.gap-2 select {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* ============================================== */
+/* == CSS para a Página de Usuários (Mobile) == */
+/* ============================================== */
+
+/* --- (NOVO) ESTILOS PARA CARD DE USUÁRIO CLICÁVEL --- */
+.user-card-clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.user-card-clickable:hover {
+     transform: translateY(-4px);
+     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+}
+
+/* * Impede que os botões internos tenham um "hover" duplo,
+ * mas re-ativa o hover para o botão de excluir.
+*/
+.user-card-clickable:hover .action-btn-delete:hover {
+     background-color: #fee2e2; /* red-100 */
+     color: #ef4444; /* red-500 */
+}
+
+
+/* --- (NOVO) ESTILOS PARA O BOTÃO FLUTUANTE (FAB) --- */
+#fab-new-user {
+    position: fixed;
+    bottom: 1.5rem;  /* 24px */
+    right: 1.5rem;   /* 24px */
+    z-index: 30;     /* Acima do conteúdo, abaixo dos modals */
+    width: 3.5rem;   /* 56px */
+    height: 3.5rem;  /* 56px */
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+    border-radius: 9999px; /* rounded-full */
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+#fab-new-user:hover {
+    transform: scale(1.05);
+    background-color: #4338ca; /* indigo-700 */
+}
+
+/* ============================================== */
+/* == CSS para a Página de Configurações (Mobile) == */
+/* ============================================== */
+
+/* --- (REMOVIDO) O seletor de abas mobile foi removido --- */
+
+/* --- (NOVO) ESTILO PARA A GRELHA DE PRÉMIOS DE FIDELIDADE --- */
+.loyalty-tier-row {
+    /* No mobile, é um card */
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background-color: #f9fafb;
+}
+
+.loyalty-tier-row input {
+    width: 100%;
+}
+
+/* No desktop (md e acima), volta à grelha horizontal */
+@media (min-width: 768px) {
+    .loyalty-tier-row {
+        grid-template-columns: 1fr 2fr 1fr auto;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        background-color: transparent;
     }
 }

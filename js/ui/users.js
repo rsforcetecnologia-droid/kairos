@@ -30,6 +30,7 @@ const permissions = {
 let usersPageClickListener = null;
 let usersPageChangeListener = null;
 
+// (FUNÇÃO MODIFICADA)
 function renderUsersList(users) {
     const listContainer = document.getElementById('usersListContainer');
     if (!listContainer) return;
@@ -44,40 +45,50 @@ function renderUsersList(users) {
     users.sort((a, b) => (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1));
 
     listContainer.innerHTML = users.map(user => {
-        const permissionCount = user.permissions ? Object.values(user.permissions).filter(p => p.view).length : 0;
         const userDataString = JSON.stringify(user).replace(/'/g, "&apos;");
         const isActive = user.status === 'active';
         
         // Adiciona a busca pelo nome do profissional associado
         const professional = state.professionals.find(p => p.id === user.professionalId); 
         const professionalName = professional ? professional.name : 'N/A';
-        const photoSrc = professional?.photo || `https://placehold.co/64x64/E2E8F0/4A5568?text=${encodeURIComponent(user.name.charAt(0))}`;
+        // (MODIFICADO) Usa o nome do usuário para o placeholder se não houver profissional
+        const photoInitials = professional ? professional.name.charAt(0) : user.name.charAt(0);
+        const photoSrc = professional?.photo || `https://placehold.co/64x64/E2E8F0/4A5568?text=${encodeURIComponent(photoInitials)}`;
 
+        // --- (INÍCIO DA MODIFICAÇÃO DO CARD) ---
+        // O card agora é 'flex' (horizontal), imagem 'w-16 h-16', e texto 'p-3'
         return `
-        <div class="bg-white rounded-lg shadow-md p-4 flex flex-col text-center transition-opacity ${!isActive ? 'opacity-60' : ''}">
-            <img src="${photoSrc}" alt="Foto de Perfil" class="w-20 h-20 rounded-full mx-auto mb-3 border-4 border-gray-200 object-cover">
-            <div class="flex-grow">
-                <p class="font-bold text-gray-800">${user.name}</p>
-                <p class="text-sm text-gray-500 truncate">${user.email}</p>
-                <p class="text-xs text-gray-400 mt-2">Profissional: <span class="font-semibold text-gray-700">${professionalName}</span></p>
-                <p class="text-xs text-gray-400 pt-2 border-t mt-2">Acesso a ${permissionCount} módulos</p>
-            </div>
-            <div class="mt-4 flex items-center justify-center gap-2">
-                <label class="flex items-center cursor-pointer" title="${isActive ? 'Ativo' : 'Inativo'}">
-                    <div class="relative">
-                        <input type="checkbox" data-action="toggle-user-status" data-user-id="${user.id}" class="sr-only" ${isActive ? 'checked' : ''}>
-                        <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                    </div>
-                </label>
-                <button data-action="edit-user" data-user='${userDataString}' class="text-gray-500 hover:text-blue-600 p-2 rounded-full transition-colors" title="Editar Permissões">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
-                </button>
-                <button data-action="delete-user" data-user-id="${user.id}" class="text-gray-500 hover:text-red-600 p-2 rounded-full transition-colors" title="Excluir Usuário">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                </button>
+        <div class="user-card-clickable bg-white rounded-lg shadow-sm border overflow-hidden flex cursor-pointer ${!isActive ? 'opacity-60' : ''}" 
+             data-action="edit-user" 
+             data-user='${userDataString}'>
+            
+            <img src="${photoSrc}" alt="Foto de Perfil" class="w-16 h-16 object-cover flex-shrink-0 pointer-events-none">
+            
+            <div class="p-3 flex-grow flex flex-col justify-between">
+                
+                <div class="pointer-events-none">
+                    <p class="font-bold text-gray-800 text-sm truncate">${user.name}</p>
+                    <p class="text-xs text-gray-500 truncate">${user.email}</p>
+                    <p class="text-xs text-gray-400 mt-1">Prof: <span class="font-semibold text-gray-700">${professionalName}</span></p>
+                </div>
+                
+                <div class="mt-2 flex items-center justify-start gap-2">
+                    <label class="flex items-center cursor-pointer" title="${isActive ? 'Ativo' : 'Inativo'}">
+                        <div class="relative">
+                            <input type="checkbox" data-action="toggle-user-status" data-user-id="${user.id}" class="sr-only" ${isActive ? 'checked' : ''}>
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                        </div>
+                    </label>
+                    
+                    <button data-action="delete-user" data-user-id="${user.id}" class="text-gray-500 hover:text-red-600 p-2 rounded-full transition-colors action-btn-delete" title="Excluir Usuário">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
             </div>
         </div>
-    `}).join('');
+    `
+    // --- (FIM DA MODIFICAÇÃO DO CARD) ---
+    }).join('');
 }
 
 function filterAndRenderUsers() {
@@ -264,6 +275,27 @@ async function showUserFormView(user = null) {
             </div>
         </div>
     `;
+
+    // --- (NOVA LÓGICA DE TELA CHEIA MOBILE) ---
+    // Isto aplica o estilo de tela cheia ao formulário em telemóveis
+    const isMobile = window.innerWidth < 768; // Tailwind 'md' breakpoint
+    const formContainer = form.querySelector('.bg-white'); // Pega o container principal do form
+
+    if (isMobile && formContainer) {
+        // Remove os estilos de "cartão" do desktop
+        formContainer.classList.remove('rounded-xl', 'shadow-2xl', 'sm:p-6');
+        
+        // Ajusta a <section> pai para não ter espaçamento
+        const parentSection = form.closest('section');
+        if (parentSection) {
+            parentSection.style.padding = '0';
+            parentSection.style.margin = '0';
+        }
+        
+        // Garante que o padding interno do form ainda exista
+        formContainer.classList.add('p-4'); 
+    }
+    // --- (FIM DA NOVA LÓGICA) ---
     
     // --- NOVO LISTENER: Atualiza a foto ao mudar o profissional ---
     const professionalSelect = form.querySelector('#userProfessionalId');
@@ -399,7 +431,7 @@ async function fetchAndRenderUsers() {
 
 export async function loadUsersPage() {
     contentDiv.innerHTML = `
-        <div id="user-list-view">
+        <div id="user-list-view" class="relative min-h-full" style="padding-bottom: 6rem;">
             <section>
                 <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
                     <h2 class="text-3xl font-bold text-gray-800">Usuários e Acessos</h2>
@@ -408,14 +440,15 @@ export async function loadUsersPage() {
                             <input type="checkbox" id="showInactiveUsersToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                             <span class="text-sm font-medium text-gray-700">Mostrar Todos (inclui inativos)</span>
                         </label>
-                        <button data-action="new-user" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                            Novo Usuário
-                        </button>
-                    </div>
+                        </div>
                 </div>
-                <div id="usersListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+                <div id="usersListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
             </section>
-        </div>
+            
+            <button id="fab-new-user" data-action="new-user" title="Novo Usuário">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+            </button>
+            </div>
         <div id="user-form-view" class="hidden">
              <section>
                 <div class="flex justify-between items-center mb-6">
@@ -435,24 +468,26 @@ export async function loadUsersPage() {
         contentDiv.removeEventListener('change', usersPageChangeListener);
     }
 
+    // (MODIFICADO) O listener agora procura por qualquer [data-action]
     usersPageClickListener = async (e) => {
-        const button = e.target.closest('button[data-action]');
-        if (!button) return;
+        const actionElement = e.target.closest('[data-action]');
+        if (!actionElement) return;
 
-        const action = button.dataset.action;
+        const action = actionElement.dataset.action;
         switch (action) {
             case 'new-user':
                 showUserFormView();
                 break;
             case 'edit-user':
-                const userData = JSON.parse(button.dataset.user.replace(/&apos;/g, "'"));
+                const userData = JSON.parse(actionElement.dataset.user.replace(/&apos;/g, "'"));
                 showUserFormView(userData);
                 break;
             case 'back-to-list':
                 loadUsersPage();
                 break;
             case 'delete-user': {
-                const userId = button.dataset.userId;
+                e.stopPropagation(); // (NOVO) Impede o clique de ir para o card
+                const userId = actionElement.dataset.userId;
                 const confirmed = await showConfirmation('Excluir Usuário', 'Tem certeza que deseja excluir este usuário? Esta ação é irreversível.');
                 if (confirmed) {
                     try {
@@ -473,6 +508,7 @@ export async function loadUsersPage() {
         if (e.target.id === 'showInactiveUsersToggle') {
             filterAndRenderUsers();
         } else if (toggle) {
+            e.stopPropagation(); // (NOVO) Impede o clique de ir para o card
             const userId = toggle.dataset.userId;
             const newStatus = toggle.checked ? 'active' : 'inactive';
             
