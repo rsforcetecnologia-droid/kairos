@@ -1,5 +1,3 @@
-// js/ui/professionals.js
-
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
 import * as servicesApi from '../api/services.js';
@@ -11,72 +9,114 @@ import { navigateTo } from '../main.js';
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
-let selectedProfessionals = new Set(); // Resetado: Não usado mais nesta tela.
+let selectedProfessionals = new Set();
+let pageEventListener = null;
+let modalEventListener = null;
+
 
 // --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
 
+// MELHORIA UX: Função para renderizar esqueletos de carregamento
+function renderSkeletonList(count = 8) {
+    let skeletonHTML = '';
+    for (let i = 0; i < count; i++) {
+        skeletonHTML += `
+        <div class="bg-white rounded-lg shadow-md flex items-center gap-4 p-3 overflow-hidden animate-pulse sm:flex-col sm:items-stretch sm:p-0 sm:gap-0">
+            <!-- Foto (Mobile: Circle | Desktop: Rect) -->
+            <div class="w-16 h-16 rounded-full bg-gray-200 flex-shrink-0 sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg"></div>
+            <div class="flex-1 space-y-3 sm:p-4">
+                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+            </div>
+        </div>
+        `;
+    }
+    return skeletonHTML;
+}
+
+// MELHORIA UX: Lista de cards responsiva
 function renderProfessionalsListHTML(professionals) {
     if (professionals.length === 0) {
-        return `<p class="col-span-full text-center text-gray-500">Nenhum profissional encontrado.</p>`;
+        return `<p class="col-span-full text-center text-gray-500 py-10">Nenhum profissional encontrado.</p>`;
     }
 
     return professionals.map(prof => {
         const isInactive = prof.status === 'inactive';
-        const photoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name.charAt(0))}`;
+        const photoSrc = prof.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
         const profDataString = JSON.stringify(prof).replace(/'/g, "&apos;");
 
+        // Estrutura do card para ser flexível (lista em mobile, card em desktop)
         return `
-            <div class="professional-card bg-white rounded-lg shadow-md p-4 text-center flex flex-col cursor-pointer transition-transform transform hover:-translate-y-1 hover:shadow-xl ${isInactive ? 'opacity-60' : ''}" 
+            <div class="professional-card bg-white rounded-lg shadow-md flex items-center gap-4 p-3 cursor-pointer transition-transform transform hover:shadow-lg hover:bg-gray-50
+                        sm:flex-col sm:items-stretch sm:p-0 sm:gap-0 ${isInactive ? 'opacity-50 bg-gray-100' : ''}" 
                  data-action="open-professional-modal" data-professional='${profDataString}'>
                 
-                <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-24 h-24 rounded-full mx-auto mb-3 border-4 border-gray-200 object-cover">
-                <div class="flex-grow">
-                    <h3 class="text-md font-bold text-gray-900">${prof.name}</h3>
-                    <p class="text-sm text-gray-500">${prof.specialty || 'Especialidade'}</p>
-                </div>
-                <div class="mt-2 pt-2 border-t">
-                     <span class="text-xs font-semibold py-1 px-3 rounded-full ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
-                        ${isInactive ? 'Inativo' : 'Ativo'}
-                    </span>
+                <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-16 h-16 rounded-full object-cover flex-shrink-0
+                            sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg">
+                
+                <div class="flex-1 sm:p-4">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base">${prof.name}</h3>
+                            <p class="text-xs text-gray-500 text-left sm:text-sm">${prof.specialty || 'Especialidade'}</p>
+                        </div>
+                        <span class="text-xs font-semibold py-1 px-2 rounded-full hidden sm:inline-block ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
+                            ${isInactive ? 'Inativo' : 'Ativo'}
+                        </span>
+                    </div>
+                    <div class="mt-2 pt-2 border-t sm:hidden">
+                        <span class="text-xs font-semibold ${isInactive ? 'text-red-700' : 'text-green-700'}">${isInactive ? 'Inativo' : 'Ativo'}</span>
+                    </div>
+                    <div class="hidden sm:block mt-3 pt-3 border-t">
+                        <p class="text-xs text-gray-600">Serviços: <span class="font-semibold">${prof.services?.length || 0}</span></p>
+                    </div>
                 </div>
             </div>`;
     }).join('');
 }
 
+
 function closeProfessionalModal() {
     const modal = document.getElementById('genericModal');
     modal.style.display = 'none';
+    // CORREÇÃO: Remove o listener de clique do modal para evitar duplicação
+    if (modalEventListener) {
+        modal.removeEventListener('click', modalEventListener);
+    }
 }
 
 
 async function openProfessionalModal(professional) {
     const modal = document.getElementById('genericModal');
+    const prof = professional.id ? professional : { name: 'Novo Profissional', specialty: '', status: 'active', workingHours: {}, services: [] };
+    
     const services = state.services || await servicesApi.getServices(state.establishmentId);
     const professionals = state.professionals || await professionalsApi.getProfessionals(state.establishmentId);
 
     const modalHTML = `
-        <div class="modal-content max-w-5xl p-0">
+        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> <!-- CORREÇÃO: max-h-[90vh] para rolagem -->
             <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
-                <h2 class="text-2xl font-bold text-gray-800">${professional.name || 'Novo Profissional'}</h2>
+                <h2 class="text-2xl font-bold text-gray-800">${prof.name}</h2>
                 <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </div>
             <div class="modal-tabs px-6 border-b flex items-center">
                 <button class="tab-link active" data-tab="cadastro">Cadastro</button>
                 <button class="tab-link" data-tab="jornada">Jornada</button>
                 <button class="tab-link" data-tab="bloqueios">Bloqueios</button>
-                <button class="tab-link" data-tab="comissoes">Comissões</button>
+                <!-- REMOVIDO: Aba Comissões -->
             </div>
-            <div class="modal-body p-6 bg-gray-50 max-h-[65vh] overflow-y-auto">
+            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> <!-- Removido max-h-65vh -->
                 <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
                 <div id="jornada" class="tab-content hidden"></div>
                 <div id="bloqueios" class="tab-content hidden"></div>
-                <div id="comissoes" class="tab-content hidden"><h3 class="text-xl font-semibold mb-4">Personalizar Comissões</h3><p>Funcionalidade de comissões personalizadas será implementada aqui.</p></div>
+                <!-- REMOVIDO: Conteúdo da Aba Comissões -->
             </div>
             <div class="modal-footer px-6 py-4 bg-gray-100 flex justify-between items-center">
-                <button data-action="delete-professional" data-id="${professional.id}" class="text-red-600 font-semibold hover:text-red-800 ${professional.id ? '' : 'hidden'}">Excluir Profissional</button>
+                <button data-action="delete-professional" data-id="${prof.id}" class="text-red-600 font-semibold hover:text-red-800 ${prof.id ? '' : 'hidden'}">Excluir Profissional</button>
                 <div>
                     <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 mr-2">Cancelar</button>
-                    <button id="save-professional-btn" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
+                    <!-- CORREÇÃO: type="button" e data-action="save-professional" -->
+                    <button type="button" data-action="save-professional" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
                 </div>
             </div>
         </div>`;
@@ -84,11 +124,11 @@ async function openProfessionalModal(professional) {
     modal.innerHTML = modalHTML;
     modal.style.display = 'flex';
 
-    fillCadastroTab(professional, services);
-    fillJornadaTab(professional);
-    fillBloqueiosTab(professional, professionals);
+    fillCadastroTab(prof, services);
+    fillJornadaTab(prof);
+    fillBloqueiosTab(prof, professionals);
 
-    setupModalEventListeners(professional);
+    setupModalEventListeners(prof);
 }
 
 function fillCadastroTab(prof, services) {
@@ -101,7 +141,6 @@ function fillCadastroTab(prof, services) {
         return `<option value="${month}" ${selected}>${monthName.charAt(0).toUpperCase() + monthName.slice(1)}</option>`;
     }).join('');
     
-    // Define o status padrão como 'active' se não estiver definido
     const currentStatus = prof.status || 'active';
 
     form.innerHTML = `
@@ -120,7 +159,7 @@ function fillCadastroTab(prof, services) {
                 </div>
                  <div class="form-group">
                     <label for="profStatus">Status</label>
-                    <select id="profStatus">
+                    <select id="profStatus" class="mt-1 w-full p-2 border rounded-md bg-white">
                         <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
                         <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
                     </select>
@@ -128,24 +167,95 @@ function fillCadastroTab(prof, services) {
             </div>
 
             <div class="md:col-span-2 space-y-4">
-                <div class="form-grid">
-                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required></div>
-                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required></div>
-                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}"></div>
-                    <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31"></div>
-                    <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth"><option value="">Selecione...</option>${monthOptions}</select></div>
-                    <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1"></div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}" class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Selecione...</option>${monthOptions}</select></div>
+                    <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="mt-1 w-full p-2 border rounded-md"></div>
                 </div>
                  <div class="grid grid-cols-2 gap-4 pt-4 border-t">
-                    <div class="form-group"><label for="profCommission">Recebe comissão?</label><select id="profCommission"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
-                    <div class="form-group"><label for="profShowOnAgenda">Mostrar na agenda</label><select id="profShowOnAgenda"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
+                    <div class="form-group"><label for="profCommission">Recebe comissão?</label><select id="profCommission" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
+                    <div class="form-group"><label for="profShowOnAgenda">Mostrar na agenda</label><select id="profShowOnAgenda" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
                 </div>
             </div>
         </div>
 
         <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${s.name}</span></label>`).join('')}</div></div>
-        <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3">${prof.notes || ''}</textarea></div>`;
+        <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${prof.notes || ''}</textarea></div>`;
+
+    // Lógica da Foto (anexada aqui)
+    const photoInput = document.getElementById('profPhotoInput');
+    const photoButton = document.getElementById('profPhotoButton');
+    const photoPreview = document.getElementById('profPhotoPreview');
+    const photoBase64Input = document.getElementById('profPhotoBase64');
+    const originalPhotoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
+    const originalBase64 = prof.photo || '';
+
+    if (photoButton) {
+        photoButton.addEventListener('click', () => photoInput.click());
+    }
+
+    if (photoInput) {
+        photoInput.onchange = async () => {
+             const file = photoInput.files[0];
+             if (!file) return;
+             photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...';
+             try {
+                 // CORREÇÃO: Adicionada a função resizeAndCompressImage que faltava
+                 const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 'image/jpeg', 0.8);
+                 photoPreview.src = resizedBase64;
+                 photoBase64Input.value = resizedBase64;
+             } catch (error) {
+                 showNotification('Erro de Imagem', error.message || 'Não foi possível processar a imagem.', 'error');
+                 photoPreview.src = originalPhotoSrc;
+                 photoBase64Input.value = originalBase64;
+                 photoInput.value = '';
+             }
+        };
+    }
 }
+
+// CORREÇÃO: Adicionada a função resizeAndCompressImage que estava faltando no seu código
+function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 'image/jpeg', quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            return reject(new Error('O ficheiro selecionado não é uma imagem.'));
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL(format, quality);
+                resolve(dataUrl);
+            };
+            img.onerror = (err) => reject(new Error('Não foi possível carregar a imagem.'));
+            img.src = event.target.result;
+        };
+        reader.onerror = (err) => reject(new Error('Não foi possível ler o ficheiro.'));
+        reader.readAsDataURL(file);
+    });
+}
+
 
 function fillJornadaTab(prof) {
     const container = document.getElementById('jornada');
@@ -181,6 +291,48 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 <div id="blockagesList" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
             </div>
         </div>`;
+    
+    // Anexa listener ao formulário de bloqueio
+    const batchBlockageForm = document.getElementById('batchBlockageForm');
+    if(batchBlockageForm) {
+        batchBlockageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const selectedProfIds = Array.from(e.target.querySelectorAll('input[name="batch-professionals"]:checked')).map(cb => cb.value);
+            if (selectedProfIds.length === 0) {
+                return showNotification('Atenção', 'Selecione pelo menos um profissional.', 'error');
+            }
+
+            const batchStartDate = e.target.batchBlockageStartDate.value;
+            const batchEndDate = e.target.batchBlockageEndDate.value || batchStartDate;
+            const batchStartTime = e.target.batchBlockageStartTime.value;
+            const batchEndTime = e.target.batchBlockageEndTime.value;
+            const reason = e.target.batchBlockageReason.value;
+            
+            if(!batchStartDate || !batchStartTime || !batchEndTime) {
+                 return showNotification('Atenção', 'Preencha Data de Início, Início e Fim.', 'error');
+            }
+
+            const blockagePromises = selectedProfIds.map(profId => {
+                const data = {
+                    professionalId: profId,
+                    establishmentId: state.establishmentId,
+                    startTime: new Date(`${batchStartDate}T${batchStartTime}`).toISOString(),
+                    endTime: new Date(`${batchEndDate}T${batchEndTime}`).toISOString(),
+                    reason: reason
+                };
+                return blockagesApi.createBlockage(data);
+            });
+
+            try {
+                await Promise.all(blockagePromises);
+                showNotification('Sucesso!', `${selectedProfIds.length} bloqueios foram criados.`);
+                fetchAndRenderBlockages(prof.id); // Atualiza a lista
+            } catch (error) {
+                showNotification('Erro', error.message, 'error');
+            }
+        });
+    }
+
     await fetchAndRenderBlockages(prof.id);
 }
 
@@ -192,17 +344,30 @@ function renderAdvancedScheduleSelector(container, scheduleData) {
             <div class="day-schedule-card p-3 rounded-lg ${isChecked ? 'bg-white' : 'bg-gray-100 disabled'} border">
                  <div class="flex justify-between items-center"><span class="font-semibold text-gray-800">${daysOfWeek[dayKey]}</span><label class="flex items-center cursor-pointer"><div class="relative"><input type="checkbox" data-day="${dayKey}" data-field="active" class="sr-only" ${isChecked ? 'checked' : ''}><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div></label></div>
                 <div class="time-inputs grid grid-cols-2 gap-2 mt-2 text-sm">
-                    <div><label>Início:</label><input type="time" data-day="${dayKey}" data-field="start" value="${dayData.start || '09:00'}" class="w-full p-1 border rounded"></div>
-                    <div><label>Fim:</label><input type="time" data-day="${dayKey}" data-field="end" value="${dayData.end || '18:00'}" class="w-full p-1 border rounded"></div>
-                    <div><label>Intervalo:</label><input type="time" data-day="${dayKey}" data-field="breakStart" value="${dayData.breakStart || '12:00'}" class="w-full p-1 border rounded"></div>
-                    <div><label>Fim Int.:</label><input type="time" data-day="${dayKey}" data-field="breakEnd" value="${dayData.breakEnd || '13:00'}" class="w-full p-1 border rounded"></div>
+                    <div><label>Início:</label><input type="time" data-day="${dayKey}" data-field="start" value="${dayData.start || '09:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label>Fim:</label><input type="time" data-day="${dayKey}" data-field="end" value="${dayData.end || '18:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label>Intervalo:</label><input type="time" data-day="${dayKey}" data-field="breakStart" value="${dayData.breakStart || '12:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label>Fim Int.:</label><input type="time" data-day="${dayKey}" data-field="breakEnd" value="${dayData.breakEnd || '13:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
                 </div>
             </div>`;
     }).join('');
+
+    // Adiciona listener para toggle
+    container.querySelectorAll('input[type="checkbox"][data-field="active"]').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const card = e.target.closest('.day-schedule-card');
+            const isDisabled = !e.target.checked;
+            card.classList.toggle('bg-white', !isDisabled);
+            card.classList.toggle('bg-gray-100', isDisabled);
+            card.classList.toggle('disabled', isDisabled);
+            card.querySelectorAll('.time-inputs input').forEach(input => input.disabled = isDisabled);
+        });
+    });
 }
 
 async function fetchAndRenderBlockages(professionalId) {
     const listDiv = document.getElementById('blockagesList');
+    if (!listDiv) return;
     listDiv.innerHTML = '<div class="loader mx-auto"></div>';
     try {
         const today = new Date().toISOString();
@@ -229,7 +394,7 @@ async function fetchAndRenderBlockages(professionalId) {
                 </div>
                 ${group.map(b => `
                     <div class="flex justify-between items-center bg-white p-2 rounded-md text-sm border">
-                        <p class="text-xs text-gray-500">${new Date(b.startTime).toLocaleString('pt-BR')} - ${new Date(b.endTime).toLocaleString('pt-BR')}</p>
+                        <p class="text-xs text-gray-500">${new Date(b.startTime).toLocaleDateString('pt-BR')} - ${new Date(b.endTime).toLocaleDateString('pt-BR')}</p>
                         <button data-action="delete-blockage" data-id="${b.id}" class="text-red-500 p-1 rounded-full hover:bg-red-100">&times;</button>
                     </div>
                 `).join('')}
@@ -240,159 +405,133 @@ async function fetchAndRenderBlockages(professionalId) {
     }
 }
 
+// CORREÇÃO: Lógica de clique robusta
 function setupModalEventListeners(professional) {
     const modal = document.getElementById('genericModal');
-
-    modal.querySelectorAll('.tab-link').forEach(button => {
-        button.addEventListener('click', () => {
-            modal.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
-            button.classList.add('active');
-            modal.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
-            document.getElementById(button.dataset.tab).classList.remove('hidden');
-        });
-    });
     
-    // CORREÇÃO: Adiciona listener para fechar o modal ao clicar no botão "Cancelar" ou no "X"
-    modal.addEventListener('click', (e) => {
-        const closeBtn = e.target.closest('[data-action="close-modal"]');
-        if (closeBtn) {
-            e.stopPropagation();
-            closeProfessionalModal();
-        }
-    });
-
-    // --- Lógica para upload de foto ---
-    const photoInput = document.getElementById('profPhotoInput');
-    const photoButton = document.getElementById('profPhotoButton');
-    const photoPreview = document.getElementById('profPhotoPreview');
-    const photoBase64Input = document.getElementById('profPhotoBase64');
-
-    if (photoButton) {
-        photoButton.addEventListener('click', () => photoInput.click());
+    // Limpa listener antigo se existir (evita duplicação)
+    if (modalEventListener) {
+        modal.removeEventListener('click', modalEventListener);
     }
 
-    if (photoInput) {
-        photoInput.onchange = () => {
-            const file = photoInput.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = e => {
-                    photoPreview.src = e.target.result;
-                    photoBase64Input.value = e.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        };
-    }
-    // --- FIM Lógica Foto ---
-
-
-    document.getElementById('save-professional-btn').addEventListener('click', async () => {
-        const form = document.getElementById('professionalForm');
-        const scheduleContainer = document.getElementById('profScheduleContainer');
-        const selectedServices = Array.from(form.querySelectorAll('#profServicesContainer input:checked')).map(cb => cb.value);
+    // Define o novo listener
+    modalEventListener = async (e) => {
+        const button = e.target.closest('button[data-action]');
         
-        const workingHours = {};
-        if (scheduleContainer) {
-            scheduleContainer.querySelectorAll('.day-schedule-card').forEach(card => {
-                const dayKey = card.querySelector('[data-field="active"]').dataset.day;
-                workingHours[dayKey] = {
-                    active: card.querySelector('[data-field="active"]').checked,
-                    start: card.querySelector('[data-field="start"]').value,
-                    end: card.querySelector('[data-field="end"]').value,
-                    breakStart: card.querySelector('[data-field="breakStart"]').value,
-                    breakEnd: card.querySelector('[data-field="breakEnd"]').value,
-                };
-            });
+        if (!button) {
+            // Verifica cliques nas tabs
+            const tab = e.target.closest('.tab-link');
+            if (tab) {
+                modal.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
+                tab.classList.add('active');
+                modal.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                document.getElementById(tab.dataset.tab).classList.remove('hidden');
+            }
+            return;
         }
-        
-        const professionalData = {
-            ...professional,
-            name: form.querySelector('#profName').value,
-            specialty: form.querySelector('#profSpecialty').value,
-            photo: form.querySelector('#profPhotoBase64').value,
-            services: selectedServices,
-            workingHours: workingHours,
-            phone: form.querySelector('#profPhone').value,
-            dob: `${form.querySelector('#profDobDay').value}/${form.querySelector('#profDobMonth').value}`,
-            receivesCommission: form.querySelector('#profCommission').value === 'sim',
-            showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
-            orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
-            notes: form.querySelector('#profNotes').value,
-            status: form.querySelector('#profStatus').value
-        };
-        
-        try {
-            if (professional.id) {
-                await professionalsApi.updateProfessional(professional.id, professionalData);
-                showNotification('Sucesso!', 'Profissional atualizado.', 'success');
-            } else {
-                 await professionalsApi.createProfessional(professionalData);
-                showNotification('Sucesso!', 'Profissional criado.', 'success');
-            }
+
+        const action = button.dataset.action;
+        e.stopPropagation(); // Previne que o clique se propague
+
+        switch(action) {
+            case 'close-modal':
+                closeProfessionalModal();
+                break;
             
-            closeProfessionalModal();
-            loadProfessionalsPage();
-        } catch (error) {
-            showNotification('Erro', error.message, 'error');
-        }
-    });
-    
-    const batchBlockageForm = document.getElementById('batchBlockageForm');
-    if(batchBlockageForm) {
-        batchBlockageForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const selectedProfIds = Array.from(e.target.querySelectorAll('input[name="batch-professionals"]:checked')).map(cb => cb.value);
-            if (selectedProfIds.length === 0) {
-                return showNotification('Atenção', 'Selecione pelo menos um profissional.', 'error');
-            }
+            case 'delete-professional':
+                const idToDelete = button.dataset.id;
+                const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita.`);
+                if(confirmed) {
+                    try {
+                        await professionalsApi.deleteProfessional(idToDelete);
+                        showNotification('Sucesso!', 'Profissional excluído.', 'success');
+                        closeProfessionalModal();
+                        loadProfessionalsPage(); // Recarrega a página principal
+                    } catch (error) {
+                         showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
+                    }
+                }
+                break;
 
-            const batchStartDate = e.target.batchBlockageStartDate.value;
-            const batchEndDate = e.target.batchBlockageEndDate.value || batchStartDate;
-            const batchStartTime = e.target.batchBlockageStartTime.value;
-            const batchEndTime = e.target.batchBlockageEndTime.value;
-            const reason = e.target.batchBlockageReason.value;
+            case 'save-professional':
+                const form = document.getElementById('professionalForm');
+                const saveButton = button; // O próprio botão "Salvar"
+                
+                // 1. Coleta de Dados
+                const scheduleContainer = document.getElementById('profScheduleContainer');
+                const selectedServices = Array.from(form.querySelectorAll('#profServicesContainer input:checked')).map(cb => cb.value);
+                
+                const workingHours = {};
+                if (scheduleContainer) {
+                    scheduleContainer.querySelectorAll('.day-schedule-card').forEach(card => {
+                        const dayKey = card.querySelector('[data-field="active"]').dataset.day;
+                        workingHours[dayKey] = {
+                            active: card.querySelector('[data-field="active"]').checked,
+                            start: card.querySelector('[data-field="start"]').value,
+                            end: card.querySelector('[data-field="end"]').value,
+                            breakStart: card.querySelector('[data-field="breakStart"]').value,
+                            breakEnd: card.querySelector('[data-field="breakEnd"]').value,
+                        };
+                    });
+                }
 
-            const blockagePromises = selectedProfIds.map(profId => {
-                const data = {
-                    professionalId: profId,
-                    establishmentId: state.establishmentId,
-                    startTime: new Date(`${batchStartDate}T${batchStartTime}`).toISOString(),
-                    endTime: new Date(`${batchEndDate}T${batchEndTime}`).toISOString(),
-                    reason: reason
+                const professionalData = {
+                    ...professional,
+                    id: form.querySelector('#professionalId').value || undefined, // Garante que é undefined se for novo
+                    name: form.querySelector('#profName').value,
+                    specialty: form.querySelector('#profSpecialty').value,
+                    photo: form.querySelector('#profPhotoBase64').value,
+                    services: selectedServices,
+                    workingHours: workingHours,
+                    phone: form.querySelector('#profPhone').value,
+                    dob: `${form.querySelector('#profDobDay').value}/${form.querySelector('#profDobMonth').value}`,
+                    receivesCommission: form.querySelector('#profCommission').value === 'sim',
+                    showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
+                    orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
+                    notes: form.querySelector('#profNotes').value,
+                    status: form.querySelector('#profStatus').value
                 };
-                return blockagesApi.createBlockage(data);
-            });
 
-            try {
-                await Promise.all(blockagePromises);
-                showNotification('Sucesso!', `${selectedProfIds.length} bloqueios foram criados.`);
-                fetchAndRenderBlockages(professional.id);
-            } catch (error) {
-                showNotification('Erro', error.message, 'error');
-            }
-        });
-    }
+                // 2. Estado do Botão
+                saveButton.disabled = true;
+                saveButton.textContent = 'A salvar...';
 
-    const blockagesList = document.getElementById('blockagesList');
-    if (blockagesList) {
-        blockagesList.addEventListener('click', async (e) => {
-            const deleteBtn = e.target.closest('[data-action="delete-blockage"]');
-            const batchDeleteBtn = e.target.closest('[data-action="batch-delete-blockage"]');
-            
-            if (deleteBtn) {
-                const id = deleteBtn.dataset.id;
+                // 3. Chamada da API
+                try {
+                    if (professionalData.id) {
+                        await professionalsApi.updateProfessional(professionalData.id, professionalData);
+                        showNotification('Sucesso!', 'Profissional atualizado.', 'success');
+                    } else {
+                        // Se for novo, remove o ID undefined antes de criar
+                        delete professionalData.id; 
+                        await professionalsApi.createProfessional(professionalData);
+                        showNotification('Sucesso!', 'Profissional criado.', 'success');
+                    }
+                    
+                    closeProfessionalModal();
+                    loadProfessionalsPage(); // Recarrega a página principal
+                } catch (error) {
+                    showNotification('Erro', error.message, 'error');
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Salvar';
+                }
+                break;
+
+            case 'delete-blockage':
+                const blockageId = button.dataset.id;
                 if (await showConfirmation('Apagar Bloqueio', 'Tem certeza?')) {
                     try {
-                        await blockagesApi.deleteBlockage(id);
+                        await blockagesApi.deleteBlockage(blockageId);
                         showNotification('Bloqueio removido.', 'success');
                         fetchAndRenderBlockages(professional.id);
                     } catch (error) {
                         showNotification('Erro', error.message, 'error');
                     }
                 }
-            } else if (batchDeleteBtn) {
-                const ids = JSON.parse(batchDeleteBtn.dataset.ids);
+                break;
+            
+            case 'batch-delete-blockage':
+                const ids = JSON.parse(button.dataset.ids);
                 if (await showConfirmation('Apagar em Lote', `Tem certeza que deseja apagar ${ids.length} bloqueios com este motivo?`)) {
                     try {
                         await blockagesApi.batchDeleteBlockages(ids);
@@ -402,24 +541,14 @@ function setupModalEventListeners(professional) {
                         showNotification('Erro', error.message, 'error');
                     }
                 }
-            }
-        });
-    }
-
-    modal.querySelector('[data-action="delete-professional"]').addEventListener('click', async () => {
-        const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita.`);
-        if(confirmed) {
-            try {
-                await professionalsApi.deleteProfessional(professional.id);
-                showNotification('Sucesso!', 'Profissional excluído.', 'success');
-                closeProfessionalModal();
-                loadProfessionalsPage();
-            } catch (error) {
-                 showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
-            }
+                break;
         }
-    });
+    };
+
+    // Anexa o listener de clique robusto
+    modal.addEventListener('click', modalEventListener);
 }
+
 
 function updateBatchActionsVisibility() {
     const container = document.getElementById('batch-actions-container');
@@ -453,6 +582,15 @@ function handleBatchDelete() {
 
 function filterAndRenderProfessionals() {
     const listDiv = document.getElementById('professionalsList');
+    if (!listDiv) return;
+
+    // MELHORIA: Mostra skeletons se os dados não estiverem prontos
+    if (!state.professionals) {
+        listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-20';
+        listDiv.innerHTML = renderSkeletonList(); 
+        return;
+    }
+    
     const showInactive = document.getElementById('showInactiveProfToggle').checked;
     const searchTerm = document.getElementById('profSearchInput').value.toLowerCase();
 
@@ -461,87 +599,116 @@ function filterAndRenderProfessionals() {
         const statusMatch = showInactive || p.status !== 'inactive';
         return nameMatch && statusMatch;
     });
+    
+    listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-20'; 
     listDiv.innerHTML = renderProfessionalsListHTML(filtered);
 }
 
 export async function loadProfessionalsPage() {
     selectedProfessionals.clear();
+    // MELHORIA UX: Aplicando layout com FAB e lista responsiva
     contentDiv.innerHTML = `
-        <section id="professional-list-view">
-            <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <h2 class="text-3xl font-bold text-gray-800">Sua Equipe</h2>
-                <div class="flex items-center gap-4 w-full md:w-auto">
-                    <input type="search" id="profSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" id="showInactiveProfToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <span class="text-sm font-medium text-gray-700">Mostrar Inativos</span>
-                    </label>
-                    <button data-action="open-professional-modal" data-professional="{}" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 flex-shrink-0">
-                        + Novo Profissional
-                    </button>
+        <section id="professional-list-view" class="p-4 sm:p-6">
+            <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
+                <!-- MELHORIA UX: Barra de filtros 'sticky' (fixa) -->
+                <div class="sticky top-0 z-10 bg-white pt-2 pb-4 mb-6 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 px-4 sm:px-6 rounded-t-lg border-b border-gray-200">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Sua Equipe</h2>
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                        <input type="search" id="profSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
+                        
+                        <div class="flex items-center gap-4">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="showInactiveProfToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm font-medium text-gray-700">Mostrar Inativos</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="batch-actions-container" class="hidden bg-indigo-600 text-white p-3 rounded-lg shadow-md mb-6 flex justify-between items-center">
+                    <span id="selected-count" class="font-semibold"></span>
+                    <div>
+                        <button data-action="batch-delete" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Excluir Selecionados</button>
+                    </div>
+                </div>
+
+                <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-20">
+                    <!-- Skeletons de carregamento ou lista de dados -->
                 </div>
             </div>
-
-            <div id="batch-actions-container" class="hidden bg-indigo-600 text-white p-3 rounded-lg shadow-md mb-6 flex justify-between items-center">
-                <span id="selected-count" class="font-semibold"></span>
-                <div>
-                    <button data-action="batch-delete" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Excluir Selecionados</button>
-                </div>
-            </div>
-
-            <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+            
+            <!-- MELHORIA UX: Botão de Ação Flutuante (FAB) "Novo Profissional" -->
+            <button data-action="open-professional-modal" data-professional="{}" class="fixed z-30 bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-105">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+            </button>
         </section>`;
 
-    document.getElementById('profSearchInput').addEventListener('input', filterAndRenderProfessionals);
-    document.getElementById('showInactiveProfToggle').addEventListener('change', filterAndRenderProfessionals);
+    // --- SETUP DE EVENTOS ---
+    
+    // CORREÇÃO: Limpa o listener antigo antes de adicionar um novo
+    if (pageEventListener) {
+        contentDiv.removeEventListener('click', pageEventListener);
+    }
 
-    contentDiv.addEventListener('click', e => {
-        const card = e.target.closest('[data-action="open-professional-modal"]');
-        const checkbox = e.target.closest('.professional-checkbox');
+    // Define o handler do clique principal
+    pageEventListener = e => {
+        const cardOrFab = e.target.closest('[data-action="open-professional-modal"]');
         const batchDeleteButton = e.target.closest('[data-action="batch-delete"]');
 
-        if (checkbox) {
-            const id = checkbox.dataset.id;
-            if (checkbox.checked) {
-                selectedProfessionals.add(id);
-            } else {
-                selectedProfessionals.delete(id);
-            }
-            filterAndRenderProfessionals();
-            updateBatchActionsVisibility();
-            return;
-        }
-
-        if (card) {
+        if (cardOrFab) {
             e.preventDefault();
             let profData = {};
-            if (card.dataset.professional) {
+            if (cardOrFab.dataset.professional) {
                 try {
-                    profData = JSON.parse(card.dataset.professional);
+                    profData = JSON.parse(cardOrFab.dataset.professional);
                 } catch (error) {
                     console.error("Erro ao fazer parse do professional data:", error);
                     return;
                 }
             }
             openProfessionalModal(profData);
+            return;
         }
 
         if (batchDeleteButton) {
             handleBatchDelete();
+            return;
         }
-    });
+        
+        const checkbox = e.target.closest('.professional-checkbox');
+        if (checkbox) {
+             const id = checkbox.dataset.id;
+             if (checkbox.checked) { selectedProfessionals.add(id); } else { selectedProfessionals.delete(id); }
+             filterAndRenderProfessionals();
+             updateBatchActionsVisibility();
+             return;
+        }
+    };
+    
+    // Anexa os listeners da página
+    contentDiv.addEventListener('click', pageEventListener);
+    document.getElementById('profSearchInput').addEventListener('input', filterAndRenderProfessionals);
+    document.getElementById('showInactiveProfToggle').addEventListener('change', filterAndRenderProfessionals);
 
+    
     const listDiv = document.getElementById('professionalsList');
-    listDiv.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
+    
+    // --- INICIALIZAÇÃO ---
+    // MELHORIA: Mostra skeletons primeiro para UX
+    state.professionals = null;
+    state.services = null;
+    filterAndRenderProfessionals(); 
+    
     try {
         const [professionals, services] = await Promise.all([
-            // A API agora inclui inativos para o painel de gestão
             professionalsApi.getProfessionals(state.establishmentId),
             servicesApi.getServices(state.establishmentId)
         ]);
+        
         state.professionals = professionals;
         state.services = services;
-        filterAndRenderProfessionals();
+        
+        filterAndRenderProfessionals(); 
         updateBatchActionsVisibility();
     } catch (error) {
         listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar dados da página.</p>';

@@ -15,7 +15,8 @@ let localState = {
     previousBalance: 0,
     // Novos campos de filtro
     filterNaturezaId: 'all',
-    filterCostCenterId: 'all'
+    filterCostCenterId: 'all',
+    currentListView: 'receivables' // 'payables' or 'receivables'
 };
 let cashFlowChart = null;
 let financialPageEventListener = null;
@@ -59,6 +60,10 @@ function renderHierarchyList(container, items, type) {
 }
 
 async function openHierarchyModal(type) {
+    // Garante que o menu FAB feche se estiver aberto
+    document.getElementById('fab-menu')?.classList.add('hidden');
+    document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
+
     const modal = document.getElementById('genericModal');
     const isNature = type === 'nature';
     const title = `Gerir ${isNature ? 'Naturezas Financeiras' : 'Centros de Custo'}`;
@@ -214,6 +219,10 @@ async function handleCashFlowReportGeneration() {
 }
 
 function openCashFlowModal() {
+    // Garante que o menu FAB feche se estiver aberto
+    document.getElementById('fab-menu')?.classList.add('hidden');
+    document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
+
     const modal = document.getElementById('genericModal');
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -247,6 +256,127 @@ function openCashFlowModal() {
     handleCashFlowReportGeneration();
 }
 
+
+// --- LÓGICA DE INDICADORES (NOVO MODAL) ---
+
+function openIndicatorsModal() {
+    const modal = document.getElementById('genericModal');
+    
+    // Cálculos necessários para o modal (usando dados de localState)
+    const pendingPayable = localState.payables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
+    const pendingReceivable = localState.receivables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
+    const totalPendingBalance = pendingReceivable - pendingPayable;
+    const paidPayable = localState.payables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
+    const paidReceivable = localState.receivables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
+    const currentBalance = paidReceivable - paidPayable;
+    const previousBalance = localState.previousBalance || 0;
+    const finalBalance = previousBalance + currentBalance;
+
+    const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    const getColorClass = (value) => value >= 0 ? 'text-green-600' : 'text-red-600';
+
+    modal.innerHTML = `
+        <div class="modal-content max-w-4xl max-h-[90vh] flex flex-col">
+             <div class="flex justify-between items-center p-6 border-b">
+                <h2 class="text-2xl font-bold text-gray-800">Painel de Indicadores Financeiros</h2>
+                <button type="button" data-action="close-modal" data-target="genericModal" class="text-2xl font-bold text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-8">
+                
+                <p class="text-center text-sm text-gray-500 mb-6 bg-yellow-50 p-2 rounded-md">
+                    Análise do período: ${new Date(localState.startDate + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(localState.endDate + 'T00:00:00').toLocaleDateString('pt-BR')}.
+                </p>
+                
+                <!-- BLOCO 1: SALDO DE PERÍODO (REALIZADO) -->
+                <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-semibold text-indigo-700 mb-4 border-b pb-2">Realizado no Período (Fechado)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                        <div class="bg-white p-3 rounded-lg shadow-sm border-b-4 border-green-400">
+                            <p class="text-gray-500 text-sm">Total Recebido</p>
+                            <p class="text-2xl font-bold text-green-600">${formatCurrency(paidReceivable)}</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow-sm border-b-4 border-red-400">
+                            <p class="text-gray-500 text-sm">Total Pago</p>
+                            <p class="text-2xl font-bold text-red-600">${formatCurrency(paidPayable)}</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow-lg border-b-4 ${getColorClass(currentBalance) === 'text-green-600' ? 'border-green-600' : 'border-red-600'}">
+                            <p class="text-gray-700 text-sm font-medium">Saldo do Período</p>
+                            <p class="text-2xl font-bold ${getColorClass(currentBalance)}">${formatCurrency(currentBalance)}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BLOCO 2: FLUXO E SALDO ACUMULADO -->
+                <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Balanço Patrimonial e Acumulado</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
+                        <div class="bg-white p-3 rounded-lg shadow-sm border-b-4 border-indigo-400">
+                            <p class="text-gray-500 text-sm">Saldo Inicial (Realizado)</p>
+                            <p class="text-2xl font-bold ${getColorClass(previousBalance)}">${formatCurrency(previousBalance)}</p>
+                            <p class="text-xs text-gray-400 mt-1">Acumulado antes do período</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow-lg border-b-4 border-blue-600">
+                            <p class="text-gray-700 text-sm font-medium">Saldo Final Acumulado</p>
+                            <p class="text-2xl font-bold ${getColorClass(finalBalance)}">${formatCurrency(finalBalance)}</p>
+                            <p class="text-xs text-gray-400 mt-1">Inicial + Saldo do Período</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BLOCO 3: ANÁLISE FUTURA (PENDENTE) -->
+                <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Previsão (Abertos no Período)</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                         <div class="bg-white p-3 rounded-lg shadow-sm border-b-4 border-green-400">
+                            <p class="text-gray-500 text-sm">A Receber (Pendente)</p>
+                            <p class="text-2xl font-bold text-green-600">${formatCurrency(pendingReceivable)}</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow-sm border-b-4 border-red-400">
+                            <p class="text-gray-500 text-sm">A Pagar (Pendente)</p>
+                            <p class="text-2xl font-bold text-red-600">${formatCurrency(pendingPayable)}</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow-lg border-b-4 ${getColorClass(totalPendingBalance) === 'text-green-600' ? 'border-green-600' : 'border-red-600'}">
+                            <p class="text-gray-700 text-sm font-medium">Saldo Previsto</p>
+                            <p class="text-2xl font-bold ${getColorClass(totalPendingBalance)}">${formatCurrency(totalPendingBalance)}</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
+
+// --- LÓGICA DO MODAL DE CONFIGURAÇÕES (NOVO) ---
+function openSettingsModal() {
+    const modal = document.getElementById('genericModal');
+    modal.innerHTML = `
+        <div class="modal-content max-w-lg">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Configurações</h2>
+                <button type="button" data-action="close-modal" data-target="genericModal" class="text-2xl font-bold text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <div class="space-y-4">
+                <button data-action="manage-natures" class="w-full text-left p-4 bg-gray-100 rounded-lg hover:bg-gray-200 flex items-center gap-4">
+                    <svg class="h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h.01M7 11h.01M16 7h.01M16 3h.01M16 11h.01M12 21V3m0 18H9m3 0h3m-3 0V3m0 0H9m3 0h3m0 18v-3.07a3.001 3.001 0 00-1.7-2.684l-3.398-1.963a3.001 3.001 0 00-3.8 0l-3.398 1.963A3.001 3.001 0 003 17.93V21h9z" /></svg>
+                    <div>
+                        <p class="font-semibold text-gray-800">Gerir Naturezas Financeiras</p>
+                        <p class="text-sm text-gray-600">Organize suas categorias de receita/despesa.</p>
+                    </div>
+                </button>
+                <button data-action="manage-cost-centers" class="w-full text-left p-4 bg-gray-100 rounded-lg hover:bg-gray-200 flex items-center gap-4">
+                    <svg class="h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                    <div>
+                        <p class="font-semibold text-gray-800">Gerir Centros de Custo</p>
+                        <p class="text-sm text-gray-600">Atribua lançamentos a departamentos ou projetos.</p>
+                    </div>
+                </button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+}
 
 // --- LÓGICA DE LANÇAMENTOS ---
 
@@ -493,30 +623,25 @@ function updateSummary() {
     const pendingReceivable = localState.receivables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
     const totalPendingBalance = pendingReceivable - pendingPayable;
     
-    // NOVOS TOTALIZADORES
-    const paidPayable = localState.payables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
-    const paidReceivable = localState.receivables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
-    const currentBalance = paidReceivable - paidPayable; // Saldo do Realizado (DENTRO do período)
-
-    // Totais Previstos (Pendentes no período)
+    // Totais Previstos (Pendentes no período) - MANTIDOS PARA O CÁLCULO NO DOM OCULTO
     document.getElementById('summary-pending-receivables').textContent = `R$ ${pendingReceivable.toFixed(2)}`;
     document.getElementById('summary-pending-payables').textContent = `R$ ${pendingPayable.toFixed(2)}`;
     document.getElementById('summary-pending-balance').textContent = `R$ ${totalPendingBalance.toFixed(2)}`;
-    document.getElementById('summary-pending-balance').className = `text-3xl font-bold ${totalPendingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
-
-    // Totais Realizados (Pagos/Recebidos no período)
-    document.getElementById('summary-paid-receivables').textContent = `R$ ${paidReceivable.toFixed(2)}`;
-    document.getElementById('summary-paid-payables').textContent = `R$ ${paidPayable.toFixed(2)}`;
-    document.getElementById('summary-current-balance').textContent = `R$ ${currentBalance.toFixed(2)}`;
-    document.getElementById('summary-current-balance').className = `text-3xl font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
     
-    // NOVO: Saldo Anterior (Acumulado Realizado do período anterior)
-    const previousBalance = localState.previousBalance || 0;
-    document.getElementById('summary-previous-balance').textContent = `R$ ${previousBalance.toFixed(2)}`;
-    document.getElementById('summary-previous-balance').className = `text-3xl font-bold ${previousBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
+    const summaryPendingBalanceEl = document.getElementById('summary-pending-balance');
+    if (summaryPendingBalanceEl) {
+         // Uso de text-2xl para compactação mobile
+         summaryPendingBalanceEl.className = `text-2xl font-bold ${totalPendingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
+    }
+
+    // REMOVIDO: Atualizações do DOM para indicadores secundários (movidos para o modal)
 }
 
 function openFinancialModal(type, item = null) {
+    // Garante que o menu FAB feche ao abrir o modal
+    document.getElementById('fab-menu')?.classList.add('hidden');
+    document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
+    
     const modal = document.getElementById('genericModal');
     const title = `${item ? 'Editar' : 'Nova'} ${type === 'payable' ? 'Despesa' : 'Receita'}`;
     const buttonClass = type === 'payable' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700';
@@ -613,94 +738,200 @@ export async function loadFinancialPage() {
             <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <h2 class="text-3xl font-bold text-gray-800">Módulo Financeiro</h2>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button data-action="open-cash-flow-modal" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                        Fluxo de Caixa
+                    <!-- Mobile Toggle Buttons (visível apenas em telas pequenas) -->
+                    <button data-action="toggle-filters" class="md:hidden py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 flex items-center gap-2">
+                        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                        Filtros
                     </button>
-                    <button data-action="manage-natures" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Naturezas</button>
-                    <button data-action="manage-cost-centers" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Centros de Custo</button>
-                    <button data-action="open-modal" data-type="payable" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700">+ Nova Despesa</button>
-                    <button data-action="open-modal" data-type="receivable" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">+ Nova Receita</button>
+                    <button data-action="open-indicators-modal" class="md:hidden py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 flex items-center gap-2">
+                        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h4a1 1 0 011 1v13m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 0H9"/></svg>
+                        Indicadores
+                    </button>
+                    <!-- NOVO BOTÃO DE CONFIGURAÇÕES (MOBILE) -->
+                    <button data-action="open-settings-modal" class="md:hidden py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 flex items-center gap-2">
+                        <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        Config.
+                    </button>
+                    
+                    <!-- Desktop Buttons (visível em telas médias e maiores) -->
+                    <div class="hidden md:flex items-center gap-2 flex-wrap">
+                        <button data-action="open-cash-flow-modal" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                            Fluxo de Caixa
+                        </button>
+                        <button data-action="manage-natures" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Naturezas</button>
+                        <button data-action="manage-cost-centers" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Centros de Custo</button>
+                        
+                        <!-- Botão de Indicadores para Desktop -->
+                        <button data-action="open-indicators-modal" class="py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 flex items-center gap-2">
+                             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h4a1 1 0 011 1v13m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 0H9"/></svg>
+                            Indicadores
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div id="financial-content">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg shadow">
-                        <p class="text-gray-500 font-semibold">A Pagar Hoje (Pendente)</p>
-                        <p id="summary-today-payables" class="text-3xl font-bold text-red-600">R$ 0,00</p>
+                <!-- Indicadores do Dia (Compactados e Mantidos sempre visíveis) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div class="bg-red-50 border-l-4 border-red-400 p-3 rounded-lg shadow">
+                        <p class="text-gray-500 font-semibold text-sm">A Pagar Hoje (Pendente)</p>
+                        <p id="summary-today-payables" class="text-2xl font-bold text-red-600">R$ 0,00</p>
                     </div>
-                    <div class="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg shadow">
-                        <p class="text-gray-500 font-semibold">A Receber Hoje (Pendente)</p>
-                        <p id="summary-today-receivables" class="text-3xl font-bold text-green-600">R$ 0,00</p>
+                    <div class="bg-green-50 border-l-4 border-green-400 p-3 rounded-lg shadow">
+                        <p class="text-gray-500 font-semibold text-sm">A Receber Hoje (Pendente)</p>
+                        <p id="summary-today-receivables" class="text-2xl font-bold text-green-600">R$ 0,00</p>
                     </div>
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow-md mb-6">
-                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Filtrar Período e Critérios</h3>
-                    <div class="flex flex-wrap items-end gap-4 mb-4">
-                        <div>
-                            <label for="filterStartDate" class="text-sm font-medium">De:</label>
-                            <input type="date" id="filterStartDate" value="${localState.startDate}" class="p-2 border rounded-md">
+                <!-- BLOCO DE FILTROS AVANÇADOS (Oculto em mobile por padrão - hidden md:block) -->
+                <div id="advanced-filters" class="hidden md:block bg-white p-3 rounded-lg shadow-md mb-4">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-3">Filtrar Período e Critérios</h3>
+                    <div class="grid grid-cols-2 md:flex md:flex-wrap items-end gap-3 mb-3">
+                        <div class="w-full md:w-auto">
+                            <label for="filterStartDate" class="text-xs font-medium">De:</label>
+                            <input type="date" id="filterStartDate" value="${localState.startDate}" class="w-full p-1 border rounded-md text-sm">
                         </div>
-                        <div>
-                            <label for="filterEndDate" class="text-sm font-medium">Até:</label>
-                            <input type="date" id="filterEndDate" value="${localState.endDate}" class="p-2 border rounded-md">
+                        <div class="w-full md:w-auto">
+                            <label for="filterEndDate" class="text-xs font-medium">Até:</label>
+                            <input type="date" id="filterEndDate" value="${localState.endDate}" class="w-full p-1 border rounded-md text-sm">
                         </div>
                         
-                        <div>
-                            <label for="filterNaturezaId" class="text-sm font-medium">Natureza:</label>
-                            <select id="filterNaturezaId" class="p-2 border rounded-md bg-white w-48">
+                        <div class="w-full md:w-48">
+                            <label for="filterNaturezaId" class="text-xs font-medium">Natureza:</label>
+                            <select id="filterNaturezaId" class="w-full p-1 border rounded-md bg-white text-sm">
                                 <option value="all">A carregar...</option>
                             </select>
                         </div>
                         
-                        <div>
-                            <label for="filterCostCenterId" class="text-sm font-medium">Centro de Custo:</label>
-                            <select id="filterCostCenterId" class="p-2 border rounded-md bg-white w-48">
+                        <div class="w-full md:w-48">
+                            <label for="filterCostCenterId" class="text-xs font-medium">Centro de Custo:</label>
+                            <select id="filterCostCenterId" class="w-full p-1 border rounded-md bg-white text-sm">
                                 <option value="all">A carregar...</option>
                             </select>
                         </div>
                         
-                        <button id="applyDateFilterBtn" class="py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600">Aplicar Filtro</button>
+                        <!-- Botão explícito para aplicar filtro -->
+                        <button id="applyDateFilterBtn" class="w-full md:w-auto py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 col-span-2 md:col-span-auto">Aplicar Filtro</button>
                     </div>
                     
-                    <div class="flex flex-wrap items-center justify-center sm:justify-start gap-3 border-t pt-4">
-                        <button data-status-filter="pending" class="filter-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors bg-gray-100 text-gray-600">Aberto/Pendente</button>
-                        <button data-status-filter="paid" class="filter-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors bg-gray-100 text-gray-600">Pago/Finalizado</button>
-                        <button data-status-filter="all" class="filter-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors bg-gray-100 text-gray-600">Todos os Lançamentos</button>
+                    <div class="flex flex-wrap items-center justify-center sm:justify-start gap-3 border-t pt-3 mt-3">
+                        <button data-status-filter="pending" class="filter-btn py-1 px-3 rounded-full text-xs font-semibold transition-colors bg-gray-100 text-gray-600">Aberto/Pendente</button>
+                        <button data-status-filter="paid" class="filter-btn py-1 px-3 rounded-full text-xs font-semibold transition-colors bg-gray-100 text-gray-600">Pago/Finalizado</button>
+                        <button data-status-filter="all" class="filter-btn py-1 px-3 rounded-full text-xs font-semibold transition-colors bg-gray-100 text-gray-600">Todos os Lançamentos</button>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 text-center">
-                    <div class="bg-white p-4 rounded-lg shadow md:col-span-1 border-l-4 border-indigo-400">
-                        <p class="text-gray-500">Saldo Anterior (Realizado)</p>
-                        <p id="summary-previous-balance" class="text-3xl font-bold text-gray-800">R$ 0.00</p>
+                <!-- OCULTO: Resumo Previsto (Movido para o modal de Indicadores) -->
+                <div class="hidden">
+                    <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Resumo Previsto (No Período)</h3>
+                    <!-- Resumo Previsto (Compactado e ajustado para 2 colunas no mobile) -->
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 text-center">
+                        <div class="bg-white p-3 rounded-lg shadow">
+                            <p class="text-gray-500 text-sm">A Receber (Pendente)</p>
+                            <p id="summary-pending-receivables" class="text-2xl font-bold text-green-600">R$ 0.00</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow">
+                            <p class="text-gray-500 text-sm">A Pagar (Pendente)</p>
+                            <p id="summary-pending-payables" class="text-2xl font-bold text-red-600">R$ 0.00</p>
+                        </div>
+                        <div class="bg-white p-3 rounded-lg shadow col-span-2 md:col-span-1">
+                            <p class="text-gray-500 text-sm">Saldo Previsto</p>
+                            <p id="summary-pending-balance" class="text-2xl font-bold text-gray-800">R$ 0.00</p>
+                        </div>
                     </div>
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">Recebido (Total)</p><p id="summary-paid-receivables" class="text-3xl font-bold text-green-600">R$ 0.00</p></div>
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">Pago (Total)</p><p id="summary-paid-payables" class="text-3xl font-bold text-red-600">R$ 0.00</p></div>
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">Saldo do Período (Realizado)</p><p id="summary-current-balance" class="text-3xl font-bold text-gray-800">R$ 0.00</p></div>
                 </div>
 
-                <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Resumo Previsto (No Período)</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-center">
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">A Receber (Pendente)</p><p id="summary-pending-receivables" class="text-3xl font-bold text-green-600">R$ 0.00</p></div>
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">A Pagar (Pendente)</p><p id="summary-pending-payables" class="text-3xl font-bold text-red-600">R$ 0.00</p></div>
-                    <div class="bg-white p-4 rounded-lg shadow"><p class="text-gray-500">Saldo Previsto</p><p id="summary-pending-balance" class="text-3xl font-bold text-gray-800">R$ 0.00</p></div>
+                <!-- Botoes de alternancia de lista para mobile -->
+                <div id="list-toggle-buttons" class="grid grid-cols-2 gap-3 mb-4 md:hidden">
+                    <button data-action="toggle-list-view" data-list="payables" id="btn-payables-view" class="py-2 px-4 font-semibold rounded-lg shadow-md bg-gray-200 text-red-700">Contas a Pagar</button>
+                    <button data-action="toggle-list-view" data-list="receivables" id="btn-receivables-view" class="py-2 px-4 font-semibold rounded-lg shadow-md bg-green-100 text-green-700 border border-green-500">Contas a Receber</button>
                 </div>
 
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div><h3 class="text-xl font-semibold text-red-700 mb-4">Contas a Pagar</h3><div id="payables-list" class="space-y-3"></div></div>
-                    <div><h3 class="text-xl font-semibold text-green-700 mb-4">Contas a Receber</h3><div id="receivables-list" class="space-y-3"></div></div>
+                    <!-- Contas a Pagar -->
+                    <div id="payables-container" class="lg:col-span-1">
+                        <h3 class="text-xl font-semibold text-red-700 mb-4">Contas a Pagar</h3>
+                        <div id="payables-list" class="space-y-3"></div>
+                    </div>
+                    <!-- Contas a Receber -->
+                    <div id="receivables-container" class="lg:col-span-1">
+                        <h3 class="text-xl font-semibold text-green-700 mb-4">Contas a Receber</h3>
+                        <div id="receivables-list" class="space-y-3"></div>
+                    </div>
                 </div>
             </div>
         </section>
+        
+        <!-- FLOATING ACTION BUTTON (FAB) -->
+        <div id="main-fab-container" class="fixed bottom-6 right-6 z-50">
+            <!-- FAB Menu -->
+            <div id="fab-menu" class="flex flex-col items-end space-y-3 mb-3 hidden">
+                <!-- BOTÃO FLUXO DE CAIXA (NOVO) -->
+                <button data-action="open-cash-flow-modal" class="p-3 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 flex items-center gap-2 transition-transform transform hover:scale-105 text-sm">
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                    Fluxo de Caixa
+                </button>
+                <button data-action="open-modal" data-type="receivable" class="p-3 bg-green-600 text-white font-semibold rounded-lg shadow-lg hover:bg-green-700 flex items-center gap-2 transition-transform transform hover:scale-105 text-sm">
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    Nova Receita
+                </button>
+                <button data-action="open-modal" data-type="payable" class="p-3 bg-red-600 text-white font-semibold rounded-lg shadow-lg hover:bg-red-700 flex items-center gap-2 transition-transform transform hover:scale-105 text-sm">
+                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    Nova Despesa
+                </button>
+            </div>
+            <!-- Main FAB Button -->
+            <button data-action="toggle-fab-menu" id="main-fab-btn" class="w-14 h-14 bg-indigo-600 text-white font-bold text-3xl rounded-full shadow-xl hover:bg-indigo-700 flex items-center justify-center transition-transform duration-200">
+                <svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+            </button>
+        </div>
     `;
 
+    // --- CORREÇÃO: LISTENERS DIRETOS NO FAB ---
+    // Anexa listeners de clique diretamente nos elementos do FAB após serem renderizados.
+    const mainFabBtn = document.getElementById('main-fab-btn');
+    const fabMenu = document.getElementById('fab-menu');
+    
+    if (mainFabBtn && fabMenu) {
+        // Listener para o botão principal (+)
+        mainFabBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Impede que o clique "vaze" para o body
+            fabMenu.classList.toggle('hidden');
+            mainFabBtn.classList.toggle('rotate-45');
+        });
+
+        // Listeners para os itens do menu
+        const fabReceivableBtn = fabMenu.querySelector('button[data-action="open-modal"][data-type="receivable"]');
+        const fabPayableBtn = fabMenu.querySelector('button[data-action="open-modal"][data-type="payable"]');
+        const fabCashFlowBtn = fabMenu.querySelector('button[data-action="open-cash-flow-modal"]'); // Listener para o novo botão
+
+        if (fabReceivableBtn) {
+            fabReceivableBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                openFinancialModal('receivable');
+            });
+        }
+
+        if (fabPayableBtn) {
+            fabPayableBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openFinancialModal('payable');
+            });
+        }
+        
+        if (fabCashFlowBtn) {
+            fabCashFlowBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openCashFlowModal();
+            });
+        }
+    }
+    
     // Remove listeners antigos para evitar duplicação
     if (financialPageEventListener) {
-        contentDiv.removeEventListener('click', financialPageEventListener);
+        document.body.removeEventListener('click', financialPageEventListener);
     }
     if (genericModalEventListener) {
         document.getElementById('genericModal').removeEventListener('click', genericModalEventListener);
@@ -708,19 +939,31 @@ export async function loadFinancialPage() {
     
     // --- LÓGICA DE FILTRAGEM (Status e Data/Natureza/CCusto) ---
     
-    const handleFilterChange = () => {
+    const handleFilterChangeAndReload = () => {
         // Captura o estado atualizado dos filtros
         const startDateInput = document.getElementById('filterStartDate');
         const endDateInput = document.getElementById('filterEndDate');
+        const filterNaturezaId = document.getElementById('filterNaturezaId');
+        const filterCostCenterId = document.getElementById('filterCostCenterId');
         
+        // Atualiza o estado local com os valores atuais do DOM
         localState.startDate = startDateInput.value;
         localState.endDate = endDateInput.value;
-        localState.filterNaturezaId = document.getElementById('filterNaturezaId').value;
-        localState.filterCostCenterId = document.getElementById('filterCostCenterId').value;
+        localState.filterNaturezaId = filterNaturezaId.value;
+        localState.filterCostCenterId = filterCostCenterId.value;
+        
+        // Se a tela for pequena, oculta o painel de filtros após a aplicação
+        const advancedFiltersEl = document.getElementById('advanced-filters');
+        if (advancedFiltersEl && advancedFiltersEl.classList.contains('hidden') === false) {
+            // 768px é o breakpoint 'md' do Tailwind
+            if (window.innerWidth < 768) { 
+                advancedFiltersEl.classList.add('hidden');
+            }
+        }
         
         fetchAndDisplayData();
     };
-    
+
     const handleStatusFilterClick = (e) => {
         const filterBtn = e.target.closest('[data-status-filter]');
         if (!filterBtn) return;
@@ -738,32 +981,94 @@ export async function loadFinancialPage() {
 
         renderLists();
     };
+    
+    // Lógica de alternância de visualização da lista (mobile)
+    const toggleListView = (listType) => {
+        const payablesContainer = document.getElementById('payables-container');
+        const receivablesContainer = document.getElementById('receivables-container');
+        const btnPayables = document.getElementById('btn-payables-view');
+        const btnReceivables = document.getElementById('btn-receivables-view');
+
+        // Esta função deve funcionar em todas as resoluções, mas a lógica de visibilidade é forçada para mobile no initialSetup.
+        if (window.innerWidth >= 1024 && localState.currentListView === listType) return;
+
+        if (listType === 'payables') {
+            payablesContainer.classList.remove('hidden');
+            receivablesContainer.classList.add('hidden');
+            
+            if(btnPayables) {
+                btnPayables.classList.remove('bg-gray-200');
+                btnPayables.classList.add('bg-red-100', 'border', 'border-red-500');
+            }
+            if(btnReceivables) {
+                btnReceivables.classList.remove('bg-green-100', 'border', 'border-green-500');
+                btnReceivables.classList.add('bg-gray-200');
+            }
+        } else { // receivables
+            payablesContainer.classList.add('hidden');
+            receivablesContainer.classList.remove('hidden');
+
+            if(btnPayables) {
+                btnPayables.classList.remove('bg-red-100', 'border', 'border-red-500');
+                btnPayables.classList.add('bg-gray-200');
+            }
+            if(btnReceivables) {
+                btnReceivables.classList.remove('bg-gray-200');
+                btnReceivables.classList.add('bg-green-100', 'border', 'border-green-500');
+            }
+        }
+        localState.currentListView = listType;
+    };
+
 
     // --- SETUP DE LISTENERS ---
     
     // Listener principal para aplicar filtros de data/natureza/centro de custo
-    document.getElementById('applyDateFilterBtn').addEventListener('click', handleFilterChange);
-    document.getElementById('filterNaturezaId').addEventListener('change', handleFilterChange);
-    document.getElementById('filterCostCenterId').addEventListener('change', handleFilterChange);
+    document.getElementById('applyDateFilterBtn').addEventListener('click', handleFilterChangeAndReload);
     
+    // Listeners de change nos selects de hierarquia
+    document.getElementById('filterNaturezaId').addEventListener('change', () => { 
+        localState.filterNaturezaId = document.getElementById('filterNaturezaId').value; 
+    });
+    document.getElementById('filterCostCenterId').addEventListener('change', () => { 
+        localState.filterCostCenterId = document.getElementById('filterCostCenterId').value;
+    });
+
     document.querySelectorAll('[data-status-filter]').forEach(btn => {
         btn.addEventListener('click', handleStatusFilterClick);
     });
 
+    // Listener principal da página (agora no document.body)
     financialPageEventListener = (e) => {
         const target = e.target.closest('button[data-action]');
         if (!target) return;
 
         const { action, type, id } = target.dataset;
-        if (action === 'open-modal') openFinancialModal(type);
-        else if (action === 'edit') openFinancialModal(type, JSON.parse(target.dataset.item.replace(/&apos;/g, "'")));
+        
+        // Ações do FAB (toggle-fab-menu, open-modal, open-cash-flow-modal) são tratadas por listeners diretos
+        
+        if (action === 'edit') openFinancialModal(type, JSON.parse(target.dataset.item.replace(/&apos;/g, "'")));
         else if (action === 'delete') handleDelete(type, id);
         else if (action === 'mark-as-paid') handleMarkAsPaid(type, id);
-        else if (action === 'manage-natures') openHierarchyModal('nature');
-        else if (action === 'manage-cost-centers') openHierarchyModal('cost-center');
-        else if (action === 'open-cash-flow-modal') openCashFlowModal();
+        else if (action === 'manage-natures') openHierarchyModal('nature'); // Esta ação é reutilizada
+        else if (action === 'manage-cost-centers') openHierarchyModal('cost-center'); // Esta ação é reutilizada
+        else if (action === 'open-cash-flow-modal') openCashFlowModal(); // Chamado pelo botão do desktop
+        else if (action === 'toggle-filters') {
+            document.getElementById('advanced-filters')?.classList.toggle('hidden');
+        }
+        else if (action === 'open-indicators-modal') { 
+            openIndicatorsModal();
+        }
+        // Ação do novo botão de Configurações
+        else if (action === 'open-settings-modal') {
+            openSettingsModal();
+        }
+        else if (action === 'toggle-list-view') {
+            toggleListView(target.dataset.list);
+        }
     };
 
+    // Listener do Modal Genérico
     genericModalEventListener = (e) => {
         const target = e.target.closest('button[data-action^="delete-"]');
         if (target) {
@@ -772,7 +1077,8 @@ export async function loadFinancialPage() {
         }
     };
 
-    contentDiv.addEventListener('click', financialPageEventListener);
+    // Anexa os listeners principais
+    document.body.addEventListener('click', financialPageEventListener);
     document.getElementById('genericModal').addEventListener('click', genericModalEventListener);
 
     async function handleDeleteHierarchyItem(type, id) {
@@ -796,6 +1102,46 @@ export async function loadFinancialPage() {
         }
     }
 
+    // Chamada inicial para configurar o estado da visualização da lista no mobile
+    const initialSetup = () => {
+        const isMobileView = window.innerWidth < 1024;
+        const payablesContainer = document.getElementById('payables-container');
+        const receivablesContainer = document.getElementById('receivables-container');
+        const listToggleButtons = document.getElementById('list-toggle-buttons');
+
+        if (payablesContainer && receivablesContainer) {
+            // Garante que a visibilidade padrão seja resetada pelo CSS em telas grandes.
+            payablesContainer.classList.remove('hidden');
+            receivablesContainer.classList.remove('hidden');
+
+            if (isMobileView) {
+                // Força o display em colunas simples para mobile
+                payablesContainer.classList.remove('lg:col-span-1');
+                receivablesContainer.classList.remove('lg:col-span-1');
+                
+                // Garante que o container de botões de toggle esteja visível no mobile
+                listToggleButtons?.classList.remove('hidden');
+                
+                // Seta o estado inicial (Receivables visível por padrão)
+                toggleListView(localState.currentListView);
+                
+            } else {
+                // Visão Desktop: Ambas as colunas visíveis por padrão (controlado pelo grid lg:grid-cols-2)
+                payablesContainer.classList.add('lg:col-span-1');
+                receivablesContainer.classList.add('lg:col-span-1');
+                listToggleButtons?.classList.add('hidden');
+                
+                // Remove qualquer classe 'hidden' forçada pela visão mobile
+                payablesContainer.classList.remove('hidden');
+                receivablesContainer.classList.remove('hidden');
+            }
+        }
+    };
+    
+    // Roda a configuração inicial e adiciona um listener para redimensionamento
+    initialSetup();
+    window.addEventListener('resize', initialSetup);
+    
     // Aplica o estilo inicial de filtro e carrega os dados
     const initialFilterButton = document.querySelector(`[data-status-filter="${localState.currentFilter}"]`);
     if (initialFilterButton) {
@@ -810,8 +1156,10 @@ export async function loadFinancialPage() {
     // Carrega os dados do dia e os dados filtrados
     try {
         const todaySummary = await financialApi.getTodaySummary();
-        document.getElementById('summary-today-payables').textContent = `R$ ${todaySummary.totalPayables.toFixed(2)}`;
-        document.getElementById('summary-today-receivables').textContent = `R$ ${todaySummary.totalReceivables.toFixed(2)}`;
+        const summaryTodayPayablesEl = document.getElementById('summary-today-payables');
+        if (summaryTodayPayablesEl) summaryTodayPayablesEl.textContent = `R$ ${todaySummary.totalPayables.toFixed(2)}`;
+        const summaryTodayReceivablesEl = document.getElementById('summary-today-receivables');
+        if (summaryTodayReceivablesEl) summaryTodayReceivablesEl.textContent = `R$ ${todaySummary.totalReceivables.toFixed(2)}`;
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar o resumo do dia.', 'error');
     }

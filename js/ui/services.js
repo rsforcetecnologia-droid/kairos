@@ -1,5 +1,3 @@
-// rsforcetecnologia-droid/kairos/kairos-aaa61fc2d5245a1c14d229ce794eaaa3acd28154/js/ui/services.js
-
 // --- 1. IMPORTAÇÕES ---
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
@@ -486,29 +484,47 @@ function renderServicesList() {
             const card = document.createElement('div');
             const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
             
-            card.className = `service-card bg-white rounded-lg shadow-md flex flex-col overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:bg-gray-50 ${service.active !== false ? 'opacity-100' : 'opacity-50 bg-gray-100'}`;
+            // ALTERAÇÃO: Classes alteradas para suportar layout flex (lista) em mobile e flex-col (card) em desktop
+            card.className = `service-card bg-white rounded-lg shadow-md flex overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:bg-gray-50 ${service.active !== false ? 'opacity-100' : 'opacity-50 bg-gray-100'} sm:flex-col`;
             card.dataset.action = 'edit-service'; 
             card.dataset.service = serviceDataString; 
 
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
             const categoryName = categoryMap.get(service.categoryId) || 'N/A';
 
+            // ALTERAÇÃO: O innerHTML foi reestruturado para ser responsivo (lista em mobile, card em desktop)
             card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-full h-24 object-cover">
-                <div class="p-3 flex flex-col flex-grow">
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-start mb-1">
-                            <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${service.name}</h3>
-                            <label class="flex items-center cursor-pointer" data-action-stop-propagation="true">
-                                <div class="relative">
-                                    <input type="checkbox" data-action="toggle-service-status" data-id="${service.id}" class="sr-only" ${service.active !== false ? 'checked' : ''}>
-                                    <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                                </div>
-                            </label>
+                <!-- Imagem: pequena na esquerda (mobile), grande no topo (desktop) -->
+                <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
+                
+                <!-- Conteúdo Principal -->
+                <div class="p-3 flex flex-col flex-grow justify-between w-full">
+                    <!-- Topo: Nome e Toggle -->
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="text-sm font-bold text-gray-900 flex-1 text-left truncate pr-2">${service.name}</h3>
+                        <label class="flex items-center cursor-pointer ml-2" data-action-stop-propagation="true">
+                            <div class="relative">
+                                <input type="checkbox" data-action="toggle-service-status" data-id="${service.id}" class="sr-only" ${service.active !== false ? 'checked' : ''}>
+                                <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- Meio: Preço (esconde em mobile, mostra em desktop) -->
+                    <p class="text-xl font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${service.price.toFixed(2)}</p>
+
+                    <!-- Rodapé: Duração e Preço (mobile) / Categoria e Duração (desktop) -->
+                    <div>
+                        <!-- Info Desktop: Categoria e Duração (visível em sm e acima) -->
+                        <div class="hidden sm:block">
+                            <p class="text-xs text-gray-500 text-left mb-1 truncate">Categoria: ${categoryName}</p>
+                            <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
                         </div>
-                        <p class="text-xl font-bold text-indigo-600 mb-1 text-left">R$ ${service.price.toFixed(2)}</p>
-                        <p class="text-xs text-gray-500 text-left mb-2">Categoria: ${categoryName}</p>
-                        <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
+                        <!-- Info Mobile: Preço e Duração (visível apenas em mobile) -->
+                        <div class="flex justify-between items-center sm:hidden mt-2">
+                            <p class="text-lg font-bold text-indigo-600 text-left">R$ ${service.price.toFixed(2)}</p>
+                            <p class="text-xs text-gray-500 text-right">${service.duration} min</p>
+                        </div>
                     </div>
                 </div>`;
             listDiv.appendChild(card);
@@ -543,10 +559,11 @@ function renderServiceIndicators() {
     
     if (popularEl) {
         if (state.mostPopularService && state.mostPopularService.name !== 'N/A') {
-            const serviceName = state.mostPopularService.name.length > 18 ? 
-                state.mostPopularService.name.substring(0, 18) + '...' : 
-                state.mostPopularService.name;
-            popularEl.textContent = serviceName;
+            // const serviceName = state.mostPopularService.name.length > 18 ? 
+            //     state.mostPopularService.name.substring(0, 18) + '...' : 
+            //     state.mostPopularService.name;
+            // popularEl.textContent = serviceName;
+            popularEl.textContent = state.mostPopularService.name;
             popularEl.closest('.indicator-card').title = `${state.mostPopularService.name} (${state.mostPopularService.count} agendamentos)`;
         } else {
             popularEl.textContent = 'N/A';
@@ -558,15 +575,7 @@ function renderServiceIndicators() {
 function renderServicesView() {
     const container = document.getElementById('services-content-container');
     container.innerHTML = `
-        <!-- ALTERAÇÃO: Título removido e botão padronizado com ícone + -->
-        <div class="flex flex-col sm:flex-row gap-4 justify-end items-stretch sm:items-center mb-6">
-            <div class="flex items-center gap-2">
-                <button data-action="new-service" class="w-full sm:w-auto flex items-center justify-center gap-2 py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    <span>Novo Serviço</span>
-                </button>
-            </div>
-        </div>
+        <!-- ALTERAÇÃO: Botão "Novo Serviço" foi REMOVIDO daqui -->
 
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full sm:w-64 p-2 border rounded-md shadow-sm">
@@ -575,28 +584,33 @@ function renderServicesView() {
             </select>
         </div>
         
-        <div class="flex gap-3 mb-4 overflow-x-auto py-2 lg:grid lg:grid-cols-4 lg:overflow-visible lg:py-0 lg:gap-4">
-            <div data-action="filter-service" data-filter-type="total" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-blue-50 border-l-4 border-blue-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+        <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4 lg:gap-4">
+            <div data-action="filter-service" data-filter-type="total" class="indicator-card bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
                 <div class="bg-blue-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M5 11v2m14-2v2"></path></svg></div>
-                <div><p class="text-sm text-gray-500 whitespace-nowrap">Total de Serviços</p><p id="indicator-total" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+                <div><p class="text-xs text-gray-500">Total de Serviços</p><p id="indicator-total" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
             </div>
-            <div data-action="filter-service" data-filter-type="active" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-green-50 border-l-4 border-green-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+            <div data-action="filter-service" data-filter-type="active" class="indicator-card bg-green-50 border-l-4 border-green-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
                 <div class="bg-green-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
-                <div><p class="text-sm text-gray-500 whitespace-nowrap">Serviços Ativos</p><p id="indicator-active" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+                <div><p class="text-xs text-gray-500">Serviços Ativos</p><p id="indicator-active" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
             </div>
-            <div data-action="filter-service" data-filter-type="inactive" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-red-50 border-l-4 border-red-500 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 cursor-pointer transition-all">
+            <div data-action="filter-service" data-filter-type="inactive" class="indicator-card bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
                 <div class="bg-red-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg></div>
-                <div><p class="text-sm text-gray-500 whitespace-nowrap">Serviços Inativos</p><p id="indicator-inactive" class="text-xl lg:text-2xl font-bold text-gray-800">0</p></div>
+                <div><p class="text-xs text-gray-500">Serviços Inativos</p><p id="indicator-inactive" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
             </div>
-            <div id="popular-card" data-action="filter-service" data-filter-type="popular" class="indicator-card flex-shrink-0 w-44 lg:w-auto bg-gray-50 border-l-4 border-gray-400 p-3 lg:p-4 rounded-r-lg flex items-center gap-3 lg:gap-4 transition-all opacity-70" title="Carregando...">
+            <div id="popular-card" data-action="filter-service" data-filter-type="popular" class="indicator-card bg-gray-50 border-l-4 border-gray-400 p-3 rounded-r-lg flex items-center gap-3 transition-all opacity-70 lg:p-4 lg:gap-4" title="Carregando...">
                 <div class="bg-gray-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118L2.05 10.1c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg></div>
-                <div><p class="text-sm text-gray-500 whitespace-nowrap">Mais Usados</p><p id="indicator-popular" class="text-xl lg:text-2xl font-bold text-gray-800">...</p></div>
+                <div><p class="text-xs text-gray-500">Mais Usados</p><p id="indicator-popular" class="text-lg font-bold text-gray-800 lg:text-2xl truncate">...</p></div>
             </div>
         </div>
 
-        <div id="servicesList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div id="servicesList" class="space-y-3 sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
             <div class="loader col-span-full mx-auto my-10"></div>
         </div>
+        
+        <!-- ALTERAÇÃO: Botão de Ação Flutuante (FAB) "Novo Serviço" adicionado -->
+        <button data-action="new-service" class="fixed z-30 bottom-20 right-6 sm:bottom-8 sm:right-8 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+        </button>
     `;
 
     const categoryFilter = document.getElementById('serviceCategoryFilter');
@@ -658,8 +672,8 @@ function switchTab(targetView) {
     
     if (currentView === targetView && document.getElementById('services-content-container').children.length > 1) {
          if(currentView === 'services') {
-            renderServiceIndicators();
-            renderServicesList();
+             renderServiceIndicators();
+             renderServicesList();
          }
          return;
     }
