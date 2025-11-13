@@ -111,16 +111,19 @@ function renderPermissionsForm(currentPermissions = {}) {
         const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
         const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
         
+        // ################## INÍCIO DA CORREÇÃO ##################
+        // A tag <div class="..."> foi trocada por <label class="...">
         const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
-             <div class="flex flex-col items-center space-y-1 cursor-pointer">
+             <label class="flex flex-col items-center space-y-1 cursor-pointer">
                 <div class="relative">
                     <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only" 
                         ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
                     <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
                 </div>
                 <span class="text-xs text-gray-600">${pLabel}</span>
-            </div>
+            </label>
         `).join('');
+        // ################### FIM DA CORREÇÃO ###################
 
         const specialPermissionHtml = isAgendaOrComandas ? `
             <div class="col-span-full pt-2 mt-2 border-t border-gray-200">
