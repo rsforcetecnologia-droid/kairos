@@ -16,6 +16,18 @@ export const getProfessionals = (establishmentId) => {
     return authenticatedFetch(`/api/professionals/${establishmentId}`);
 };
 
+// --- INÍCIO DA FUNÇÃO ADICIONADA ---
+/**
+ * Busca os detalhes de um único profissional (usado pela tela Meu Perfil).
+ * @param {string} professionalId - O ID do profissional.
+ * @returns {Promise<object>} Os dados do profissional.
+ */
+export const getProfessional = (professionalId) => {
+    // Esta rota será adicionada ao routes/professionals.js
+    return authenticatedFetch(`/api/professionals/details/${professionalId}`); 
+};
+// --- FIM DA FUNÇÃO ADICIONADA ---
+
 /**
  * Cria um novo profissional.
  * @param {object} professionalData - Os dados do profissional a ser criado.

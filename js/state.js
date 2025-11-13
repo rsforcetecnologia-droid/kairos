@@ -5,6 +5,9 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth
 // Estado global da aplicação
 export const state = {
     establishmentId: null,
+    establishmentName: null, // <-- ADICIONADO (para armazenar o nome)
+    userName: null, // <-- ADICIONADO (para armazenar o nome do usuário)
+    userProfessionalId: null, // <-- ADICIONADO (para o "Meu Perfil")
     userPermissions: null, // Armazena as permissões do usuário
     enabledModules: {
         agenda: true,
@@ -40,6 +43,7 @@ export const state = {
  */
 export function setGlobalState(establishmentId, establishmentName, permissions) {
     state.establishmentId = establishmentId;
+    state.establishmentName = establishmentName; // <-- ADICIONADO
     state.userPermissions = permissions;
     
     // ####################################################################

@@ -108,6 +108,37 @@ router.get('/:establishmentId', async (req, res) => {
     }
 });
 
+// --- INÍCIO DA NOVA ROTA ---
+// Rota GET para buscar detalhes de UM profissional (usado pela tela 'Meu Perfil')
+router.get('/details/:professionalId', verifyToken, hasAccess, async (req, res) => {
+    const { professionalId } = req.params;
+    const { establishmentId } = req.user;
+    const { db } = req;
+
+    try {
+        const professionalRef = db.collection('professionals').doc(professionalId);
+        const doc = await professionalRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Profissional não encontrado.' });
+        }
+
+        const data = doc.data();
+        
+        // Verificação de segurança: Garante que o profissional pertença ao estabelecimento do usuário logado
+        if (data.establishmentId !== establishmentId) {
+            return res.status(403).json({ message: 'Acesso negado.' });
+        }
+        
+        res.status(200).json({ id: doc.id, ...data });
+
+    } catch (error) {
+        console.error("Erro ao buscar detalhes do profissional:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+// --- FIM DA NOVA ROTA ---
+
 // Deletar profissional (Rota Privada)
 router.delete('/:professionalId', verifyToken, hasAccess, async (req, res) => {
     const { professionalId } = req.params;

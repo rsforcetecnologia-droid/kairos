@@ -3,11 +3,12 @@
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { collection, query, where, onSnapshot, doc, getDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Adicionado getDocs
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
+import { getProfessionals } from './api/professionals.js'; // Importa a API de profissionais
 
 // (MODIFICADO) Importa a nova função da API de relatórios, juntamente com as existentes
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
@@ -27,6 +28,7 @@ import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
 import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
+import { loadMyProfilePage } from './ui/my-profile.js'; // <-- 1. IMPORTADO O NOVO MÓDULO
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -42,6 +44,7 @@ const profileName = document.getElementById('profileName');
 const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
 const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
+const myProfileLink = document.getElementById('myProfileLink'); // <-- 3. REFERÊNCIA AO NOVO LINK
 
 const colorThemes = {
     indigo: { main: '#4f46e5', light: '#e0e7ff', text: 'white', hover: '#4338ca' },
@@ -70,6 +73,7 @@ const pageLoader = {
     'financial-section': loadFinancialPage,
     'commissions-section': loadCommissionsPage,
     'packages-section': loadPackagesPage,
+    'my-profile-section': loadMyProfilePage, // <-- 2. ADICIONADO AO PAGE LOADER
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
@@ -161,13 +165,19 @@ function setupRealtimeListeners(establishmentId) {
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
 
-    const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
-    const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
-    
-    if (!isModuleEnabled || !hasEmployeePermission) {
-        contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
-        document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
-        return;
+    // O 'my-profile' não está nos módulos de permissão, então damos acesso direto
+    if (sectionId === 'my-profile-section') {
+         // Apenas carrega a página
+    } else {
+        // Lógica de permissão padrão
+        const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
+        const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
+        
+        if (!isModuleEnabled || !hasEmployeePermission) {
+            contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
+            document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
+            return;
+        }
     }
     
     const loadPage = pageLoader[sectionId];
@@ -175,6 +185,11 @@ export function navigateTo(sectionId, params = {}) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
+        // Se for o 'Meu Perfil', remove o 'active' de todos os links da sidebar
+        if (sectionId === 'my-profile-section') {
+            document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
+        }
+        
         contentDiv.innerHTML = '';
         loadPage(params);
     } else {
@@ -268,6 +283,18 @@ function initialize() {
             setTimeout(() => profileDropdown.classList.add('hidden'), 200);
         }
     });
+    
+    // --- 3. ADICIONADO LISTENER DO NOVO LINK ---
+    if (myProfileLink) {
+        myProfileLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateTo('my-profile-section');
+            // Fecha o dropdown
+            profileDropdown.classList.remove('active');
+            profileDropdown.classList.add('hidden');
+        });
+    }
+    // --- FIM DA ADIÇÃO ---
 
     document.addEventListener('click', (e) => {
         if (!notificationPanel.contains(e.target) && e.target !== notificationBell) {
@@ -295,6 +322,9 @@ function initialize() {
 
                     let userPermissions = null;
                     let userName = user.displayName; 
+                    
+                    // --- 4. LÓGICA PARA BUSCAR O PROFESSIONAL ID ---
+                    let userProfessionalId = null; 
 
                     if (claims.role === 'employee') {
                         const userDocRef = doc(db, 'users', user.uid);
@@ -303,11 +333,30 @@ function initialize() {
                             const userData = userDoc.data();
                             userPermissions = userData.permissions;
                             userName = userData.name;
+                            userProfessionalId = userData.professionalId || null; // <-- Pega o ID do profissional
                         } else {
                             throw new Error("Dados de permissão do funcionário não encontrados.");
                         }
+                    } else if (claims.role === 'owner') {
+                        // Tenta encontrar um profissional associado ao e-mail do dono
+                        try {
+                            const profQuery = query(
+                                collection(db, 'professionals'),
+                                where('establishmentId', '==', claims.establishmentId),
+                                where('email', '==', user.email) // Assumindo que o dono se cadastra com o mesmo email
+                            );
+                            const profSnapshot = await getDocs(profQuery);
+                            if (!profSnapshot.empty) {
+                                userProfessionalId = profSnapshot.docs[0].id;
+                            }
+                        } catch (e) {
+                            console.warn("Não foi possível associar o dono a um profissional pelo e-mail:", e.message);
+                        }
                     }
                     
+                    state.userProfessionalId = userProfessionalId; // <-- ARMAZENA NO STATE
+                    // --- FIM DA LÓGICA DO PROFESSIONAL ID ---
+
                     const finalUserName = userName || user.email;
                     
                     // Define o estado global (com a correção do state.js aplicada)

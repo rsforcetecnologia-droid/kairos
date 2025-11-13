@@ -21,7 +21,8 @@ const verifyToken = async (req, res, next) => {
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = decodedToken; // Adiciona o payload do token ao objeto da requisição
         
-        // NOVO: Se for um employee, busca os dados da collection 'users'
+        // --- INÍCIO DA MODIFICAÇÃO ---
+        // Se for um employee, busca os dados da collection 'users'
         if (req.user.role === 'employee' && req.user.establishmentId) {
              const userDoc = await admin.firestore().collection('users').doc(req.user.uid).get();
              if (userDoc.exists) {
@@ -30,7 +31,19 @@ const verifyToken = async (req, res, next) => {
                  req.user.professionalId = userData.professionalId || null; // <-- ADICIONADO
                  req.user.name = userData.name || req.user.name; // <-- ADICIONADO
              }
+        // NOVO: Se for um owner, busca o professionalId associado ao email dele
+        } else if (req.user.role === 'owner' && req.user.establishmentId) {
+            const profQuery = await admin.firestore().collection('professionals')
+                .where('establishmentId', '==', req.user.establishmentId)
+                .where('email', '==', req.user.email) // Assume que o email do dono é o mesmo do profissional
+                .limit(1)
+                .get();
+            
+            if (!profQuery.empty) {
+                req.user.professionalId = profQuery.docs[0].id; // <-- ADICIONADO
+            }
         }
+        // --- FIM DA MODIFICAÇÃO ---
 
         next();
     } catch (error) {
