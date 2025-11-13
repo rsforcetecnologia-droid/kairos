@@ -5,7 +5,8 @@ import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
-import { updatePassword, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // CORREÇÃO: updateProfile importado
+// (MODIFICADO) 'updateEmail' foi trocado por 'verifyBeforeUpdateEmail'
+import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
@@ -17,7 +18,7 @@ const colorThemes = {
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
 
-// (NOVO) Menu de itens (definido globalmente para ser acessível por todas as funções)
+// (MODIFICADO) Menu de itens (definido globalmente para ser acessível por todas as funções)
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
@@ -26,10 +27,10 @@ const menuItems = [
     { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
     { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
     { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
+    { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
     { id: 'delete-account', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m-7-10V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3M4 7h16', label: 'Excluir conta' },
 ];
 
-// (NOVO) Variável para guardar os dados do estabelecimento
 let establishmentData = null; 
 
 // --- 1. FUNÇÕES AUXILIARES ---
@@ -67,37 +68,31 @@ async function handleSave(formData, event) {
         saveButton.textContent = 'A Salvar...';
     }
     try {
-        // (MODIFICADO) Usa a variável 'establishmentData' em cache
         const existingData = establishmentData || await establishmentApi.getEstablishmentDetails(state.establishmentId);
         const updatePromises = [];
         
         const { ownerName, ...firestoreData } = formData; // Separa ownerName
 
-        // CORREÇÃO: Atualiza o displayName do Dono usando a função importada
         if (ownerName && ownerName !== state.userName) {
              const user = auth.currentUser;
              if (user) {
                    updatePromises.push(updateProfile(user, { displayName: ownerName })
                         .then(() => {
                             state.userName = ownerName;
-                            // A atualização do nome no sidebar é feita pelo main.js após o re-render
                         })
                 );
              }
         }
         
-        // Atualiza os dados do estabelecimento no Firestore
         const updatedData = { ...existingData, ...firestoreData };
         updatePromises.push(establishmentApi.updateEstablishmentDetails(state.establishmentId, updatedData));
 
         await Promise.all(updatePromises);
         
-        // (NOVO) Atualiza os dados em cache
         establishmentData = updatedData;
 
         showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
         
-        // (MODIFICADO) Verifica se o elemento existe antes de tentar atualizar
         const panelEstablishmentName = document.getElementById('panelEstablishmentName');
         if (firestoreData.name && panelEstablishmentName) {
             panelEstablishmentName.textContent = firestoreData.name;
@@ -115,8 +110,6 @@ async function handleSave(formData, event) {
 }
 
 // --- 2. FUNÇÕES DE RENDERIZAÇÃO DAS SECÇÕES ---
-// (MODIFICADO) Todas as funções 'render' agora recebem um 'container' para renderizar
-// e os seus seletores internos (getElementById) são alterados para 'container.querySelector'
 
 function renderPersonalDataSection(data, container) {
     container.innerHTML = `
@@ -207,7 +200,7 @@ function renderChangePasswordSection(data, container) {
             showNotification('Erro', 'As senhas não coincidem.', 'error');
             return;
         }
-        const saveButton = e.target.querySelector('button[type="submit"]');
+        const saveButton = container.querySelector('button[form="change-password-form"]'); // CORREÇÃO
         saveButton.disabled = true;
         saveButton.textContent = 'A Salvar...';
         try {
@@ -227,6 +220,88 @@ function renderChangePasswordSection(data, container) {
         }
     });
 }
+
+// (FUNÇÃO MODIFICADA)
+function renderChangeEmailSection(data, container) {
+    container.innerHTML = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">Alterar E-mail de Acesso</h3>
+                <button type="submit" form="change-email-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Novo E-mail</button>
+            </div>
+            <form id="change-email-form" class="space-y-4">
+                <p class="text-sm text-gray-600">Para alterar seu e-mail de login, por favor, confirme sua senha atual. Um e-mail de verificação será enviado para o seu **novo** endereço.</p>
+                <div>
+                    <label for="newEmail" class="block text-sm font-medium text-gray-700">Novo E-mail</label>
+                    <input type="email" id="newEmail" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                </div>
+                <div>
+                    <label for="currentPassword" class="block text-sm font-medium text-gray-700">Senha Atual</label>
+                    <input type="password" id="currentPassword" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    // Este é o código que faz o botão "Salvar Novo E-mail" funcionar
+    container.querySelector('#change-email-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newEmail = container.querySelector('#newEmail').value;
+        const currentPassword = container.querySelector('#currentPassword').value;
+        
+        if (!newEmail || !currentPassword) {
+            showNotification('Erro', 'Preencha todos os campos.', 'error');
+            return;
+        }
+
+        // *** AQUI ESTÁ A CORREÇÃO ***
+        // O botão está no 'container', não no 'e.target' (que é o form)
+        const saveButton = container.querySelector('button[form="change-email-form"]');
+        // ***************************
+        
+        saveButton.disabled = true;
+        saveButton.textContent = 'A verificar...';
+
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Usuário não autenticado.");
+
+            // 1. Reautenticar o usuário com a senha atual
+            const credential = EmailAuthProvider.credential(user.email, currentPassword);
+            await reauthenticateWithCredential(user, credential);
+
+            // 2. (MODIFICADO) Chamar 'verifyBeforeUpdateEmail'
+            saveButton.textContent = 'A enviar link...';
+            await verifyBeforeUpdateEmail(user, newEmail); // <-- ESTA É A MUDANÇA
+
+            // 3. Atualizar o e-mail no Firestore (backend) - Chama o Arquivo 2
+            // Isso é feito imediatamente para que o app saiba qual e-mail esperar
+            saveButton.textContent = 'A atualizar BD...';
+            await establishmentApi.updateOwnerEmail(state.establishmentId, newEmail);
+
+            // 4. (MODIFICADO) Mensagem de sucesso
+            showNotification('Sucesso', 'Link de verificação enviado! Por favor, verifique seu **novo e-mail** para confirmar a alteração.', 'success');
+            e.target.reset();
+
+        } catch (error) {
+            let friendlyMessage = 'Não foi possível alterar o e-mail.';
+            if (error.code === 'auth/wrong-password') {
+                friendlyMessage = 'A senha atual está incorreta.';
+            } else if (error.code === 'auth/email-already-in-use') {
+                friendlyMessage = 'Este e-mail já está sendo usado por outra conta.';
+            } else if (error.code === 'auth/operation-not-allowed') {
+                 friendlyMessage = 'A troca de e-mail precisa ser habilitada no console do Firebase.';
+            } else {
+                friendlyMessage = error.message;
+            }
+            showNotification('Erro', friendlyMessage, 'error');
+        } finally {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Salvar Novo E-mail';
+        }
+    });
+}
+
 
 function renderBrandingSection(data, container) {
     container.innerHTML = `
@@ -286,10 +361,6 @@ function renderBrandingSection(data, container) {
         handleSave(formData, e);
     });
 }
-
-// ####################################################################
-// ### INÍCIO DA MODIFICAÇÃO (Agendamento Online) ###
-// ####################################################################
 
 function renderBookingSection(data, container) {
     // 1. Gera o link de agendamento público
@@ -436,9 +507,6 @@ function renderBookingSection(data, container) {
         handleSave(formData, e);
     });
 }
-// ####################################################################
-// ### FIM DA MODIFICAÇÃO ###
-// ####################################################################
 
 
 function renderWorkingHoursSection(data, container) {
@@ -755,12 +823,13 @@ async function showSettingsDetailView(sectionId) {
     // Pega o novo container de conteúdo
     const detailContainer = document.getElementById('settings-content-detail');
 
-    // Chama a função de renderização específica para preencher o container
+    // (MODIFICADO) Chama a função de renderização específica para preencher o container
     switch (sectionId) {
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
+        case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; // <-- LINHA ADICIONADA
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
-        case 'booking': renderBookingSection(establishmentData, detailContainer); break; // <-- CHAMADA MODIFICADA
+        case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;

@@ -108,13 +108,12 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
 });
 
 // ####################################################################
-// ### INÍCIO DA NOVA ROTA (ATIVAR/DESATIVAR AGENDAMENTO) ###
+// ### ROTA DE STATUS DE AGENDAMENTO (JÁ EXISTENTE) ###
 // ####################################################################
 
 /**
  * Rota PATCH para atualizar SOMENTE o status do agendamento público.
  * Protegida por token, apenas o DONO (owner) pode fazer isso.
- * (Esta rota permanece protegida e inalterada)
  */
 router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (req, res) => {
     const { establishmentId } = req.params;
@@ -153,8 +152,43 @@ router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (re
 });
 
 // ####################################################################
-// ### FIM DA NOVA ROTA ###
+// ### ROTA CORRIGIDA PARA ALTERAR E-MAIL (CAUSA DO 404) ###
 // ####################################################################
+
+/**
+ * (NOVA ROTA ADICIONADA) Rota PATCH para atualizar SOMENTE o e-mail do proprietário.
+ * Protegida por token, apenas o DONO (owner) pode fazer isso.
+ */
+router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, res) => {
+    const { establishmentId } = req.params;
+    const { db } = req;
+    const { newEmail } = req.body;
+
+    // Validação
+    if (!newEmail || typeof newEmail !== 'string') {
+        return res.status(400).json({ message: 'O "newEmail" é obrigatório.' });
+    }
+
+    // Verifica se o ID do token corresponde ao ID da rota
+    if (establishmentId !== req.user.establishmentId) {
+        return res.status(403).json({ message: 'Acesso negado.' });
+    }
+
+    try {
+        const establishmentRef = db.collection('establishments').doc(establishmentId);
+        
+        // Atualiza apenas o campo 'ownerEmail' no Firestore
+        await establishmentRef.update({
+            ownerEmail: newEmail
+        });
+
+        res.status(200).json({ message: `E-mail do proprietário atualizado com sucesso.` });
+
+    } catch (error) {
+        console.error("Erro ao atualizar e-mail do proprietário:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
 
 
 module.exports = router;

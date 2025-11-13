@@ -61,3 +61,22 @@ export const updatePublicBookingStatus = (establishmentId, isEnabled) => {
 // ####################################################################
 // ### FIM DA NOVA FUNÇÃO ###
 // ####################################################################
+
+
+/**
+ * (NOVO) Atualiza o e-mail de login do proprietário no banco de dados.
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {string} newEmail - O novo e-mail.
+ * @returns {Promise<object>} A resposta da API.
+ */
+export const updateOwnerEmail = (establishmentId, newEmail) => {
+    const id = establishmentId || state.establishmentId;
+    if (!id) {
+        return Promise.reject(new Error("ID do estabelecimento não fornecido."));
+    }
+    
+    return authenticatedFetch(`/api/establishments/${id}/owner-email`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newEmail: newEmail }),
+    });
+};
