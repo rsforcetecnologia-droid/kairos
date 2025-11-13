@@ -293,7 +293,7 @@ function renderBrandingSection(data, container) {
 
 function renderBookingSection(data, container) {
     // 1. Gera o link de agendamento público
-    const bookingLink = `${window.location.origin}/cliente.html?id=${state.establishmentId}`;
+    const bookingLink = `${window.location.origin}/agendar?id=${state.establishmentId}`;
     
     // 2. Verifica o estado atual do toggle
     const isChecked = data.publicBookingEnabled || false;

@@ -52,17 +52,26 @@
 </head>
 <body class="bg-gray-100">
 
+    <div class="w-full bg-gray-900 bg-opacity-70 shadow-md">
+        <div class="container mx-auto max-w-2xl p-4 flex justify-between items-center">
+            
+            <a href="/landing.html" target="_blank" class="flex items-center gap-2 opacity-130 hover:opacity-200 transition-opacity">
+                <img src="images/logo_kairos.png" alt="Kairos Logo" class="h-9 w-auto">
+                <span class="text-white text-xs font-medium hidden sm:inline"></span>
+            </a>
+            
+            <button id="myAppointmentsBtn" class="flex items-center gap-2 text-sm font-semibold text-white opacity-80 hover:opacity-100 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Meus Agendamentos</span>
+            </button>
+        </div>
+    </div>
     <div id="booking-view">
         <div class="container mx-auto max-w-2xl p-4">
-            <header class="my-6">
-                <div class="w-full flex justify-end mb-4">
-                    <button id="myAppointmentsBtn" class="flex items-center gap-2 text-sm font-semibold theme-text-main hover:text-indigo-800 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>Meus Agendamentos</span>
-                    </button>
-                </div>
+            
+            <header class="mt-6"> 
                 <div class="flex flex-col items-center">
                      <div class="flex items-center justify-center gap-3">
                          <div id="logo-container" class="h-16 w-16 rounded-full bg-gray-200 animate-pulse border-2 border-white shadow-md">
@@ -443,7 +452,7 @@
             
             const loadEstablishmentDetails = async () => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}/details`);
+                    const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}`);
                     if (!response.ok) {
                         const err = await response.json();
                         throw new Error(err.message || `HTTP error! status: ${response.status}`);
@@ -470,7 +479,7 @@
             const loadServices = async () => {
                 servicesContainer.innerHTML = '<p class="col-span-full text-gray-500">A carregar serviços...</p>';
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/services/public/${ESTABLISHMENT_ID}`);
+                    const response = await fetch(`${API_BASE_URL}/api/services/${ESTABLISHMENT_ID}`);
                     if (!response.ok) {
                         const err = await response.json();
                         throw new Error(err.message || 'Falha ao buscar serviços.');
