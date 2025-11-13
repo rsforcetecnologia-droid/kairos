@@ -1,4 +1,4 @@
-// js/ui/comandas.js
+// js/ui/comandas.js (Card Otimizado)
 
 // --- 1. IMPORTAÇÕES ---
 import * as comandasApi from '../api/comandas.js';
@@ -111,6 +111,10 @@ function renderCashierControls() {
     }
 }
 
+// ####################################################################
+// ### OTIMIZAÇÃO APLICADA AQUI ###
+// ####################################################################
+
 /** Renderiza a lista de comandas na coluna da esquerda */
 function renderComandaList() {
     const listContainer = document.getElementById('comandas-list');
@@ -144,27 +148,61 @@ function renderComandaList() {
         return;
     }
 
+    // Início da nova lógica de renderização do card
     listContainer.innerHTML = filteredComandas.map(comanda => {
         const total = [...(comanda.services || []), ...(comanda.comandaItems || [])].reduce((acc, item) => acc + (item.price || 0), 0);
         const isSelected = comanda.id === localState.selectedComandaId;
+        const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        // --- Lógica das Novas Features (Ícone, Tag, etc.) ---
+        const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
+        
+        // Se for Venda Avulsa, mostra a tag. Se não, mostra o nome do profissional.
+        const typeIndicator = isWalkIn
+            ? `<span class="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">Venda Avulsa</span>`
+            : `<p class="text-xs text-gray-500 truncate" title="${comanda.professionalName}">${comanda.professionalName}</p>`; // <-- Preenche o espaço em branco
+
+        // Botão de ir para agenda (só para não-avulsas)
+        const goToAppointmentBtn = !isWalkIn
+            ? `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" 
+                        class="p-1 rounded-full hover:bg-indigo-100 text-indigo-600" title="Ir para o agendamento">
+                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+               </button>`
+            : '';
+        // --- Fim da Lógica ---
+
+        // --- Nova Estrutura HTML do Card Otimizada ---
         return `
-            <div data-action="select-comanda" data-comanda-id="${comanda.id}" class="comanda-card p-3 rounded-lg border-l-4 cursor-pointer transition-all ${isSelected ? 'bg-indigo-50 border-indigo-500 shadow' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}">
-                <div class="flex justify-between items-center min-w-0 gap-2">
-                    <div class="min-w-0">
-                        <p class="font-bold text-gray-800 truncate">${comanda.clientName}</p>
-                        <p class="text-xs text-gray-500 truncate">${comanda.professionalName}</p>
+            <div data-action="select-comanda" data-comanda-id="${comanda.id}" 
+                 class="comanda-card p-3 rounded-lg border-l-4 cursor-pointer transition-all 
+                        ${isSelected ? 'bg-indigo-50 border-indigo-500 shadow' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}">
+                
+                <div class="flex justify-between items-start mb-1">
+                    <p class="font-bold text-gray-800 truncate" title="${comanda.clientName}">${comanda.clientName}</p>
+                    <p class="font-bold text-gray-900 flex-shrink-0 ml-2">R$ ${total.toFixed(2)}</p>
+                </div>
+                
+                <div class="flex justify-between items-center mt-1">
+                    <div class="flex items-center gap-2 min-w-0">
+                        ${typeIndicator}
                     </div>
-                    <div class="text-right flex-shrink-0">
-                        <p class="font-bold text-gray-900">R$ ${total.toFixed(2)}</p>
-                        <p class="text-xs text-gray-500">${new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        ${goToAppointmentBtn}
+                        <p class="text-xs text-gray-500 font-semibold">${time}</p> 
                     </div>
                 </div>
             </div>
         `;
     }).join('');
+    // Fim da nova lógica
 
     renderPaginationControls(listContainer);
 }
+
+// ####################################################################
+// ### FIM DA OTIMIZAÇÃO ###
+// ####################################################################
+
 
 /** Renderiza os controles de paginação */
 function renderPaginationControls(container) {
@@ -245,6 +283,20 @@ function renderComandaDetail() {
     const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
     const isCompleted = comanda.status === 'completed';
 
+    // --- LÓGICA DE EXIBIÇÃO DOS BOTÕES (JÁ INCLUI A TRAVA) ---
+    const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
+    
+    const reopenButton = isCompleted
+        ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 flex-shrink-0">Reabrir</button>`
+        : '';
+        
+    // Botão de Excluir (só para Venda Avulsa E não-finalizada)
+    const deleteButton = isWalkIn && !isCompleted
+        ? `<button data-action="delete-walk-in" data-id="${comanda.id}" class="py-2 px-4 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 flex-shrink-0 ml-2">Excluir Venda</button>`
+        : '';
+    // --- FIM DA LÓGICA ---
+
+
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
         if (!acc[key]) {
@@ -265,8 +317,13 @@ function renderComandaDetail() {
             <div class="lg:pl-0 pl-10 min-w-0">
                 <h3 class="text-2xl font-bold text-gray-800 truncate">${comanda.clientName}</h3>
                 <p class="text-sm text-gray-500 truncate">com ${comanda.professionalName}</p>
+                ${isWalkIn ? `<span class="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full mt-1 inline-block">Venda Avulsa</span>` : ''}
             </div>
-            ${isCompleted ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 flex-shrink-0">Reabrir</button>` : ''}
+            
+            <div class="flex-shrink-0 flex gap-2">
+                ${reopenButton}
+                ${deleteButton}
+            </div>
         </header>
 
         <div class="flex-grow overflow-y-auto pr-2">
@@ -451,6 +508,9 @@ function openCheckoutModal() {
         const changeContainer = document.getElementById('change-container');
         const installmentsContainer = document.getElementById('installments-container');
         const paymentValueInput = document.getElementById('payment-value');
+        
+        // (NOVO) Referência ao container dos controles de adição
+        const paymentControls = document.getElementById('payment-controls');
 
         const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
         modalInternalState.remainingAmount = total - totalPaid;
@@ -464,17 +524,33 @@ function openCheckoutModal() {
                 </div>
             </div>`).join('');
 
-        remainingEl.textContent = `Faltam: R$ ${modalInternalState.remainingAmount.toFixed(2)}`;
-        remainingEl.className = `text-lg font-bold text-center mb-4 ${modalInternalState.remainingAmount > 0.001 ? 'text-red-600' : 'text-green-600'}`;
+        // Lógica de exibição principal (O que mudou)
         if (modalInternalState.remainingAmount <= 0.001) {
-             remainingEl.textContent = 'Total Pago!';
-             paymentValueInput.value = '';
+            // TOTAL PAGO
+            remainingEl.textContent = 'Total Pago!';
+            remainingEl.className = `text-lg font-bold text-center mb-4 text-green-600`;
+            
+            // CORREÇÃO ESTRUTURAL: Definimos o valor como 0.00, mas o controle estará oculto.
+            paymentValueInput.value = ''; 
+            finalizeBtn.disabled = false; // Habilita o botão Finalizar
+            
+            // ESCONDE os controles de adicionar pagamento
+            if (paymentControls) paymentControls.style.display = 'none';
+
         } else {
+            // AINDA FALTA PAGAR
+            remainingEl.textContent = `Faltam: R$ ${modalInternalState.remainingAmount.toFixed(2)}`;
+            remainingEl.className = `text-lg font-bold text-center mb-4 text-red-600`;
+            
+            // Preenche o input com o valor que falta
             paymentValueInput.value = modalInternalState.remainingAmount.toFixed(2);
+            finalizeBtn.disabled = true; // Desabilita o botão Finalizar
+            
+            // MOSTRA os controles de adicionar pagamento
+            if (paymentControls) paymentControls.style.display = 'block';
         }
         
-        finalizeBtn.disabled = modalInternalState.remainingAmount > 0.001;
-        
+        // O restante da lógica de render (seleção de método, parcelas, troco) permanece o mesmo
         document.querySelectorAll('.payment-method-btn').forEach(btn => {
             btn.classList.toggle('ring-2', btn.dataset.method === modalInternalState.selectedMethod);
             btn.classList.toggle('ring-offset-2', btn.dataset.method === modalInternalState.selectedMethod);
@@ -491,8 +567,16 @@ function openCheckoutModal() {
         const valueInput = document.getElementById('payment-value');
         let value = parseFloat(valueInput.value);
         
-        if (!value || value <= 0 || value > modalInternalState.remainingAmount + 0.001) {
-            showNotification('Valor Inválido', 'Insira um valor de pagamento válido.', 'error');
+        // CORREÇÃO DA VALIDAÇÃO (MAIS ROBUSTA)
+        // Checa se é NaN (ex: `parseFloat('')`) OU se é um valor não positivo.
+        if (isNaN(value) || value <= 0) {
+            showNotification('Valor Inválido', 'Insira um valor de pagamento válido e maior que zero.', 'error');
+            return;
+        }
+        
+        // Verifica se excede o saldo restante (regra de negócio)
+        if (value > modalInternalState.remainingAmount + 0.001) {
+             showNotification('Valor Inválido', 'O valor excede o saldo restante.', 'error');
             return;
         }
         
@@ -687,66 +771,79 @@ async function openCashierModal() {
     });
 }
 
-async function handleCloseCashier() {
-    const confirmed = await showConfirmation(
-        'Fechar Caixa',
-        'Tem certeza que deseja fechar o caixa? Certifique-se de que todas as vendas foram finalizadas.'
-    );
-
-    if (!confirmed) return;
+// (NOVA FUNÇÃO) Substitui a antiga 'handleCloseCashier'
+async function handleOpenCloseCashierModal() {
+    const sessionId = localState.activeCashierSessionId;
+    if (!sessionId) return; // Segurança
 
     try {
-        await cashierApi.closeCashier(localState.activeCashierSessionId);
-        localState.isCashierOpen = false;
-        localState.activeCashierSessionId = null;
+        // 1. Busca os dados da sessão atual
+        const report = await cashierApi.getCloseCashierReport(sessionId);
         
-        // Recarrega a página para refletir o estado
-        await loadComandasPage();
-        
-        showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
-    } catch (error) {
-        showNotification('Erro', `Não foi possível fechar o caixa: ${error.message}`, 'error');
-    }
-}
-
-async function handleViewSalesReport() {
-    try {
-        const report = await salesApi.getSalesReport(state.establishmentId, localState.activeCashierSessionId);
-        
+        // 2. Monta o HTML do modal
         const contentHTML = `
-            <div class="space-y-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-blue-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600">Total de Vendas</p>
-                        <p class="text-2xl font-bold text-blue-600">${report.totalSales || 0}</p>
+            <form id="close-cashier-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Valor de Abertura</p>
+                        <p class="text-2xl font-bold text-blue-600">R$ ${report.initialAmount.toFixed(2)}</p>
                     </div>
-                    <div class="bg-green-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600">Faturamento Total</p>
-                        <p class="text-2xl font-bold text-green-600">R$ ${(report.totalRevenue || 0).toFixed(2)}</p>
-                    </div>
-                </div>
-                <div class="border-t pt-4">
-                    <h4 class="font-semibold mb-2">Formas de Pagamento</h4>
-                    <div class="space-y-2">
-                        ${Object.entries(report.paymentMethods || {}).map(([method, amount]) => `
-                            <div class="flex justify-between">
-                                <span class="capitalize">${method}</span>
-                                <span class="font-semibold">R$ ${amount.toFixed(2)}</span>
-                            </div>
-                        `).join('')}
+                    <div class="bg-green-50 p-3 rounded-lg">
+                        <p class="text-sm text-gray-600">Vendas em Dinheiro</p>
+                        <p class="text-2xl font-bold text-green-600">R$ ${report.cashSales.toFixed(2)}</p>
                     </div>
                 </div>
-            </div>
+                <div class="bg-gray-100 p-4 rounded-lg text-center">
+                    <p class="text-sm font-medium text-gray-700">Valor Esperado em Caixa</p>
+                    <p class="text-3xl font-bold text-gray-900">R$ ${report.expectedAmount.toFixed(2)}</p>
+                </div>
+                <hr>
+                <div>
+                    <label for="final-amount" class="block text-sm font-medium text-gray-700">Valor Final (Contado no Caixa)</label>
+                    <div class="mt-1 relative">
+                        <span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span>
+                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
+                    </div>
+                </div>
+                <div class="pt-4 border-t">
+                    <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition">Confirmar e Fechar Caixa</button>
+                </div>
+            </form>
         `;
 
-        showGenericModal({ title: "Relatório de Vendas", contentHTML, maxWidth: 'max-w-lg' });
+        // 3. Exibe o modal
+        const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-md' });
+
+        // 4. Adiciona o listener de submit
+        modalElement.querySelector('#close-cashier-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const finalAmount = parseFloat(document.getElementById('final-amount').value);
+            if (isNaN(finalAmount) || finalAmount < 0) {
+                showNotification('Valor Inválido', 'Insira um valor final válido.', 'error');
+                return;
+            }
+
+            try {
+                await cashierApi.closeCashier(sessionId, finalAmount);
+                localState.isCashierOpen = false;
+                localState.activeCashierSessionId = null;
+                
+                document.getElementById('genericModal').style.display = 'none';
+                await loadComandasPage(); // Recarrega a página
+                
+                showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
+            } catch (error) {
+                showNotification('Erro', `Não foi possível fechar o caixa: ${error.message}`, 'error');
+            }
+        });
+        
     } catch (error) {
-        showNotification('Erro', `Não foi possível carregar o relatório: ${error.message}`, 'error');
+        showNotification('Erro', `Não foi possível carregar o relatório de fecho: ${error.message}`, 'error');
     }
 }
 
+
 // --- 5. HANDLERS ---
-// (Manter as mesmas funções do código anterior)
 
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
@@ -771,9 +868,6 @@ async function handleFilterClick(filter) {
     }
 }
 
-// ####################################################################
-// ### CORREÇÃO APLICADA AQUI ###
-// ####################################################################
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
     renderComandaList(); // Apenas atualiza o highlight da lista
@@ -792,9 +886,6 @@ function handleComandaClick(comandaId) {
         }
     }, 300); // 300ms = tempo da transição em css/styles.css
 }
-// ####################################################################
-// ### FIM DA CORREÇÃO ###
-// ####################################################################
 
 
 async function handleAddItemToComanda(itemData, quantity) {
@@ -811,6 +902,18 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda.comandaItems = comanda.comandaItems || [];
     comanda.comandaItems.push(...itemsToAdd);
 
+    // ### INÍCIO DA CORREÇÃO ###
+    // Se a comanda é uma 'Venda Avulsa' (walk-in) e ainda é temporária (não foi salva),
+    // apenas atualiza a UI local. Não chama a API.
+    if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
+        showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
+        renderComandaDetail(); // A comanda no localState foi atualizada, só re-renderiza
+        renderComandaList(); // Atualiza o total na lista
+        return; // Para a execução aqui
+    }
+    // ### FIM DA CORREÇÃO ###
+
+    // Se for um agendamento existente, continua o fluxo normal da API
     try {
         // A API de updateAppointment lida com a persistência de itens de comanda no backend
         await appointmentsApi.updateAppointment(comanda.id, comanda);
@@ -823,6 +926,7 @@ async function handleAddItemToComanda(itemData, quantity) {
         comanda.comandaItems.splice(comanda.comandaItems.length - quantity, quantity);
     }
 }
+
 
 async function handleRemoveItemFromComanda(itemId, itemType) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
@@ -845,6 +949,17 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     }
     
     if (itemRemoved) {
+        // ### INÍCIO DA CORREÇÃO ###
+        // Se for uma Venda Avulsa temporária, apenas atualiza a UI local
+        if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
+             showNotification('Sucesso', 'Item removido!', 'success');
+             renderComandaDetail();
+             renderComandaList();
+             return;
+        }
+        // ### FIM DA CORREÇÃO ###
+        
+        // Se for um agendamento existente, chama a API
         try {
             await appointmentsApi.updateAppointment(comanda.id, comanda);
             showNotification('Sucesso', 'Item removido!', 'success');
@@ -874,6 +989,7 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
             // Se for walk-in, usa a API de criação de venda (sales)
             data.clientName = comanda.clientName;
             data.professionalId = comanda.professionalId;
+            data.clientPhone = comanda.clientPhone; // Garante que o telefone seja enviado
             await salesApi.createSale(data);
         }
         showNotification('Sucesso!', 'Venda finalizada com sucesso!', 'success');
@@ -1013,7 +1129,8 @@ export async function loadComandasPage(params = {}) {
     }
 
     pageEventListener = async (e) => {
-        const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
+        // (MODIFICADO) Adicionado 'data-id' para capturar cliques nos novos botões
+        const target = e.target.closest('[data-action], [data-filter], [data-comanda-id], [data-id]');
         
         if (e.target.id === 'filter-date' && localState.activeFilter === 'finalizadas') {
              localState.paging.page = 1;
@@ -1026,10 +1143,16 @@ export async function loadComandasPage(params = {}) {
         if (target.matches('[data-filter]')) {
             handleFilterClick(target.dataset.filter);
         } else if (target.matches('[data-comanda-id]')) {
+            // Impede que o clique no botão "go-to-appointment" selecione a comanda
+            if (e.target.closest('[data-action="go-to-appointment"]')) {
+                e.stopPropagation();
+                return;
+            }
             handleComandaClick(target.dataset.comandaId);
         } else if (target.matches('[data-action]')) {
             const action = target.dataset.action;
-            const comandaId = target.dataset.id;
+            // (MODIFICADO) Pega o ID do target, que pode ser a comanda ou um botão específico
+            const comandaId = target.dataset.id || localState.selectedComandaId;
             
             switch (action) {
                 // ATUALIZAÇÃO RESPONSIVA: Adicionado 'back-to-list'
@@ -1053,18 +1176,18 @@ export async function loadComandasPage(params = {}) {
                     openCashierModal();
                     break;
                 case 'close-cashier':
-                    await handleCloseCashier();
+                    // (MODIFICADO) Chama o novo modal de fechamento
+                    await handleOpenCloseCashierModal();
                     break;
+                
+                // ### INÍCIO DA CORREÇÃO ###
                 case 'view-sales-report':
-                    if (localState.isCashierOpen && localState.activeCashierSessionId) {
-                        // Se o caixa estiver ABERTO, mostra o relatório da SESSÃO de caixa em um modal
-                        await handleViewSalesReport();
-                    } else {
-                        // Se o caixa estiver FECHADO, navega para a página de Relatório de Vendas ('sales-report-section')
-                        // onde o histórico de caixas pode ser visto.
-                        navigateTo('sales-report-section'); 
-                    }
+                    // Ação corrigida: Sempre navega para a página de relatórios,
+                    // que contém o histórico de caixas.
+                    navigateTo('sales-report-section'); 
                     break;
+                // ### FIM DA CORREÇÃO ###
+
                 case 'remove-item':
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
                     break;
@@ -1079,10 +1202,9 @@ export async function loadComandasPage(params = {}) {
                             const reopenedComandaIndex = localState.allComandas.findIndex(c => c.id === comandaId);
                             if (reopenedComandaIndex !== -1) {
                                 // REMOVE os campos que continham a forma de pagamento anterior
-                                // *** ESTA É A CORREÇÃO DE SINTAXE ***
                                 delete localState.allComandas[reopenedComandaIndex].transaction; 
                                 delete localState.allComandas[reopenedComandaIndex].cashierSessionId; 
-                                delete localState.allComandas[reopenedComandaIndex].redeemedReward; // <-- LINHA CORRIGIDA
+                                delete localState.allComandas[reopenedComandaIndex].redeemedReward;
                                 localState.allComandas[reopenedComandaIndex].status = 'confirmed'; // Garante o status correto para reexibição
                             }
                             
@@ -1121,6 +1243,43 @@ export async function loadComandasPage(params = {}) {
                     }
                     break;
                 }
+                
+                // ### INÍCIO DAS NOVAS AÇÕES ###
+                case 'go-to-appointment': {
+                    const appointmentId = target.dataset.id;
+                    const startTime = target.dataset.date;
+                    navigateTo('agenda-section', {
+                        scrollToAppointmentId: appointmentId,
+                        targetDate: new Date(startTime) 
+                    });
+                    break;
+                }
+                
+                case 'delete-walk-in': {
+                    const confirmed = await showConfirmation('Excluir Venda', 'Tem certeza que deseja excluir esta venda avulsa? O estoque dos produtos será devolvido.');
+                    if (confirmed) {
+                        // Se for um 'temp-' id, apenas remove localmente
+                        if (comandaId.startsWith('temp-')) {
+                            localState.allComandas = localState.allComandas.filter(c => c.id !== comandaId);
+                            localState.selectedComandaId = null;
+                            renderComandaList();
+                            renderComandaDetail(); // Mostra o placeholder
+                            showNotification('Sucesso', 'Venda avulsa removida.', 'success');
+                        } else {
+                            // Se for um ID real, chama a API
+                            try {
+                                await salesApi.deleteSale(comandaId);
+                                showNotification('Sucesso', 'Venda avulsa excluída com sucesso.', 'success');
+                                localState.selectedComandaId = null;
+                                await fetchAndDisplayData(); // Recarrega do zero
+                            } catch (error) {
+                                showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
+                            }
+                        }
+                    }
+                    break;
+                }
+                // ### FIM DAS NOVAS AÇÕES ###
             }
         }
     };

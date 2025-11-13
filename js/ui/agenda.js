@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Completo com a nova Visão Semanal e Bloqueios)
+// js/ui/agenda.js (Otimizado com Pré-carregamento + Correção de Scroll)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -29,12 +29,14 @@ const colorPalette = [
     { bg: '#ede9fe', border: '#7c3aed', main: '#7c3aed' }, // Violet
     { bg: '#fce7f3', border: '#db2777', main: '#db2777' }, // Fuchsia
 ];
+
+// (MODIFICADO) Estas agora são variáveis de cache pré-carregadas
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
-let allClientsData = []; // NOVO: Cache de clientes para a busca
+let allClientsData = []; // Cache de clientes para a busca
 
-// Estado local da página da agenda
+// (MODIFICADO) Estado local da página da agenda
 let localState = {
     currentView: 'list', // 'list' ou 'week'
     weekViewDays: 7, // NOVO: 3, 5, ou 7
@@ -42,6 +44,7 @@ let localState = {
     selectedProfessionalId: 'all', // NOVO: ID do profissional selecionado ('all' por padrão)
     profSearchTerm: '', // NOVO: Termo de busca para o filtro de fotos
     showInactiveProfs: false, // NOVO: Estado para mostrar inativos
+    scrollToAppointmentId: null // <-- NOVO (CORREÇÃO SCROLL): Armazena o ID para o qual devemos rolar
 };
 
 // ESTADO CENTRALIZADO DO NOVO FLUXO DE AGENDAMENTO
@@ -351,6 +354,7 @@ function renderAgenda() {
     }
 }
 
+// (MODIFICADO) Função 'fetchAndDisplayAgenda' agora faz o scroll e highlight
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
     if (!agendaView) return;
@@ -403,20 +407,77 @@ async function fetchAndDisplayAgenda() {
         // Recarrega o seletor de profissionais para atualizar o estado de 'selected'
         renderProfessionalSelector();
         
-        renderAgenda();
+        renderAgenda(); // <-- HTML é construído aqui
+
+        // --- INÍCIO DA MODIFICAÇÃO (Scroll e Highlight) ---
+        if (localState.scrollToAppointmentId) {
+            // Tenta encontrar o card do agendamento
+            // Usamos a sintaxe de seletor de atributo para encontrar o JSON dentro do data-appointment
+            const targetCard = document.querySelector(`[data-appointment*='"id":"${localState.scrollToAppointmentId}"']`);
+            
+            if (targetCard) {
+                // Rola a tela até o card
+                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Adiciona um destaque temporário
+                targetCard.style.transition = 'background-color 0.5s ease-in-out';
+                targetCard.style.backgroundColor = '#e0e7ff'; // Cor indigo-100 (azul claro)
+                
+                setTimeout(() => {
+                    targetCard.style.backgroundColor = ''; // Remove o destaque
+                }, 2500); // Duração do destaque: 2.5 segundos
+            }
+            
+            // Limpa o ID para não fazer scroll novamente ao mudar filtro
+            localState.scrollToAppointmentId = null; 
+        }
+        // --- FIM DA MODIFICAÇÃO ---
+
     } catch (error) {
         showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
         agendaView.innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
     }
 }
 
+// (MODIFICADO) Função 'populateFilters' agora pré-carrega dados para o modal
 async function populateFilters() {
     try {
+        // Usa Promise.all para carregar tudo em paralelo
+        const [profs, services, clients, establishmentDetails] = await Promise.all([
+            // Carrega profissionais se não estiverem no estado
+            (state.professionals && state.professionals.length > 0) 
+                ? Promise.resolve(state.professionals) 
+                : professionalsApi.getProfessionals(state.establishmentId),
+            
+            // Carrega serviços se não estiverem no estado
+            (state.services && state.services.length > 0) 
+                ? Promise.resolve(state.services)
+                : servicesApi.getServices(state.establishmentId),
+            
+            // Carrega clientes (vamos sempre buscar a lista fresca, ou podemos usar cache)
+            // Para esta otimização, vamos carregar uma vez
+            (allClientsData.length > 0) 
+                ? Promise.resolve(allClientsData)
+                : clientsApi.getClients(state.establishmentId),
+
+            // Carrega detalhes do estabelecimento (para fidelidade)
+            (loyaltySettingsForModal.enabled !== undefined)
+                ? Promise.resolve(null) // Já carregado
+                : establishmentApi.getEstablishmentDetails(state.establishmentId)
+        ]);
+
+        // Atualiza os estados/caches apenas se necessário
         if (!state.professionals || state.professionals.length === 0) {
-            state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
+            state.professionals = profs || [];
         }
         if (!state.services || state.services.length === 0) {
-            state.services = await servicesApi.getServices(state.establishmentId);
+            state.services = services || [];
+        }
+        if (allClientsData.length === 0) {
+            allClientsData = clients || [];
+        }
+        if (establishmentDetails) { // establishmentDetails será 'null' se já estava em cache
+            loyaltySettingsForModal = establishmentDetails.loyaltyProgram || { enabled: false };
         }
 
         // Aplica a cor para o filtro de card
@@ -428,9 +489,11 @@ async function populateFilters() {
         renderProfessionalSelector();
 
     } catch (error) {
-        console.error("Erro ao popular filtros:", error);
+        console.error("Erro ao popular filtros e dependências do modal:", error);
+        showNotification('Atenção', 'Não foi possível pré-carregar os dados para agendamento. A abertura do modal pode ser lenta.', 'error');
     }
 }
+
 
 // --- LÓGICA DE MANIPULAÇÃO DO FLUXO DO MODAL ---
 
@@ -1080,19 +1143,16 @@ function handleProfessionalSearchInModal(searchTerm) {
 }
 
 
-// --- FUNÇÃO PRINCIPAL DO MODAL ---
+// --- FUNÇÃO PRINCIPAL DO MODAL (OTIMIZADA) ---
 
 async function openAppointmentModal(appointment = null, isNavigating = false) {
     const modal = document.getElementById('appointmentModal');
     
-    // CORREÇÃO: Reinicia o estado na abertura inicial (não navegação) e usa dados existentes para pré-preencher
     if (!isNavigating) {
-        // Formata a data de início para o valor inicial do input
         const initialDateString = appointment?.startTime 
             ? new Date(appointment.startTime).toISOString().split('T')[0] 
             : new Date().toISOString().split('T')[0];
 
-        // Formata a hora de início para o valor inicial do input (usado para seleção de slot)
         const initialTimeString = appointment?.startTime
             ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
             : null;
@@ -1100,53 +1160,38 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         newAppointmentState = {
             step: 1,
             data: {
-                id: appointment?.id || null, // <-- AJUSTE FEITO (2/3): Salva o ID no estado
+                id: appointment?.id || null, 
                 clientName: appointment?.clientName || '',
                 clientPhone: appointment?.clientPhone || '',
-                // CORREÇÃO: Usa os IDs dos serviços existentes
                 selectedServiceIds: appointment?.services?.map(s => s.id) || [], 
                 professionalId: appointment?.professionalId || null,
                 professionalName: appointment?.professionalName || '',
                 date: initialDateString,
                 time: initialTimeString,
                 redeemedReward: appointment?.redeemedReward || null,
-                // (NOVO) Define o status de fidelidade com base no agendamento (para edição)
                 clientHasRewards: appointment?.hasRewards || false,
-                clientLoyaltyPoints: 0 // Será preenchido na Etapa 1 se buscar cliente
+                clientLoyaltyPoints: 0 
             }
         };
     }
     
-    // --- 1. Busca de Dados (Garante que os catálogos estão prontos) ---
-    try {
-        const [details, servicesData, professionalsData, clientsData] = await Promise.all([
-            establishmentApi.getEstablishmentDetails(state.establishmentId),
-            servicesApi.getServices(state.establishmentId),
-            (await professionalsApi.getProfessionals(state.establishmentId)).filter(p => p.status === 'active'),
-            clientsApi.getClients(state.establishmentId) // NOVO: Busca todos os clientes
-        ]);
-        
-        loyaltySettingsForModal = details.loyaltyProgram || { enabled: false };
-        availableServicesForModal = servicesData;
-        availableProfessionalsForModal = professionalsData;
-        allClientsData = clientsData; // NOVO: Salva clientes no cache
-        
-        // (NOVO) Se estiver editando ou navegando com cliente, busca os pontos reais do cliente
-        const clientIdentifier = `${newAppointmentState.data.clientName.trim()}-${newAppointmentState.data.clientPhone.trim()}`;
-        if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
-            const client = allClientsData.find(c => c.phone === newAppointmentState.data.clientPhone && c.name === newAppointmentState.data.clientName);
-            if(client) {
-                newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
-            }
-        }
-
-    } catch (error) {
-        showNotification('Erro Crítico', 'Não foi possível carregar os dados para o agendamento. Verifique a conexão.', 'error');
-        modal.style.display = 'none';
-        return;
+    // --- Atribuição de Dados (Usando o Cache) ---
+    if (!state.services || !state.professionals || !allClientsData || loyaltySettingsForModal.enabled === undefined) {
+         showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
+         return;
     }
+    
+    availableServicesForModal = state.services;
+    availableProfessionalsForModal = state.professionals.filter(p => p.status === 'active');
 
-    // --- 2. Renderiza a Etapa Atual ---
+    if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
+        const client = allClientsData.find(c => c.phone === newAppointmentState.data.clientPhone && c.name === newAppointmentState.data.clientName);
+        if(client) {
+            newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
+        }
+    }
+    
+    // --- Renderiza a Etapa Atual ---
     let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
     
     switch (newAppointmentState.step) {
@@ -1181,12 +1226,10 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         btn.addEventListener('click', () => {
             const currentStep = parseInt(btn.dataset.currentStep, 10);
             
-            // Validação
             if (currentStep === 1) {
                 const clientNameInput = modal.querySelector('#apptClientName');
                 const clientPhoneInput = modal.querySelector('#apptClientPhone');
 
-                // Garante que o estado seja atualizado com os dados atuais dos inputs antes da validação
                 newAppointmentState.data.clientName = clientNameInput.value.trim();
                 newAppointmentState.data.clientPhone = clientPhoneInput.value.trim();
                 
@@ -1211,21 +1254,14 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1));
     });
 
-    // Event listener para o formulário na Etapa 4
     const appointmentForm = modal.querySelector('#appointmentForm');
     
-    // Se estivermos na Etapa 4 (e o botão de submit for renderizado)
     if (newAppointmentState.step === 4 && appointmentForm) {
          appointmentForm.addEventListener('submit', handleAppointmentFormSubmit);
     }
 
-
-    // 5. Ativação inicial do modal e listeners específicos da etapa
-
-    // Certifica-se de que o modal está visível
     modal.style.display = 'flex';
     
-    // --- LÓGICA DE ATIVAÇÃO DE CARDS (Step 2 & 3) ---
     if (newAppointmentState.step === 2) {
         const servicesContainer = modal.querySelector('#apptServicesContainer');
         servicesContainer.querySelectorAll('.service-card').forEach(card => {
@@ -1248,50 +1284,46 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         }
     }
     
-    // --- LÓGICA ESPECÍFICA DA STEP 1 (Busca e Cadastro) ---
     if (newAppointmentState.step === 1) {
         const clientSearchInput = modal.querySelector('#clientSearchInput');
         
-        // Listener para a busca de clientes (em tempo real)
         if (clientSearchInput) {
             clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
             
-            // CORREÇÃO: Disparar a busca inicial se houver dados no estado, para mostrar a seleção
              if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
-                 // Concatena nome e telefone para simular um termo de busca que traria o cliente
                  handleClientSearch(`${newAppointmentState.data.clientName} ${newAppointmentState.data.clientPhone}`);
              }
         }
 
-        // Listener para abrir o modal de cadastro de novo cliente
         const registerButton = modal.querySelector('[data-action="open-client-registration"]');
         if (registerButton) {
             registerButton.addEventListener('click', openClientRegistrationModal);
         }
     }
     
-    // Lógica para a Etapa 4 (Data/Hora)
     if (newAppointmentState.step === 4) {
         const dateInput = modal.querySelector('#apptDate');
         
-        // Listener para atualização de horários ao mudar a data
         if (dateInput) dateInput.addEventListener('change', updateTimesAndDuration);
         
-        // Chamada inicial (após a renderização)
         updateTimesAndDuration();
-
-        // (NOVO) Lógica de Fidelidade (Disparada no carregamento da Step 4)
         renderLoyaltyRewards();
     }
 }
 
 
-// --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
+// --- 5. FUNÇÃO PRINCIPAL EXPORTADA (MODIFICADA) ---
 
-export async function loadAgendaPage() {
+export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
     if (currentTimeInterval) clearInterval(currentTimeInterval);
-    localState.currentDate = new Date();
-    // Limpa o termo de busca ao carregar a página
+    
+    // --- INÍCIO DA MODIFICAÇÃO ---
+    // Usa a data dos parâmetros se existir, senão usa a data local, senão usa hoje
+    localState.currentDate = params.targetDate ? new Date(params.targetDate) : (localState.currentDate || new Date());
+    // Armazena o ID para o qual devemos rolar
+    localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
+    // --- FIM DA MODIFICAÇÃO ---
+    
     localState.profSearchTerm = ''; 
 
     contentDiv.innerHTML = `
@@ -1515,6 +1547,8 @@ export async function loadAgendaPage() {
     }
     // --- FIM DA CORREÇÃO PRINCIPAL ---
 
+    // (MODIFICADO) Inicia o pré-carregamento dos filtros E dos dados do modal
     await populateFilters();
+    // (MODIFICADO) A busca da agenda agora é chamada DEPOIS do populateFilters
     await fetchAndDisplayAgenda();
 }

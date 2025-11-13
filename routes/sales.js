@@ -1,3 +1,5 @@
+// routes/sales.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -83,7 +85,7 @@ router.post('/', async (req, res) => {
             // 2. Criar Registro de Venda
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA CORRIGIDA
+            // 3. INTEGRAÇÃO FINANCEIRA (JÁ EXISTENTE E CORRETA)
             payments.forEach(payment => {
                 const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
                 const paymentMethod = payment.method.toLowerCase();
@@ -229,6 +231,80 @@ router.post('/:saleId/reopen', async (req, res) => {
         });
     } catch (error) {
         console.error("Erro ao reabrir venda:", error);
+        res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// ROTA PARA EXCLUIR VENDA AVULSA (APENAS 'walk-in')
+router.delete('/:saleId', async (req, res) => {
+    const { saleId } = req.params;
+    const { establishmentId } = req.user; // Pega o ID do estabelecimento do token
+    const { db } = req;
+    
+    const saleRef = db.collection('sales').doc(saleId);
+    const financialEntriesToDelete = [];
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const saleDoc = await transaction.get(saleRef);
+            if (!saleDoc.exists) throw new Error("Venda não encontrada.");
+            
+            const saleData = saleDoc.data();
+            
+            // VERIFICAÇÃO DE SEGURANÇA:
+            // 1. Só pode excluir se for do mesmo estabelecimento
+            // 2. Só pode excluir se for 'walk-in'
+            // 3. Só pode excluir se o status for 'confirmed' (em atendimento), NÃO 'completed'
+            if (saleData.establishmentId !== establishmentId) {
+                throw new Error("Acesso negado.");
+            }
+            if (saleData.type !== 'walk-in') {
+                throw new Error("Não é possível excluir uma comanda de agendamento por aqui. Exclua pela agenda.");
+            }
+            if (saleData.status === 'completed') {
+                throw new Error("Não é possível excluir uma venda avulsa já finalizada. Use a função 'Reabrir'.");
+            }
+
+            // Lógica de reverter estoque (igual à de reabrir)
+            const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
+            if (productsToRestock.length > 0) {
+                productsToRestock.forEach(item => {
+                    if (!item.id) throw new Error('Item de produto na venda sem ID, não é possível devolver ao stock.');
+                });
+
+                const productRefs = productsToRestock.map(item => db.collection('products').doc(item.id));
+                const productDocs = await transaction.getAll(...productRefs);
+                
+                productDocs.forEach(doc => {
+                    if (doc.exists) {
+                        // Devolve 1 unidade ao estoque para cada item
+                        transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(1) });
+                    }
+                });
+            }
+            
+            // Procura e marca para deletar lançamentos financeiros (embora vendas 'confirmed' não devam ter)
+            const financialSnapshot = await db.collection('financial_receivables')
+                .where('transactionId', '==', saleId)
+                .get();
+            financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
+            
+            // Deleta a venda
+            transaction.delete(saleRef);
+        });
+
+        // Deleta os lançamentos financeiros fora da transação principal
+        const batchDeleteFinancial = db.batch();
+        financialEntriesToDelete.forEach(id => {
+            batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
+        });
+        if (financialEntriesToDelete.length > 0) {
+             await batchDeleteFinancial.commit();
+        }
+
+        res.status(200).json({ message: 'Venda avulsa excluída com sucesso.' });
+    } catch (error) {
+        console.error("Erro ao excluir venda avulsa:", error);
         res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });

@@ -1,3 +1,5 @@
+// routes/appointments.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -433,7 +435,11 @@ router.post('/:appointmentId/comanda', verifyToken, hasAccess, async (req, res) 
     }
 });
 
-// Checkout do agendamento (Rota Privada) - SEM INTEGRAÇÃO FINANCEIRA AUTOMÁTICA
+// ####################################################################
+// ### INÍCIO DA INTEGRAÇÃO FINANCEIRA ###
+// ####################################################################
+
+// Checkout do agendamento (Rota Privada) - COM INTEGRAÇÃO FINANCEIRA AUTOMÁTICA
 router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -455,14 +461,16 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
 
             const appointmentData = appointmentDoc.data();
             const establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
+            
+            // Pega as configurações padrão de finanças do estabelecimento
+            const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
+            const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
+
 
             const originalServiceIDs = new Set( (appointmentData.services || []).map(s => s.id) );
 
-            // CORREÇÃO: Inclui explicitamente 'product' e 'package' no payload de comandaItems.
             const comandaItemsPayload = items.filter(item => {
-                // Inclui Produtos e Pacotes
                 if (item.type === 'product' || item.type === 'package') return true;
-                // Inclui Serviços que não estavam no agendamento original
                 if (item.type === 'service') {
                     return !originalServiceIDs.has(item.id);
                 }
@@ -473,7 +481,7 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
-                comandaItems: comandaItemsPayload, // Agora inclui pacotes
+                comandaItems: comandaItemsPayload,
                 transaction: {
                     payments: payments,
                     totalAmount: Number(totalAmount),
@@ -501,9 +509,76 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             };
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA: REMOVIDA DESTE LOCAL. SERÁ FEITA AO FECHAR O CAIXA OU MANUALMENTE.
+            // 3. (NOVO) INTEGRAÇÃO FINANCEIRA: Cria os lançamentos em 'financial_receivables'
+            const paidDate = new Date().toISOString().split('T')[0];
+            
+            payments.forEach(payment => {
+                const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
+                const paymentMethod = payment.method.toLowerCase();
+                const clientName = appointmentData.clientName || 'Cliente';
 
-            // 4. Fidelidade (Ainda é um processo que ocorre na finalização)
+                // --- LÓGICA PARA "FIADO" (CREDIÁRIO) ---
+                if (paymentMethod === 'crediario') {
+                    const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
+                    let totalButLast = installmentValue * (installmentCount - 1);
+
+                    for (let i = 1; i <= installmentCount; i++) {
+                        const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
+                        // Calcula o vencimento (mês a mês)
+                        const dueDate = new Date(); 
+                        dueDate.setMonth(dueDate.getMonth() + (i - 1)); // Mês 0 é a primeira parcela (hoje)
+                        const dueDateString = dueDate.toISOString().split('T')[0];
+                        
+                        const description = `Venda (Agendamento): ${clientName} (Parcela ${i}/${installmentCount} - Fiado)`;
+                        const financialRef = db.collection('financial_receivables').doc();
+                        
+                        transaction.set(financialRef, {
+                            establishmentId,
+                            description,
+                            amount: currentInstallmentValue,
+                            dueDate: dueDateString,
+                            paymentDate: null,
+                            status: 'pending', // Fica PENDENTE
+                            transactionId: saleRef.id,
+                            createdAt: paidAtTimestamp,
+                            naturezaId: defaultNaturezaId || null,
+                            centroDeCustoId: defaultCentroDeCustoId || null,
+                        });
+                    }
+                    return; // Pula para o próximo método de pagamento
+                }
+
+                // --- LÓGICA PARA OUTROS PAGAMENTOS (PIX, DINHEIRO, CRÉDITO, DÉBITO) ---
+                // Todos são lançados como 'paid' (recebidos)
+                
+                let notes = '';
+                if (paymentMethod === 'credito' && installmentCount > 1) {
+                    notes = `Parcelado em ${installmentCount}x no cartão de crédito (loja recebe à vista)`;
+                } else {
+                    notes = `Pagamento à vista em ${payment.method}`;
+                }
+
+                const financialRef = db.collection('financial_receivables').doc();
+                transaction.set(financialRef, {
+                    establishmentId,
+                    description: `Venda (Agendamento): ${clientName} (${payment.method})`,
+                    amount: payment.value,
+                    dueDate: paidDate, 
+                    paymentDate: paidDate, // Data do pagamento é hoje
+                    status: 'paid', // Já entra como PAGO
+                    transactionId: saleRef.id,
+                    createdAt: paidAtTimestamp,
+                    naturezaId: defaultNaturezaId || null,
+                    centroDeCustoId: defaultCentroDeCustoId || null,
+                    notes: notes,
+                    paymentDetails: {
+                        method: payment.method,
+                        installments: installmentCount
+                    }
+                });
+            });
+
+            // 4. Fidelidade
             if (establishmentDoc.exists) {
                 const loyaltyProgram = establishmentDoc.data().loyaltyProgram;
                 if (loyaltyProgram && loyaltyProgram.enabled && loyaltyProgram.pointsPerCurrency > 0) {
@@ -521,12 +596,16 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
                 }
             }
         });
-        res.status(200).json({ message: 'Checkout realizado e venda registada com sucesso (Integração financeira agendada).' });
+        res.status(200).json({ message: 'Checkout realizado, venda registada e financeiro lançado com sucesso.' });
     } catch (error) {
         console.error("Erro ao realizar checkout:", error);
         res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
+// ####################################################################
+// ### FIM DA INTEGRAÇÃO FINANCEIRA ###
+// ####################################################################
+
 
 // Reabrir comanda (Rota Privada) - SEM LIMPEZA FINANCEIRA AUTOMÁTICA
 router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) => {
@@ -553,8 +632,10 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
                 // Deleta a venda associada
                 transaction.delete(saleRef);
                 
-                // INTEGRAÇÃO FINANCEIRA: A exclusão das entradas 'financial_receivables'
-                // é responsabilidade da nova rotina de integração ao reverter o movimento.
+                // (NOVO) Deleta os lançamentos financeiros associados
+                const financialQuery = db.collection('financial_receivables').where('transactionId', '==', saleId);
+                const financialSnapshot = await transaction.get(financialQuery);
+                financialSnapshot.docs.forEach(doc => transaction.delete(doc.ref));
             }
 
             // [LÓGICA ADICIONAL: DEVOLVER PONTOS DE RECOMPENSA RESGATADOS]
@@ -580,7 +661,7 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
             });
         });
 
-        res.status(200).json({ message: 'Comanda reaberta com sucesso. Venda associada removida. (Reversão financeira manual necessária).' });
+        res.status(200).json({ message: 'Comanda reaberta com sucesso. Venda e lançamentos financeiros associados foram removidos.' });
 
     } catch (error) {
         console.error("Erro ao reabrir comanda:", error);
@@ -692,4 +773,3 @@ router.post('/cleanup-invalid', verifyToken, isOwner, async (req, res) => {
 });
 
 module.exports = router;
-

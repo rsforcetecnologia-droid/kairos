@@ -9,7 +9,7 @@ import { state } from '../state.js';
 
 
 // Referência ao modal genérico para confirmações
-const genericModal = document.getElementById('genericModal');
+// (Removida a referência global, pois será pego e clonado dentro da função)
 let audioContext;
 
 // Prepara o áudio para ser tocado
@@ -114,6 +114,9 @@ export function showNotification(title, message, type = 'info', playSound = fals
  * @returns {Promise<boolean>} - Uma promessa que resolve para 'true' se o utilizador confirmar, e 'false' se cancelar.
  */
 export function showConfirmation(title, message) {
+    // Pega a referência do modal genérico
+    const genericModal = document.getElementById('genericModal');
+
     return new Promise((resolve) => {
         genericModal.innerHTML = `
             <div class="modal-content max-w-sm p-0 rounded-xl overflow-hidden shadow-2xl">
@@ -156,7 +159,20 @@ export function showConfirmation(title, message) {
  * @returns {object} - Controles do modal { modalElement, close, setContent }.
  */
 export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', showCloseButton = true }) {
-    const modal = document.getElementById('genericModal');
+    let modal = document.getElementById('genericModal');
+    
+    // --- INÍCIO DA CORREÇÃO ---
+    // 1. Clona o nó do modal (sem os filhos, cloneNode(false))
+    // Isso cria uma nova referência de DOM e destrói TODOS os event listeners
+    // que foram anexados ao 'modal' original (ex: o listener da Comanda 1).
+    const newModal = modal.cloneNode(false);
+    
+    // 2. Substitui o modal antigo pelo novo no DOM
+    modal.parentNode.replaceChild(newModal, modal);
+    
+    // 3. Reatribui a variável 'modal' para apontar para o novo nó limpo
+    modal = newModal;
+    // --- FIM DA CORREÇÃO ---
     
     const handleClose = () => {
         modal.style.display = 'none';
@@ -166,8 +182,6 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
          modal.querySelector('#genericModalContentBody').innerHTML = newContentHTML;
     }
 
-    // ### CORREÇÃO APLICADA AQUI ###
-    // O atributo `onclick` que causava o problema foi REMOVIDO.
     modal.innerHTML = `
         <div class="modal-content ${maxWidth} p-0 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh]">
             
@@ -195,6 +209,17 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
     if (cancelButton) {
         cancelButton.onclick = handleClose;
     }
+    
+    // --- INÍCIO DA CORREÇÃO (PARTE 2) ---
+    // Reanexa o listener de clique no overlay (fundo escuro) ao NOVO modal
+    // Este listener estava antes em initializeModalClosers()
+    modal.addEventListener('click', (e) => {
+        // Se o clique NÃO foi dentro do `modal-content` (ou seja, foi no overlay escuro), fecha o modal.
+        if (!e.target.closest('.modal-content')) {
+            handleClose();
+        }
+    });
+    // --- FIM DA CORREÇÃO (PARTE 2) ---
 
     modal.style.display = 'flex';
 
@@ -234,14 +259,10 @@ export function initializeModalClosers() {
         }
     });
     
-    // ### CORREÇÃO APLICADA AQUI ###
-    // A lógica para fechar o modal ao clicar fora foi melhorada para ser mais robusta.
-    genericModal.addEventListener('click', (e) => {
-        // Se o clique NÃO foi dentro do `modal-content` (ou seja, foi no overlay escuro), fecha o modal.
-        if (!e.target.closest('.modal-content')) {
-            genericModal.style.display = 'none';
-        }
-    });
+    // --- CORREÇÃO (PARTE 3) ---
+    // O listener de clique no overlay do genericModal foi REMOVIDO DAQUI
+    // e movido para dentro da função showGenericModal().
+    // --- FIM DA CORREÇÃO (PARTE 3) ---
 }
 
 

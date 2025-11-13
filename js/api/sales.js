@@ -1,3 +1,5 @@
+// js/api/sales.js
+
 import { authenticatedFetch } from './apiService.js';
 
 /**
@@ -35,3 +37,13 @@ export const reopenSale = (saleId) => {
     });
 };
 
+/**
+ * NOVO: Exclui uma venda avulsa (walk-in) e reverte o estoque/financeiro.
+ * @param {string} saleId - O ID da venda.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ */
+export const deleteSale = (saleId) => {
+    return authenticatedFetch(`/api/sales/${saleId}`, {
+        method: 'DELETE',
+    });
+};

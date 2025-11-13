@@ -12,7 +12,7 @@ import { auth } from '../firebase-config.js';
 
 // 2. PARA TESTE LOCAL (desenvolvimento na sua rede Wi-Fi)
 // Lembre-se de usar o IP correto do seu computador (onde o 'node index.js' está rodando)
-const API_BASE_URL = 'http://192.168.100.81:3001';
+const API_BASE_URL = 'http://192.168.3.12:3001';
 // --- FIM DA CONFIGURAÇÃO ---
 
 
