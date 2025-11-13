@@ -27,9 +27,13 @@ const verifyToken = async (req, res, next) => {
              const userDoc = await admin.firestore().collection('users').doc(req.user.uid).get();
              if (userDoc.exists) {
                  const userData = userDoc.data();
-                 // Adiciona o professionalId e o nome (que pode ter sido atualizado no painel) ao req.user
-                 req.user.professionalId = userData.professionalId || null; // <-- ADICIONADO
-                 req.user.name = userData.name || req.user.name; // <-- ADICIONADO
+                 // Adiciona o professionalId, o nome E AS PERMISSÕES ao req.user
+                 req.user.professionalId = userData.professionalId || null; 
+                 req.user.name = userData.name || req.user.name; 
+                 req.user.permissions = userData.permissions || {}; // <-- ADICIONADO
+             } else {
+                 // Se o documento do usuário não for encontrado, define permissões vazias
+                 req.user.permissions = {};
              }
         // NOVO: Se for um owner, busca o professionalId associado ao email dele
         } else if (req.user.role === 'owner' && req.user.establishmentId) {
@@ -42,6 +46,8 @@ const verifyToken = async (req, res, next) => {
             if (!profQuery.empty) {
                 req.user.professionalId = profQuery.docs[0].id; // <-- ADICIONADO
             }
+            // Donos (owner) têm permissão para tudo por padrão
+            req.user.permissions = null; // <-- ADICIONADO (null significa "sem restrições")
         }
         // --- FIM DA MODIFICAÇÃO ---
 

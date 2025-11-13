@@ -173,11 +173,21 @@ router.post('/', async (req, res) => {
 router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        const { startDate, endDate, professionalId } = req.query; // Adiciona professionalId
+        const { startDate, endDate } = req.query; // Remove professionalId daqui
+        // Pega o professionalId do filtro do frontend
+        const professionalIdFromFilter = req.query.professionalId; 
+
         if (!startDate || !endDate) return res.status(400).json({ message: 'startDate e endDate são obrigatórios.' });
         const { db } = req;
         const start = new Date(startDate);
         const end = new Date(endDate);
+
+        // --- INÍCIO DA LÓGICA DE PERMISSÃO ---
+        const { role, professionalId: userProfessionalId, permissions } = req.user;
+        
+        // Verifica se o usuário tem a permissão para ver a agenda de todos
+        // Se permissions for null (Dono), canViewAll é true.
+        const canViewAll = permissions === null || permissions['agenda-section']?.view_all_prof === true;
 
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
@@ -185,9 +195,22 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
-        if (professionalId && professionalId !== 'all') { // Filtro por profissional
-            appointmentsQuery = appointmentsQuery.where('professionalId', '==', professionalId);
+        if (role === 'employee' && !canViewAll) {
+            // Se for funcionário SEM permissão de ver tudo, FORÇA o filtro
+            // para mostrar APENAS a agenda do seu próprio professionalId.
+            if (userProfessionalId) {
+                appointmentsQuery = appointmentsQuery.where('professionalId', '==', userProfessionalId);
+            } else {
+                // Se for funcionário sem professionalId associado E sem permissão, não mostra nada.
+                return res.status(200).json([]);
+            }
+        } else {
+            // Se for Dono ou Funcionário COM permissão, aplica o filtro do dropdown (se houver)
+            if (professionalIdFromFilter && professionalIdFromFilter !== 'all') { 
+                appointmentsQuery = appointmentsQuery.where('professionalId', '==', professionalIdFromFilter);
+            }
         }
+        // --- FIM DA LÓGICA DE PERMISSÃO ---
 
         const [appointmentsSnapshot, professionalsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
