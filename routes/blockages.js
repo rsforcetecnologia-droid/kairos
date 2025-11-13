@@ -55,28 +55,60 @@ router.post('/', async (req, res) => {
 // Listar bloqueios por período
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { startDate, endDate, professionalId } = req.query;
-    if (!startDate || !endDate) {
-        return res.status(400).json({ message: 'startDate e endDate são obrigatórios.' });
+    
+    // --- INÍCIO DA CORREÇÃO ---
+    let { startDate, endDate, professionalId } = req.query; // Mudar para 'let'
+
+    // Define padrões se 'startDate' ou 'endDate' não forem fornecidos
+    if (!startDate) {
+        // Se não houver data de início, assume hoje (sem horas)
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
     }
+    if (!endDate) {
+        // Se não houver data de fim, assume 1 ano a partir da data de início
+        const oneYearFromStart = new Date(startDate);
+        oneYearFromStart.setFullYear(oneYearFromStart.getFullYear() + 1);
+        endDate = oneYearFromStart;
+    }
+    // --- FIM DA CORREÇÃO ---
+
     try {
         const { db } = req;
+
+        // --- INÍCIO DA CORREÇÃO DA QUERY ---
+        // Converte as strings ISO (ou objetos Date) para objetos Date do Firebase
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
         let query = db.collection('blockages')
             .where('establishmentId', '==', establishmentId)
-            .where('startTime', '<=', new Date(endDate));
+            // A query correta é buscar onde o início do bloqueio está DENTRO do período
+            .where('startTime', '>=', start)
+            .where('startTime', '<=', end);
+        
         if (professionalId && professionalId !== 'all') {
             query = query.where('professionalId', '==', professionalId);
         }
+        
+        // Adiciona uma ordenação para consistência
+        query = query.orderBy('startTime', 'asc');
+
         const snapshot = await query.get();
         if (snapshot.empty) return res.status(200).json([]);
-        const blockages = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(blockage => blockage.endTime.toDate() >= new Date(startDate));
-        const formattedBlockages = blockages.map(b => ({
-            ...b,
-            startTime: b.startTime.toDate().toISOString(),
-            endTime: b.endTime.toDate().toISOString()
-        }));
+
+        // A filtragem em memória que existia foi removida pois a query do DB está correta
+        const formattedBlockages = snapshot.docs.map(doc => {
+            const b = doc.data();
+            return {
+                id: doc.id,
+                ...b,
+                startTime: b.startTime.toDate().toISOString(),
+                endTime: b.endTime.toDate().toISOString()
+            };
+        });
+        // --- FIM DA CORREÇÃO DA QUERY ---
+        
         res.status(200).json(formattedBlockages);
     } catch (error) {
         console.error("Erro ao listar bloqueios por data:", error);

@@ -1,6 +1,10 @@
 // js/api/schedules.js
 
 import { authenticatedFetch } from './apiService.js';
+// --- INÍCIO DA CORREÇÃO ---
+// Importa o 'state' global para termos acesso ao ID do estabelecimento
+import { state } from '../state.js';
+// --- FIM DA CORREÇÃO ---
 
 /**
  * Bloqueia a agenda de um profissional para um determinado período.
@@ -18,13 +22,22 @@ export const blockProfessionalSchedule = (blockData) => {
 
 /**
  * Obtém todos os bloqueios futuros de um profissional específico.
- * Esta função chama a rota GET /api/blockages?professionalId=...
+ * Esta função chama a rota GET /api/blockages/:establishmentId?professionalId=...
  * @param {string} professionalId - O ID do profissional.
  * @returns {Promise<Array<object>>} Uma lista de objetos de bloqueio.
  */
 export const getProfessionalBlocks = (professionalId) => {
-    // O backend em routes/blockages.js já suporta filtrar por professionalId via query param
-    return authenticatedFetch(`/api/blockages?professionalId=${professionalId}`);
+    // --- INÍCIO DA CORREÇÃO ---
+    const establishmentId = state.establishmentId; // Pega o ID do estado global
+    if (!establishmentId) {
+        return Promise.reject(new Error("ID do Estabelecimento não encontrado no estado global."));
+    }
+    
+    // A rota correta (definida em routes/blockages.js) é /:establishmentId com um query param
+    const endpoint = `/api/blockages/${establishmentId}?professionalId=${professionalId}`;
+    // --- FIM DA CORREÇÃO ---
+    
+    return authenticatedFetch(endpoint);
 };
 
 /**
