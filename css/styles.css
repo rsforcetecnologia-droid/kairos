@@ -881,7 +881,7 @@ body {
     padding-right: 2.5rem;
 }
 
-/* --- NOVO ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
+/* --- NOVO: ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
 
 /* Largura da sidebar ativa: 16.56rem */
 .main-content-shift {
@@ -912,24 +912,31 @@ body {
     display: none;
 }
 
-/* --- NOVO: AJUSTE DE TAMANHO DO LOGOTIPO KAIROS --- */
-/* DOCUMENTAÇÃO (CSS):
-  - Aumenta o logótipo para 200% (de 40px para 80px)
-    APENAS quando a sidebar NÃO está colapsada.
-*/
-#sidebar:not(.collapsed) #panelLogoContainer,
+
+/* #################################################################### */
+/* ### INÍCIO DA MODIFICAÇÃO: REMOÇÃO DO CSS DA LOGO ANTIGA ### */
+/* #################################################################### */
+
+/* As regras CSS abaixo, que forçavam a logo a ser 5rem x 5rem,
+   foram REMOVIDAS para permitir que a logo retangular 'logo_kairos.png'
+   seja exibida corretamente com as classes do Tailwind (h-10 w-auto). */
+
+/* #sidebar:not(.collapsed) #panelLogoContainer,
 #sidebar:not(.collapsed) #panelEstablishmentLogo {
-    height: 5rem; /* h-20 (80px) */
-    width: 5rem;  /* w-20 (80px) */
-    /* Adicionamos uma transição para suavizar a mudança de tamanho */
+    height: 5rem; 
+    width: 5rem;  
     transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
 }
 
-/* Também adicionamos a transição para o estado colapsado (voltando ao normal) */
 #sidebar.collapsed #panelLogoContainer,
 #sidebar.collapsed #panelEstablishmentLogo {
     transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
 }
+*/
+/* #################################################################### */
+/* ### FIM DA MODIFICAÇÃO ### */
+/* #################################################################### */
+
 
 /* --- INÍCIO DA NOVA SEÇÃO: ESTILOS PARA O MENU MOBILE (OVERLAY) --- */
 @media (max-width: 767px) { 

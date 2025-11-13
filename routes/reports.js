@@ -1,9 +1,14 @@
+// routes/reports.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
+// (MODIFICADO) Middlewares de segurança adicionados
+const { verifyToken, hasAccess } = require('../middlewares/auth');
 
 // ROTA ÚNICA E DEFINITIVA PARA RELATÓRIO DE VENDAS
-router.get('/sales/:establishmentId', async (req, res) => {
+// (MODIFICADO) Middlewares adicionados à sua rota existente
+router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     const { establishmentId } = req.params;
     const { startDate, endDate, cashierSessionId } = req.query;
 
@@ -41,8 +46,9 @@ router.get('/sales/:establishmentId', async (req, res) => {
             salesQuery = salesQuery.where('professionalId', '==', loggedInProfessionalId);
         }
 
+        // (MODIFICADO) CORREÇÃO DO NOME DA COLEÇÃO
         // Busca todas as sessões de caixa para mapear os nomes dos responsáveis
-        const cashierSessionsQuery = db.collection('cashierSessions')
+        const cashierSessionsQuery = db.collection('cashier_sessions') // <-- Corrigido de 'cashierSessions'
             .where('establishmentId', '==', establishmentId);
 
 
@@ -117,7 +123,8 @@ router.get('/sales/:establishmentId', async (req, res) => {
 });
 
 // Rota de relatório de jornada de trabalho (Mantida, já filtra por professionalId)
-router.get('/work-journal/:establishmentId', async (req, res) => {
+// (MODIFICADO) Middlewares adicionados
+router.get('/work-journal/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     const { establishmentId } = req.params;
     const { professionalId, startDate, endDate } = req.query;
 
@@ -172,7 +179,8 @@ router.get('/work-journal/:establishmentId', async (req, res) => {
 });
 
 // NOVA ROTA: Relatório de Comissões
-router.get('/commissions/:establishmentId', async (req, res) => {
+// (MODIFICADO) Middlewares adicionados
+router.get('/commissions/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     const { establishmentId } = req.params;
     const { year, month, professionalId } = req.query;
 
@@ -202,5 +210,69 @@ router.get('/commissions/:establishmentId', async (req, res) => {
     }
 });
 
+
+// ####################################################################
+// ### INÍCIO DA NOVA ROTA (KPIs do Dia) ###
+// ####################################################################
+
+/**
+ * Rota GET para buscar KPIs resumidos do dia (Agendamentos e Faturamento).
+ * Protegida por token e permissão de acesso.
+ */
+router.get('/summary', verifyToken, hasAccess, async (req, res) => {
+    const { db } = req;
+    const { establishmentId } = req.user; // Pega o ID do estabelecimento do token
+
+    try {
+        // Define o 'hoje'
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        const startTimestamp = admin.firestore.Timestamp.fromDate(startOfDay);
+        const endTimestamp = admin.firestore.Timestamp.fromDate(endOfDay);
+
+        // 1. KPI Agendamentos (Apenas confirmados/abertos)
+        const appointmentsQuery = db.collection('appointments')
+            .where('establishmentId', '==', establishmentId)
+            .where('status', '==', 'confirmed') // Apenas os que estão 'abertos'
+            .where('startTime', '>=', startTimestamp)
+            .where('startTime', '<=', endTimestamp);
+        
+        // 2. KPI Faturado (Vendas 'sales' já finalizadas HOJE)
+        // Nota: Esta query 'sales' inclui agendamentos E vendas avulsas
+        const salesQuery = db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('transaction.paidAt', '>=', startTimestamp)
+            .where('transaction.paidAt', '<=', endTimestamp);
+
+        // Executa as duas buscas em paralelo
+        const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
+            appointmentsQuery.get(),
+            salesQuery.get()
+        ]);
+
+        // Calcular Faturado
+        let todayRevenue = 0;
+        salesSnapshot.forEach(doc => {
+            todayRevenue += doc.data().totalAmount || 0;
+        });
+
+        // Contar Agendamentos
+        const todayAppointments = appointmentsSnapshot.size;
+
+        res.status(200).json({
+            todayAppointments: todayAppointments,
+            todayRevenue: todayRevenue
+        });
+
+    } catch (error) {
+        console.error("Erro ao buscar KPIs de sumário:", error);
+        res.status(500).json({ message: "Erro ao buscar KPIs." });
+    }
+});
+// ####################################################################
+// ### FIM DA NOVA ROTA ###
+// ####################################################################
 
 module.exports = router;

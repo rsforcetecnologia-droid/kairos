@@ -1,3 +1,5 @@
+// js/api/reports.js
+
 import { authenticatedFetch } from './apiService.js';
 
 /**
@@ -73,3 +75,22 @@ export const getProfessionalMonthlyDetails = (establishmentId, year, month, prof
 export const getCommissionReport = (establishmentId, year, month, professionalId) => {
     return authenticatedFetch(`/api/reports/commissions/${establishmentId}?year=${year}&month=${month}&professionalId=${professionalId}`);
 };
+
+// ####################################################################
+// ### INÍCIO DA NOVA FUNÇÃO (KPIs) ###
+// ####################################################################
+
+/**
+ * Busca os KPIs resumidos (Agendamentos do Dia, Faturado do Dia)
+ * para o painel da sidebar.
+ * @returns {Promise<object>} - Um objeto com { todayAppointments, todayRevenue }
+ */
+export const getSummaryKPIs = () => {
+    // Esta é a nova rota GET que criámos em 'routes/reports.js'
+    return authenticatedFetch('/api/reports/summary', {
+        method: 'GET',
+    });
+};
+// ####################################################################
+// ### FIM DA NOVA FUNÇÃO ###
+// ####################################################################

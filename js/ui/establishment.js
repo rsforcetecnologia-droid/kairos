@@ -77,12 +77,12 @@ async function handleSave(formData, event) {
         if (ownerName && ownerName !== state.userName) {
              const user = auth.currentUser;
              if (user) {
-                  updatePromises.push(updateProfile(user, { displayName: ownerName })
+                   updatePromises.push(updateProfile(user, { displayName: ownerName })
                         .then(() => {
                             state.userName = ownerName;
                             // A atualização do nome no sidebar é feita pelo main.js após o re-render
                         })
-                  );
+                );
              }
         }
         
@@ -97,8 +97,10 @@ async function handleSave(formData, event) {
 
         showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
         
-        if (firestoreData.name) {
-            document.getElementById('panelEstablishmentName').textContent = firestoreData.name;
+        // (MODIFICADO) Verifica se o elemento existe antes de tentar atualizar
+        const panelEstablishmentName = document.getElementById('panelEstablishmentName');
+        if (firestoreData.name && panelEstablishmentName) {
+            panelEstablishmentName.textContent = firestoreData.name;
             state.establishmentName = firestoreData.name;
         }
         
@@ -285,44 +287,171 @@ function renderBrandingSection(data, container) {
     });
 }
 
+// ####################################################################
+// ### INÍCIO DA MODIFICAÇÃO (Agendamento Online) ###
+// ####################################################################
+
 function renderBookingSection(data, container) {
+    // 1. Gera o link de agendamento público
+    const bookingLink = `${window.location.origin}/cliente.html?id=${state.establishmentId}`;
+    
+    // 2. Verifica o estado atual do toggle
+    const isChecked = data.publicBookingEnabled || false;
+    const toggleText = isChecked ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
+    const statusColor = isChecked ? "text-green-600" : "text-red-600";
+
     container.innerHTML = `
-        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Agendamento Online</h3>
-                <button type="submit" form="booking-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
-            </div>
-            <form id="booking-form" class="space-y-8">
-                <input type="hidden" id="establishmentSlotInterval">
-                <div>
-                    <h4 class="text-md font-semibold text-gray-800 mb-2">Intervalo entre agendamentos</h4>
-                    <p class="text-sm text-gray-600 mb-4">Defina o intervalo de tempo entre os horários disponíveis.</p>
-                    <div id="slotIntervalContainer" class="flex flex-wrap gap-2"></div>
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md space-y-8">
+            
+            <div>
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h3 class="text-xl font-bold text-gray-800">Link Público de Agendamento</h3>
                 </div>
-            </form>
+                <p class="text-sm text-gray-600 mb-4">
+                    Este é o link exclusivo que você pode partilhar com os seus clientes para que eles façam agendamentos online.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input 
+                        type="text" 
+                        id="publicBookingLink" 
+                        value="${bookingLink}" 
+                        readonly 
+                        class="flex-1 p-3 border border-gray-300 rounded-md bg-gray-50 text-gray-700"
+                    >
+                    <button 
+                        type="button" 
+                        id="copyBookingLinkBtn"
+                        class="py-3 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition"
+                    >
+                        Copiar Link
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-xl font-bold text-gray-800 mb-6 border-b pb-4">Status do Agendamento Online</h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    Se o agendamento online estiver inativo, os clientes que tentarem aceder ao link verão uma mensagem a informar que o estabelecimento não está a aceitar agendamentos no momento.
+                </p>
+                <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                    <label for="publicBookingToggle" class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <input type="checkbox" id="publicBookingToggle" class="sr-only" ${isChecked ? 'checked' : ''}>
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                        </div>
+                    </label>
+                    <span id="publicBookingStatusText" class="text-sm font-semibold ${statusColor}">
+                        ${toggleText}
+                    </span>
+                </div>
+            </div>
+
+            <div class="pt-8 border-t">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-gray-800">Intervalo de Horários</h3>
+                    <button type="submit" form="booking-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Intervalo</button>
+                </div>
+                <form id="booking-form" class="space-y-4">
+                    <input type="hidden" id="establishmentSlotInterval">
+                    <h4 class="text-md font-semibold text-gray-800 mb-2">Intervalo entre agendamentos</h4>
+                    <p class="text-sm text-gray-600 mb-4">Defina o intervalo de tempo entre os horários disponíveis na agenda online.</p>
+                    <div id="slotIntervalContainer" class="flex flex-wrap gap-2"></div>
+                </form>
+            </div>
         </div>
     `;
+
+    // 3. Adiciona listeners para a nova funcionalidade
+    
+    // Listener para o botão de Copiar (COM FALLBACK)
+    container.querySelector('#copyBookingLinkBtn').addEventListener('click', () => {
+        const linkInput = container.querySelector('#publicBookingLink');
+        
+        if (navigator.clipboard && window.isSecureContext) {
+            // Método Moderno (HTTPS/Localhost)
+            navigator.clipboard.writeText(linkInput.value).then(() => {
+                showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
+            }).catch(err => {
+                showNotification('Erro', 'Não foi possível copiar o link.', 'error');
+            });
+        } else {
+            // Método Antigo (Fallback for HTTP e contextos não seguros)
+            try {
+                linkInput.select(); // Seleciona o texto no input
+                document.execCommand('copy'); // Tenta copiar
+                linkInput.blur(); // Remove a seleção
+                showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
+            } catch (err) {
+                showNotification('Erro', 'Não foi possível copiar o link. Por favor, copie manualmente.', 'error');
+            }
+        }
+    });
+
+    // Listener para o Toggle de Ativar/Desativar
+    container.querySelector('#publicBookingToggle').addEventListener('change', async (e) => {
+        const isEnabled = e.target.checked;
+        const statusTextEl = container.querySelector('#publicBookingStatusText');
+        
+        // Atualiza a UI imediatamente
+        if (isEnabled) {
+            statusTextEl.textContent = "Agendamento Online ATIVO";
+            statusTextEl.className = "text-sm font-semibold text-green-600";
+        } else {
+            statusTextEl.textContent = "Agendamento Online INATIVO";
+            statusTextEl.className = "text-sm font-semibold text-red-600";
+        }
+        
+        // Salva no backend
+        try {
+            e.target.disabled = true; // Desabilita o toggle enquanto salva
+            await establishmentApi.updatePublicBookingStatus(state.establishmentId, isEnabled);
+            establishmentData.publicBookingEnabled = isEnabled; // Atualiza o cache local
+            showNotification('Sucesso', `Agendamento online ${isEnabled ? 'ativado' : 'desativado'}!`, 'success');
+        } catch (error) {
+            showNotification('Erro', `Não foi possível alterar o status: ${error.message}`, 'error');
+            // Reverte a UI em caso de erro
+            e.target.checked = !isEnabled;
+             if (!isEnabled) {
+                statusTextEl.textContent = "Agendamento Online INATIVO";
+                statusTextEl.className = "text-sm font-semibold text-red-600";
+            } else {
+                statusTextEl.textContent = "Agendamento Online ATIVO";
+                statusTextEl.className = "text-sm font-semibold text-green-600";
+            }
+        } finally {
+            e.target.disabled = false; // Reabilita o toggle
+        }
+    });
+
+    // 4. Mantém a lógica original da secção (Intervalo de Horários)
     renderSlotIntervalSelector(data.slotInterval || 30, container); // Passa o container
+    
     container.querySelector('#booking-form').addEventListener('submit', (e) => {
         e.preventDefault();
+        // Este formulário agora salva APENAS o slotInterval.
+        // O toggle de status salva-se a si mesmo.
         const formData = {
             slotInterval: parseInt(container.querySelector('#establishmentSlotInterval').value, 10)
         };
         handleSave(formData, e);
     });
 }
+// ####################################################################
+// ### FIM DA MODIFICAÇÃO ###
+// ####################################################################
+
 
 function renderWorkingHoursSection(data, container) {
     container.innerHTML = `
          <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Horário de Funcionamento</h3>
-                <button type="submit" form="working-hours-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Horários</button>
-            </div>
-            <form id="working-hours-form">
-                <div id="establishmentWorkingHoursContainer" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4"></div>
-            </form>
-        </div>
+             <div class="flex justify-between items-center mb-6">
+                 <h3 class="text-xl font-bold text-gray-800">Horário de Funcionamento</h3>
+                 <button type="submit" form="working-hours-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Horários</button>
+             </div>
+             <form id="working-hours-form">
+                 <div id="establishmentWorkingHoursContainer" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4"></div>
+             </form>
+         </div>
     `;
     const workingHoursContainer = container.querySelector('#establishmentWorkingHoursContainer');
     const scheduleData = data.workingHours || {};
@@ -377,38 +506,38 @@ function renderLoyaltySection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
              <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Plano de Fidelidade</h3>
-                <button type="submit" form="loyalty-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
-            </div>
-            <form id="loyalty-form" class="space-y-4">
-                <div class="flex items-center">
-                    <label for="loyaltyEnabled" class="flex items-center cursor-pointer">
-                        <div class="relative"><input type="checkbox" id="loyaltyEnabled" class="sr-only"><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div>
-                        <span class="ml-3 font-medium text-gray-700">Habilitar Programa de Fidelidade</span>
-                    </label>
-                </div>
-                <div>
-                    <label for="loyaltyPointsPerCurrency" class="block text-sm font-medium text-gray-700">Pontos Ganhos</label>
-                    <div class="mt-1 flex items-center gap-2">
-                        <span>1 Ponto a cada R$</span>
-                        <input type="number" id="loyaltyPointsPerCurrency" value="10" class="w-24 p-2 border rounded-md">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Prémios (Níveis de Pontuação)</label>
-                    
-                    <div class="hidden md:grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
-                        <span>Pontos</span>
-                        <span>Descrição do Prémio</span>
-                        <span>Valor do Desconto (R$)</span>
-                        <span></span>
-                    </div>
-                    
-                    <div id="loyaltyTiersContainer" class="space-y-4 md:space-y-2"></div>
-                    
-                    <button type="button" id="add-loyalty-tier" class="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Adicionar Prémio</button>
-                </div>
-            </form>
+                 <h3 class="text-xl font-bold text-gray-800">Plano de Fidelidade</h3>
+                 <button type="submit" form="loyalty-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
+             </div>
+             <form id="loyalty-form" class="space-y-4">
+                 <div class="flex items-center">
+                     <label for="loyaltyEnabled" class="flex items-center cursor-pointer">
+                         <div class="relative"><input type="checkbox" id="loyaltyEnabled" class="sr-only"><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div>
+                         <span class="ml-3 font-medium text-gray-700">Habilitar Programa de Fidelidade</span>
+                     </label>
+                 </div>
+                 <div>
+                     <label for="loyaltyPointsPerCurrency" class="block text-sm font-medium text-gray-700">Pontos Ganhos</label>
+                     <div class="mt-1 flex items-center gap-2">
+                         <span>1 Ponto a cada R$</span>
+                         <input type="number" id="loyaltyPointsPerCurrency" value="10" class="w-24 p-2 border rounded-md">
+                     </div>
+                 </div>
+                 <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-2">Prémios (Níveis de Pontuação)</label>
+                     
+                     <div class="hidden md:grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
+                         <span>Pontos</span>
+                         <span>Descrição do Prémio</span>
+                         <span>Valor do Desconto (R$)</span>
+                         <span></span>
+                     </div>
+                     
+                     <div id="loyaltyTiersContainer" class="space-y-4 md:space-y-2"></div>
+                     
+                     <button type="button" id="add-loyalty-tier" class="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Adicionar Prémio</button>
+                 </div>
+             </form>
         </div>
     `;
     const loyaltyProgram = data.loyaltyProgram || {};
@@ -482,7 +611,7 @@ async function renderFinancialIntegrationSection(data, container) {
                 <button type="submit" form="financial-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
             </div>
             <form id="financial-form" class="space-y-4">
-                 <p class="text-sm text-gray-600">Selecione as Naturezas e Centros de Custo padrões para serem aplicados automaticamente em todas as vendas (Contas a Receber).</p>
+                <p class="text-sm text-gray-600">Selecione as Naturezas e Centros de Custo padrões para serem aplicados automaticamente em todas as vendas (Contas a Receber).</p>
                 <div>
                     <label for="financialNatureId" class="block text-sm font-medium text-gray-700">Natureza Padrão (Receita)</label>
                     <select id="financialNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
@@ -573,10 +702,10 @@ function renderSlotIntervalSelector(currentValue, container) {
     slotContainer.innerHTML = intervals.map(interval => {
         const isSelected = interval.value === currentValue;
         return `<button type="button" data-value="${interval.value}" 
-                    class="interval-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors 
-                           ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
-                    ${interval.label}
-                </button>`;
+                       class="interval-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors 
+                            ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                       ${interval.label}
+                   </button>`;
     }).join('');
     intervalInput.value = currentValue;
 
@@ -631,7 +760,7 @@ async function showSettingsDetailView(sectionId) {
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
-        case 'booking': renderBookingSection(establishmentData, detailContainer); break;
+        case 'booking': renderBookingSection(establishmentData, detailContainer); break; // <-- CHAMADA MODIFICADA
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;

@@ -1,52 +1,63 @@
 // js/api/establishments.js
 
 import { authenticatedFetch } from './apiService.js';
+import { state } from '../state.js';
 
 /**
- * Este módulo agrupa as funções para interagir com os endpoints
- * de estabelecimentos (`establishments`) da API.
- */
-
-/**
- * Busca os detalhes de um estabelecimento específico.
+ * Busca os detalhes completos de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
- * @returns {Promise<object>} - Uma promessa que resolve com os dados do estabelecimento.
+ * @returns {Promise<object>} Os dados do estabelecimento.
  */
 export const getEstablishmentDetails = (establishmentId) => {
-    return authenticatedFetch(`/api/establishments/${establishmentId}/details`);
+    // Se o ID não for fornecido, usa o do estado (cache)
+    const id = establishmentId || state.establishmentId;
+    if (!id) {
+        return Promise.reject(new Error("ID do estabelecimento não fornecido."));
+    }
+    return authenticatedFetch(`/api/establishments/${id}`);
 };
 
 /**
  * Atualiza os detalhes de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
- * @param {object} establishmentData - Os novos dados a serem salvos.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da atualização.
+ * @param {object} data - Os dados a serem atualizados.
+ * @returns {Promise<object>} A resposta da API.
  */
-export const updateEstablishmentDetails = (establishmentId, establishmentData) => {
-    return authenticatedFetch(`/api/establishments/${establishmentId}/details`, {
+export const updateEstablishmentDetails = (establishmentId, data) => {
+    const id = establishmentId || state.establishmentId;
+    if (!id) {
+        return Promise.reject(new Error("ID do estabelecimento não fornecido."));
+    }
+    return authenticatedFetch(`/api/establishments/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(establishmentData),
+        body: JSON.stringify(data),
     });
 };
 
+
+// ####################################################################
+// ### INÍCIO DA NOVA FUNÇÃO ###
+// ####################################################################
+
 /**
- * Limpa todos os agendamentos de um estabelecimento. Ação perigosa.
+ * (NOVO) Atualiza o status do agendamento público (ativo/inativo).
  * @param {string} establishmentId - O ID do estabelecimento.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da limpeza.
+ * @param {boolean} isEnabled - O novo estado (true para ativo, false para inativo).
+ * @returns {Promise<object>} A resposta da API.
  */
-export const clearAllAppointments = (establishmentId) => {
-    return authenticatedFetch(`/api/appointments/clear-all/${establishmentId}`, {
-        method: 'POST',
+export const updatePublicBookingStatus = (establishmentId, isEnabled) => {
+    const id = establishmentId || state.establishmentId;
+    if (!id) {
+        return Promise.reject(new Error("ID do estabelecimento não fornecido."));
+    }
+    
+    // Esta rota 'PATCH' é mais eficiente pois atualiza apenas um campo.
+    return authenticatedFetch(`/api/establishments/${id}/booking-status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ publicBookingEnabled: isEnabled }),
     });
 };
 
-// NOVO CÓDIGO ADICIONADO AQUI
-/**
- * Executa a limpeza de agendamentos inválidos (sem data).
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da limpeza.
- */
-export const cleanupInvalidAppointments = () => {
-    return authenticatedFetch(`/api/appointments/cleanup-invalid`, {
-        method: 'POST',
-    });
-};
+// ####################################################################
+// ### FIM DA NOVA FUNÇÃO ###
+// ####################################################################

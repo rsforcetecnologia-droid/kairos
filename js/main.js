@@ -9,6 +9,9 @@ import { initializeModalClosers, showNotification, openCancellationHistoryModal 
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
 
+// (MODIFICADO) Importa a nova função da API de relatórios, juntamente com as existentes
+import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
+
 // Importa as funções que carregam cada página da aplicação
 import { loadAgendaPage } from './ui/agenda.js';
 import { loadComandasPage } from './ui/comandas.js';
@@ -180,6 +183,65 @@ export function navigateTo(sectionId, params = {}) {
     }
 }
 
+// ####################################################################
+// ### INÍCIO DA NOVA FUNÇÃO (CARREGAR KPIs DO HEADER) ###
+// ####################################################################
+
+/**
+ * Busca e exibe os KPIs no cabeçalho superior, respeitando as permissões do usuário.
+ * @param {object | null} userPermissions - O objeto de permissões do usuário.
+ */
+async function loadHeaderKPIs(userPermissions) {
+    // Referências aos elementos do HEADER (e não mais da sidebar)
+    const kpiAppointmentsWrapper = document.getElementById('kpi-appointments-wrapper');
+    const kpiFinancialWrapper = document.getElementById('kpi-financial-wrapper');
+    const kpiAppointmentsEl = document.getElementById('kpi-today-appointments');
+    const kpiRevenueEl = document.getElementById('kpi-today-revenue');
+
+    // 1. Verificar Permissões
+    // Se for 'owner' (null), tem acesso a tudo.
+    // Usamos a mesma lógica do 'navigation.js'
+    const canViewAgenda = userPermissions === null || userPermissions['agenda-section']?.view === true;
+    const canViewFinancial = userPermissions === null || userPermissions['financial-section']?.view === true;
+
+    // 2. Controlar visibilidade dos wrappers
+    // Se o elemento não existir (ex: erro de digitação no ID), não faz nada
+    if (canViewAgenda && kpiAppointmentsWrapper) {
+        kpiAppointmentsWrapper.classList.remove('hidden');
+    }
+    if (canViewFinancial && kpiFinancialWrapper) {
+        kpiFinancialWrapper.classList.remove('hidden');
+    }
+
+    // 3. Se não tiver permissão para ver nenhum, não faz a chamada à API
+    if (!canViewAgenda && !canViewFinancial) {
+        return;
+    }
+
+    // 4. Buscar os dados da API
+    try {
+        const kpis = await getSummaryKPIs();
+        
+        // 5. Exibir os dados (apenas se tiver permissão E o elemento existir)
+        if (canViewAgenda && kpiAppointmentsEl) {
+            kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
+        }
+        if (canViewFinancial && kpiRevenueEl) {
+            // Formata o valor para R$
+            kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
+        }
+        
+    } catch (error) {
+        console.error("Erro ao carregar KPIs do cabeçalho:", error);
+        if (canViewAgenda && kpiAppointmentsEl) kpiAppointmentsEl.textContent = "Erro";
+        if (canViewFinancial && kpiRevenueEl) kpiRevenueEl.textContent = "Erro";
+    }
+}
+// ####################################################################
+// ### FIM DA NOVA FUNÇÃO ###
+// ####################################################################
+
+
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
 function initialize() {
     initializeModalClosers();
@@ -247,43 +309,11 @@ function initialize() {
                     }
                     
                     const finalUserName = userName || user.email;
-                    setGlobalState(claims.establishmentId, finalUserName, userPermissions);
+                    
+                    // Define o estado global (com a correção do state.js aplicada)
+                    setGlobalState(claims.establishmentId, establishmentDetails.name, userPermissions);
 
-                    /* ------------------------------------------------------------- */
-                    /* LÓGICA ORIGINAL DO LOGO (VAI IGNORAR O BLOCO FIXO DO HTML)    */
-                    /* ------------------------------------------------------------- */
-                    try {
-                        const nameEl = document.getElementById('panelEstablishmentName');
-                        const logoEl = document.getElementById('panelEstablishmentLogo');
-                        const logoContainer = document.getElementById('panelLogoContainer');
-                        
-                        // 1. Remove classes de carregamento/placeholder
-                        logoContainer.classList.remove('bg-gray-700', 'animate-pulse');
-                        nameEl.firstElementChild?.remove(); // Remove o div placeholder do nome
-
-                        // 2. Verifica se existe o logótipo global
-                        if (establishmentDetails.globalLogoUrl) {
-                            // Se existe, usa o logótipo global e o nome "Kairos" (ou outro nome fixo se preferir)
-                            nameEl.textContent = 'Kairos'; // Ou o nome da sua plataforma
-                            logoEl.src = establishmentDetails.globalLogoUrl;
-                            logoEl.alt = 'Logotipo da Plataforma';
-                            logoEl.classList.remove('opacity-0');
-                        } else {
-                            // Se NÃO existe, usa o nome do estabelecimento e mantém o placeholder visual (sem animação)
-                            nameEl.textContent = establishmentDetails.name; 
-                            logoContainer.classList.add('bg-gray-700'); // Fundo cinza como fallback
-                            // Opcional: Adicionar um ícone/texto de fallback dentro do logoContainer se desejar
-                        }
-
-                    } catch (e) {
-                         console.error("Não foi possível carregar detalhes do estabelecimento para o cabeçalho:", e);
-                         // Fallback caso ocorra erro ao buscar detalhes
-                         document.getElementById('panelEstablishmentName').textContent = 'Erro';
-                    }
-                    /* ------------------------------------------------------------- */
-                    /* FIM DA LÓGICA ORIGINAL                                        */
-                    /* ------------------------------------------------------------- */
-
+                    // Preenche o perfil do usuário
                     profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
                     profileName.textContent = finalUserName;
                     profileEmail.textContent = user.email;
@@ -298,7 +328,14 @@ function initialize() {
                         handleLogout();
                     });
 
+                    // Inicializa a navegação (que agora esconde os links)
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
+                    
+                    // ####################################################################
+                    // ### (MODIFICADO) Chama a função de carregar KPIs do HEADER ###
+                    // ####################################################################
+                    loadHeaderKPIs(userPermissions); // Passa as permissões
+
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
                     loadingScreen.style.display = 'none';
