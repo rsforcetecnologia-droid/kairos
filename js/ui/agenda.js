@@ -1368,7 +1368,11 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                              <span class="text-sm font-medium text-gray-700">Inativos</span>
                          </label>
                      </div>
-                     <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
+                     
+                     <!-- ########## INÍCIO DA CORREÇÃO ########## -->
+                     <!-- A classe 'flex' foi REMOVIDA daqui para permitir o scroll horizontal -->
+                     <div id="profSelectorContainer" class="prof-selector-container mt-2">
+                     <!-- ########## FIM DA CORREÇÃO ########## -->
                          <div class="loader mx-auto"></div>
                      </div>
                 </div>

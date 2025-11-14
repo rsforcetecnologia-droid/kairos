@@ -669,13 +669,14 @@ background-color: #eff6ff; /* blue-50 */
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    margin-right: 1.5rem;
+    margin-right: 0.1200rem; /* <-- CORREÇÃO: Reduzido em ~15% (de 0.75rem para 0.625rem) */
     cursor: pointer;
     padding: 4px;
     transition: all 0.2s ease-in-out;
     border-radius: 9999px;
     position: relative;
     user-select: none;
+    vertical-align: top; /* Esta é a correção de alinhamento da última vez */
 }
 
 .prof-card-photo {
