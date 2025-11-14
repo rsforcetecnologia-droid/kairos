@@ -9,6 +9,7 @@ import * as servicesApi from '../api/services.js';
 import * as clientsApi from '../api/clients.js';
 import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
+import * as professionalsApi from '../api/professionals.js'; // <-- IMPORTAÇÃO ADICIONADA
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js'; // <-- Importa a função de navegação
@@ -111,10 +112,6 @@ function renderCashierControls() {
     }
 }
 
-// ####################################################################
-// ### OTIMIZAÇÃO APLICADA AQUI ###
-// ####################################################################
-
 /** Renderiza a lista de comandas na coluna da esquerda */
 function renderComandaList() {
     const listContainer = document.getElementById('comandas-list');
@@ -150,7 +147,14 @@ function renderComandaList() {
 
     // Início da nova lógica de renderização do card
     listContainer.innerHTML = filteredComandas.map(comanda => {
-        const total = [...(comanda.services || []), ...(comanda.comandaItems || [])].reduce((acc, item) => acc + (item.price || 0), 0);
+        
+        // ###################### INÍCIO DA CORREÇÃO ######################
+        // A comanda carregada (se for venda avulsa) tem os itens em `comanda.items`.
+        // Precisamos incluir isso no cálculo do total.
+        const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
+        const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
+        // ####################### FIM DA CORREÇÃO ########################
+        
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         
@@ -198,10 +202,6 @@ function renderComandaList() {
 
     renderPaginationControls(listContainer);
 }
-
-// ####################################################################
-// ### FIM DA OTIMIZAÇÃO ###
-// ####################################################################
 
 
 /** Renderiza os controles de paginação */
@@ -280,7 +280,11 @@ function renderComandaDetail() {
     // Garante que o container tenha o loader enquanto os detalhes estão sendo preparados (caso a busca de dados demore)
     detailContainer.innerHTML = `<div class="loader mx-auto my-auto"></div>`;
 
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
+    // ###################### INÍCIO DA CORREÇÃO ######################
+    // Inclui `comanda.items` na lista de exibição
+    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
+    // ####################### FIM DA CORREÇÃO ########################
+    
     const isCompleted = comanda.status === 'completed';
 
     // --- LÓGICA DE EXIBIÇÃO DOS BOTÕES (JÁ INCLUI A TRAVA) ---
@@ -336,7 +340,7 @@ function renderComandaDetail() {
                                 ${item.name}
                                 ${item.isOriginalService ? '<span class="text-xs text-indigo-500 font-normal ml-2">(Agendado)</span>' : ''}
                             </p>
-                            <p class="text-sm text-gray-500">${item.price.toFixed(2)} /unid.</p>
+                            <p class="text-sm text-gray-500">${(item.price || 0).toFixed(2)} /unid.</p>
                         </div>
                         ${!isCompleted ? `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-red-500 text-white rounded-full hover:bg-red-600 font-bold text-xl">&times;</button>` : ''}
                     </div>
@@ -361,6 +365,118 @@ function renderComandaDetail() {
 }
 
 // --- 4. FUNÇÕES DE MODAIS ---
+
+// --- INÍCIO DA CORREÇÃO: Funções de Cadastro de Cliente ---
+
+/**
+ * Renderiza o HTML do formulário de cadastro de cliente dentro de um modal genérico.
+ */
+function _comandas_renderClientRegistrationModal() {
+    // Conteúdo do modal
+    const modalContent = `
+        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label>
+                        <input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label>
+                        <input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                    </div>
+                    <div>
+                        <label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail (Opcional)</label>
+                        <input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Dia Nasc.</label>
+                            <input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                        </div>
+                        <div>
+                            <label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Mês Nasc.</label>
+                            <input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label>
+                    <textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea>
+                </div>
+            </div>
+            
+            <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
+                <button type="button" data-action="close-modal" data-target="genericModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
+                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar Cliente</button>
+            </footer>
+        </form>
+    `;
+
+    // Usa o modal genérico para exibir o formulário
+    showGenericModal({
+        title: 'Cadastrar Novo Cliente',
+        contentHTML: modalContent,
+        maxWidth: 'max-w-2xl'
+    });
+    
+    // Anexa o listener de submit ao formulário DEPOIS que o modal é renderizado.
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (form) {
+         form.addEventListener('submit', _comandas_handleClientRegistration);
+    }
+}
+
+/**
+ * Processa o submit do formulário de cadastro de novo cliente.
+ */
+async function _comandas_handleClientRegistration(e) {
+    e.preventDefault();
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (!form) return;
+    
+    const registerButton = form.querySelector('button[type="submit"]');
+
+    const clientData = {
+        establishmentId: state.establishmentId,
+        name: form.querySelector('#regClientName').value.trim(),
+        email: form.querySelector('#regClientEmail').value.trim() || null,
+        phone: form.querySelector('#regClientPhone').value.trim(),
+        dob: `${form.querySelector('#regClientDobDay').value.trim()}/${form.querySelector('#regClientDobMonth').value.trim()}`,
+        notes: form.querySelector('#regClientNotes').value.trim() || null,
+    };
+
+    if (!clientData.name || !clientData.phone) {
+         return showNotification('Erro de Validação', 'Nome e Telefone são obrigatórios.', 'error');
+    }
+    
+    registerButton.disabled = true;
+    registerButton.textContent = 'A salvar...';
+
+    try {
+        // 1. Chama a API para criar o cliente
+        const newClient = await clientsApi.createClient(clientData);
+        
+        // 2. Adiciona o novo cliente ao cache local
+        localState.clients.push({ id: newClient.id, ...clientData });
+        
+        showNotification('Cliente cadastrado com sucesso!', 'success');
+        
+        // 3. Fecha o modal de cadastro
+        document.getElementById('genericModal').style.display = 'none';
+        
+        // 4. Reabre o modal de "Nova Venda", agora com o novo cliente selecionado
+        openNewSaleModal(newClient.id); // Passa o ID do novo cliente
+
+    } catch (error) {
+        showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
+    } finally {
+        registerButton.disabled = false;
+        registerButton.textContent = 'Salvar Cliente';
+    }
+}
+
+// --- FIM DA CORREÇÃO ---
 
 function openAddItemModal() {
     // Validação: bloqueia se caixa fechado
@@ -480,6 +596,83 @@ function openAddItemModal() {
     renderCatalogView();
 }
 
+// CORREÇÃO: A função agora aceita um newClientId opcional
+async function openNewSaleModal(newClientId = null) {
+    // Validação: bloqueia se caixa fechado
+    if (!localState.isCashierOpen) {
+        showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
+        return;
+    }
+    
+    // CORREÇÃO: Garante que os dados de clientes e profissionais estejam carregados
+    if (!localState.clients || localState.clients.length === 0) {
+        try {
+             localState.clients = await clientsApi.getClients(state.establishmentId);
+        } catch (err) {
+            showNotification('Erro', 'Não foi possível carregar dados de clientes.', 'error');
+            return;
+        }
+    }
+    if (!state.professionals || state.professionals.length === 0) {
+         try {
+             state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
+        } catch (err) {
+            showNotification('Erro', 'Não foi possível carregar dados de profissionais.', 'error');
+            return;
+        }
+    }
+    
+    const clientsOptions = localState.clients.map(c => {
+        // CORREÇÃO: Seleciona o novo cliente se o ID for passado
+        const isSelected = c.id === newClientId ? 'selected' : '';
+        return `<option value="${c.id}" ${isSelected}>${c.name} - ${c.phone}</option>`;
+    }).join('');
+    
+    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    const contentHTML = `
+        <form id="new-sale-form" class="space-y-4">
+            <div>
+                <label for="new-sale-client" class="block text-sm font-medium text-gray-700">Cliente</label>
+                <select id="new-sale-client" required class="mt-1 w-full p-2 border rounded-md bg-white">
+                    <option value="">Selecione um cliente...</option>
+                    ${clientsOptions}
+                </select>
+                <button type="button" data-action="new-client-from-sale" class="text-sm text-blue-600 hover:underline mt-1">ou Cadastrar Novo Cliente</button>
+            </div>
+            <div>
+                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional Responsável</label>
+                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white">
+                    <option value="">Selecione um profissional...</option>
+                    ${professionalsOptions}
+                </select>
+            </div>
+             <div class="pt-4 border-t">
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Iniciar Venda</button>
+            </div>
+        </form>
+    `;
+
+    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML, maxWidth: 'max-w-md' });
+
+    // Listener que já existia (para o submit)
+    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
+    
+    // --- INÍCIO DA CORREÇÃO: Adiciona o listener que faltava ---
+    const newClientBtn = modalElement.querySelector('[data-action="new-client-from-sale"]');
+    if (newClientBtn) {
+        newClientBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Fecha o modal atual ANTES de abrir o outro
+            modalElement.style.display = 'none'; 
+            // Chama a nova função que criamos no Passo 1
+            _comandas_renderClientRegistrationModal(); 
+        });
+    }
+    // --- FIM DA CORREÇÃO ---
+}
+
+
 function openCheckoutModal() {
     // Validação: bloqueia se caixa fechado
     if (!localState.isCashierOpen) {
@@ -490,7 +683,7 @@ function openCheckoutModal() {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
+    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])]; // <-- CORREÇÃO AQUI
     const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
 
     let payments = [];
@@ -601,16 +794,13 @@ function openCheckoutModal() {
     const contentHTML = `
         <div class="text-center mb-4">
             <p class="text-lg text-gray-600">Valor Total</p>
-            <!-- 1. Tamanho do Título Reduzido -->
             <p class="text-4xl font-bold text-gray-800 my-2">R$ ${total.toFixed(2)}</p>
         </div>
         <div id="payment-list" class="space-y-2 mb-4"></div>
         <div id="remaining-amount"></div>
         
         <div id="payment-controls" class="space-y-4 border-t pt-4">
-            <!-- 2. Gap do grid reduzido -->
             <div class="grid grid-cols-3 gap-1">
-                <!-- 3. Botões compactados (p-1, w-5, h-5, text-[11px], mt-0.5) -->
                 <button data-method="dinheiro" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-green-400 bg-green-50 ring-green-500">
                     <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                     <span class="text-[11px] mt-0.5 font-semibold">Dinheiro</span>
@@ -632,8 +822,6 @@ function openCheckoutModal() {
                     <span class="text-[11px] mt-0.5 font-semibold">Fiado</span>
                 </button>
             </div>
-            <!-- Fim dos botões compactados -->
-
             <div id="installments-container" class="hidden"><label class="text-sm font-medium">Parcelas</label><select id="installments-select" class="w-full p-2 border rounded-md bg-white mt-1">${Array.from({length: 12}, (_, i) => `<option value="${i+1}">${i+1}x</option>`).join('')}</select></div>
             <div class="flex items-end gap-2">
                 <div class="flex-grow"><label class="text-sm font-medium">Valor a Adicionar</label><input type="number" step="0.01" id="payment-value" class="w-full p-2 border rounded-md text-lg font-bold"></div>
@@ -676,44 +864,6 @@ function openCheckoutModal() {
     });
 
     render();
-}
-
-async function openNewSaleModal() {
-    // Validação: bloqueia se caixa fechado
-    if (!localState.isCashierOpen) {
-        showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
-        return;
-    }
-    
-    const clientsOptions = localState.clients.map(c => `<option value="${c.id}">${c.name} - ${c.phone}</option>`).join('');
-    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-
-    const contentHTML = `
-        <form id="new-sale-form" class="space-y-4">
-            <div>
-                <label for="new-sale-client" class="block text-sm font-medium text-gray-700">Cliente</label>
-                <select id="new-sale-client" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um cliente...</option>
-                    ${clientsOptions}
-                </select>
-                <button type="button" data-action="new-client-from-sale" class="text-sm text-blue-600 hover:underline mt-1">ou Cadastrar Novo Cliente</button>
-            </div>
-            <div>
-                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional Responsável</label>
-                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um profissional...</option>
-                    ${professionalsOptions}
-                </select>
-            </div>
-             <div class="pt-4 border-t">
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Iniciar Venda</button>
-            </div>
-        </form>
-    `;
-
-    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML, maxWidth: 'max-w-md' });
-
-    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
 }
 
 async function openCashierModal() {
@@ -961,16 +1111,23 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     let itemRemoved = false;
 
     // Tenta remover dos itens adicionais (comandaItems)
-    let comandaItemIndex = comanda.comandaItems.findIndex(item => item.id === itemId && item.type === itemType);
+    let comandaItemIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
     if (comandaItemIndex > -1) {
         comanda.comandaItems.splice(comandaItemIndex, 1);
         itemRemoved = true;
     } else {
-        // Tenta remover dos serviços originais (services) - isso é mais arriscado mas a lógica já existe
-        let serviceIndex = comanda.services.findIndex(item => item.id === itemId);
+        // Tenta remover dos serviços originais (services)
+        let serviceIndex = (comanda.services || []).findIndex(item => item.id === itemId);
         if (serviceIndex > -1) {
             comanda.services.splice(serviceIndex, 1);
             itemRemoved = true;
+        } else {
+            // Tenta remover dos itens de venda (items)
+             let saleItemIndex = (comanda.items || []).findIndex(item => item.id === itemId && item.type === itemType);
+             if (saleItemIndex > -1) {
+                comanda.items.splice(saleItemIndex, 1);
+                itemRemoved = true;
+            }
         }
     }
     
@@ -1000,7 +1157,7 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
 async function handleFinalizeCheckout(comanda, totalAmount, payments) {
     const isAppointment = comanda.type === 'appointment';
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || [])];
+    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])]; // <-- CORREÇÃO AQUI
     const data = {
         payments,
         totalAmount,
@@ -1102,14 +1259,16 @@ async function fetchAndDisplayData() {
         localState.paging.total = response.total || response.length;
         
         if (localState.catalog.services.length === 0) {
-            const [services, products, packages, clients] = await Promise.all([
+            const [services, products, packages, clients, professionals] = await Promise.all([
                 servicesApi.getServices(state.establishmentId),
                 productsApi.getProducts(state.establishmentId),
                 packagesApi.getPackages(state.establishmentId),
-                clientsApi.getClients(state.establishmentId)
+                clientsApi.getClients(state.establishmentId),
+                professionalsApi.getProfessionals(state.establishmentId) // <-- CORREÇÃO: Carrega profissionais
             ]);
             localState.catalog = { services, products, packages };
             localState.clients = clients;
+            state.professionals = professionals; // <-- CORREÇÃO: Salva no state global
         }
         
         renderComandaList();

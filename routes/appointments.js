@@ -112,77 +112,96 @@ router.post('/', async (req, res) => {
         await db.runTransaction(async (transaction) => {
             
             // ####################################################################
-            // ### INÍCIO DA CORREÇÃO: CRIAÇÃO/ATUALIZAÇÃO DE CLIENTE ###
+            // ### INÍCIO DA CORREÇÃO: REORDENAÇÃO DA TRANSAÇÃO ###
             // ####################################################################
             
-            // 1. Procura se o cliente já existe pelo telefone
+            // --- LEITURA 1: CLIENTE ---
+            // Procura se o cliente já existe pelo telefone
             const clientQuery = db.collection('clients')
                 .where('establishmentId', '==', establishmentId)
                 .where('phone', '==', clientPhone)
                 .limit(1);
-
             const existingClientSnapshot = await transaction.get(clientQuery);
             let clientRef;
+            let clientDocForReward = null; // Documento para usar na lógica de recompensa
 
             if (existingClientSnapshot.empty) {
-                // 2A. Cliente NÃO existe: Cria um novo
+                // Se o cliente NÃO existe, define a REFerência para um NOVO documento
                 clientRef = db.collection('clients').doc();
+            } else {
+                // Se o cliente JÁ existe, pega a REFerência e o DOCUMENTO
+                clientRef = existingClientSnapshot.docs[0].ref;
+                clientDocForReward = existingClientSnapshot.docs[0]; // Guarda o documento para LEITURA de recompensa
+            }
+
+            // --- LEITURA 2: CONFLITOS DE HORÁRIO ---
+            const appointmentsRef = db.collection('appointments');
+            const conflictQuery = appointmentsRef.where('professionalId', '==', professionalId).where('startTime', '<', endDate);
+            const potentialConflicts = await transaction.get(conflictQuery);
+
+            // --- LEITURA 3: RECOMPENSA (se necessário) ---
+            // Se o cliente era existente, 'clientDocForReward' já foi lido na LEITURA 1.
+            // Se o cliente é NOVO, não pode resgatar recompensas, então 'clientDocForReward' pode ser nulo.
+            if (redeemedReward && redeemedReward.points > 0 && !clientDocForReward) {
+                // Este caso só ocorreria se o cliente fosse novo E tentasse resgatar (o que não deve acontecer)
+                // Mas se acontecesse, precisamos ler o documento que estamos prestes a criar (o que é complexo)
+                // Vamos assumir que 'clientDocForReward' da LEITURA 1 é suficiente.
+                // Se o cliente é novo, 'clientDocForReward' é null, e a verificação de pontos abaixo falhará.
+            }
+
+            // --- FIM DE TODAS AS LEITURAS ---
+
+            // --- INÍCIO DAS ESCRITAS ---
+
+            // 1. Verificação de Conflito (lógica baseada na LEITURA 2)
+            const actualConflicts = potentialConflicts.docs.filter(doc => doc.data().endTime.toDate() > startDate);
+            if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível. Por favor, escolha outro.');
+
+            // 2. ESCRITA 1: Criação/Atualização de Cliente (lógica baseada na LEITURA 1)
+            if (existingClientSnapshot.empty) {
                 const newClientData = {
                     establishmentId: establishmentId,
                     name: clientName,
                     phone: clientPhone,
-                    email: null, // O formulário público não pede e-mail
-                    dob: null,   // O formulário público não pede data de nascimento
+                    email: null,
+                    dob: null,
                     notes: 'Cliente registado via Agendamento Online',
                     loyaltyPoints: 0,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 };
                 transaction.set(clientRef, newClientData);
             } else {
-                // 2B. Cliente JÁ existe: Apenas pega a referência
-                clientRef = existingClientSnapshot.docs[0].ref;
                 const clientData = existingClientSnapshot.docs[0].data();
-                
-                // Opcional: Atualiza o nome se for diferente (ex: "Felipe" -> "Felipe S.")
                 if (clientData.name !== clientName) {
                     transaction.update(clientRef, { name: clientName });
                 }
             }
-            // ####################################################################
-            // ### FIM DA CORREÇÃO ###
-            // ####################################################################
-
-
-            const appointmentsRef = db.collection('appointments');
-            const conflictQuery = appointmentsRef.where('professionalId', '==', professionalId).where('startTime', '<', endDate);
-            const potentialConflicts = await transaction.get(conflictQuery);
-            const actualConflicts = potentialConflicts.docs.filter(doc => doc.data().endTime.toDate() > startDate);
-            if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível. Por favor, escolha outro.');
-
+            
+            // 3. Lógica de Recompensa e ESCRITAS (baseada na LEITURA 3)
             let newAppointment = {
                 establishmentId,
                 services: servicesDetails,
                 professionalId,
-                professionalName, // Campo adicionado para consistência
+                professionalName,
                 clientName,
                 clientPhone,
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'confirmed',
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                hasRewards: hasRewards // <-- CAMPO ADICIONADO
+                hasRewards: hasRewards
             };
 
             if (redeemedReward && redeemedReward.points > 0) {
-                // Usa a 'clientRef' que acabamos de obter (seja nova ou existente)
-                const clientDoc = await transaction.get(clientRef); // Recarrega o cliente dentro da transação
-                if (!clientDoc.exists) throw new Error("Cliente não encontrado para resgate de pontos.");
+                if (!clientDocForReward) throw new Error("Cliente novo não pode resgatar pontos no primeiro agendamento.");
                 
-                const currentPoints = clientDoc.data().loyaltyPoints || 0;
+                const currentPoints = clientDocForReward.data().loyaltyPoints || 0;
                 if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes para resgatar este prémio.");
                 
+                // ESCRITA 2: Atualiza pontos do cliente
                 transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
                 
+                // ESCRITA 3: Cria histórico de recompensa
                 const historyRef = clientRef.collection('loyaltyHistory').doc();
                 transaction.set(historyRef, {
                     type: 'redeem',
@@ -192,14 +211,14 @@ router.post('/', async (req, res) => {
                 });
                 newAppointment.redeemedReward = redeemedReward;
                 
-                // (MODIFICADO) Se resgatou, re-verifica o status de prêmios
                 const newPoints = currentPoints - redeemedReward.points;
-                newAppointment.hasRewards = newPoints > 0; // Se ainda tiver pontos, assume que pode ter prêmios
+                newAppointment.hasRewards = newPoints > 0;
             }
             
+            // ESCRITA 4: Cria o Agendamento
             transaction.set(newAppointmentRef, newAppointment);
 
-            // NOVO: Criar notificação de novo agendamento
+            // ESCRITA 5: Cria a Notificação
             const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
             const notificationMessage = `${clientName} agendou ${servicesDetails.map(s => s.name).join(', ')} para as ${startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
             transaction.set(notificationRef, {
@@ -210,6 +229,10 @@ router.post('/', async (req, res) => {
                 type: 'new_appointment',
                 relatedId: newAppointmentRef.id
             });
+            
+            // ####################################################################
+            // ### FIM DA CORREÇÃO ###
+            // ####################################################################
         });
         res.status(201).json({ message: 'Agendamento criado com sucesso!' });
     } catch (error) {
@@ -407,92 +430,91 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
 
         await db.runTransaction(async (transaction) => {
+            
+            // --- LEITURA 1: Agendamento Antigo ---
             const appointmentRef = db.collection('appointments').doc(appointmentId);
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const oldAppointmentData = appointmentDoc.data();
             
-            // (MODIFICADO) Precisamos do establishmentId para verificar os prêmios
-            const establishmentId = oldAppointmentData.establishmentId;
-            let hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
-
+            // --- LEITURA 2: Conflitos de Horário ---
             const conflictQuery = db.collection('appointments').where('professionalId', '==', professionalId).where('startTime', '<', endDate);
             const potentialConflicts = await transaction.get(conflictQuery);
-            const actualConflicts = potentialConflicts.docs.filter(doc => doc.id !== appointmentId && doc.data().endTime.toDate() > startDate);
-            if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível.');
-            
-            // ####################################################################
-            // ### INÍCIO DA CORREÇÃO: ATUALIZAÇÃO DE CLIENTE (EDIÇÃO) ###
-            // ####################################################################
-            // (Lógica similar à da criação, mas apenas para atualização do nome)
+
+            // --- LEITURA 3: Cliente (para recompensas e atualização de nome) ---
+            const establishmentId = oldAppointmentData.establishmentId;
             const clientQuery = db.collection('clients')
                 .where('establishmentId', '==', establishmentId)
                 .where('phone', '==', clientPhone)
                 .limit(1);
-
             const existingClientSnapshot = await transaction.get(clientQuery);
+            const clientRef = existingClientSnapshot.empty ? null : existingClientSnapshot.docs[0].ref;
             
-            if (!existingClientSnapshot.empty) {
-                // Cliente existe, verifica se o nome mudou
-                const clientRef = existingClientSnapshot.docs[0].ref;
-                const clientData = existingClientSnapshot.docs[0].data();
-                if (clientData.name !== clientName) {
-                    transaction.update(clientRef, { name: clientName });
-                }
+            let clientDoc = null;
+            if (clientRef) {
+                clientDoc = await transaction.get(clientRef); // LEITURA 4 (se o cliente existe)
             }
-            // (Não criamos um novo cliente aqui, pois o fluxo de edição de agendamento
-            // assume que o cliente já existe ou foi criado no agendamento original)
-            // ####################################################################
-            // ### FIM DA CORREÇÃO ###
-            // ####################################################################
+            
+            // --- LEITURA 5: Regras de Fidelidade (se necessário) ---
+            let establishmentDoc = null;
+            if (redeemedReward && !oldAppointmentData.redeemedReward) {
+                establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId)); // LEITURA 5
+            }
+            
+            // --- FIM DE TODAS AS LEITURAS ---
+            
+            let hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
+
+            const actualConflicts = potentialConflicts.docs.filter(doc => doc.id !== appointmentId && doc.data().endTime.toDate() > startDate);
+            if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível.');
+            
+            // --- INÍCIO DAS ESCRITAS ---
+            
+            // ESCRITA 1: Atualização de nome do cliente (se existir e for diferente)
+            if (clientRef && clientDoc.exists() && clientDoc.data().name !== clientName) {
+                transaction.update(clientRef, { name: clientName });
+            }
 
             const updatedData = {
-                clientName, clientPhone, professionalId, professionalName, // Incluído professionalName
+                clientName, clientPhone, professionalId, professionalName,
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 services: servicesDetails,
                 redeemedReward: redeemedReward || null,
-                hasRewards: hasRewards // <-- CAMPO ADICIONADO
+                hasRewards: hasRewards
             };
 
+            // ESCRITA 2 e 3: Lógica de Recompensa
             if (redeemedReward && !oldAppointmentData.redeemedReward) {
-                // (MODIFICADO) Busca o cliente pela Query (mais seguro)
-                const clientRef = existingClientSnapshot.empty ? null : existingClientSnapshot.docs[0].ref;
-                if (!clientRef) throw new Error("Cliente não encontrado para resgate de pontos.");
+                if (!clientRef || !clientDoc.exists()) throw new Error("Cliente não encontrado para resgate de pontos.");
                 
-                const clientDoc = await transaction.get(clientRef);
                 const currentPoints = clientDoc.data().loyaltyPoints || 0;
                 if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes para resgatar este prémio.");
                 
-                transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
+                transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) }); // ESCRITA 2
                 
                 const historyRef = clientRef.collection('loyaltyHistory').doc();
-                transaction.set(historyRef, {
+                transaction.set(historyRef, { // ESCRITA 3
                     type: 'redeem',
                     points: -redeemedReward.points,
                     reward: redeemedReward.reward,
                     timestamp: admin.firestore.FieldValue.serverTimestamp()
                 });
-                // (MODIFICADO) Re-avalia o status de prêmios
+
                 const newPoints = currentPoints - redeemedReward.points;
-                // Busca o prêmio mais barato para saber se ele AINDA tem prêmios
-                const establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
                 const loyaltyProgram = establishmentDoc.data().loyaltyProgram;
-                // (MODIFICADO) 'rewards' -> 'tiers'
                 const minPointsToRedeem = Math.min(...(loyaltyProgram?.tiers || []).map(r => r.points));
-                
                 updatedData.hasRewards = (minPointsToRedeem !== Infinity) && (newPoints >= minPointsToRedeem);
 
             } else if (oldAppointmentData.redeemedReward && !redeemedReward) {
-                 // Caso o prêmio seja removido, a reversão de pontos deve ocorrer aqui
-                const clientRef = existingClientSnapshot.empty ? null : existingClientSnapshot.docs[0].ref;
                 if (clientRef) {
                     const oldRewardPoints = oldAppointmentData.redeemedReward.points;
-                    transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(oldRewardPoints) });
+                    transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(oldRewardPoints) }); // ESCRITA 2 (alternativa)
                 }
-                // (MODIFICADO) Re-avalia o status de prêmios
-                updatedData.hasRewards = true; // Se reverteu pontos, é quase certo que ele tem prêmios.
+                updatedData.hasRewards = true;
             }
+            
+            // ESCRITA 4: Atualiza o Agendamento
             transaction.update(appointmentRef, updatedData);
         });
         res.status(200).json({ message: 'Agendamento atualizado com sucesso.' });

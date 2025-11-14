@@ -1326,45 +1326,55 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
     
     localState.profSearchTerm = ''; 
 
+    // ################## INÍCIO DA CORREÇÃO DE LAYOUT ##################
     contentDiv.innerHTML = `
         <section>
-            <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-6 gap-4">
+            <!-- NOVO CARD UNIFICADO: Contém Data/Visão E Filtro de Profissional -->
+            <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
                 
-                <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
-
-                <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
-                    <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
-                        <button data-view="list" class="view-btn active">Lista</button>
-                        <button data-view="week" class="view-btn">Semana</button>
-                    </div>
-                    <div id="week-days-toggle" class="hidden items-center gap-1 rounded-lg bg-gray-200 p-1">
-                        <button data-days="3" class="week-days-btn view-btn">3 dias</button>
-                        <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
-                        <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
-                        <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
-                        <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                <!-- Parte 1: Controles de Data e Visão -->
+                <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-4 gap-4">
+                    <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
+                    <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
+                        <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
+                            <button data-view="list" class="view-btn active">Lista</button>
+                            <button data-view="week" class="view-btn">Semana</button>
+                        </div>
+                        <div id="week-days-toggle" class="hidden items-center gap-1 rounded-lg bg-gray-200 p-1">
+                            <button data-days="3" class="week-days-btn view-btn">3 dias</button>
+                            <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
+                            <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
+                            <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                            <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
+                        </div>
                     </div>
                 </div>
-            </div>
+                
+                <!-- Divisor Fino -->
+                <div class="border-t border-gray-200 -mx-4 mb-4"></div>
+
+                <!-- Parte 2: Filtro de Profissionais (Removido o bg-white, etc.) -->
+                <div>
+                     <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
+                         <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm">
+                         <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 self-start sm:self-center">
+                             <div class="relative">
+                                 <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
+                                 <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
+                             </div>
+                             <span class="text-sm font-medium text-gray-700">Inativos</span>
+                         </label>
+                     </div>
+                     <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
+                         <div class="loader mx-auto"></div>
+                     </div>
+                </div>
+
+            </div> <!-- Fim do NOVO CARD UNIFICADO -->
             
-            <div class="bg-white p-4 rounded-xl shadow-lg mb-6">
-                 <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
-                     <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm">
-                     <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 self-start sm:self-center">
-                         <div class="relative">
-                             <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
-                             <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                         </div>
-                         <span class="text-sm font-medium text-gray-700">Inativos</span>
-                     </label>
-                 </div>
-                 <div id="profSelectorContainer" class="prof-selector-container mt-2 flex">
-                     <div class="loader mx-auto"></div>
-                 </div>
-            </div>
             <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
             
             <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
@@ -1373,6 +1383,8 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                 </svg>
             </button>
         </section>`;
+    // ################## FIM DA CORREÇÃO DE LAYOUT ##################
+
 
     // Adiciona listeners aos botões de navegação
     document.querySelectorAll('.view-btn[data-view]').forEach(btn => {

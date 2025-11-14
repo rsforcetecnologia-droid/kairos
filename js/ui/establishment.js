@@ -7,6 +7,8 @@ import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
 // (MODIFICADO) 'updateEmail' foi trocado por 'verifyBeforeUpdateEmail'
 import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
+// (NOVO) Importa a navegação
+import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
@@ -863,6 +865,11 @@ export async function loadEstablishmentPage() {
         }
     }
 
+    // --- INÍCIO DA CORREÇÃO (Card de Perfil) ---
+    // 1. Define o nome de fallback (se state.userName for null, usa o email)
+    const displayName = state.userName || auth.currentUser.email;
+    const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
+
     // (NOVO) Renderiza a "Lista Mestra"
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
@@ -872,13 +879,22 @@ export async function loadEstablishmentPage() {
             </h2>
         </div>
         
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
-            <div class="text-center">
-                 <div class="relative w-24 h-24 mx-auto">
-                    <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${state.userName ? state.userName.charAt(0) : 'U'}" class="w-24 h-24 rounded-full object-cover">
+        <div data-action="go-to-my-profile" class="bg-white p-4 rounded-lg shadow-md mb-6 cursor-pointer hover:bg-gray-50 transition-all">
+            <div class="text-center relative">
+                
+                <div class="absolute top-0 right-0 p-2 text-gray-400 hover:text-indigo-600" title="Ver Meu Perfil">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
                  </div>
-                 <h3 class="font-bold mt-2 text-lg">${state.userName}</h3>
-                 <p class="text-sm text-gray-500">${auth.currentUser.email || 'Não disponível'}</p>
+
+                 <div class="relative w-24 h-24 mx-auto">
+                    <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}" class="w-24 h-24 rounded-full object-cover">
+                 </div>
+                 <h3 class="font-bold mt-2 text-lg truncate">${displayName}</h3>
+                 ${(state.userName && state.userName !== auth.currentUser.email) ? `<p class="text-sm text-gray-500">${auth.currentUser.email || 'Não disponível'}</p>` : ''}
+                 
+                 <p class="text-xs text-indigo-600 font-semibold mt-2">VER MEU PERFIL / MEUS BLOQUEIOS</p>
             </div>
         </div>
 
@@ -903,4 +919,15 @@ export async function loadEstablishmentPage() {
             showSettingsDetailView(button.dataset.section);
         }
     });
+
+    // (NOVO) Adiciona o listener para o card de perfil
+    const profileCard = contentDiv.querySelector('[data-action="go-to-my-profile"]');
+    if (profileCard) {
+        profileCard.addEventListener('click', (e) => {
+            e.preventDefault();
+            // A função navigateTo é importada de js/main.js
+            navigateTo('my-profile-section');
+        });
+    }
+    // --- FIM DA CORREÇÃO (Card de Perfil) ---
 }
