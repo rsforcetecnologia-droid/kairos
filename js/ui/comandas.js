@@ -597,19 +597,43 @@ function openCheckoutModal() {
         render();
     };
 
+    // ################## INÍCIO DA CORREÇÃO (COMPACTAÇÃO) ##################
     const contentHTML = `
-        <div class="text-center mb-4"><p class="text-lg text-gray-600">Valor Total</p><p class="text-5xl font-bold text-gray-800 my-2">R$ ${total.toFixed(2)}</p></div>
+        <div class="text-center mb-4">
+            <p class="text-lg text-gray-600">Valor Total</p>
+            <!-- 1. Tamanho do Título Reduzido -->
+            <p class="text-4xl font-bold text-gray-800 my-2">R$ ${total.toFixed(2)}</p>
+        </div>
         <div id="payment-list" class="space-y-2 mb-4"></div>
         <div id="remaining-amount"></div>
         
         <div id="payment-controls" class="space-y-4 border-t pt-4">
-            <div class="grid grid-cols-3 gap-2">
-                <button data-method="dinheiro" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-green-400 bg-green-50 ring-green-500"><svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg><span class="text-xs mt-1 font-semibold">Dinheiro</span></button>
-                <button data-method="pix" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-cyan-400 bg-cyan-50 ring-cyan-500"><svg class="w-6 h-6 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg><span class="text-xs mt-1 font-semibold">PIX</span></button>
-                <button data-method="debito" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-blue-400 bg-blue-50 ring-blue-500"><svg class="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg><span class="text-xs mt-1 font-semibold">Débito</span></button>
-                <button data-method="credito" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-purple-400 bg-purple-50 ring-purple-500"><svg class="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg><span class="text-xs mt-1 font-semibold">Crédito</span></button>
-                <button data-method="crediario" class="payment-method-btn flex flex-col items-center p-2 rounded-lg border-2 border-orange-400 bg-orange-50 ring-orange-500"><svg class="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg><span class="text-xs mt-1 font-semibold">Fiado</span></button>
+            <!-- 2. Gap do grid reduzido -->
+            <div class="grid grid-cols-3 gap-1">
+                <!-- 3. Botões compactados (p-1, w-5, h-5, text-[11px], mt-0.5) -->
+                <button data-method="dinheiro" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-green-400 bg-green-50 ring-green-500">
+                    <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    <span class="text-[11px] mt-0.5 font-semibold">Dinheiro</span>
+                </button>
+                <button data-method="pix" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-cyan-400 bg-cyan-50 ring-cyan-500">
+                    <svg class="w-5 h-5 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    <span class="text-[11px] mt-0.5 font-semibold">PIX</span>
+                </button>
+                <button data-method="debito" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-blue-400 bg-blue-50 ring-blue-500">
+                    <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    <span class="text-[11px] mt-0.5 font-semibold">Débito</span>
+                </button>
+                <button data-method="credito" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-purple-400 bg-purple-50 ring-purple-500">
+                    <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    <span class="text-[11px] mt-0.5 font-semibold">Crédito</span>
+                </button>
+                <button data-method="crediario" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-orange-400 bg-orange-50 ring-orange-500">
+                    <svg class="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span class="text-[11px] mt-0.5 font-semibold">Fiado</span>
+                </button>
             </div>
+            <!-- Fim dos botões compactados -->
+
             <div id="installments-container" class="hidden"><label class="text-sm font-medium">Parcelas</label><select id="installments-select" class="w-full p-2 border rounded-md bg-white mt-1">${Array.from({length: 12}, (_, i) => `<option value="${i+1}">${i+1}x</option>`).join('')}</select></div>
             <div class="flex items-end gap-2">
                 <div class="flex-grow"><label class="text-sm font-medium">Valor a Adicionar</label><input type="number" step="0.01" id="payment-value" class="w-full p-2 border rounded-md text-lg font-bold"></div>
@@ -619,6 +643,8 @@ function openCheckoutModal() {
         </div>
         <div class="mt-6 pt-4 border-t"><button id="finalize-checkout-btn" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-400" disabled>Finalizar</button></div>
     `;
+    // ################## FIM DA CORREÇÃO (COMPACTAÇÃO) ##################
+
 
     const { modalElement } = showGenericModal({ title: "Finalizar Pagamento", contentHTML, maxWidth: 'max-w-md' });
     document.getElementById('payment-value').value = modalInternalState.remainingAmount.toFixed(2);

@@ -5,12 +5,12 @@ const admin = require('firebase-admin');
 // Rota para criar um novo pacote de serviços
 router.post('/', async (req, res) => {
     const { establishmentId } = req.user; // Obtido do token de autenticação
-    // CORREÇÃO: Adicionados `commissionRate`, `originalPrice`, `status` e `description`
-    const { name, services, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
+    // CORREÇÃO: 'services' foi renomeado para 'items'
+    const { name, items, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
 
     // A validação `validityDays` foi removida para permitir valores nulos
-    if (!name || !services || services.length === 0 || price === undefined) {
-        return res.status(400).json({ message: 'Nome, serviços e preço são obrigatórios.' });
+    if (!name || !items || items.length === 0 || price === undefined) {
+        return res.status(400).json({ message: 'Nome, itens e preço são obrigatórios.' });
     }
 
     try {
@@ -19,7 +19,7 @@ router.post('/', async (req, res) => {
             establishmentId,
             name,
             description: description || null,
-            services,
+            items: items, // <-- CORREÇÃO
             originalPrice: Number(originalPrice) || 0,
             price: Number(price),
             validityDays: Number(validityDays) || null,
@@ -63,11 +63,11 @@ router.get('/:establishmentId', async (req, res) => {
 // Rota para atualizar um pacote
 router.put('/:packageId', async (req, res) => {
     const { packageId } = req.params;
-    // CORREÇÃO: Adicionados `commissionRate`, `originalPrice`, `status` e `description`
-    const { name, services, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
+    // CORREÇÃO: 'services' foi renomeado para 'items'
+    const { name, items, price, validityDays, status, originalPrice, description, commissionRate } = req.body;
 
     // A validação `validityDays` foi removida para permitir valores nulos
-    if (!name || !services || services.length === 0 || price === undefined) {
+    if (!name || !items || items.length === 0 || price === undefined) {
         return res.status(400).json({ message: 'Dados incompletos para atualizar o pacote.' });
     }
 
@@ -78,7 +78,7 @@ router.put('/:packageId', async (req, res) => {
         const updatedData = {
             name,
             description: description || null,
-            services,
+            items: items, // <-- CORREÇÃO
             originalPrice: Number(originalPrice) || 0,
             price: Number(price),
             validityDays: Number(validityDays) || null,

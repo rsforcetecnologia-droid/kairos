@@ -37,7 +37,8 @@ async function calculateSessionTotals(db, establishmentId, sessionId) {
 
 // Verificar status do caixa
 router.get('/status', async (req, res) => {
-    const { establishmentId } = req.user;
+    // --- INÍCIO DA CORREÇÃO 1: FILTRAR POR USUÁRIO ---
+    const { establishmentId, uid } = req.user; // Pega o UID do usuário logado
     const { db } = req;
     try {
         const today = new Date();
@@ -50,8 +51,10 @@ router.get('/status', async (req, res) => {
             .where('openTime', '>=', today)
             .where('openTime', '<', tomorrow)
             .where('status', '==', 'open')
+            .where('openedBy', '==', uid) // <-- SÓ RETORNA O CAIXA ABERTO PELO PRÓPRIO USUÁRIO
             .limit(1)
             .get();
+    // --- FIM DA CORREÇÃO 1 ---
 
         if (snapshot.empty) return res.status(200).json(null);
         
@@ -59,6 +62,14 @@ router.get('/status', async (req, res) => {
         res.status(200).json(session);
     } catch (error) {
         console.error("Erro ao verificar status do caixa:", error);
+        
+        // --- INÍCIO DA CORREÇÃO 4: ENVIAR MENSAGEM DE ERRO ORIGINAL ---
+        // Se for um erro de índice, envie a MENSAGEM ORIGINAL do Firebase
+        if (error.message && error.message.includes('requires an index')) {
+             return res.status(500).json({ message: error.message });
+        }
+        // --- FIM DA CORREÇÃO 4 ---
+        
         res.status(500).json({ message: "Erro ao verificar status do caixa." });
     }
 });
@@ -135,6 +146,13 @@ router.put('/close/:sessionId', async (req, res) => {
              return res.status(404).json({ message: "Sessão de caixa não encontrada." });
         }
         const sessionData = sessionDoc.data();
+
+        // --- INÍCIO DA CORREÇÃO 2: VERIFICAR QUEM ABRIU ---
+        if (sessionData.openedBy !== uid) {
+            return res.status(403).json({ message: "Acesso negado. Você só pode fechar um caixa que você mesmo abriu." });
+        }
+        // --- FIM DA CORREÇÃO 2 ---
+
         const expectedAmount = sessionData.initialAmount + cashSales;
         const difference = finalAmount - expectedAmount;
 
@@ -158,16 +176,29 @@ router.put('/close/:sessionId', async (req, res) => {
 
 // Obter histórico do caixa
 router.get('/history', async (req, res) => {
-    const { establishmentId } = req.user;
+    // --- INÍCIO DA CORREÇÃO 3: FILTRAR HISTÓRICO POR PERMISSÃO ---
+    const { establishmentId, uid, role, permissions } = req.user;
     const { db } = req;
+
     try {
-        const snapshot = await db.collection('cashierSessions')
+        let query = db.collection('cashierSessions')
             .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'closed')
-            .orderBy('closeTime', 'desc')
-            .limit(30)
-            .get();
+            .where('status', '==', 'closed');
+        
+        // Verifica se o usuário pode ver relatórios de todos
+        // (Dono (permissions=null) ou funcionário com a permissão específica)
+        const canViewAllReports = (role === 'owner' || (permissions && permissions['relatorios-section']?.view === true));
+
+        // Se NÃO PODE ver tudo, filtra para mostrar apenas os caixas abertos pelo próprio usuário
+        if (!canViewAllReports) {
+            query = query.where('openedBy', '==', uid);
+        }
+
+        // A ordenação deve vir depois dos 'where' de igualdade
+        const snapshot = await query.orderBy('closeTime', 'desc').limit(30).get();
+        
         if (snapshot.empty) return res.status(200).json([]);
+        
         const history = snapshot.docs.map(doc => {
             const data = doc.data();
             return {
@@ -178,12 +209,18 @@ router.get('/history', async (req, res) => {
                 finalAmount: data.finalAmount,
                 report: data.report,
                 openedByName: data.openedByName || 'N/A',
-                closedByName: data.closedByName || 'N/A'
+                closedByName: data.closedByName || 'N/A',
+                openedBy: data.openedBy // <-- Adicionado para o filtro (se necessário no futuro)
             };
         });
         res.status(200).json(history);
+    // --- FIM DA CORREÇÃO 3 ---
     } catch (error) {
         console.error("Erro ao buscar histórico de caixa:", error);
+        // Verifica erro de índice (caso a permissão exija)
+        if (error.message && error.message.includes('requires an index')) {
+             return res.status(500).json({ message: error.message }); // Envia o erro original
+        }
         res.status(500).json({ message: "Erro ao buscar histórico de caixa." });
     }
 });

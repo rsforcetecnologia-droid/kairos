@@ -1,13 +1,19 @@
 // --- 1. IMPORTAÇÕES ---
 import * as packagesApi from '../api/packages.js';
 import * as servicesApi from '../api/services.js';
+// (NOVO) Importa a API de produtos
+import * as productsApi from '../api/products.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 
 const contentDiv = document.getElementById('content');
 let localState = {
     allPackages: [],
-    servicesForModal: [],
+    // (MODIFICADO) Armazena serviços E produtos para o modal
+    catalogForModal: { 
+        services: [], 
+        products: [] 
+    },
 };
 let pageEventListener = null;
 let modalEventListener = null; // Listener de clique para o modal
@@ -79,7 +85,7 @@ function renderPackagesList() {
         const discountValue = originalPrice > finalPrice ? originalPrice - finalPrice : 0;
         const discountPercent = originalPrice > 0 ? ((originalPrice - finalPrice) / originalPrice) * 100 : 0;
 
-        // CORREÇÃO: Card clicável
+        // (MODIFICADO) usa pkg.items
         return `
             <div class="bg-white rounded-lg shadow-md overflow-hidden transform hover:-translate-y-1 transition-transform duration-300 flex flex-col cursor-pointer"
                  data-action="edit-package" data-package='${packageDataString}'>
@@ -106,7 +112,8 @@ function renderPackagesList() {
                         </div>
                         
                         <div class="text-right flex flex-col items-end">
-                            <p class="text-sm font-semibold text-gray-800">${(pkg.services || []).length} Serviços</p>
+                            <!-- (MODIFICADO) 'services' -> 'items' -->
+                            <p class="text-sm font-semibold text-gray-800">${(pkg.items || []).length} Itens</p> 
                             <p class="text-xs text-gray-500">${pkg.commissionRate || 0}% Comissão</p>
                             <p class="text-xs text-gray-500 mt-1">${pkg.validityDays || '-'} Dias Validade</p>
                         </div>
@@ -123,9 +130,8 @@ function renderPackagesList() {
 
 // --- FUNÇÕES DO MODAL DE CRIAÇÃO/EDIÇÃO ---
 
-// CORREÇÃO: Nova função para fechar o modal
+// Função para fechar o modal
 function closePackageModal() {
-    // CORREÇÃO: Usa 'genericModal'
     const modal = document.getElementById('genericModal');
     modal.style.display = 'none';
     if (modalEventListener) {
@@ -133,11 +139,12 @@ function closePackageModal() {
     }
 }
 
-// CORREÇÃO: Função reescrita para usar o div #genericModal
+// (MODIFICADO) Função principal do Modal
 async function openPackageModal(pkg = null) {
-    const modal = document.getElementById('genericModal'); // CORREÇÃO: Usa 'genericModal'
+    const modal = document.getElementById('genericModal'); 
     const isEditing = !!pkg;
-    const servicesInPackage = pkg ? JSON.parse(JSON.stringify(pkg.services || [])) : [];
+    // (MODIFICADO) Lê pkg.items em vez de pkg.services
+    const itemsInPackage = pkg ? JSON.parse(JSON.stringify(pkg.items || [])) : [];
 
     const contentHTML = `
         <div class="modal-content max-w-4xl overflow-y-auto max-h-[90vh]">
@@ -172,10 +179,12 @@ async function openPackageModal(pkg = null) {
 
                     <div class="border-t pt-6">
                         <div class="flex justify-between items-center mb-2">
-                            <h3 class="text-lg font-semibold text-gray-800">Serviços Incluídos</h3>
-                            <button type="button" id="add-service-to-package-btn" class="py-1 px-3 bg-indigo-600 text-white font-semibold rounded-lg text-sm hover:bg-indigo-700 transition shadow-sm">+ Adicionar</button>
+                            <!-- (MODIFICADO) Título e ID do botão -->
+                            <h3 class="text-lg font-semibold text-gray-800">Itens Incluídos</h3>
+                            <button type="button" id="add-item-to-package-btn" class="py-1 px-3 bg-indigo-600 text-white font-semibold rounded-lg text-sm hover:bg-indigo-700 transition shadow-sm">+ Adicionar Item</button>
                         </div>
-                        <div id="package-services-list" class="space-y-2 max-h-48 overflow-y-auto p-2 border rounded-md bg-gray-50 min-h-[5rem]"></div>
+                        <!-- (MODIFICADO) ID do container da lista -->
+                        <div id="package-items-list" class="space-y-2 max-h-48 overflow-y-auto p-2 border rounded-md bg-gray-50 min-h-[5rem]"></div>
                     </div>
 
                     <div class="border-t pt-6">
@@ -212,65 +221,80 @@ async function openPackageModal(pkg = null) {
     modal.innerHTML = contentHTML;
     modal.style.display = 'flex';
 
-    const servicesListContainer = modal.querySelector('#package-services-list');
+    // (MODIFICADO) ID do container da lista
+    const itemsListContainer = modal.querySelector('#package-items-list');
     
-    const updatePrices = (services, modal) => {
+    // (MODIFICADO) Renomeado 'services' para 'items'
+    const updatePrices = (items, modal) => {
         const originalPriceEl = modal.querySelector('#originalPrice');
-        const originalPrice = services.reduce((acc, s) => acc + (s.price * s.quantity), 0);
+        const originalPrice = items.reduce((acc, s) => acc + (s.price * s.quantity), 0);
         if (originalPriceEl) {
             originalPriceEl.textContent = `R$ ${originalPrice.toFixed(2)}`;
         }
     };
     
-    const renderSelectedServices = (services) => {
-        if (services.length === 0) {
-            servicesListContainer.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhum serviço adicionado.</p>';
+    // (MODIFICADO) Renomeado 'renderSelectedServices' para 'renderSelectedItems'
+    const renderSelectedItems = (items) => {
+        if (items.length === 0) {
+            itemsListContainer.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhum item adicionado.</p>';
         } else {
-            servicesListContainer.innerHTML = services.map((s, index) => `
+            itemsListContainer.innerHTML = items.map((item, index) => {
+                // (NOVO) Adiciona selo de tipo
+                const isService = item.type === 'service';
+                const typeLabel = isService ? 'Serviço' : 'Produto';
+                const typeBg = isService ? 'bg-indigo-100 text-indigo-800' : 'bg-green-100 text-green-800';
+
+                return `
                 <div class="flex items-center justify-between bg-white p-2 rounded shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 min-w-0">
-                        <input type="number" value="${s.quantity}" min="1" class="w-12 p-1 border rounded-md text-sm quantity-input flex-shrink-0" data-index="${index}">
-                        <span class="font-medium text-gray-800 truncate">${s.name}</span>
+                        <input type="number" value="${item.quantity}" min="1" class="w-12 p-1 border rounded-md text-sm quantity-input flex-shrink-0" data-index="${index}">
+                        <!-- (NOVO) Selo de Tipo -->
+                        <span class="text-xs font-medium px-2 py-0.5 rounded-full ${typeBg}">${typeLabel}</span>
+                        <span class="font-medium text-gray-800 truncate">${item.name}</span>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
-                        <span class="text-sm text-gray-600">R$ ${s.price.toFixed(2)}</span>
-                        <button type="button" class="text-red-500 hover:text-red-700 remove-service-btn font-bold" data-index="${index}">&times;</button>
+                        <span class="text-sm text-gray-600">R$ ${item.price.toFixed(2)}</span>
+                        <!-- (MODIFICADO) Classe do botão de remover -->
+                        <button type="button" class="text-red-500 hover:text-red-700 remove-item-btn font-bold" data-index="${index}">&times;</button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
-        updatePrices(services, modal);
+        updatePrices(items, modal);
     };
 
-    renderSelectedServices(servicesInPackage);
+    renderSelectedItems(itemsInPackage);
 
-    servicesListContainer.addEventListener('change', (e) => {
+    // (MODIFICADO) Atualiza 'itemsInPackage'
+    itemsListContainer.addEventListener('change', (e) => {
         if (e.target.classList.contains('quantity-input')) {
             const index = parseInt(e.target.dataset.index, 10);
             const newQuantity = parseInt(e.target.value, 10);
-            if (newQuantity > 0 && servicesInPackage[index]) {
-                servicesInPackage[index].quantity = newQuantity;
-                renderSelectedServices(servicesInPackage);
+            if (newQuantity > 0 && itemsInPackage[index]) {
+                itemsInPackage[index].quantity = newQuantity;
+                renderSelectedItems(itemsInPackage);
             }
         }
     });
 
-    servicesListContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('remove-service-btn')) {
+    // (MODIFICADO) Atualiza 'itemsInPackage' e classe do botão
+    itemsListContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-item-btn')) {
             const index = parseInt(e.target.dataset.index, 10);
-            servicesInPackage.splice(index, 1);
-            renderSelectedServices(servicesInPackage);
+            itemsInPackage.splice(index, 1);
+            renderSelectedItems(itemsInPackage);
         }
     });
     
-    modal.querySelector('#add-service-to-package-btn').onclick = () => openServiceSelectionModal((selectedService) => {
-        const existing = servicesInPackage.find(s => s.id === selectedService.id);
+    // (MODIFICADO) Chama o novo modal 'openItemSelectionModal'
+    modal.querySelector('#add-item-to-package-btn').onclick = () => openItemSelectionModal((selectedItem) => {
+        const existing = itemsInPackage.find(s => s.id === selectedItem.id && s.type === selectedItem.type);
         if (existing) {
             existing.quantity++;
         } else {
-            servicesInPackage.push({ ...selectedService, quantity: 1 });
+            itemsInPackage.push({ ...selectedItem, quantity: 1 });
         }
-        renderSelectedServices(servicesInPackage);
+        renderSelectedItems(itemsInPackage);
     });
 
     // CORREÇÃO: Listener de 'click' robusto para o modal
@@ -291,13 +315,15 @@ async function openPackageModal(pkg = null) {
 
         if (action === 'save-package') {
             const saveButton = button;
+            
+            // (MODIFICADO) Salva 'items' em vez de 'services'
             const data = {
                 id: document.getElementById('packageId').value || null,
                 name: document.getElementById('packageName').value,
                 description: document.getElementById('packageDescription').value,
                 status: document.getElementById('packageStatus').value,
-                services: servicesInPackage,
-                originalPrice: servicesInPackage.reduce((acc, s) => acc + (s.price * s.quantity), 0),
+                items: itemsInPackage, // <-- MODIFICADO
+                originalPrice: itemsInPackage.reduce((acc, s) => acc + (s.price * s.quantity), 0),
                 price: parseFloat(document.getElementById('finalPrice').value),
                 commissionRate: parseFloat(document.getElementById('commissionRate').value) || 0,
                 validityDays: parseInt(document.getElementById('validityDays').value, 10) || null
@@ -308,8 +334,9 @@ async function openPackageModal(pkg = null) {
                  return;
             }
 
-            if (data.services.length === 0) {
-                showNotification('Erro', 'Adicione pelo menos um serviço ao pacote.', 'error');
+            // (MODIFICADO) Verifica 'data.items'
+            if (data.items.length === 0) {
+                showNotification('Erro', 'Adicione pelo menos um item ao pacote.', 'error');
                 return;
             }
 
@@ -337,64 +364,94 @@ async function openPackageModal(pkg = null) {
     modal.addEventListener('click', modalEventListener);
 }
 
-function openServiceSelectionModal(onSelect) {
+// (NOVO) Modal para selecionar Serviços ou Produtos
+function openItemSelectionModal(onSelect) {
     let searchTerm = '';
 
     const modalContainer = document.createElement('div');
-    modalContainer.id = 'service-selection-modal';
+    modalContainer.id = 'item-selection-modal';
     modalContainer.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[110]';
 
-    const renderServiceList = (listContainer) => {
-        const filtered = localState.servicesForModal.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        listContainer.innerHTML = filtered.map(s => `
-            <div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-b last:border-b-0" 
-                 data-action="select-service" data-service-id="${s.id}">
-                <div>
-                    <p class="font-semibold">${s.name}</p>
-                    <p class="text-sm text-gray-500">${s.duration} min</p>
-                </div>
-                <span class="font-bold text-gray-800">R$ ${s.price.toFixed(2)}</span>
+    // Ícones para diferenciar
+    const icons = {
+        service: '<svg class="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v4.512a9.04 9.04 0 00-3 5.012M12 12a9.04 9.04 0 01-3-5.012V5l-1-1z" /></svg>',
+        product: '<svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>',
+    };
+
+    const renderLists = (listContainer) => {
+        const term = searchTerm.toLowerCase();
+        
+        // Filtra Serviços
+        const services = localState.catalogForModal.services.filter(s => s.name.toLowerCase().includes(term));
+        // Filtra Produtos
+        const products = localState.catalogForModal.products.filter(p => p.name.toLowerCase().includes(term));
+
+        const servicesHTML = services.map(item => `
+            <button data-action="select-item" data-item-type="service" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons.service}</div>
+                <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
+            </button>
+        `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum serviço encontrado.</p>`;
+        
+        const productsHTML = products.map(item => `
+            <button data-action="select-item" data-item-type="product" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
+                <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons.product}</div>
+                <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
+            </button>
+        `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum produto encontrado.</p>`;
+
+        listContainer.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="space-y-2 max-h-96 overflow-y-auto">${servicesHTML}</div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="space-y-2 max-h-96 overflow-y-auto">${productsHTML}</div></div>
             </div>
-        `).join('');
+        `;
     };
 
     modalContainer.innerHTML = `
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-sm sm:max-w-lg flex flex-col max-h-[80vh]">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg sm:max-w-3xl flex flex-col max-h-[80vh]">
             <header class="p-4 border-b flex justify-between items-center">
-                <h2 class="text-xl font-bold text-gray-800">Selecionar Serviço</h2>
+                <h2 class="text-xl font-bold text-gray-800">Selecionar Item</h2>
                 <button data-action="close-selection-modal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
             </header>
             <div class="p-4 border-b">
-                <input type="search" id="service-search-input" placeholder="Pesquisar serviço..." class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
-            <div id="service-selection-list" class="flex-1 overflow-y-auto"></div>
+            <div id="item-selection-list" class="flex-1 overflow-y-auto p-4">
+                <!-- Conteúdo será renderizado por renderLists -->
+            </div>
         </div>
     `;
 
     document.body.appendChild(modalContainer);
 
-    const listContainer = modalContainer.querySelector('#service-selection-list');
-    const searchInput = modalContainer.querySelector('#service-search-input');
+    const listContainer = modalContainer.querySelector('#item-selection-list');
+    const searchInput = modalContainer.querySelector('#item-search-input');
     
     const closeThisModal = () => {
         modalContainer.remove();
     };
 
-    renderServiceList(listContainer);
+    renderLists(listContainer);
     
     searchInput.addEventListener('input', () => {
         searchTerm = searchInput.value;
-        renderServiceList(listContainer);
+        renderLists(listContainer);
     });
 
     modalContainer.addEventListener('click', (e) => {
-        const serviceRow = e.target.closest('[data-action="select-service"]');
+        const selectBtn = e.target.closest('[data-action="select-item"]');
         const closeButton = e.target.closest('[data-action="close-selection-modal"]');
         
-        if (serviceRow) {
-            const service = localState.servicesForModal.find(s => s.id === serviceRow.dataset.serviceId);
-            if (service) {
-                onSelect(service);
+        if (selectBtn) {
+            const { itemType, itemId } = selectBtn.dataset;
+            const catalog = localState.catalogForModal[itemType + 's'] || [];
+            const item = catalog.find(i => i.id === itemId);
+            if (item) {
+                // (MODIFICADO) Passa o objeto completo COM o tipo
+                onSelect({ ...item, type: itemType }); 
                 closeThisModal();
             }
         } else if (closeButton || e.target === modalContainer) {
@@ -409,7 +466,6 @@ function openServiceSelectionModal(onSelect) {
 export async function loadPackagesPage() {
     contentDiv.innerHTML = `
         <section id="packages-page" class="p-4 sm:p-6">
-            <!-- MELHORIA: Barra 'sticky' -->
              <div class="sticky top-0 z-10 bg-gray-100 sm:bg-transparent pt-3 pb-4 mb-6 -mx-4 -mt-4 sm:mx-0 sm:mt-0 sm:bg-transparent sm:pt-0 sm:pb-0 sm:static">
                 <div class="flex justify-between items-center px-4 sm:px-0">
                     <h2 class="text-2xl sm:text-3xl font-bold text-gray-800">Pacotes de Serviços</h2>
@@ -417,27 +473,20 @@ export async function loadPackagesPage() {
             </div>
             
             <div id="packagesListContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pb-20">
-                <!-- Skeletons de carregamento -->
                 ${renderSkeletonList()}
             </div>
             
-            <!-- MELHORIA UX: FAB (Botão Flutuante) -->
             <button data-action="new-package" class="fixed z-30 bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-105">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
         </section>
-
-        <!-- CORREÇÃO: Usa o 'genericModal', que já existe, em vez de 'packageModal' -->
     `;
 
-    // CORREÇÃO: Limpa listener antigo se existir
     if (pageEventListener) {
         contentDiv.removeEventListener('click', pageEventListener);
     }
 
-    // Define o handler do clique principal
     pageEventListener = (e) => {
-        // Lógica de "Excluir" (com stop propagation)
         if (e.target.closest('[data-action-stop-propagation="true"]')) {
             e.stopPropagation();
             const deleteButton = e.target.closest('[data-action="delete-package"]');
@@ -459,14 +508,13 @@ export async function loadPackagesPage() {
             return;
         }
 
-        // Lógica de "Novo" (FAB) e "Editar" (Card)
         const target = e.target.closest('[data-action="new-package"], [data-action="edit-package"]');
         if (!target) return;
 
         const action = target.dataset.action;
 
         if (action === 'new-package') {
-            openPackageModal({}); // Passa um objeto vazio para 'Novo'
+            openPackageModal(null); // <-- CORREÇÃO: Estava openPackageModal({})
         } else if (action === 'edit-package') {
             const pkg = JSON.parse(target.dataset.package);
             openPackageModal(pkg);
@@ -477,12 +525,18 @@ export async function loadPackagesPage() {
 
     // --- Carregamento dos dados ---
     try {
-        const [packages, services] = await Promise.all([
+        // (MODIFICADO) Carrega pacotes, serviços E produtos
+        const [packages, services, products] = await Promise.all([
             packagesApi.getPackages(state.establishmentId),
-            servicesApi.getServices(state.establishmentId)
+            servicesApi.getServices(state.establishmentId),
+            productsApi.getProducts(state.establishmentId) // <-- NOVO
         ]);
         localState.allPackages = packages;
-        localState.servicesForModal = services.filter(s => s.active);
+        // (MODIFICADO) Popula o novo catálogo
+        localState.catalogForModal = {
+            services: services.filter(s => s.active),
+            products: products // Você pode filtrar produtos inativos ou fora de estoque aqui se quiser
+        };
         renderPackagesList(); // Renderiza os dados reais
     } catch (error) {
         document.getElementById('packagesListContainer').innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar pacotes.</p>';
