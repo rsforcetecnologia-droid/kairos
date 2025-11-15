@@ -131,29 +131,63 @@ router.patch('/:userId/status', async (req, res) => {
     }
 });
 
-// Atualizar dados do usuário (nome, permissões, professionalId)
+
+// ####################################################################
+// ### INÍCIO DA CORREÇÃO ###
+// ####################################################################
+
+// Atualizar dados do usuário (nome, permissões, professionalId E E-MAIL)
 router.put('/:userId', async (req, res) => {
     const { userId } = req.params;
-    const { name, permissions, professionalId } = req.body; // <-- ADICIONADO professionalId
+    // 1. Extrair o 'email' do req.body
+    const { name, permissions, professionalId, email } = req.body; 
+    
     if (!name || !permissions) {
         return res.status(400).json({ message: 'Nome e permissões são obrigatórios.' });
     }
     try {
         const { db, auth } = req;
-        await auth.updateUser(userId, { displayName: name });
-        
-        const updateData = { name, permissions };
-        if (professionalId !== undefined) {
-             updateData.professionalId = professionalId || null; // <-- SALVA professionalId
+
+        // 2. Criar o payload de atualização para o Firebase Auth
+        const authUpdatePayload = { displayName: name };
+        if (email) {
+            // Adiciona o email ao payload do Auth se ele foi fornecido
+            authUpdatePayload.email = email;
         }
 
+        // 3. Atualizar o Firebase Auth (Nome e/ou Email)
+        await auth.updateUser(userId, authUpdatePayload);
+        
+        // 4. Criar o payload de atualização para o Firestore
+        const updateData = { name, permissions };
+        
+        if (professionalId !== undefined) {
+             updateData.professionalId = professionalId || null;
+        }
+        if (email) {
+            // Adiciona o email ao payload do Firestore se ele foi fornecido
+            updateData.email = email;
+        }
+
+        // 5. Atualizar o documento no Firestore
         await db.collection('users').doc(userId).update(updateData);
+        
         res.status(200).json({ message: 'Usuário atualizado com sucesso.' });
+    
     } catch (error) {
+        // 6. Adicionar tratamento de erro para e-mail duplicado
+        if (error.code === 'auth/email-already-exists') {
+            return res.status(409).json({ message: 'Este e-mail já está em uso por outra conta.' });
+        }
         console.error("Erro ao atualizar usuário:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+// ####################################################################
+// ### FIM DA CORREÇÃO ###
+// ####################################################################
+
 
 // Atualizar senha do usuário
 router.put('/:userId/password', async (req, res) => {

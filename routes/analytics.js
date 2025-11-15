@@ -1,3 +1,5 @@
+// routes/analytics.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
@@ -156,7 +158,7 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
     }
 });
 
-// NOVO ENDPOINT: Detalhes de um dia específico
+// NOVO ENDPOINT: Detalhes de um dia específico (MODIFICADO)
 router.get('/:establishmentId/daily-details', async (req, res) => {
     const { establishmentId } = req.params;
     const { year, month, day, professionalId: filterProfessionalId } = req.query; // Renomeado para evitar conflito
@@ -191,10 +193,24 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             .where('establishmentId', '==', establishmentId).get();
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
 
-        const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
+        // --- INÍCIO DA CORREÇÃO ---
+        // 2. (NOVO) Busca as sessões de caixa para mapear o nome do responsável
+        const cashierSessionsQuery = db.collection('cashier_sessions')
+            .where('establishmentId', '==', establishmentId);
+            
+        const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
-            salesQuery.get()
+            salesQuery.get(),
+            cashierSessionsQuery.get() // <-- ADICIONADO
         ]);
+
+        // 3. (NOVO) Cria o mapa de sessões de caixa
+        const cashierSessionMap = new Map();
+        cashierSessionsSnapshot.forEach(doc => {
+            const data = doc.data();
+            cashierSessionMap.set(doc.id, data.openedByName || data.closedByName || 'N/A');
+        });
+        // --- FIM DA CORREÇÃO ---
         
         let allTransactions = [];
         let totalRevenue = 0;
@@ -204,16 +220,17 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             const value = data.transaction?.totalAmount || 0;
             totalRevenue += value;
             
-            // Mapeia o nome do profissional a partir do ID
             const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
-
+            
+            // (MODIFICADO) Adiciona o campo 'responsavelCaixa'
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
-                professionalName: professionalName, // <-- CORRIGIDO
+                professionalName: professionalName,
                 items: [...(data.services || []), ...(data.comandaItems || [])].map(i => i.name).join(', '),
                 value: value,
-                type: 'Agendamento'
+                type: 'Agendamento',
+                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido' // <-- ADICIONADO
             });
         });
         
@@ -222,16 +239,17 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             const value = data.totalAmount || 0;
             totalRevenue += value;
             
-            // Mapeia o nome do profissional a partir do ID
             const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
 
+            // (MODIFICADO) Adiciona o campo 'responsavelCaixa'
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
-                professionalName: professionalName, // <-- CORRIGIDO
+                professionalName: professionalName,
                 items: data.items.map(i => i.name).join(', '),
                 value: value,
-                type: 'Venda Avulsa'
+                type: 'Venda Avulsa',
+                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido' // <-- ADICIONADO
             });
         });
         

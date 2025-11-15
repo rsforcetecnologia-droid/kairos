@@ -53,11 +53,15 @@ function renderKPIs(kpis) {
  */
 function renderTransactionDetailsModal(transaction) {
     const title = "Detalhes da Transação";
+    
+    // --- INÍCIO DA CORREÇÃO ---
+    // Adicionada a linha "Responsável Caixa"
     const modalContent = `
         <div class="space-y-3 text-lg">
             <p><strong>Hora:</strong> ${new Date(transaction.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
             <p><strong>Cliente:</strong> ${transaction.client}</p>
             <p><strong>Profissional:</strong> ${transaction.professionalName || 'N/A'}</p>
+            <p><strong>Responsável Caixa:</strong> ${transaction.responsavelCaixa || 'N/A'}</p>
             <p><strong>Valor Total:</strong> <span class="text-green-600 font-bold">R$ ${transaction.value.toFixed(2)}</span></p>
             <p><strong>Tipo:</strong> <span class="font-semibold">${transaction.type}</span></p>
         </div>
@@ -66,6 +70,7 @@ function renderTransactionDetailsModal(transaction) {
             <p class="text-gray-700">${transaction.items.replace(/, /g, '<br>')}</p>
         </div>
     `;
+    // --- FIM DA CORREÇÃO ---
 
     // Usa a função correta showGenericModal
     showGenericModal({
