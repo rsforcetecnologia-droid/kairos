@@ -751,65 +751,109 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
 // ####################################################################
 
 
-// Reabrir comanda (Rota Privada) - SEM LIMPEZA FINANCEIRA AUTOMÁTICA
+// ####################################################################
+// ### ROTA DE REABRIR (CORRIGIDA PARA O ERRO DE LEITURA/ESCRITA) ###
+// ####################################################################
 router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
-
     const appointmentRef = db.collection('appointments').doc(appointmentId);
 
     try {
-        let hasRewards = false; // (NOVO)
-
         await db.runTransaction(async (transaction) => {
+            // --- TODAS AS LEITURAS DEVEM VIR PRIMEIRO ---
+
+            // LEITURA 1: Obter o agendamento
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) {
                 throw new Error("Agendamento não encontrado.");
             }
-
             const appointmentData = appointmentDoc.data();
             const saleId = appointmentData.transaction?.saleId;
-            const establishmentId = appointmentData.establishmentId; // (NOVO)
+            const establishmentId = appointmentData.establishmentId;
 
+            // LEITURA 2: Obter lançamentos financeiros (se houver saleId)
+            let financialSnapshot = null;
             if (saleId) {
-                const saleRef = db.collection('sales').doc(saleId);
-                // Deleta a venda associada
-                transaction.delete(saleRef);
-                
-                // (NOVO) Deleta os lançamentos financeiros associados
                 const financialQuery = db.collection('financial_receivables').where('transactionId', '==', saleId);
-                const financialSnapshot = await transaction.get(financialQuery);
-                financialSnapshot.docs.forEach(doc => transaction.delete(doc.ref));
+                financialSnapshot = await transaction.get(financialQuery);
             }
 
-            // [LÓGICA ADICIONAL: DEVOLVER PONTOS DE RECOMPENSA RESGATADOS]
+            // LEITURA 3: Obter o cliente (se houver recompensa para devolver)
+            let clientSnapshot = null;
             if (appointmentData.redeemedReward && appointmentData.redeemedReward.points > 0) {
-                // (MODIFICADO) Busca o cliente pelo telefone
                 const clientQuery = db.collection('clients')
                     .where('establishmentId', '==', establishmentId)
                     .where('phone', '==', appointmentData.clientPhone)
                     .limit(1);
-                
-                const clientSnapshot = await transaction.get(clientQuery);
-                if (!clientSnapshot.empty) {
-                     const clientRef = clientSnapshot.docs[0].ref;
-                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) });
+                clientSnapshot = await transaction.get(clientQuery);
+            }
+
+            // LEITURA 4: Obter dados do estabelecimento (para verificar status de fidelidade)
+            const establishmentRef = db.collection('establishments').doc(establishmentId);
+            const establishmentDoc = await transaction.get(establishmentRef);
+            
+            // LEITURA 5: Obter dados do cliente (para verificar status de fidelidade)
+            // (Reutiliza a LEITURA 3 se já foi feita, senão faz uma nova)
+            let clientDocForCheck = null;
+            if (clientSnapshot && !clientSnapshot.empty) {
+                clientDocForCheck = clientSnapshot.docs[0];
+            } else {
+                 const clientQuery = db.collection('clients')
+                    .where('establishmentId', '==', establishmentId)
+                    .where('phone', '==', appointmentData.clientPhone)
+                    .limit(1);
+                const tempSnapshot = await transaction.get(clientQuery);
+                if (!tempSnapshot.empty) {
+                    clientDocForCheck = tempSnapshot.docs[0];
                 }
             }
-            
-            // (NOVO) Re-verifica o status de fidelidade
-            hasRewards = await checkClientRewards(db, appointmentData.clientName, appointmentData.clientPhone, establishmentId);
 
+            // --- FIM DE TODAS AS LEITURAS. INÍCIO DAS ESCRITAS ---
+
+            // Lógica de 'hasRewards' (feita após as leituras)
+            let hasRewards = false;
+            const loyaltyProgram = establishmentDoc.exists ? establishmentDoc.data().loyaltyProgram : null;
+            if (clientDocForCheck && loyaltyProgram && loyaltyProgram.enabled && loyaltyProgram.tiers) {
+                const currentPoints = (clientDocForCheck.data().loyaltyPoints || 0);
+                const pointsAfterRefund = currentPoints + (appointmentData.redeemedReward?.points || 0);
+                const minPointsToRedeem = Math.min(...(loyaltyProgram.tiers || []).map(r => r.points));
+                
+                if (minPointsToRedeem !== Infinity) {
+                    hasRewards = pointsAfterRefund >= minPointsToRedeem;
+                }
+            }
+
+            // ESCRITA 1: Apagar lançamentos financeiros
+            if (financialSnapshot) {
+                financialSnapshot.docs.forEach(doc => transaction.delete(doc.ref));
+            }
+
+            // ESCRITA 2: Apagar a venda
+            if (saleId) {
+                const saleRef = db.collection('sales').doc(saleId);
+                transaction.delete(saleRef);
+            }
+            
+            // ESCRITA 3: Devolver pontos de fidelidade
+            if (clientSnapshot && !clientSnapshot.empty) {
+                const clientRef = clientSnapshot.docs[0].ref;
+                transaction.update(clientRef, { 
+                    loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) 
+                });
+            }
+
+            // ESCRITA 4: Atualizar o agendamento
             transaction.update(appointmentRef, {
                 status: 'confirmed',
                 transaction: admin.firestore.FieldValue.delete(),
-                // Se a recompensa foi resgatada, remove a referência no agendamento
                 redeemedReward: admin.firestore.FieldValue.delete(),
-                // (NOVO) Atualiza o status de prêmios ao reabrir
-                hasRewards: hasRewards
+                cashierSessionId: admin.firestore.FieldValue.delete(),
+                hasRewards: hasRewards // Atualiza o status de recompensa
             });
         });
 
+        // Transação concluída
         res.status(200).json({ message: 'Comanda reaberta com sucesso. Venda e lançamentos financeiros associados foram removidos.' });
 
     } catch (error) {
@@ -817,6 +861,7 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
         res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
+
 
 // Mover para aguardando pagamento (Rota Privada)
 router.post('/:appointmentId/awaiting-payment', verifyToken, hasAccess, async (req, res) => {
