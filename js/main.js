@@ -323,39 +323,37 @@ function initialize() {
                     let userPermissions = null;
                     let userName = user.displayName; 
                     
-                    // --- 4. LÓGICA PARA BUSCAR O PROFESSIONAL ID ---
+                    // ####################################################################
+                    // ### INÍCIO DA CORREÇÃO (ASSOCIAR DONO/FUNCIONÁRIO) ###
+                    // ####################################################################
+                    
                     let userProfessionalId = null; 
 
-                    if (claims.role === 'employee') {
+                    // Unifica a lógica: Tanto 'owner' quanto 'employee' devem ter um documento na coleção 'users'.
+                    // Esse documento é a fonte da verdade para o professionalId.
+                    if (claims.role === 'employee' || claims.role === 'owner') {
                         const userDocRef = doc(db, 'users', user.uid);
                         const userDoc = await getDoc(userDocRef);
+                        
                         if (userDoc.exists()) {
                             const userData = userDoc.data();
-                            userPermissions = userData.permissions;
-                            userName = userData.name;
-                            userProfessionalId = userData.professionalId || null; // <-- Pega o ID do profissional
-                        } else {
+                            // Define as permissões (funcionário) ou mantém null (dono)
+                            userPermissions = (claims.role === 'employee') ? (userData.permissions || {}) : null;
+                            userName = userData.name || userName;
+                            userProfessionalId = userData.professionalId || null; // <-- Pega o ID associado
+                        } else if (claims.role === 'employee') {
+                            // Se for um funcionário e o documento não existir, é um erro.
                             throw new Error("Dados de permissão do funcionário não encontrados.");
                         }
-                    } else if (claims.role === 'owner') {
-                        // Tenta encontrar um profissional associado ao e-mail do dono
-                        try {
-                            const profQuery = query(
-                                collection(db, 'professionals'),
-                                where('establishmentId', '==', claims.establishmentId),
-                                where('email', '==', user.email) // Assumindo que o dono se cadastra com o mesmo email
-                            );
-                            const profSnapshot = await getDocs(profQuery);
-                            if (!profSnapshot.empty) {
-                                userProfessionalId = profSnapshot.docs[0].id;
-                            }
-                        } catch (e) {
-                            console.warn("Não foi possível associar o dono a um profissional pelo e-mail:", e.message);
-                        }
+                        // Se for um 'owner' e o documento não existir (caso antigo),
+                        // userPermissions continua null e userProfessionalId tbm.
                     }
                     
                     state.userProfessionalId = userProfessionalId; // <-- ARMAZENA NO STATE
-                    // --- FIM DA LÓGICA DO PROFESSIONAL ID ---
+                    
+                    // ####################################################################
+                    // ### FIM DA CORREÇÃO ###
+                    // ####################################################################
 
                     const finalUserName = userName || user.email;
                     

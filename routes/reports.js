@@ -46,10 +46,12 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
             salesQuery = salesQuery.where('professionalId', '==', loggedInProfessionalId);
         }
 
-        // (MODIFICADO) CORREÇÃO DO NOME DA COLEÇÃO
-        // Busca todas as sessões de caixa para mapear os nomes dos responsáveis
-        const cashierSessionsQuery = db.collection('cashier_sessions') // <-- Corrigido de 'cashierSessions'
+        // ##################################################
+        // ### CORREÇÃO APLICADA AQUI ###
+        // O nome da coleção foi corrigido para 'cashierSessions' (sem o 's' no final)
+        const cashierSessionsQuery = db.collection('cashierSessions') 
             .where('establishmentId', '==', establishmentId);
+        // ##################################################
 
 
         const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([

@@ -15,13 +15,11 @@ router.post('/', async (req, res) => {
 
     try {
         const establishmentRef = db.collection('establishments').doc(establishmentId);
-        // ### CORREÇÃO APLICADA AQUI ###
-        // A consulta agora considera ativos todos que NÃO são 'inactive'.
-        // Isso inclui utilizadores antigos sem o campo 'status'.
         const usersRef = db.collection('users')
             .where('establishmentId', '==', establishmentId)
             .where('status', '!=', 'inactive');
 
+        // 1. VERIFICAÇÃO DE LIMITE DO PLANO (DENTRO DA TRANSAÇÃO)
         await db.runTransaction(async (transaction) => {
             const establishmentDoc = await transaction.get(establishmentRef);
             if (!establishmentDoc.exists) {
@@ -52,36 +50,99 @@ router.post('/', async (req, res) => {
 
             const currentActiveUsersSnapshot = await transaction.get(usersRef);
 
-            // A contagem considera os funcionários (na coleção 'users') + 1 (o dono)
             if (currentActiveUsersSnapshot.size + 1 >= maxUsers) {
                 throw new Error('Limite de usuários ativos atingido para o seu plano.');
             }
+        });
+        
+        // 2. CRIAÇÃO DO UTILIZADOR (FORA DA TRANSAÇÃO)
+        const userRecord = await auth.createUser({
+            email, password, displayName: name,
+        });
 
-            const userRecord = await auth.createUser({
-                email, password, displayName: name,
-            });
+        await auth.setCustomUserClaims(userRecord.uid, {
+            role: 'employee',
+            establishmentId: establishmentId
+        });
 
-            await auth.setCustomUserClaims(userRecord.uid, {
-                role: 'employee',
-                establishmentId: establishmentId
-            });
-
-            const newUserRef = db.collection('users').doc(userRecord.uid);
-            transaction.set(newUserRef, {
-                name, email, establishmentId, permissions,
-                professionalId: professionalId || null, // <-- ADICIONADO professionalId
-                status: 'active',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+        const newUserRef = db.collection('users').doc(userRecord.uid);
+        await newUserRef.set({
+            name, email, establishmentId, permissions,
+            professionalId: professionalId || null,
+            status: 'active',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
         res.status(201).json({ message: 'Usuário criado com sucesso!' });
 
     } catch (error) {
         console.error("Erro ao criar usuário:", error);
+
+        // ####################################################################
+        // ### INÍCIO DA CORREÇÃO ###
+        // ####################################################################
+        
+        // 3. LÓGICA DE RECUPERAÇÃO DE UTILIZADOR "ÓRFÃO"
         if (error.code === 'auth/email-already-exists') {
-            return res.status(409).json({ message: 'Este e-mail já está em uso.' });
+            try {
+                // O e-mail já existe. Vamos verificar a quem pertence.
+                const existingUser = await auth.getUserByEmail(email);
+                const claims = existingUser.customClaims || {};
+
+                // Verifica se o utilizador pertence a ESTE estabelecimento
+                if (claims.establishmentId === establishmentId) {
+                    
+                    // O e-mail é deste estabelecimento.
+                    // Vamos verificar se ele está "órfão" (sem documento no Firestore)
+                    const userDoc = await db.collection('users').doc(existingUser.uid).get();
+                    
+                    if (!userDoc.exists) {
+                        // Este é um utilizador órfão (Auth existe, Firestore não).
+                        // Vamos "recuperar" esta conta atualizando-a com os novos dados.
+
+                        await auth.updateUser(existingUser.uid, {
+                            password: password,
+                            displayName: name,
+                            disabled: false // Garante que está ativo
+                        });
+                        
+                        // Garante que as claims estão corretas
+                        await auth.setCustomUserClaims(existingUser.uid, {
+                            role: 'employee',
+                            establishmentId: establishmentId
+                        });
+                        
+                        // (Re)Cria o documento no Firestore
+                        await db.collection('users').doc(existingUser.uid).set({
+                            name, email, establishmentId, permissions,
+                            professionalId: professionalId || null,
+                            status: 'active', // Define como ativo
+                            createdAt: admin.firestore.FieldValue.serverTimestamp() // Trata como novo
+                        });
+                        
+                        // Retorna sucesso como se fosse uma criação normal
+                        return res.status(201).json({ message: 'Usuário (órfão) recuperado e atualizado com sucesso!' });
+                    }
+                    
+                    // Se o documento existe, o e-mail está legitimamente em uso.
+                    if (userDoc.data().status === 'inactive') {
+                        return res.status(409).json({ message: 'Este e-mail já pertence a um usuário inativo. Use o botão "Excluir" (lixeira) para apagar o usuário inativo antes de reutilizar o e-mail.' });
+                    }
+                }
+                
+                // Se o e-mail existe mas pertence a outro estabelecimento
+                return res.status(409).json({ message: 'Este e-mail já está em uso.' });
+
+            } catch (lookupError) {
+                // Erro ao tentar recuperar o utilizador
+                console.error("Erro ao tentar recuperar usuário órfão:", lookupError);
+                return res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
+            }
         }
+        // ####################################################################
+        // ### FIM DA CORREÇÃO ###
+        // ####################################################################
+
         res.status(403).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
@@ -131,15 +192,9 @@ router.patch('/:userId/status', async (req, res) => {
     }
 });
 
-
-// ####################################################################
-// ### INÍCIO DA CORREÇÃO ###
-// ####################################################################
-
 // Atualizar dados do usuário (nome, permissões, professionalId E E-MAIL)
 router.put('/:userId', async (req, res) => {
     const { userId } = req.params;
-    // 1. Extrair o 'email' do req.body
     const { name, permissions, professionalId, email } = req.body; 
     
     if (!name || !permissions) {
@@ -148,34 +203,27 @@ router.put('/:userId', async (req, res) => {
     try {
         const { db, auth } = req;
 
-        // 2. Criar o payload de atualização para o Firebase Auth
         const authUpdatePayload = { displayName: name };
         if (email) {
-            // Adiciona o email ao payload do Auth se ele foi fornecido
             authUpdatePayload.email = email;
         }
 
-        // 3. Atualizar o Firebase Auth (Nome e/ou Email)
         await auth.updateUser(userId, authUpdatePayload);
         
-        // 4. Criar o payload de atualização para o Firestore
         const updateData = { name, permissions };
         
         if (professionalId !== undefined) {
              updateData.professionalId = professionalId || null;
         }
         if (email) {
-            // Adiciona o email ao payload do Firestore se ele foi fornecido
             updateData.email = email;
         }
 
-        // 5. Atualizar o documento no Firestore
         await db.collection('users').doc(userId).update(updateData);
         
         res.status(200).json({ message: 'Usuário atualizado com sucesso.' });
     
     } catch (error) {
-        // 6. Adicionar tratamento de erro para e-mail duplicado
         if (error.code === 'auth/email-already-exists') {
             return res.status(409).json({ message: 'Este e-mail já está em uso por outra conta.' });
         }
@@ -183,11 +231,6 @@ router.put('/:userId', async (req, res) => {
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
-
-// ####################################################################
-// ### FIM DA CORREÇÃO ###
-// ####################################################################
-
 
 // Atualizar senha do usuário
 router.put('/:userId/password', async (req, res) => {

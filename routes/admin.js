@@ -17,6 +17,32 @@ const defaultModules = {
     mobileApp: true
 };
 
+// ####################################################################
+// ### INÍCIO DA MODIFICAÇÃO (PERMISSÕES MASTER) ###
+// ####################################################################
+
+// Define o objeto de permissões totais para o "Usuário Master" (Dono)
+// Baseado nos módulos definidos em js/ui/users.js
+const masterPermissions = {
+    'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
+    'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
+    'relatorios-section': { view: true, create: true, edit: true },
+    'financial-section': { view: true, create: true, edit: true },
+    'servicos-section': { view: true, create: true, edit: true },
+    'produtos-section': { view: true, create: true, edit: true },
+    'profissionais-section': { view: true, create: true, edit: true },
+    'clientes-section': { view: true, create: true, edit: true },
+    'packages-section': { view: true, create: true, edit: true },
+    'commissions-section': { view: true, create: true, edit: true },
+    'estabelecimento-section': { view: true, create: true, edit: true },
+    'users-section': { view: true, create: true, edit: true }
+};
+
+// ####################################################################
+// ### FIM DA MODIFICAÇÃO ###
+// ####################################################################
+
+
 // NOVO: Rota para obter configurações da plataforma (ex: URL do Logotipo)
 router.get('/config', async (req, res) => {
     try {
@@ -98,6 +124,28 @@ router.post('/establishments', async (req, res) => {
         await db.collection('establishments').doc(establishmentId).set(establishmentData);
         
         await auth.setCustomUserClaims(userRecord.uid, { role: 'owner', establishmentId: establishmentId });
+
+        // ####################################################################
+        // ### INÍCIO DA MODIFICAÇÃO (CRIAR "USUÁRIO MASTER") ###
+        // ####################################################################
+        
+        // Cria também um documento na coleção 'users' para o dono (master user)
+        // Isso permite que ele apareça na tela de "Usuários" e seja associado a um profissional
+        const newUserRef = db.collection('users').doc(userRecord.uid);
+        await newUserRef.set({
+            name: name, // Usa o nome do dono/estabelecimento
+            email: ownerEmail,
+            establishmentId: establishmentId,
+            permissions: masterPermissions, // Atribui todas as permissões
+            professionalId: null, // Começa desassociado
+            status: 'active',
+            isOwnerMaster: true, // Flag para identificar que este é o "usuário" dono
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // ####################################################################
+        // ### FIM DA MODIFICAÇÃO ###
+        // ####################################################################
 
         res.status(201).json({ message: 'Estabelecimento e dono criados com sucesso!', uid: userRecord.uid });
     } catch (error) {

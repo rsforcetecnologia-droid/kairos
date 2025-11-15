@@ -160,8 +160,9 @@ function setupBlockForm(professionalId) {
 
         try {
             // *** CORREÇÃO APLICADA AQUI ***
-            // A API de bloqueios espera um objeto único, com o professionalId dentro dele.
+            // A API de bloqueios (routes/blockages.js) espera o establishmentId
             await schedulesApi.blockProfessionalSchedule({
+                establishmentId: state.establishmentId, // <-- ESTA LINHA É A CORREÇÃO
                 professionalId: professionalId,
                 reason: blockReason || 'Bloqueado (Meu Perfil)',
                 startTime: startDateTime.toISOString(),

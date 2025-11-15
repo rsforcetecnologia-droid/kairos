@@ -158,7 +158,7 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
     }
 });
 
-// NOVO ENDPOINT: Detalhes de um dia específico (MODIFICADO)
+// ENDPOINT: Detalhes de um dia específico (MODIFICADO)
 router.get('/:establishmentId/daily-details', async (req, res) => {
     const { establishmentId } = req.params;
     const { year, month, day, professionalId: filterProfessionalId } = req.query; // Renomeado para evitar conflito
@@ -193,10 +193,12 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             .where('establishmentId', '==', establishmentId).get();
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
 
-        // --- INÍCIO DA CORREÇÃO ---
-        // 2. (NOVO) Busca as sessões de caixa para mapear o nome do responsável
-        const cashierSessionsQuery = db.collection('cashier_sessions')
+        // ##################################################
+        // ### CORREÇÃO APLICADA AQUI ###
+        // O nome da coleção foi corrigido para 'cashierSessions' (sem o 's' no final)
+        const cashierSessionsQuery = db.collection('cashierSessions')
             .where('establishmentId', '==', establishmentId);
+        // ##################################################
             
         const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
