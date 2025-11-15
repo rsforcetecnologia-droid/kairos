@@ -122,15 +122,26 @@ router.post('/', async (req, res) => {
     }
 });
 
-// Atualizar um cliente (Original)
+// ####################################################################
+// ### INÍCIO DA MODIFICAÇÃO (Segurança do Add-on Fidelidade) ###
+// ####################################################################
+
+// Atualizar um cliente (MODIFICADO para segurança)
 router.put('/:clientId', async (req, res) => {
     const { clientId } = req.params;
-    // Renomeado para clientData para clareza
     const clientData = req.body; 
     try {
         const { db } = req;
         const clientRef = db.collection('clients').doc(clientId);
-        // Atualiza os dados recebidos no corpo da requisição
+        
+        // --- INÍCIO DA CORREÇÃO DE SEGURANÇA ---
+        // Impede que esta rota genérica de 'update' altere os pontos de fidelidade.
+        // Apenas as rotas de 'checkout' ou 'redeem' podem fazer isso.
+        delete clientData.loyaltyPoints;
+        delete clientData.id; // Remove ID (boa prática)
+        delete clientData.lastService; // Remove campo computado
+        // --- FIM DA CORREÇÃO DE SEGURANÇA ---
+
         await clientRef.update(clientData); 
         res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
     } catch (error) {
@@ -138,6 +149,10 @@ router.put('/:clientId', async (req, res) => {
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+// ####################################################################
+// ### FIM DA MODIFICAÇÃO ###
+// ####################################################################
 
 // Apagar um cliente (Original)
 router.delete('/:clientId', async (req, res) => {
@@ -177,7 +192,6 @@ router.get('/history/:establishmentId', async (req, res) => {
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
-            // .orderBy('startTime', 'desc') // LINHA REMOVIDA PARA RESOLVER O ERRO DE ÍNDICE COMPOSTO
             .get();
         if (snapshot.empty) return res.status(200).json([]);
         
@@ -185,16 +199,13 @@ router.get('/history/:establishmentId', async (req, res) => {
             const data = doc.data();
             return {
                 id: doc.id,
-                // Garantir que a data é uma string ISO para o frontend ordenar e filtrar
                 date: data.startTime.toDate().toISOString(), 
                 serviceName: (data.services || []).map(s => s.name).join(', '),
-                // Adicionando status para o modal de histórico
                 status: data.status || 'pendente',
                 professionalName: data.professionalName || 'N/A'
             };
         });
         
-        // Ordena no servidor, já que não foi possível no DB
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.status(200).json(history);
@@ -204,7 +215,11 @@ router.get('/history/:establishmentId', async (req, res) => {
     }
 });
 
-// Obter histórico de pontos de fidelidade (Original)
+// ####################################################################
+// ### INÍCIO DA MODIFICAÇÃO (Segurança do Add-on Fidelidade) ###
+// ####################################################################
+
+// Obter histórico de pontos de fidelidade (MODIFICADO)
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -213,7 +228,17 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
     try {
         const { db } = req;
-        // Precisamos encontrar o ID do cliente primeiro
+        
+        // --- VERIFICAÇÃO DE MÓDULO ---
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        if (!establishmentDoc.exists) throw new Error("Estabelecimento não encontrado.");
+        
+        const loyaltyModuleEnabled = establishmentDoc.data().modules?.['loyalty-section'] === true;
+        if (!loyaltyModuleEnabled) {
+            return res.status(403).json({ message: "O módulo de Fidelidade não está ativo para este estabelecimento." });
+        }
+        // --- FIM DA VERIFICAÇÃO ---
+
         const clientQuery = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .where('phone', '==', clientPhone)
@@ -238,7 +263,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
 });
 
-// Resgatar prêmio de fidelidade (Original)
+// Resgatar prêmio de fidelidade (MODIFICADO)
 router.post('/redeem', async (req, res) => {
     const { establishmentId, clientName, clientPhone, rewardData } = req.body;
     if (!establishmentId || !clientName || !clientPhone || !rewardData) {
@@ -246,6 +271,17 @@ router.post('/redeem', async (req, res) => {
     }
     try {
         const { db } = req;
+
+        // --- VERIFICAÇÃO DE MÓDULO ---
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        if (!establishmentDoc.exists) throw new Error("Estabelecimento não encontrado.");
+        
+        const loyaltyModuleEnabled = establishmentDoc.data().modules?.['loyalty-section'] === true;
+        if (!loyaltyModuleEnabled) {
+            return res.status(403).json({ message: "O módulo de Fidelidade não está ativo para este estabelecimento." });
+        }
+        // --- FIM DA VERIFICAÇÃO ---
+        
         const clientQuery = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .where('phone', '==', clientPhone)
@@ -275,5 +311,9 @@ router.post('/redeem', async (req, res) => {
         res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
+
+// ####################################################################
+// ### FIM DA MODIFICAÇÃO ###
+// ####################################################################
 
 module.exports = router;
