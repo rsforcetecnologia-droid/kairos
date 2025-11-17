@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    
+    "build:web": "npx rimraf cap-dist && mkdir cap-dist && copy index.html login.html admin.html admin-login.html cliente.html dbexplorer.html import.html landing.html cap-dist\\ && xcopy js cap-dist\\js\\ /E /I /Y && xcopy css cap-dist\\css\\ /E /I /Y && xcopy images cap-dist\\images\\ /E /I /Y && copy generated-icon.png cap-dist\\",
+    "cap:android": "npm run build:web && npx cap add android"
+
   },
   "keywords": [],
   "author": "",

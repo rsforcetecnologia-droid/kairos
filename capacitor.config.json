@@ -1,5 +1,6 @@
 {
-  "appId": "com.example.app",
-  "appName": "nodejs",
-  "webDir": "www"
-}
+  "appId": "com.kairos.sistema",
+  "appName": "Kairos System",
+  "webDir": "cap-dist",
+  "bundledWebRuntime": false
+} 
