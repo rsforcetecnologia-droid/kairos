@@ -1,0 +1,1184 @@
+/* --- ESTILO GLOBAL PARA AJUSTAR O TAMANHO DA INTERFACE --- */
+html {
+font-size: 14px;
+}
+
+
+/* --- ESTILOS GERAIS E LAYOUT --- */
+body {
+font-family: 'Inter', sans-serif;
+/* --- MODIFICAÇÃO: Padrão de fonte do corpo --- */
+font-size: 1rem; /* Define o padrão do site para 14px */
+/* Removido padding-top para compensar o header fixo */
+/* padding-top: 4rem; */ 
+}
+
+/* --- NOVO: ESTILOS DA BARRA SUPERIOR (HEADER) --- */
+/* Esta é uma suposição, assumindo que o seu HTML tem um <header class="app-header"> */
+/* A barra superior agora ficará ao lado da sidebar */
+.app-header {
+    position: fixed;
+    top: 0;
+    /* Ajustado para começar depois da sidebar */
+    left: 16.56rem; /* Largura da sidebar */
+    right: 0;
+    height: 4rem; /* 64px - Altura da barra superior */
+    background-color: #ffffff; /* Fundo branco */
+    border-bottom: 1px solid #e5e7eb; /* gray-200 */
+    z-index: 50; /* Acima da sidebar */
+    display: flex;
+    align-items: center;
+    padding: 0 1.5rem;
+    transition: left 0.3s ease-in-out; /* Adicionado para acompanhar a sidebar */
+}
+/* Ajuste para quando a sidebar estiver colapsada */
+body.sidebar-collapsed .app-header {
+    left: 4.5rem; /* Largura da sidebar colapsada */
+}
+
+
+.sidebar-link {
+display: flex;
+align-items: center;
+padding: 0.75rem 1rem;
+border-radius: 0.5rem;
+transition: background-color 0.2s, color 0.2s;
+cursor: pointer;
+font-weight: 500;
+white-space: nowrap;
+}
+.sidebar-link:hover {
+background-color: #374151; /* gray-700 */
+}
+.sidebar-link.active {
+background-color: #4f46e5; /* indigo-600 */
+color: white;
+font-weight: 600;
+}
+.sidebar-link svg {
+margin-right: 0.75rem;
+flex-shrink: 0;
+}
+
+/* ----------------------------------------------- */
+/* ESTILOS DA BARRA LATERAL (Sidebar) - MODIFICADO */
+/* ----------------------------------------------- */
+#sidebar {
+    /* NOVO: Largura reduzida em 10% (16.56rem) */
+    width: 16.56rem; 
+    transition: width 0.3s ease-in-out;
+    /* Propriedades para fixar e permitir rolagem */
+    position: fixed; 
+    
+    /* --- MODIFICAÇÃO 1: Iniciar no topo --- */
+    top: 0; /* Volta ao topo */
+    height: 100vh; /* Altura total */
+    left: 0; /* Garante que está à esquerda */
+    
+    overflow-y: auto; 
+    z-index: 40; 
+    
+    /* --- MODIFICAÇÃO 2: Cantos arredondados adicionados --- */
+    border-top-right-radius: 1rem;
+    border-bottom-right-radius: 1rem;
+}
+#sidebar.collapsed {
+    width: 4.5rem;
+}
+#sidebar.collapsed .sidebar-text {
+    display: none;
+}
+#sidebar.collapsed .sidebar-link {
+    justify-content: center;
+}
+#sidebar.collapsed .sidebar-link svg {
+    margin-right: 0;
+}
+#sidebarToggle {
+    transition: transform 0.3s ease-in-out;
+}
+#sidebar.collapsed #sidebarToggle {
+    transform: rotate(180deg);
+}
+/* ----------------------------------------------- */
+
+
+/* --- COMPONENTES --- */
+.loader {
+border: 4px solid #f3f3f3;
+border-top: 4px solid #4f46e5;
+border-radius: 50%;
+width: 40px;
+height: 40px;
+animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
+}
+
+.modal {
+display: none;
+position: fixed;
+z-index: 100;
+left: 0;
+top: 0;
+width: 100%;
+height: 100%;
+overflow: auto;
+background-color: rgba(0,0,0,0.6);
+align-items: center;
+justify-content: center;
+}
+.modal-content {
+background-color: #fefefe;
+padding: 1.5rem; /* Ajustado para ser mais compacto */
+border: 1px solid #888;
+width: 90%;
+max-width: 700px;
+/* PADRONIZAÇÃO DE ESTILO: Aumento do arredondamento e sombra suave */
+border-radius: 1rem; /* Aumentado para 1rem (16px) */
+box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.05); /* Sombra mais suave */
+animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+from { opacity: 0; transform: scale(0.98); } /* Ajustado o scale para transição mais suave */
+to { opacity: 1; transform: scale(1); }
+}
+
+.toggle-bg:after {
+content: '';
+position: absolute;
+top: 2px;
+left: 2px;
+background: white;
+width: 1.25rem;
+height: 1.25rem;
+border-radius: 9999px;
+transition: transform 0.2s ease-in-out;
+}
+input:checked + .toggle-bg:after {
+transform: translateX(100%);
+}
+input:checked + .toggle-bg {
+background-color: #4f46e5;
+}
+
+/* --- ESTILOS DE TOAST NOTIFICATION (AJUSTADO) --- */
+#toast-container {
+position: fixed;
+bottom: 1.25rem;
+right: 1.25rem;
+z-index: 200;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+
+.toast {
+display: flex;
+align-items: center; /* Alinha o ícone e o texto verticalmente */
+padding: 0.4rem 0.8rem; /* Padding vertical e horizontal reduzidos */
+border-radius: 0.75rem;
+box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+min-width: auto;
+max-width: 280px; /* Largura máxima reduzida */
+border-left-width: 4px;
+position: relative;
+overflow: hidden;
+animation: slideInFromRight 0.4s ease-out, fadeOutToTop 0.5s ease-in 3.5s forwards;
+}
+
+.toast.success { background-color: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.toast.error { background-color: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+.toast.info { background-color: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+
+
+.toast-icon {
+flex-shrink: 0;
+margin-right: 0.5rem; /* Margem reduzida */
+}
+
+.toast-content {
+flex-grow: 1;
+}
+
+.toast-close {
+position: absolute;
+top: 2px; /* Ajustado */
+right: 6px; /* Ajustado */
+background: none;
+border: none;
+font-size: 1.25rem; /* Tamanho reduzido */
+line-height: 1;
+color: inherit;
+opacity: 0.5;
+cursor: pointer;
+}
+.toast-close:hover {
+opacity: 1;
+}
+
+.toast-progress-bar {
+position: absolute;
+bottom: 0;
+left: 0;
+height: 4px;
+width: 100%;
+background-color: rgba(0,0,0,0.1);
+}
+
+.toast-progress {
+height: 100%;
+width: 100%;
+animation: shrink 3.5s linear forwards;
+}
+
+@keyframes slideInFromRight {
+from { opacity: 0; transform: translateX(100%); }
+to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeOutToTop {
+from { opacity: 1; transform: translateY(0); }
+to { opacity: 0; transform: translateY(-20px); }
+}
+
+@keyframes shrink {
+from { width: 100%; }
+to { width: 0%; }
+}
+
+
+/* --- ESTILOS DA AGENDA --- */
+.view-btn {
+padding: 0.25rem 0.75rem;
+border-radius: 0.5rem; /* Arredondado */
+font-weight: 500;
+transition: all 0.2s ease-in-out;
+border: none;
+background-color: transparent;
+color: #4b5563; /* gray-600 */
+cursor: pointer;
+}
+.view-btn.active {
+background-color: white;
+color: #111827; /* gray-900 */
+box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+/* Visão de Grelha (Semana) */
+.calendar-grid {
+display: grid;
+grid-template-columns: 60px repeat(7, 1fr);
+position: relative;
+}
+.time-col {
+padding-top: 2.5rem;
+}
+.day-col {
+border-left: 1px solid #e5e7eb;
+position: relative;
+}
+.day-col.current-day {
+background-color: #f9fafb;
+}
+.time-slot {
+height: 3rem;
+border-top: 1px dotted #d1d5db;
+}
+.time-slot-hour {
+border-top: 1px solid #e5e7eb;
+}
+.appointment-card {
+position: absolute;
+left: 0.25rem;
+right: 0.25rem;
+color: white;
+border-radius: 0.5rem; /* Arredondado */
+padding: 0.25rem 0.5rem;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+line-height: 1.2;
+overflow: hidden;
+border-left-width: 4px;
+cursor: pointer;
+transition: all 0.2s ease-in-out;
+box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+z-index: 5;
+}
+.appointment-card:hover {
+box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+transform: translateY(-4px) scale(1.02);
+z-index: 10;
+}
+.appointment-card.completed {
+background-color: #16a34a !important;
+border-left-color: #14532d !important;
+opacity: 0.8;
+}
+.appointment-card .actions {
+display: none;
+position: absolute;
+top: 4px;
+right: 4px;
+background-color: rgba(0,0,0,0.4);
+border-radius: 0.375rem;
+gap: 4px;
+padding: 4px;
+}
+.appointment-card:hover .actions {
+display: flex;
+}
+
+/* --- Visão de Lista (Dia) - ALTERAÇÕES AQUI --- */
+.list-view-container {
+display: flex;
+flex-direction: column;
+gap: 0.75rem;
+/* ALTERAÇÃO: Padding reduzido para se ajustar à tela principal */
+padding: 0.5rem; 
+}
+.appointment-list-card {
+display: flex;
+align-items: center;
+background-color: #f9fafb;
+border-radius: 0.75rem; /* Arredondado */
+/* ALTERAÇÃO: Padding reduzido de 1rem para 0.75rem (p-3) */
+padding: 0.75rem;
+border-left-width: 4px;
+box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+transition: all 0.2s ease-in-out;
+cursor: pointer;
+}
+.appointment-list-card:hover {
+box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+transform: translateY(-4px);
+}
+.time-info {
+flex-shrink: 0;
+/* ALTERAÇÃO: Largura reduzida de 80px para 72px (w-18) */
+width: 72px;
+text-align: center;
+border-right: 1px solid #e5e7eb;
+/* ALTERAÇÃO: Espaçamento reduzido de 1rem para 0.75rem (pr-3, mr-3) */
+padding-right: 0.75rem;
+margin-right: 0.75rem;
+}
+.details-info {
+flex-grow: 1;
+}
+.status-info {
+display: flex;
+/* ALTERAÇÃO: Alterado para coluna e alinhado à direita */
+flex-direction: column;
+align-items: flex-end;
+gap: 0.5rem; /* Reduzido de 1rem */
+}
+.status-badge {
+padding: 0.25rem 0.75rem;
+border-radius: 9999px;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+font-weight: 500;
+}
+.card-actions {
+display: flex;
+gap: 0.5rem;
+}
+.action-btn {
+color: #6b7280; /* gray-500 */
+padding: 0.25rem;
+border-radius: 9999px;
+transition: background-color 0.2s, color 0.2s;
+}
+.action-btn:hover {
+background-color: #e5e7eb; /* gray-200 */
+color: #111827; /* gray-900 */
+}
+
+
+.current-time-line {
+position: absolute;
+left: -5px;
+right: 0;
+height: 2px;
+background-color: #ef4444;
+z-index: 20;
+}
+.current-time-line::before {
+content: '';
+position: absolute;
+left: 0;
+top: -4px;
+width: 10px;
+height: 10px;
+background-color: #ef4444;
+border-radius: 50%;
+}
+
+
+/* --- ESTILOS DO MODAL DE AGENDAMENTO --- */
+.time-slot-card {
+padding: 0.75rem;
+border: 1px solid #e5e7eb;
+border-radius: 0.5rem;
+text-align: center;
+cursor: pointer;
+transition: all 0.2s ease-in-out;
+}
+.time-slot-card:hover {
+background-color: #f3f4f6;
+}
+.time-slot-card.selected {
+background-color: #4f46e5;
+color: white;
+border-color: #4f46e5;
+font-weight: 600;
+}
+
+/* --- ESTILOS DA PÁGINA DE CLIENTES --- */
+.client-card {
+transition: transform 0.2s, box-shadow 0.2s;
+border-radius: 0.75rem; /* Arredondado */
+}
+.client-card:hover {
+transform: translateY(-4px);
+box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+.loyalty-progress-bar {
+background-color: #e5e7eb; /* gray-200 */
+}
+.loyalty-progress {
+transition: width 0.5s ease-in-out;
+}
+
+
+/* --- ESTILOS DIVERSOS DE PÁGINAS --- */
+.day-schedule-card.disabled .time-inputs {
+opacity: 0.5;
+pointer-events: none;
+}
+
+/* --- ESTILOS PARA A PÁGINA DE COMANDAS --- */
+.status-filter-btn {
+padding: 0.5rem 1rem;
+border-radius: 0.5rem; /* Arredondado */
+font-weight: 600;
+transition: all 0.2s ease-in-out;
+border: none;
+background-color: transparent;
+color: #4b5563; /* gray-600 */
+flex-grow: 1;
+text-align: center;
+}
+.status-filter-btn.active {
+background-color: white;
+color: #4f46e5; /* indigo-600 */
+box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.comanda-card.selected {
+background-color: #e0e7ff; /* indigo-100 */
+border-left-color: #4f46e5; /* indigo-600 */
+}
+
+.comanda-detail-header {
+padding-bottom: 1rem;
+margin-bottom: 1rem;
+border-bottom: 1px solid #e5e7eb;
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+}
+
+.comanda-detail-footer {
+margin-top: auto;
+padding-top: 1.5rem;
+border-top: 1px solid #e5e7eb;
+}
+
+.item-list {
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+
+.comanda-item {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.75rem;
+background-color: #f9fafb;
+border-radius: 0.5rem;
+}
+
+.remove-item-btn {
+background: none;
+border: none;
+color: #ef4444;
+font-size: 1.5rem;
+line-height: 1;
+cursor: pointer;
+transition: color 0.2s;
+}
+.remove-item-btn:hover {
+color: #b91c1c;
+}
+
+.action-btn-primary {
+padding: 0.625rem 1rem; /* Mais compacto */
+background-color: #4f46e5;
+color: white;
+font-weight: 600;
+border-radius: 0.5rem;
+border: none;
+cursor: pointer;
+transition: background-color 0.2s;
+}
+.action-btn-primary:hover {
+background-color: #4338ca;
+}
+.action-btn-primary:disabled {
+background-color: #a5b4fc;
+cursor: not-allowed;
+}
+
+.action-btn-secondary {
+padding: 0.625rem 1rem; /* Mais compacto */
+background-color: #f3f4f6;
+color: #1f2937;
+font-weight: 600;
+border-radius: 0.5rem;
+border: 1px solid #d1d5db;
+cursor: pointer;
+transition: background-color 0.2s;
+}
+.action-btn-secondary:hover {
+background-color: #e5e7eb;
+}
+
+.item-selection-container {
+max-height: 400px;
+overflow-y: auto;
+background-color: #f9fafb;
+border-radius: 0.5rem;
+padding: 0.5rem;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+
+.item-selection-card {
+width: 100%;
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.75rem;
+border-radius: 0.5rem; /* Arredondado */
+background-color: white;
+border: 1px solid #e5e7eb;
+text-align: left;
+cursor: pointer;
+transition: all 0.2s;
+}
+.item-selection-card:hover {
+background-color: #eff6ff;
+border-color: #3b82f6;
+}
+
+/* --- NOVOS ESTILOS PARA O SINO DE NOTIFICAÇÃO --- */
+.notification-badge {
+position: absolute;
+top: -4px;
+right: -4px;
+width: 20px;
+height: 20px;
+background-color: #ef4444; /* red-500 */
+color: white;
+border-radius: 9999px;
+display: flex;
+align-items: center;
+justify-content: center;
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+font-weight: bold;
+border: 2px solid white;
+}
+
+.notification-panel {
+position: absolute;
+top: 100%;
+right: 0;
+margin-top: 0.5rem;
+width: 280px; /* Reduzido de 320px */
+background-color: white;
+border-radius: 0.75rem; /* Arredondado */
+box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+border: 1px solid #e5e7eb;
+z-index: 50;
+}
+
+.notification-item {
+padding: 0.5rem 0.75rem; /* Reduzido de 0.75rem 1rem */
+border-bottom: 1px solid #f3f4f6;
+transition: background-color 0.2s;
+}
+.notification-item:hover {
+background-color: #f9fafb;
+}
+.notification-item.unread {
+background-color: #eff6ff; /* blue-50 */
+}
+
+/* --- NOVOS ESTILOS PARA O MENU DE PERFIL --- */
+#profileDropdown {
+    transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+    opacity: 0;
+    transform: translateY(-10px);
+    pointer-events: none;
+}
+
+#profileDropdown.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+/* ESTILO WHATSAPP */
+.text-whatsapp {
+    color: #25D366;
+}
+
+/* --- NOVOS ESTILOS PARA O FILTRO DE PROFISSIONAIS (Mobile-like) --- */
+.prof-selector-container {
+    overflow-x: auto; /* Permite rolagem horizontal */
+    white-space: nowrap; /* Impede quebra de linha */
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch; /* Melhora a rolagem em iOS */
+    scrollbar-width: none; /* Esconde a barra de rolagem no Firefox */
+    position: relative; /* Para posicionar o campo de busca */
+}
+.prof-selector-container::-webkit-scrollbar {
+    display: none; /* Esconde a barra de rolagem no Chrome/Safari */
+}
+
+.prof-card {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    margin-right: 0.1200rem; /* <-- CORREÇÃO: Reduzido em ~15% (de 0.75rem para 0.625rem) */
+    cursor: pointer;
+    padding: 4px;
+    transition: all 0.2s ease-in-out;
+    border-radius: 9999px;
+    position: relative;
+    user-select: none;
+    vertical-align: top; /* Esta é a correção de alinhamento da última vez */
+}
+
+.prof-card-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 9999px;
+    object-fit: cover;
+    border: 3px solid transparent;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.prof-card.selected .prof-card-photo {
+    /* Usa a cor principal do sistema (indigo-600) para o anel de seleção */
+    border-color: var(--theme-main, #4f46e5);
+    box-shadow: 0 0 0 2px var(--theme-main, #4f46e5);
+}
+
+.prof-card-name {
+/* --- MODIFICAÇÃO: Aumento da fonte --- */
+font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+    font-weight: 600;
+    color: #4b5563; /* gray-600 */
+    white-space: nowrap;
+    margin-top: 4px;
+}
+
+.prof-card-all-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 9999px;
+    background-color: #e0e7ff; /* indigo-100 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4f46e5; /* indigo-600 */
+    border: 3px solid transparent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Garante que o campo de busca fique bem visível acima da barra de rolagem */
+.prof-search-bar {
+    padding: 0.5rem 0;
+}
+/*
+* Adiciona variáveis CSS para o tema dinâmico para ser usado pelo JavaScript.
+* O JS deve definir --theme-main
+*/
+body {
+    --theme-main: #4f46e5; /* Padrão: indigo-600 */
+}
+
+/* --- NOVOS ESTILOS PARA O MODAL DE PROFISSIONAL --- */
+
+/* Overlay do Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Container do Modal */
+.modal-container {
+    background-color: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 800px; /* Aumentado para mais espaço */
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+}
+
+/* Cabeçalho do Modal */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Abas de Navegação */
+.modal-tabs {
+    display: flex;
+    padding: 0 16px; /* Reduzido para mais abas caberem */
+    border-bottom: 1px solid #eee;
+    background-color: #f9fafb;
+}
+
+.tab-link {
+    background: none;
+    border: none;
+    padding: 12px 16px;
+    cursor: pointer;
+    /* --- MODIFICAÇÃO: Padronização de unidade --- */
+    font-size: 0.9rem; /* Alterado de 0.9em para 0.9rem (12.6px) */
+    font-weight: 600;
+    color: #555;
+    border-bottom: 3px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.tab-link.active {
+    color: #4f46e5; /* Cor principal do tema */
+    border-bottom-color: #4f46e5;
+}
+
+/* Corpo do Modal */
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    background-color: #f9fafb; /* Fundo levemente cinza */
+}
+
+.tab-content.hidden {
+    display: none;
+}
+
+/* Rodapé do Modal */
+.modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-top: 1px solid #eee;
+    background-color: #f9f9f9;
+}
+
+/* Estilo para o Card de Profissional na lista principal */
+.professional-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.professional-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+}
+
+/* --- NOVOS ESTILOS PARA FORMULÁRIO MODERNO --- */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem; /* Espaçamento entre os campos */
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    margin-bottom: 6px; /* Espaço entre o label e o campo */
+    font-size: 0.875rem; /* 14px */
+    font-weight: 500;
+    color: #4b5563; /* gray-600 */
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db; /* gray-300 */
+    border-radius: 8px; /* Mais arredondado */
+    font-size: 1rem; /* 16px */
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background-color: #fff;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #4f46e5; /* indigo-600 */
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+.form-group select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+/* --- NOVO: ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
+
+/* Largura da sidebar ativa: 16.56rem */
+.main-content-shift {
+    margin-left: 16.56rem; 
+    transition: margin-left 0.3s ease-in-out;
+    
+    /* DOCUMENTAÇÃO (CSS) - CORREÇÃO PRINCIPAL:
+     - A linha 'padding-top: 4rem;' foi REMOVIDA daqui.
+     - O layout do seu HTML (header e main) flui normalmente,
+       pelo que este padding-top não era necessário e quebrava o layout.
+     */
+}
+
+/* Largura da sidebar colapsada: 4.5rem */
+.main-content-shift.sidebar-collapsed-shift {
+    margin-left: 4.5rem;
+}
+
+/* --- NOVOS ESTILOS PARA OCULTAR A BARRA DE ROLAGEM DA SIDEBAR --- */
+#sidebar {
+    /* ... (outras regras de sidebar) ... */
+    /* Regras do Firefox */
+    scrollbar-width: none;
+}
+
+/* Regras do Chrome, Edge e Safari */
+#sidebar::-webkit-scrollbar {
+    display: none;
+}
+
+
+/* #################################################################### */
+/* ### INÍCIO DA MODIFICAÇÃO: REMOÇÃO DO CSS DA LOGO ANTIGA ### */
+/* #################################################################### */
+
+/* As regras CSS abaixo, que forçavam a logo a ser 5rem x 5rem,
+   foram REMOVIDAS para permitir que a logo retangular 'logo_kairos.png'
+   seja exibida corretamente com as classes do Tailwind (h-10 w-auto). */
+
+/* #sidebar:not(.collapsed) #panelLogoContainer,
+#sidebar:not(.collapsed) #panelEstablishmentLogo {
+    height: 5rem; 
+    width: 5rem;  
+    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
+}
+
+#sidebar.collapsed #panelLogoContainer,
+#sidebar.collapsed #panelEstablishmentLogo {
+    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
+}
+*/
+/* #################################################################### */
+/* ### FIM DA MODIFICAÇÃO ### */
+/* #################################################################### */
+
+
+/* --- INÍCIO DA NOVA SEÇÃO: ESTILOS PARA O MENU MOBILE (OVERLAY) --- */
+@media (max-width: 767px) { 
+
+    /* 1. Esconde o botão de toggle original do desktop */
+    #sidebarToggle {
+        display: none;
+    }
+
+    /* 2. Remove o "empurrão" do conteúdo principal */
+    .main-content-shift {
+        margin-left: 0 !important;
+    }
+    
+    .main-content-shift.sidebar-collapsed-shift {
+        margin-left: 0 !important;
+    }
+
+    /* 3. Transforma a sidebar num overlay fixo */
+    #sidebar {
+        position: fixed; /* Fica por cima de tudo */
+        top: 0;
+        left: 0;
+        height: 100vh; /* Altura total */
+        z-index: 40; /* Acima do conteúdo, abaixo do overlay */
+        
+        /* Começa escondida fora do ecrã */
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        
+        /* Garante que não está colapsada no modo mobile */
+        width: 16.56rem !important;
+    }
+    
+    #sidebar.collapsed {
+        /* Remove o estado colapsado no mobile */
+        width: 16.56rem !important;
+    }
+    
+    #sidebar.collapsed .sidebar-text {
+        display: block; /* Garante que o texto aparece */
+    }
+    #sidebar.collapsed .sidebar-link {
+        justify-content: flex-start; /* Alinhamento normal */
+    }
+    #sidebar.collapsed .sidebar-link svg {
+        margin-right: 0.75rem; /* Margem normal */
+    }
+
+
+    /* 4. Estado "Aberto" da sidebar no mobile */
+    #sidebar.mobile-open {
+        transform: translateX(0); /* Move para dentro do ecrã */
+    }
+
+    /* 5. Mostra o overlay quando o menu está aberto */
+    #mobile-overlay.visible {
+        display: block;
+        z-index: 39; /* Fica atrás da sidebar */
+    }
+}
+/* --- FIM DA NOVA SEÇÃO --- */
+
+
+/* --- NOVO: ESTILOS PARA A PÁGINA DE COMANDAS (Mobile-First) --- */
+/* O container principal terá 'overflow-x: hidden' para permitir a transição */
+#comandas-layout {
+    display: flex;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Em desktop (lg), volta ao grid normal */
+@media (min-width: 1024px) {
+    #comandas-layout {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2rem; /* gap-8 */
+    }
+
+    #comandas-list-column {
+        grid-column: span 1 / span 1;
+    }
+
+    #comanda-detail-container {
+        grid-column: span 2 / span 2;
+    }
+}
+
+/* Em mobile (até lg) */
+@media (max-width: 1023px) {
+    #comandas-layout {
+        flex-direction: row;
+        width: 100%;
+    }
+
+    /* Ambas as colunas terão 100% da largura e transição */
+    #comandas-list-column,
+    #comanda-detail-container {
+        width: 100%;
+        flex-shrink: 0;
+        transition: transform 0.3s ease-in-out;
+    }
+
+    /* Por defeito, a lista está visível e o detalhe está fora do ecrã à direita */
+    #comandas-list-column {
+        transform: translateX(0);
+    }
+    #comanda-detail-container {
+        transform: translateX(100%);
+        /* Garante que o detalhe não está 'display: none' para a animação funcionar */
+        display: flex; 
+    }
+    
+    /* Quando a classe 'detail-view-active' é adicionada ao layout: */
+    
+    /* 1. A Lista desliza para a esquerda */
+    #comandas-layout.detail-view-active #comandas-list-column {
+        transform: translateX(-100%);
+    }
+
+    /* 2. O Detalhe desliza para o centro */
+    #comandas-layout.detail-view-active #comanda-detail-container {
+        transform: translateX(-100%); /* Move 100% para a esquerda (da sua posição original de +100%) */
+    }
+}
+
+/* ============================================== */
+/* == CSS para o Bottom Sheet de Filtros Mobile == */
+/* ============================================== */
+
+/* O "sheet" (menu) que desliza de baixo */
+#filter-sheet {
+    transform: translateY(100%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 40; /* Acima do overlay, abaixo do modal principal */
+}
+#filter-sheet.show {
+    transform: translateY(0);
+}
+
+/* O fundo escuro que cobre a página */
+#filter-overlay {
+    z-index: 39;
+}
+
+/* Ajustes para os botões de filtro dentro do sheet mobile */
+#mobile-filter-list .client-filter-btn,
+#mobile-filter-list .flex.items-center.gap-2 {
+    width: 100%;
+    justify-content: start; /* Alinha o texto à esquerda */
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+#mobile-filter-list .flex.items-center.gap-2 {
+    flex-direction: column; /* Empilha o select abaixo do botão */
+    align-items: flex-start;
+}
+
+#mobile-filter-list .flex.items-center.gap-2 select {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* ============================================== */
+/* == CSS para a Página de Usuários (Mobile) == */
+/* ============================================== */
+
+/* --- (NOVO) ESTILOS PARA CARD DE USUÁRIO CLICÁVEL --- */
+.user-card-clickable {
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+.user-card-clickable:hover {
+     transform: translateY(-4px);
+     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+}
+
+/* * Impede que os botões internos tenham um "hover" duplo,
+ * mas re-ativa o hover para o botão de excluir.
+*/
+.user-card-clickable:hover .action-btn-delete:hover {
+     background-color: #fee2e2; /* red-100 */
+     color: #ef4444; /* red-500 */
+}
+
+
+/* --- (NOVO) ESTILOS PARA O BOTÃO FLUTUANTE (FAB) --- */
+#fab-new-user {
+    position: fixed;
+    bottom: 1.5rem;  /* 24px */
+    right: 1.5rem;   /* 24px */
+    z-index: 30;     /* Acima do conteúdo, abaixo dos modals */
+    width: 3.5rem;   /* 56px */
+    height: 3.5rem;  /* 56px */
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+    border-radius: 9999px; /* rounded-full */
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s ease-in-out, background-color 0.2s ease-in-out;
+}
+#fab-new-user:hover {
+    transform: scale(1.05);
+    background-color: #4338ca; /* indigo-700 */
+}
+
+/* ============================================== */
+/* == CSS para a Página de Configurações (Mobile) == */
+/* ============================================== */
+
+/* --- (REMOVIDO) O seletor de abas mobile foi removido --- */
+
+/* --- (NOVO) ESTILO PARA A GRELHA DE PRÉMIOS DE FIDELIDADE --- */
+.loyalty-tier-row {
+    /* No mobile, é um card */
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background-color: #f9fafb;
+}
+
+.loyalty-tier-row input {
+    width: 100%;
+}
+
+/* No desktop (md e acima), volta à grelha horizontal */
+@media (min-width: 768px) {
+    .loyalty-tier-row {
+        grid-template-columns: 1fr 2fr 1fr auto;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        background-color: transparent;
+    }
+}
