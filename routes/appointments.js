@@ -464,7 +464,8 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
             // --- INÍCIO DAS ESCRITAS ---
             
             // ESCRITA 1: Atualização de nome do cliente
-            if (clientRef && clientDoc.exists() && clientDoc.data().name !== clientName) {
+            // (CORREÇÃO: Removido '()' de .exists para sintaxe v9)
+            if (clientRef && clientDoc.exists && clientDoc.data().name !== clientName) { 
                 transaction.update(clientRef, { name: clientName });
             }
 
@@ -487,7 +488,8 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
 
             if (redeemedReward && !oldAppointmentData.redeemedReward) {
                 if (!loyaltyModuleEnabled) throw new Error("O programa de fidelidade não está ativo.");
-                if (!clientRef || !clientDoc.exists()) throw new Error("Cliente não encontrado para resgate de pontos.");
+                // (CORREÇÃO: Removido '()' de .exists para sintaxe v9)
+                if (!clientRef || !clientDoc.exists) throw new Error("Cliente não encontrado para resgate de pontos.");
                 
                 const currentPoints = clientDoc.data().loyaltyPoints || 0;
                 if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes para resgatar este prémio.");
@@ -860,7 +862,8 @@ router.post('/:appointmentId/reopen', verifyToken, hasAccess, async (req, res) =
             }
 
             // ESCRITA 4: Atualizar o agendamento
-section.update(appointmentRef, {
+            // (CORREÇÃO: Corrigido o erro de digitação de 'section' para 'transaction')
+            transaction.update(appointmentRef, { 
                 status: 'confirmed',
                 transaction: admin.firestore.FieldValue.delete(),
                 redeemedReward: admin.firestore.FieldValue.delete(),
@@ -902,7 +905,7 @@ router.patch('/:appointmentId/status', verifyToken, hasAccess, async (req, res) 
 
     if (!status) {
         return res.status(400).json({ message: 'O novo status é obrigatório.' });
-A   }
+    }
 
     try {
         const { db } = req;
