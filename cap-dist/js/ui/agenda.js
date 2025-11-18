@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado com Pré-carregamento + Correção de Scroll)
+// js/ui/agenda.js (Otimizado com Pré-carregamento + Correção de Scroll + Fix Bloqueios)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -396,10 +396,33 @@ async function fetchAndDisplayAgenda() {
             localState.selectedProfessionalId
         );
         
+        // --- INÍCIO DA CORREÇÃO: Preencher nome do profissional nos bloqueios ---
+        // Como a API de bloqueios pode não retornar o nome (apenas ID), 
+        // buscamos o nome na lista de profissionais carregada localmente.
+        const enrichedBlockages = blockagesData.map(b => {
+            let profName = b.professionalName;
+            
+            if (!profName && b.professionalId) {
+                // Tenta encontrar o profissional no estado global (cache)
+                // state.professionals já foi carregado pelo populateFilters
+                const prof = state.professionals ? state.professionals.find(p => p.id === b.professionalId) : null;
+                if (prof) {
+                    profName = prof.name;
+                }
+            }
+            
+            return { 
+                ...b, 
+                type: 'blockage',
+                professionalName: profName || 'Não identificado' 
+            };
+        });
+        // --- FIM DA CORREÇÃO ---
+        
         // Combina agendamentos e bloqueios numa única lista de eventos
         const allEvents = [
             ...appointmentsData.map(a => ({ ...a, type: 'appointment' })),
-            ...blockagesData.map(b => ({ ...b, type: 'blockage' }))
+            ...enrichedBlockages // Usa a lista enriquecida
         ];
         
         state.allEvents = allEvents; // Armazena a lista combinada no estado global
@@ -1329,10 +1352,8 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
     // ################## INÍCIO DA CORREÇÃO DE LAYOUT ##################
     contentDiv.innerHTML = `
         <section>
-            <!-- NOVO CARD UNIFICADO: Contém Data/Visão E Filtro de Profissional -->
             <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
                 
-                <!-- Parte 1: Controles de Data e Visão -->
                 <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-4 gap-4">
                     <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
                     <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
@@ -1353,10 +1374,8 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                     </div>
                 </div>
                 
-                <!-- Divisor Fino -->
                 <div class="border-t border-gray-200 -mx-4 mb-4"></div>
 
-                <!-- Parte 2: Filtro de Profissionais (Removido o bg-white, etc.) -->
                 <div>
                      <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
                          <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm">
@@ -1369,17 +1388,12 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                          </label>
                      </div>
                      
-                     <!-- ########## INÍCIO DA CORREÇÃO ########## -->
-                     <!-- A classe 'flex' foi REMOVIDA daqui para permitir o scroll horizontal -->
                      <div id="profSelectorContainer" class="prof-selector-container mt-2">
-                     <!-- ########## FIM DA CORREÇÃO ########## -->
-                         <div class="loader mx-auto"></div>
+                     <div class="loader mx-auto"></div>
                      </div>
                 </div>
 
-            </div> <!-- Fim do NOVO CARD UNIFICADO -->
-            
-            <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
+            </div> <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
             
             <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">

@@ -1182,3 +1182,57 @@ body {
         background-color: transparent;
     }
 }
+/* ============================================================ */
+/* === CORREÇÃO DE ÁREA SEGURA (SAFE AREA / NOTCH MOBILE) === */
+/* ============================================================ */
+
+:root {
+    /* Define uma variável global que pega o valor da área segura do dispositivo.
+       Se não houver notch (desktop), o valor será 0px. */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+/* 1. Ajuste do Cabeçalho (Header) Principal */
+/* Aplica-se ao <header> que está dentro do flex container */
+header {
+    /* Adiciona a área segura ao padding superior existente (que era p-4 ou 1rem) */
+    padding-top: calc(1rem + var(--safe-area-top)) !important;
+    
+    /* Garante que a altura do header cresça para acomodar a barra */
+    height: auto;
+}
+
+/* 2. Ajustes Específicos para Mobile (Sidebar e Modais) */
+@media (max-width: 767px) {
+
+    /* Sidebar (Menu Lateral) */
+    /* Como a sidebar é 'fixed', ela precisa de padding extra no topo */
+    #sidebar {
+        padding-top: var(--safe-area-top);
+    }
+
+    /* Modais (Telas Flutuantes) */
+    /* Garante que o fundo escuro do modal comece abaixo da barra de status
+       ou que o conteúdo não cole no topo */
+    .modal {
+        padding-top: var(--safe-area-top);
+    }
+    
+    /* Ajuste fino para o conteúdo do modal não ficar colado no topo se for longo */
+    .modal-content {
+        /* Garante que o modal nunca ultrapasse a altura segura da tela */
+        max-height: calc(100vh - var(--safe-area-top) - 2rem);
+    }
+
+    /* Ajuste para o Bottom Sheet (Filtros Mobile) */
+    /* Se você tiver elementos fixos no topo dentro do sheet */
+    #filter-sheet {
+        padding-top: var(--safe-area-top);
+    }
+    
+    /* Ajuste para Toasts (Notificações) */
+    /* Se as notificações aparecerem no topo (futuramente), elas respeitarão a margem */
+    #toast-container {
+        /* Se decidir mudar para o topo: top: calc(1.25rem + var(--safe-area-top)); */
+    }
+}

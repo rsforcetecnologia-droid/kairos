@@ -1,18 +1,22 @@
 import { auth } from '../firebase-config.js';
 
 /**
+ * Serviço centralizado para chamadas à API, com autenticação e tratamento
  * de erros de rede e respostas não bem-sucedidas (como 404 ou 500).
  */
 
-// --- CONFIGURAÇÃO DA URL DA API ---
-// ATENÇÃO: Alterne entre as duas linhas abaixo dependendo do ambiente.
+// --- CONFIGURAÇÃO DA URL DA API (AJUSTADO) ---
+// Esta lógica deteta se está a correr localmente ou em produção.
+let API_BASE_URL;
 
-// 1. PARA PRODUÇÃO (quando for publicar o app)
-// const API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
-
-// 2. PARA TESTE LOCAL (desenvolvimento na sua rede Wi-Fi)
-// Lembre-se de usar o IP correto do seu computador (onde o 'node index.js' está rodando)
-const API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    // AMBIENTE LOCAL: Aponta para o seu PC na porta 3001
+    API_BASE_URL = 'http://localhost:3001';
+    console.log('🔧 Ambiente de Desenvolvimento (Localhost) detectado. API:', API_BASE_URL);
+} else {
+    // PRODUÇÃO: Aponta para o Cloud Run
+    API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
+}
 // --- FIM DA CONFIGURAÇÃO ---
 
 
@@ -21,8 +25,6 @@ async function getAuthHeaders() {
     const user = auth.currentUser;
     if (!user) {
         // Se não houver utilizador, redireciona para a página de login.
-        // Em um app Capacitor, isso pode não funcionar como esperado,
-        // o app principal (React/index.html) deve lidar com o estado de login.
         console.warn("Usuário não logado, tentando redirecionar para /login");
         window.location.href = '/login';
         return null;
@@ -36,7 +38,6 @@ async function getAuthHeaders() {
 
 /**
  * Realiza uma requisição 'fetch' autenticada para um endpoint da nossa API.
- * (...)
  */
 export async function authenticatedFetch(endpoint, options = {}) {
     const headers = await getAuthHeaders();
@@ -60,7 +61,6 @@ export async function authenticatedFetch(endpoint, options = {}) {
             // Tenta extrair uma mensagem de erro do corpo da resposta, senão usa o status text.
             const errorData = await response.json().catch(() => ({ message: response.statusText }));
             
-            // --- INÍCIO DA MODIFICAÇÃO ---
             const errorMessage = errorData.message || `Erro na API: ${response.status}`;
             
             // Verifica se é o erro específico de "Índice Faltando" do Firestore
@@ -87,7 +87,6 @@ Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índi
                     "color: #663300; font-size: 12px;"
                 );
             }
-            // --- FIM DA MODIFICAÇÃO ---
 
             console.error(`Erro na API (${response.status}) em ${fullUrl}:`, errorMessage);
             throw new Error(errorMessage);
@@ -100,9 +99,8 @@ Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índi
         // Este 'catch' pega erros de rede (ex: ERR_CONNECTION_REFUSED)
         console.error(`Falha de rede ao tentar acessar ${fullUrl}:`, error.message);
         
-        // Esta é a mensagem de erro que você viu na imagem original!
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique se o servidor está rodando e se o IP está correto.`);
+             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique se o servidor está rodando (npm start) e se o endereço está correto.`);
         }
         throw error; // Lança o erro original se for outro tipo
     }

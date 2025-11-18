@@ -471,8 +471,16 @@ export async function loadUsersPage() {
         contentDiv.removeEventListener('change', usersPageChangeListener);
     }
 
-    // (MODIFICADO) O listener agora procura por qualquer [data-action]
+    // --- (MODIFICADO) O listener principal com a correção de "Ghost Click" ---
     usersPageClickListener = async (e) => {
+        
+        // 1. CHECK DE SEGURANÇA: Se não estamos na página de usuários, ignora e remove o listener.
+        // Verificamos se o elemento container principal desta página existe no DOM.
+        if (!document.getElementById('user-list-view')) {
+            contentDiv.removeEventListener('click', usersPageClickListener);
+            return;
+        }
+
         const actionElement = e.target.closest('[data-action]');
         if (!actionElement) return;
 
@@ -507,6 +515,12 @@ export async function loadUsersPage() {
     };
 
     usersPageChangeListener = async (e) => {
+        // CHECK DE SEGURANÇA TAMBÉM AQUI
+        if (!document.getElementById('user-list-view')) {
+            contentDiv.removeEventListener('change', usersPageChangeListener);
+            return;
+        }
+
         const toggle = e.target.closest('input[data-action="toggle-user-status"]');
         if (e.target.id === 'showInactiveUsersToggle') {
             filterAndRenderUsers();

@@ -1,14 +1,14 @@
 // js/ui/my-profile.js
 
 import * as professionalsApi from '../api/professionals.js';
-import * as schedulesApi from '../api/schedules.js'; // API de bloqueios
+import * as blockagesApi from '../api/blockages.js'; // CORREÇÃO: Usar a API padrão de bloqueios
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
 
 const contentDiv = document.getElementById('content');
 
-let currentUserProfessionalData = null; // Para armazenar os dados do profissional associado
+let currentUserProfessionalData = null; 
 
 export async function loadMyProfilePage() {
     contentDiv.innerHTML = `
@@ -48,18 +48,15 @@ export async function loadMyProfilePage() {
 
 async function renderProfessionalSection() {
     const professionalAgendaBlock = document.getElementById('professional-agenda-block');
-    professionalAgendaBlock.innerHTML = ''; // Limpa o loader
+    professionalAgendaBlock.innerHTML = ''; 
 
     try {
-        // Busca o ID do profissional associado ao usuário logado (definido no main.js)
         const professionalId = state.userProfessionalId;
 
         if (professionalId) {
-            // Busca os detalhes completos do profissional
             const professional = await professionalsApi.getProfessional(professionalId);
             currentUserProfessionalData = professional;
 
-            // Atualiza a foto do avatar se o profissional tiver uma
             if (professional.photo) {
                 document.getElementById('user-profile-avatar').src = professional.photo;
             }
@@ -150,7 +147,6 @@ function setupBlockForm(professionalId) {
             return;
         }
 
-        // Converte para strings ISO para enviar ao backend
         const startDateTime = new Date(`${blockDate}T${blockStartTime}:00`);
         const endDateTime = new Date(`${blockDate}T${blockEndTime}:00`);
 
@@ -159,20 +155,18 @@ function setupBlockForm(professionalId) {
         saveButton.textContent = 'A bloquear...';
 
         try {
-            // *** CORREÇÃO APLICADA AQUI ***
-            // A API de bloqueios (routes/blockages.js) espera o establishmentId
-            await schedulesApi.blockProfessionalSchedule({
-                establishmentId: state.establishmentId, // <-- ESTA LINHA É A CORREÇÃO
+            // CORREÇÃO: Usando blockagesApi em vez de schedulesApi
+            await blockagesApi.createBlockage({
+                establishmentId: state.establishmentId, 
                 professionalId: professionalId,
                 reason: blockReason || 'Bloqueado (Meu Perfil)',
                 startTime: startDateTime.toISOString(),
                 endTime: endDateTime.toISOString()
             });
-            // *** FIM DA CORREÇÃO ***
 
             showNotification('Sucesso', 'Agenda bloqueada com sucesso!', 'success');
             form.reset();
-            loadMyBlocks(professionalId); // Recarrega a lista de bloqueios
+            loadMyBlocks(professionalId); 
         } catch (error) {
             console.error("Erro ao bloquear agenda:", error);
             showNotification('Erro', `Não foi possível bloquear a agenda: ${error.message}`, 'error');
@@ -188,21 +182,28 @@ async function loadMyBlocks(professionalId) {
     blocksListContainer.innerHTML = '<p class="text-gray-500">A carregar bloqueios...</p>';
 
     try {
-        // A API (js/api/schedules.js) já está correta e busca por professionalId
-        const blocks = await schedulesApi.getProfessionalBlocks(professionalId);
+        const today = new Date().toISOString();
+        const nextYear = new Date();
+        nextYear.setFullYear(nextYear.getFullYear() + 1);
+
+        // CORREÇÃO: Usando a mesma busca padronizada de blockages.js
+        const blocks = await blockagesApi.getBlockagesByDateRange(
+            state.establishmentId,
+            today,
+            nextYear.toISOString(),
+            professionalId
+        );
         
-        // Filtra para garantir que são apenas deste profissional (embora a API já deva fazer isso)
-        // e que são futuros
         const now = new Date();
+        // A API blockages.js já retorna datas em formato ISO String
         const futureBlocks = blocks
             .map(block => ({
                 ...block,
-                // Converte Timestamps do Firestore (se vierem como objeto) para Datas
-                startTime: new Date(block.startTime._seconds * 1000 + (block.startTime._nanoseconds || 0) / 1000000),
-                endTime: new Date(block.endTime._seconds * 1000 + (block.endTime._nanoseconds || 0) / 1000000)
+                startTime: new Date(block.startTime),
+                endTime: new Date(block.endTime)
             }))
-            .filter(block => block.endTime > now);
-
+            .filter(block => block.endTime > now)
+            .sort((a, b) => a.startTime - b.startTime); // Ordena por data
 
         if (futureBlocks.length > 0) {
             blocksListContainer.innerHTML = futureBlocks.map(block => {
@@ -227,10 +228,8 @@ async function loadMyBlocks(professionalId) {
                     const blockId = e.currentTarget.dataset.blockId;
                     if (confirm('Tem certeza que deseja remover este bloqueio?')) {
                         try {
-                            // *** CORREÇÃO APLICADA AQUI ***
-                            // A API de remoção só precisa do blockId.
-                            await schedulesApi.removeProfessionalBlock(blockId);
-                            // *** FIM DA CORREÇÃO ***
+                            // CORREÇÃO: Usando blockagesApi para deletar
+                            await blockagesApi.deleteBlockage(blockId);
                             
                             showNotification('Sucesso', 'Bloqueio removido.', 'success');
                             loadMyBlocks(professionalId);
