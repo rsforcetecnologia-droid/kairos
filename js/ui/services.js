@@ -204,7 +204,7 @@ function openServiceModal(service = null) {
     ).join('');
 
     modal.innerHTML = `
-    <div class="modal-content max-w-3xl overflow-y-auto max-h-screen">
+    <div class="modal-content max-w-3xl overflow-y-auto max-h-[85vh] my-auto">
         <form id="serviceForm">
             <input type="hidden" id="serviceId" value="${service?.id || ''}">
             <input type="hidden" id="servicePhotoBase64" value="${service?.photo || ''}">
@@ -494,12 +494,9 @@ function renderServicesList() {
 
             // ALTERAÇÃO: O innerHTML foi reestruturado para ser responsivo (lista em mobile, card em desktop)
             card.innerHTML = `
-                <!-- Imagem: pequena na esquerda (mobile), grande no topo (desktop) -->
                 <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
                 
-                <!-- Conteúdo Principal -->
                 <div class="p-3 flex flex-col flex-grow justify-between w-full">
-                    <!-- Topo: Nome e Toggle -->
                     <div class="flex justify-between items-start mb-1">
                         <h3 class="text-sm font-bold text-gray-900 flex-1 text-left truncate pr-2">${service.name}</h3>
                         <label class="flex items-center cursor-pointer ml-2" data-action-stop-propagation="true">
@@ -510,17 +507,13 @@ function renderServicesList() {
                         </label>
                     </div>
 
-                    <!-- Meio: Preço (esconde em mobile, mostra em desktop) -->
                     <p class="text-xl font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${service.price.toFixed(2)}</p>
 
-                    <!-- Rodapé: Duração e Preço (mobile) / Categoria e Duração (desktop) -->
                     <div>
-                        <!-- Info Desktop: Categoria e Duração (visível em sm e acima) -->
                         <div class="hidden sm:block">
                             <p class="text-xs text-gray-500 text-left mb-1 truncate">Categoria: ${categoryName}</p>
                             <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
                         </div>
-                        <!-- Info Mobile: Preço e Duração (visível apenas em mobile) -->
                         <div class="flex justify-between items-center sm:hidden mt-2">
                             <p class="text-lg font-bold text-indigo-600 text-left">R$ ${service.price.toFixed(2)}</p>
                             <p class="text-xs text-gray-500 text-right">${service.duration} min</p>
@@ -575,8 +568,6 @@ function renderServiceIndicators() {
 function renderServicesView() {
     const container = document.getElementById('services-content-container');
     container.innerHTML = `
-        <!-- ALTERAÇÃO: Botão "Novo Serviço" foi REMOVIDO daqui -->
-
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
             <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full sm:w-64 p-2 border rounded-md shadow-sm">
             <select id="serviceCategoryFilter" class="w-full sm:w-auto p-2 border rounded-md bg-white shadow-sm">
@@ -607,7 +598,6 @@ function renderServicesView() {
             <div class="loader col-span-full mx-auto my-10"></div>
         </div>
         
-        <!-- ALTERAÇÃO: Botão de Ação Flutuante (FAB) "Novo Serviço" adicionado -->
         <button data-action="new-service" class="fixed z-30 bottom-20 right-6 sm:bottom-8 sm:right-8 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
         </button>

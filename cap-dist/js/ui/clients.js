@@ -255,10 +255,13 @@ function renderHistoryTab(history, type) {
                 <h4 class="font-semibold text-lg mb-2">${title}</h4>
                 ${filteredHistory.map(item => {
                     const isHistoric = new Date(item.date) < today; // Se for histórico (gasto já aconteceu)
+                    
+                    // ALTERAÇÃO: Adicionado o data-appointment-date no botão para permitir a navegação
                     return `
                         <div class="bg-gray-50 p-3 rounded-lg cursor-pointer flex justify-between items-center ${isHistoric ? 'hover:bg-indigo-50' : ''}"
                             data-action="${isHistoric ? 'open-comanda-from-history' : 'view-appointment'}" 
-                            data-appointment-id="${item.id}"> 
+                            data-appointment-id="${item.id}"
+                            data-appointment-date="${item.date}"> 
                             
                             <div>
                                 <p class="font-semibold text-gray-800">${item.serviceName}</p>
@@ -349,7 +352,19 @@ function openClientDetailModal(client) {
                 </div>
             
             <footer class="p-4 bg-gray-50 border-t flex justify-between items-center flex-shrink-0">
-                ${isEditing ? `<button type="button" id="deleteClientBtn" data-action="delete-client" class="py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Excluir Cliente</button>` : '<div></div>'}
+                
+                <button 
+                    type="button" 
+                    id="deleteClientBtn" 
+                    data-action="delete-client" 
+                    class="text-red-600 hover:text-red-800 transition-colors ${isEditing ? '' : 'hidden'}"
+                    title="Excluir Cliente"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+
                 <div class="flex gap-3">
                     <button type="button" id="cancelDetailViewBtn" data-action="close-detail-view" class="py-2 px-4 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
                     <button type="submit" form="client-form" data-action="save-client" class="py-2 px-4 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600">Salvar</button>
@@ -369,18 +384,80 @@ function openClientDetailModal(client) {
         maxWidth: modalMaxWidth
     });
     
-    // (NOVO) Se for mobile, força o modal a ter 100% de altura/sem bordas
+    // (NOVO) Se for mobile, ajusta a altura para 85vh para não invadir a notificação
     if (isMobile) {
         const modalElement = document.getElementById('genericModal');
         if (modalElement) {
-            // Encontra a "caixa" do modal (assumindo que é o div com a classe maxWidth)
             const modalBox = modalElement.querySelector(`.${modalMaxWidth.replace(':', '\\:')}`);
             if (modalBox) {
-                modalBox.style.height = '100vh'; // Ocupa a altura toda
-                modalBox.style.maxHeight = '100vh';
-                modalBox.style.borderRadius = '0'; // Remove bordas arredondadas
+                modalBox.style.height = 'auto'; // Altura automática baseada no conteúdo
+                modalBox.style.maxHeight = '85vh'; // Limita a 85% da tela
+                modalBox.style.borderRadius = '1rem'; // Mantém as bordas arredondadas
             }
         }
+    }
+
+    // --- CORREÇÃO: Adicionar listener ao modal para capturar cliques nos botões dinâmicos ---
+    const modalElement = document.getElementById('genericModal');
+    if (modalElement) {
+        modalElement.addEventListener('click', async (e) => {
+            const actionTarget = e.target.closest('[data-action]');
+            if (!actionTarget) return;
+
+            const action = actionTarget.dataset.action;
+
+            switch (action) {
+                case 'redeem-reward': {
+                    const points = parseInt(actionTarget.dataset.points, 10);
+                    const reward = actionTarget.dataset.reward;
+                    const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
+                    if (confirmed) {
+                        try {
+                            await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
+                            showNotification('Prémio resgatado com sucesso!', 'success');
+                            // Recarrega os dados do cliente e a aba de fidelidade
+                            const updatedClients = await clientsApi.getClients(state.establishmentId);
+                            allClientsData = updatedClients;
+                            const updatedClient = allClientsData.find(c => c.id === currentClient.id);
+                            if(updatedClient) currentClient = updatedClient;
+                            renderDetailContent('fidelidade');
+                        } catch (error) {
+                            showNotification(`Erro ao resgatar: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
+                }
+                case 'open-comanda-from-history': { // <-- NOVO: Abre Comanda do Histórico
+                    const apptId = actionTarget.dataset.appointmentId;
+                    if (apptId) {
+                        // 1. Fechat o modal de clientes
+                        document.getElementById('genericModal').style.display = 'none';
+                        
+                        // 2. Navega para a seção Comandas, passando o ID e o filtro 'finalizada'
+                        navigateTo('comandas-section', { 
+                            selectedAppointmentId: apptId, 
+                            initialFilter: 'finalizada'
+                        });
+                    }
+                    break;
+                }
+                case 'view-appointment': { // <-- NOVO: Redireciona para a Agenda
+                    const apptId = actionTarget.dataset.appointmentId;
+                    const apptDate = actionTarget.dataset.appointmentDate;
+                    if (apptId && apptDate) {
+                         // 1. Fechat o modal de clientes
+                        document.getElementById('genericModal').style.display = 'none';
+                        
+                        // 2. Navega para a Agenda, passando a data e o ID para scroll
+                        navigateTo('agenda-section', { 
+                            targetDate: apptDate,
+                            scrollToAppointmentId: apptId
+                        });
+                    }
+                    break;
+                }
+            }
+        });
     }
     
     // Renderiza o conteúdo inicial (Cadastro)
@@ -845,9 +922,8 @@ export async function loadClientsPage() {
         ]);
         allClientsData = clients;
         loyaltySettings = establishmentData.loyaltyProgram || { enabled: false };
-        establishmentName = establishmentData.name || 'O Estabelecimento'; // NOVO: Salva o nome do estabelecimento.
+        establishmentName = establishmentData.name || 'O Estabelecimento'; 
         
-        // Aplica o filtro inicial
         const initialFiltered = getFilteredClients('', activeFilterKey);
         renderClientListWithFilters(initialFiltered, allClientsData.length);
 
@@ -855,15 +931,11 @@ export async function loadClientsPage() {
         document.getElementById('clientsList').innerHTML = '<p class="text-red-500 col-span-full text-center">Erro ao carregar dados dos clientes.</p>';
     }
 
-    // --- (NOVA) LÓGICA DO BOTTOM SHEET E FILTROS ---
-    
-    // Referências aos elementos do sheet
     const filterSheet = document.getElementById('filter-sheet');
     const filterOverlay = document.getElementById('filter-overlay');
     const openFilterBtn = document.getElementById('openFilterSheetBtn');
     const closeFilterBtn = document.getElementById('closeFilterSheetBtn');
 
-    // Funções para abrir/fechar
     const openSheet = () => {
         filterSheet.classList.add('show');
         filterOverlay.classList.remove('hidden');
@@ -873,34 +945,28 @@ export async function loadClientsPage() {
         filterOverlay.classList.add('hidden');
     };
 
-    // Listeners para abrir/fechar
     if(openFilterBtn) openFilterBtn.addEventListener('click', openSheet);
     if(closeFilterBtn) closeFilterBtn.addEventListener('click', closeSheet);
     if(filterOverlay) filterOverlay.addEventListener('click', closeSheet);
 
-    // (NOVO) Handler de clique genérico para filtros
     const filterClickHandler = (e) => {
         const filterBtn = e.target.closest('.client-filter-btn');
         if (filterBtn) {
             handleFilterClick(filterBtn.dataset.filterKey);
-            // Fecha o sheet se estiver em mobile
             if (window.innerWidth < 768) closeSheet();
         }
     };
 
-    // (MODIFICADO) Anexa o handler aos DOIS containers de filtro
     const desktopFilterBar = document.getElementById('desktop-filter-bar');
     const mobileFilterList = document.getElementById('mobile-filter-list');
     
     if (desktopFilterBar) desktopFilterBar.addEventListener('click', filterClickHandler);
     if (mobileFilterList) mobileFilterList.addEventListener('click', filterClickHandler);
 
-    // (NOVO) Função para configurar listeners de selects (para ambos os menus)
     const setupSelectListener = (selectId) => {
         const select = document.getElementById(selectId);
         if (select) {
             select.addEventListener('change', () => {
-                // Se o filtro relevante (aniversário ou inativo) estiver ativo, refiltra
                 if (activeFilterKey === 'birthdays' || activeFilterKey === 'inactive') {
                     const searchTerm = document.getElementById('clientSearchInput').value;
                     const filtered = getFilteredClients(searchTerm, activeFilterKey);
@@ -910,17 +976,11 @@ export async function loadClientsPage() {
         }
     };
 
-    // (MODIFICADO) Configura os listeners para os 4 selects
     setupSelectListener('birthMonthFilter');
     setupSelectListener('mobileBirthMonthFilter');
     setupSelectListener('inactiveDaysFilter');
     setupSelectListener('mobileInactiveDaysFilter');
 
-    // --- (FIM DA NOVA LÓGICA) ---
-
-
-    // --- GESTOR DE EVENTOS GLOBAL DA PÁGINA (Original, mas modificado) ---
-    
     contentDiv.addEventListener('click', async (e) => {
         const actionTarget = e.target.closest('[data-action]');
         const cardTarget = e.target.closest('.client-card');
@@ -940,51 +1000,9 @@ export async function loadClientsPage() {
                     openClientDetailModal(client);
                 }
             }
-        } else if (currentView === 'detail') {
-            if (actionTarget) {
-                const action = actionTarget.dataset.action;
-                switch (action) {
-                    case 'save-client':
-                        // O submit do formulário já chama handleSaveClient
-                        break;
-                    case 'redeem-reward':
-                        const points = parseInt(actionTarget.dataset.points, 10);
-                        const reward = actionTarget.dataset.reward;
-                        const confirmed = await showConfirmation('Confirmar Resgate', `Deseja resgatar "${reward}" por ${points} pontos?`);
-                        if (confirmed) {
-                            try {
-                                await clientsApi.redeemReward(state.establishmentId, currentClient.name, currentClient.phone, { points, reward });
-                                showNotification('Prémio resgatado com sucesso!', 'success');
-                                // Recarrega os dados do cliente e a aba de fidelidade
-                                const updatedClients = await clientsApi.getClients(state.establishmentId);
-                                allClientsData = updatedClients;
-                                const updatedClient = allClientsData.find(c => c.id === currentClient.id);
-                                if(updatedClient) currentClient = updatedClient;
-                                renderDetailContent('fidelidade');
-                            } catch (error) {
-                                showNotification(`Erro ao resgatar: ${error.message}`, 'error');
-                            }
-                        }
-                        break;
-                    case 'open-comanda-from-history': { // <-- NOVO: Abre Comanda do Histórico
-                        const apptId = actionTarget.dataset.appointmentId;
-                        if (apptId) {
-                            // 1. Fechat o modal de clientes
-                            document.getElementById('genericModal').style.display = 'none';
-                            
-                            // 2. Navega para a seção Comandas, passando o ID e o filtro 'finalizada'
-                            navigateTo('comandas-section', { 
-                                selectedAppointmentId: apptId, 
-                                initialFilter: 'finalizada'
-                            });
-                        }
-                        break;
-                    }
-                }
-            }
         }
+        // A lógica de 'detail' foi movida para dentro do listener do próprio modal em openClientDetailModal
     });
-
 
     contentDiv.addEventListener('input', (e) => {
         if (e.target.id === 'clientSearchInput') {

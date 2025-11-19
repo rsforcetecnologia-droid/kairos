@@ -22,7 +22,6 @@ function renderSkeletonList(count = 8) {
     for (let i = 0; i < count; i++) {
         skeletonHTML += `
         <div class="bg-white rounded-lg shadow-md flex items-center gap-4 p-3 overflow-hidden animate-pulse sm:flex-col sm:items-stretch sm:p-0 sm:gap-0">
-            <!-- Foto (Mobile: Circle | Desktop: Rect) -->
             <div class="w-16 h-16 rounded-full bg-gray-200 flex-shrink-0 sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg"></div>
             <div class="flex-1 space-y-3 sm:p-4">
                 <div class="h-4 bg-gray-200 rounded w-3/4"></div>
@@ -94,8 +93,7 @@ async function openProfessionalModal(professional) {
     const professionals = state.professionals || await professionalsApi.getProfessionals(state.establishmentId);
 
     const modalHTML = `
-        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> <!-- CORREÇÃO: max-h-[90vh] para rolagem -->
-            <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
+        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
                 <h2 class="text-2xl font-bold text-gray-800">${prof.name}</h2>
                 <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </div>
@@ -103,19 +101,27 @@ async function openProfessionalModal(professional) {
                 <button class="tab-link active" data-tab="cadastro">Cadastro</button>
                 <button class="tab-link" data-tab="jornada">Jornada</button>
                 <button class="tab-link" data-tab="bloqueios">Bloqueios</button>
-                <!-- REMOVIDO: Aba Comissões -->
-            </div>
-            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> <!-- Removido max-h-65vh -->
-                <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
+                </div>
+            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
                 <div id="jornada" class="tab-content hidden"></div>
                 <div id="bloqueios" class="tab-content hidden"></div>
-                <!-- REMOVIDO: Conteúdo da Aba Comissões -->
-            </div>
+                </div>
             <div class="modal-footer px-6 py-4 bg-gray-100 flex justify-between items-center">
-                <button data-action="delete-professional" data-id="${prof.id}" class="text-red-600 font-semibold hover:text-red-800 ${prof.id ? '' : 'hidden'}">Excluir Profissional</button>
+                
+                <button 
+                    type="button" 
+                    data-action="delete-professional" 
+                    data-id="${prof.id || ''}" 
+                    class="text-red-600 hover:text-red-800 transition-colors ${prof.id ? '' : 'hidden'}" 
+                    title="Excluir Profissional"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+
                 <div>
                     <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 mr-2">Cancelar</button>
-                    <!-- CORREÇÃO: type="button" e data-action="save-professional" -->
                     <button type="button" data-action="save-professional" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
                 </div>
             </div>
@@ -610,7 +616,6 @@ export async function loadProfessionalsPage() {
     contentDiv.innerHTML = `
         <section id="professional-list-view" class="p-4 sm:p-6">
             <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                <!-- MELHORIA UX: Barra de filtros 'sticky' (fixa) -->
                 <div class="sticky top-0 z-10 bg-white pt-2 pb-4 mb-6 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 px-4 sm:px-6 rounded-t-lg border-b border-gray-200">
                     <h2 class="text-2xl font-bold text-gray-800 mb-4">Sua Equipe</h2>
                     <div class="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -633,11 +638,9 @@ export async function loadProfessionalsPage() {
                 </div>
 
                 <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-20">
-                    <!-- Skeletons de carregamento ou lista de dados -->
-                </div>
+                    </div>
             </div>
             
-            <!-- MELHORIA UX: Botão de Ação Flutuante (FAB) "Novo Profissional" -->
             <button data-action="open-professional-modal" data-professional="{}" class="fixed z-30 bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-105">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
