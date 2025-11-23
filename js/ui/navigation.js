@@ -131,6 +131,23 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
         });
     }
 
+    // --- NOVO: GESTOS (SWIPE) PARA FECHAR MENU NO MOBILE ---
+    // Permite fechar arrastando para a esquerda
+    let touchStartX = 0;
+    
+    sidebar.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    sidebar.addEventListener('touchend', (e) => {
+        const touchEndX = e.changedTouches[0].screenX;
+        // Se arrastou mais de 50px da direita para esquerda
+        if (touchStartX - touchEndX > 50) {
+            closeMobileMenu();
+        }
+    }, { passive: true });
+    // -------------------------------------------------------
+
     // 6. Lógica de Links da Sidebar (Permissões e Navegação)
     sidebarLinks.forEach(link => {
         const targetId = link.getAttribute('data-target');

@@ -5,18 +5,12 @@ import { auth } from '../firebase-config.js';
  * de erros de rede e respostas não bem-sucedidas (como 404 ou 500).
  */
 
-// --- CONFIGURAÇÃO DA URL DA API (AJUSTADO) ---
-// Esta lógica deteta se está a correr localmente ou em produção.
-let API_BASE_URL;
+// --- CONFIGURAÇÃO DA URL DA API (AJUSTADO PARA PRODUÇÃO) ---
+// Definimos diretamente a URL de produção para garantir que o Android 
+// se conecte ao servidor na nuvem e não tente buscar localhost internamente.
+const API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
 
-if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // AMBIENTE LOCAL: Aponta para o seu PC na porta 3001
-    API_BASE_URL = 'http://localhost:3001';
-    console.log('🔧 Ambiente de Desenvolvimento (Localhost) detectado. API:', API_BASE_URL);
-} else {
-    // PRODUÇÃO: Aponta para o Cloud Run
-    API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
-}
+console.log('🚀 API configurada para Produção:', API_BASE_URL);
 // --- FIM DA CONFIGURAÇÃO ---
 
 
@@ -100,7 +94,7 @@ Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índi
         console.error(`Falha de rede ao tentar acessar ${fullUrl}:`, error.message);
         
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique se o servidor está rodando (npm start) e se o endereço está correto.`);
+             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique sua conexão com a internet.`);
         }
         throw error; // Lança o erro original se for outro tipo
     }

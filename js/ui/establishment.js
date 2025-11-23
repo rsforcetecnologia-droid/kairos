@@ -5,13 +5,13 @@ import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
-// (MODIFICADO) 'updateEmail' foi trocado por 'verifyBeforeUpdateEmail'
 import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
-// (NOVO) Importa a navegação
 import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
+
+// Temas do Painel (Sistema)
 const colorThemes = {
     indigo: { name: 'Padrão (Índigo)', main: '#4f46e5', light: '#e0e7ff', text: '#ffffff' },
     rose: { name: 'Rosa', main: '#e11d48', light: '#ffe4e6', text: '#ffffff' },
@@ -20,7 +20,6 @@ const colorThemes = {
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
 
-// (MODIFICADO) Menu de itens (definido globalmente para ser acessível por todas as funções)
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
@@ -73,7 +72,7 @@ async function handleSave(formData, event) {
         const existingData = establishmentData || await establishmentApi.getEstablishmentDetails(state.establishmentId);
         const updatePromises = [];
         
-        const { ownerName, ...firestoreData } = formData; // Separa ownerName
+        const { ownerName, ...firestoreData } = formData;
 
         if (ownerName && ownerName !== state.userName) {
              const user = auth.currentUser;
@@ -121,49 +120,41 @@ function renderPersonalDataSection(data, container) {
                 <button type="submit" form="personal-data-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
             </div>
             <form id="personal-data-form" class="space-y-4">
-                
                 <div>
                     <label for="ownerName" class="block text-sm font-medium text-gray-700">Seu nome (Dono)</label>
                     <input type="text" id="ownerName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${state.userName || ''}">
                 </div>
-                
                 <div>
                     <label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome do Salão ou Barbearia</label>
                     <input type="text" id="establishmentName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.name || ''}">
                 </div>
-                
                 <div>
                     <label for="establishmentPhone" class="block text-sm font-medium text-gray-700">Telefone Principal</label>
                     <input type="tel" id="establishmentPhone" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.phone || ''}">
                 </div>
-                
                 <div>
                     <label for="establishmentCnpjCpf" class="block text-sm font-medium text-gray-700">CNPJ / CPF</label>
                     <input type="text" id="establishmentCnpjCpf" value="${data.document || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
-                
                 <div>
                     <label for="establishmentEmail" class="block text-sm font-medium text-gray-700">E-mail de Contato</label>
                     <input type="email" id="establishmentEmail" value="${data.email || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
-                
                 <div>
                     <label for="establishmentAddress" class="block text-sm font-medium text-gray-700">Endereço Completo</label>
                     <input type="text" id="establishmentAddress" value="${data.address || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
-                
                 <div>
                     <label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label>
                     <input type="url" id="establishmentWebsite" value="${data.website || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
-                
             </form>
         </div>
     `;
     container.querySelector('#personal-data-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
-            ownerName: container.querySelector('#ownerName').value, // Novo campo
+            ownerName: container.querySelector('#ownerName').value,
             name: container.querySelector('#establishmentName').value,
             phone: container.querySelector('#establishmentPhone').value,
             document: container.querySelector('#establishmentCnpjCpf').value,
@@ -202,7 +193,7 @@ function renderChangePasswordSection(data, container) {
             showNotification('Erro', 'As senhas não coincidem.', 'error');
             return;
         }
-        const saveButton = container.querySelector('button[form="change-password-form"]'); // CORREÇÃO
+        const saveButton = container.querySelector('button[form="change-password-form"]');
         saveButton.disabled = true;
         saveButton.textContent = 'A Salvar...';
         try {
@@ -223,7 +214,6 @@ function renderChangePasswordSection(data, container) {
     });
 }
 
-// (FUNÇÃO MODIFICADA)
 function renderChangeEmailSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
@@ -245,7 +235,6 @@ function renderChangeEmailSection(data, container) {
         </div>
     `;
     
-    // Este é o código que faz o botão "Salvar Novo E-mail" funcionar
     container.querySelector('#change-email-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const newEmail = container.querySelector('#newEmail').value;
@@ -256,11 +245,7 @@ function renderChangeEmailSection(data, container) {
             return;
         }
 
-        // *** AQUI ESTÁ A CORREÇÃO ***
-        // O botão está no 'container', não no 'e.target' (que é o form)
         const saveButton = container.querySelector('button[form="change-email-form"]');
-        // ***************************
-        
         saveButton.disabled = true;
         saveButton.textContent = 'A verificar...';
 
@@ -268,20 +253,15 @@ function renderChangeEmailSection(data, container) {
             const user = auth.currentUser;
             if (!user) throw new Error("Usuário não autenticado.");
 
-            // 1. Reautenticar o usuário com a senha atual
             const credential = EmailAuthProvider.credential(user.email, currentPassword);
             await reauthenticateWithCredential(user, credential);
 
-            // 2. (MODIFICADO) Chamar 'verifyBeforeUpdateEmail'
             saveButton.textContent = 'A enviar link...';
-            await verifyBeforeUpdateEmail(user, newEmail); // <-- ESTA É A MUDANÇA
+            await verifyBeforeUpdateEmail(user, newEmail); 
 
-            // 3. Atualizar o e-mail no Firestore (backend) - Chama o Arquivo 2
-            // Isso é feito imediatamente para que o app saiba qual e-mail esperar
             saveButton.textContent = 'A atualizar BD...';
             await establishmentApi.updateOwnerEmail(state.establishmentId, newEmail);
 
-            // 4. (MODIFICADO) Mensagem de sucesso
             showNotification('Sucesso', 'Link de verificação enviado! Por favor, verifique seu **novo e-mail** para confirmar a alteração.', 'success');
             e.target.reset();
 
@@ -314,7 +294,9 @@ function renderBrandingSection(data, container) {
             </div>
             <form id="branding-form" class="space-y-8">
                 <input type="hidden" id="establishmentLogoBase64">
+                <input type="hidden" id="establishmentBackgroundImageBase64">
                 <input type="hidden" id="establishmentThemeColor">
+                
                 <div class="flex flex-col md:flex-row items-center gap-6">
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Logotipo</label>
@@ -326,21 +308,64 @@ function renderBrandingSection(data, container) {
                         <p class="text-xs text-gray-500 mt-2">Recomendado: PNG com fundo transparente.</p>
                     </div>
                 </div>
-                <div>
-                    <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
-                    <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida." value="${data.welcomeMessage || ''}">
-                    <p class="text-xs text-gray-500 mt-1">Esta mensagem aparece abaixo do nome na página de agendamento do cliente.</p>
+
+                <div class="border-t pt-4 mt-4">
+                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Personalização do Link de Agendamento</h4>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700">Imagem de Fundo</label>
+                        <div class="mt-2 flex items-center gap-4">
+                            <div class="h-32 w-20 bg-gray-100 border rounded-lg overflow-hidden relative group">
+                                 <img id="establishmentBgPreview" src="${data.backgroundImage || ''}" class="w-full h-full object-cover ${!data.backgroundImage ? 'hidden' : ''}">
+                                 <div id="establishmentBgPlaceholder" class="${data.backgroundImage ? 'hidden' : 'flex'} w-full h-full items-center justify-center text-gray-400 text-xs text-center p-1">Sem Imagem</div>
+                            </div>
+                            <div class="flex-grow">
+                                <input type="file" id="establishmentBgInput" class="hidden" accept="image/*">
+                                <button type="button" id="establishmentBgButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Carregar Imagem</button>
+                                <button type="button" id="establishmentBgRemoveBtn" class="ml-2 text-red-600 text-sm hover:underline">Remover</button>
+                                <p class="text-xs text-gray-500 mt-2">Aparecerá no fundo do agendamento online.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cor Principal (Botões/Ícones)</label>
+                            <div class="flex items-center gap-3">
+                                <input type="color" id="establishmentPrimaryColorInput" value="${data.primaryColor || data.themeColor || '#4f46e5'}" class="h-10 w-20 p-1 rounded border border-gray-300 cursor-pointer">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cor do Texto (Nome/Mensagem)</label>
+                            <div class="flex items-center gap-3">
+                                <input type="color" id="establishmentTextColorInput" value="${data.textColor || '#111827'}" class="h-10 w-20 p-1 rounded border border-gray-300 cursor-pointer">
+                                <span class="text-xs text-gray-500">Ajuste para melhorar a leitura sobre a imagem.</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
+                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida." value="${data.welcomeMessage || ''}">
+                    </div>
                 </div>
-                <div>
-                    <h4 class="text-md font-semibold text-gray-800 mb-2">Tema e Cores</h4>
-                    <p class="text-sm text-gray-600 mb-4">Escolha a cor principal da sua marca.</p>
+
+                <div class="border-t pt-4 mt-4">
+                    <h4 class="text-lg font-semibold text-gray-800 mb-2">Tema do Painel (Sistema)</h4>
+                    <p class="text-sm text-gray-600 mb-4">Escolha a cor dos menus e botões do <strong>seu</strong> painel de gestão.</p>
                     <div id="color-palette-container" class="flex flex-wrap gap-4"></div>
                 </div>
             </form>
         </div>
     `;
+    
     container.querySelector('#establishmentLogoBase64').value = data.logo || '';
-    renderColorPalette(data.themeColor || 'indigo', container); // Passa o container
+    container.querySelector('#establishmentBackgroundImageBase64').value = data.backgroundImage || '';
+
+    renderColorPalette(data.themeColor || 'indigo', container);
+
+    // Listeners de Imagens
     container.querySelector('#establishmentLogoButton').onclick = () => container.querySelector('#establishmentLogoInput').click();
     container.querySelector('#establishmentLogoInput').onchange = (e) => {
         const file = e.target.files[0];
@@ -353,29 +378,52 @@ function renderBrandingSection(data, container) {
             reader.readAsDataURL(file);
         }
     };
+
+    container.querySelector('#establishmentBgButton').onclick = () => container.querySelector('#establishmentBgInput').click();
+    container.querySelector('#establishmentBgInput').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                container.querySelector('#establishmentBgPreview').src = ev.target.result;
+                container.querySelector('#establishmentBgPreview').classList.remove('hidden');
+                container.querySelector('#establishmentBgPlaceholder').classList.add('hidden');
+                container.querySelector('#establishmentBackgroundImageBase64').value = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+    container.querySelector('#establishmentBgRemoveBtn').onclick = () => {
+        container.querySelector('#establishmentBgPreview').src = '';
+        container.querySelector('#establishmentBgPreview').classList.add('hidden');
+        container.querySelector('#establishmentBgPlaceholder').classList.remove('hidden');
+        container.querySelector('#establishmentBackgroundImageBase64').value = '';
+    };
+
     container.querySelector('#branding-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const formData = {
             logo: container.querySelector('#establishmentLogoBase64').value,
             welcomeMessage: container.querySelector('#establishmentWelcomeMessage').value,
-            themeColor: container.querySelector('#establishmentThemeColor').value
+            backgroundImage: container.querySelector('#establishmentBackgroundImageBase64').value,
+            primaryColor: container.querySelector('#establishmentPrimaryColorInput').value,
+            textColor: container.querySelector('#establishmentTextColorInput').value, // (NOVO)
+            themeColor: container.querySelector('#establishmentThemeColor').value 
         };
         handleSave(formData, e);
     });
 }
 
 function renderBookingSection(data, container) {
-    // 1. Gera o link de agendamento público
     const bookingLink = `${window.location.origin}/agendar?id=${state.establishmentId}`;
     
-    // 2. Verifica o estado atual do toggle
     const isChecked = data.publicBookingEnabled || false;
     const toggleText = isChecked ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
     const statusColor = isChecked ? "text-green-600" : "text-red-600";
 
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md space-y-8">
-            
             <div>
                 <div class="flex justify-between items-center mb-6 border-b pb-4">
                     <h3 class="text-xl font-bold text-gray-800">Link Público de Agendamento</h3>
@@ -434,25 +482,20 @@ function renderBookingSection(data, container) {
         </div>
     `;
 
-    // 3. Adiciona listeners para a nova funcionalidade
-    
-    // Listener para o botão de Copiar (COM FALLBACK)
     container.querySelector('#copyBookingLinkBtn').addEventListener('click', () => {
         const linkInput = container.querySelector('#publicBookingLink');
         
         if (navigator.clipboard && window.isSecureContext) {
-            // Método Moderno (HTTPS/Localhost)
             navigator.clipboard.writeText(linkInput.value).then(() => {
                 showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
             }).catch(err => {
                 showNotification('Erro', 'Não foi possível copiar o link.', 'error');
             });
         } else {
-            // Método Antigo (Fallback for HTTP e contextos não seguros)
             try {
-                linkInput.select(); // Seleciona o texto no input
-                document.execCommand('copy'); // Tenta copiar
-                linkInput.blur(); // Remove a seleção
+                linkInput.select(); 
+                document.execCommand('copy'); 
+                linkInput.blur(); 
                 showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
             } catch (err) {
                 showNotification('Erro', 'Não foi possível copiar o link. Por favor, copie manualmente.', 'error');
@@ -460,12 +503,10 @@ function renderBookingSection(data, container) {
         }
     });
 
-    // Listener para o Toggle de Ativar/Desativar
     container.querySelector('#publicBookingToggle').addEventListener('change', async (e) => {
         const isEnabled = e.target.checked;
         const statusTextEl = container.querySelector('#publicBookingStatusText');
         
-        // Atualiza a UI imediatamente
         if (isEnabled) {
             statusTextEl.textContent = "Agendamento Online ATIVO";
             statusTextEl.className = "text-sm font-semibold text-green-600";
@@ -474,15 +515,13 @@ function renderBookingSection(data, container) {
             statusTextEl.className = "text-sm font-semibold text-red-600";
         }
         
-        // Salva no backend
         try {
-            e.target.disabled = true; // Desabilita o toggle enquanto salva
+            e.target.disabled = true; 
             await establishmentApi.updatePublicBookingStatus(state.establishmentId, isEnabled);
-            establishmentData.publicBookingEnabled = isEnabled; // Atualiza o cache local
+            establishmentData.publicBookingEnabled = isEnabled; 
             showNotification('Sucesso', `Agendamento online ${isEnabled ? 'ativado' : 'desativado'}!`, 'success');
         } catch (error) {
             showNotification('Erro', `Não foi possível alterar o status: ${error.message}`, 'error');
-            // Reverte a UI em caso de erro
             e.target.checked = !isEnabled;
              if (!isEnabled) {
                 statusTextEl.textContent = "Agendamento Online INATIVO";
@@ -492,17 +531,14 @@ function renderBookingSection(data, container) {
                 statusTextEl.className = "text-sm font-semibold text-green-600";
             }
         } finally {
-            e.target.disabled = false; // Reabilita o toggle
+            e.target.disabled = false; 
         }
     });
 
-    // 4. Mantém a lógica original da secção (Intervalo de Horários)
-    renderSlotIntervalSelector(data.slotInterval || 30, container); // Passa o container
+    renderSlotIntervalSelector(data.slotInterval || 30, container); 
     
     container.querySelector('#booking-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        // Este formulário agora salva APENAS o slotInterval.
-        // O toggle de status salva-se a si mesmo.
         const formData = {
             slotInterval: parseInt(container.querySelector('#establishmentSlotInterval').value, 10)
         };
@@ -615,11 +651,9 @@ function renderLoyaltySection(data, container) {
     container.querySelector('#loyaltyPointsPerCurrency').value = loyaltyProgram.pointsPerCurrency || 10;
     const tiersContainer = container.querySelector('#loyaltyTiersContainer');
     
-    // (NOVO) Função para criar uma linha (card) de prémio
     const createTierRow = (tier = {}) => {
         const newTier = document.createElement('div');
-        // (MODIFICADO) Classes responsivas para a grelha
-        newTier.className = 'loyalty-tier-row'; // A classe CSS fará o resto
+        newTier.className = 'loyalty-tier-row'; 
         newTier.innerHTML = `
             <div>
                 <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Pontos</label>
@@ -638,12 +672,10 @@ function renderLoyaltySection(data, container) {
         return newTier;
     };
     
-    // Renderiza prémios existentes
     (loyaltyProgram.tiers || []).forEach(tier => {
         tiersContainer.appendChild(createTierRow(tier));
     });
     
-    // Adiciona novo prémio
     container.querySelector('#add-loyalty-tier').addEventListener('click', () => {
         tiersContainer.appendChild(createTierRow());
     });
@@ -732,8 +764,7 @@ function renderPlaceholderSection(title, container) {
     `;
 }
 
-// --- Funções Auxiliares ---
-
+// Renderizador da Paleta (RESTAURADO E EXPANDIDO)
 function renderColorPalette(currentThemeKey = 'indigo', container) {
     const paletteContainer = container.querySelector('#color-palette-container');
     const themeInput = container.querySelector('#establishmentThemeColor');
@@ -752,7 +783,7 @@ function renderColorPalette(currentThemeKey = 'indigo', container) {
         `;
         swatch.addEventListener('click', () => {
             themeInput.value = key;
-            renderColorPalette(key, container); // Passa o container recursivamente
+            renderColorPalette(key, container); // Re-renderiza para atualizar a seleção visual
         });
         paletteContainer.appendChild(swatch);
     });
@@ -794,7 +825,6 @@ function renderSlotIntervalSelector(currentValue, container) {
 
 // --- 2. FUNÇÃO PRINCIPAL E NAVEGAÇÃO ---
 
-// (NOVA) Função para renderizar a tela de "Detalhe" (o formulário)
 async function showSettingsDetailView(sectionId) {
     const menuItem = menuItems.find(item => item.id === sectionId);
     if (!menuItem) {
@@ -802,7 +832,6 @@ async function showSettingsDetailView(sectionId) {
         return;
     }
 
-    // Renderiza a estrutura da página de detalhe
     contentDiv.innerHTML = `
         <div class="bg-white p-4 shadow-md sticky top-0 z-10 md:relative">
             <button data-action="back-to-list" class="flex items-center gap-2 font-semibold text-indigo-600 hover:text-indigo-800">
@@ -816,20 +845,17 @@ async function showSettingsDetailView(sectionId) {
         </div>
     `;
 
-    // Adiciona o listener para o botão "Voltar"
     contentDiv.querySelector('button[data-action="back-to-list"]').addEventListener('click', (e) => {
         e.preventDefault();
-        loadEstablishmentPage(); // Volta para a lista
+        loadEstablishmentPage(); 
     });
 
-    // Pega o novo container de conteúdo
     const detailContainer = document.getElementById('settings-content-detail');
 
-    // (MODIFICADO) Chama a função de renderização específica para preencher o container
     switch (sectionId) {
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
-        case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; // <-- LINHA ADICIONADA
+        case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; 
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
@@ -840,10 +866,7 @@ async function showSettingsDetailView(sectionId) {
     }
 }
 
-// (MODIFICADO) Esta função agora renderiza a "Lista Mestra"
 export async function loadEstablishmentPage() {
-    
-    // (MODIFICADO) Mostra um loader na página inteira
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -854,7 +877,6 @@ export async function loadEstablishmentPage() {
         <div class="flex justify-center items-center h-64"><div class="loader"></div></div>
     `;
 
-    // (MODIFICADO) Busca os dados apenas uma vez e armazena na variável global
     if (!establishmentData) {
         try {
             establishmentData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
@@ -865,12 +887,9 @@ export async function loadEstablishmentPage() {
         }
     }
 
-    // --- INÍCIO DA CORREÇÃO (Card de Perfil) ---
-    // 1. Define o nome de fallback (se state.userName for null, usa o email)
     const displayName = state.userName || auth.currentUser.email;
     const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
 
-    // (NOVO) Renderiza a "Lista Mestra"
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -911,7 +930,6 @@ export async function loadEstablishmentPage() {
         </div>
     `;
 
-    // (NOVO) Adiciona o listener para a lista mestre
     contentDiv.querySelector('#settings-menu-list').addEventListener('click', (e) => {
         const button = e.target.closest('button[data-section]');
         if (button) {
@@ -920,14 +938,11 @@ export async function loadEstablishmentPage() {
         }
     });
 
-    // (NOVO) Adiciona o listener para o card de perfil
     const profileCard = contentDiv.querySelector('[data-action="go-to-my-profile"]');
     if (profileCard) {
         profileCard.addEventListener('click', (e) => {
             e.preventDefault();
-            // A função navigateTo é importada de js/main.js
             navigateTo('my-profile-section');
         });
     }
-    // --- FIM DA CORREÇÃO (Card de Perfil) ---
 }

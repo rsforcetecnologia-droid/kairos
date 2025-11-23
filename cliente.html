@@ -2,215 +2,263 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Agendamento Online</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
+            /* Cores Padrão (serão sobrescritas pelo JS se houver personalização) */
             --theme-main: #4f46e5;
-            --theme-light: #eff6ff;
-            --theme-dark: #3730a3;
-            --theme-text: white;
+            --theme-contrast: #ffffff;
+            --content-text-color: #111827; /* Cor escura padrão para textos */
         }
+        
         body {
             font-family: 'Inter', sans-serif;
-            scroll-behavior: smooth;
+            background-color: #f3f4f6;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
         }
-        /* Classes que utilizam as variáveis de tema */
-        .theme-bg-main { background-color: var(--theme-main); }
-        .theme-bg-light { background-color: var(--theme-light); }
-        .theme-text-main { color: var(--theme-main); }
-        .theme-text-contrast { color: var(--theme-text); }
-        .theme-border-main { border-color: var(--theme-main); }
-        .hover\:theme-bg-dark:hover { background-color: var(--theme-dark); }
 
-        .service-card.selected {
+        /* Classes Utilitárias de Tema */
+        .theme-bg { background-color: var(--theme-main); color: var(--theme-contrast); }
+        .theme-text { color: var(--theme-main); }
+        .theme-border { border-color: var(--theme-main); }
+        .theme-ring:focus { --tw-ring-color: var(--theme-main); }
+        
+        /* Classe para a Cor do Texto Personalizada (Nome do Salão) */
+        .custom-text-color { color: var(--content-text-color); }
+
+        /* Painel de Vidro (Conteúdo Principal) - Fundo claro translúcido */
+        .glass-panel {
+            background-color: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        }
+        
+        /* Painel de Vidro Escuro (Barra Superior) - Contraste para o logo */
+        .glass-panel-dark {
+            background-color: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Transições e Interações */
+        .service-card, .professional-card, .time-slot-btn { transition: all 0.2s ease; }
+        
+        .service-card.selected, .professional-card.selected {
             border-color: var(--theme-main);
-            background-color: var(--theme-light);
-            transform: scale(1.02);
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            background-color: #f8fafc;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        .professional-card.selected {
-            border-color: var(--theme-main);
-            transform: scale(1.02);
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        
+        .service-card.selected .check-icon, .professional-card.selected .check-icon { 
+            opacity: 1; 
+            transform: scale(1); 
         }
-        .time-slot-selected {
-            background-color: var(--theme-main);
-            color: var(--theme-text);
-            font-weight: 600;
+        
+        .time-slot-selected { 
+            background-color: var(--theme-main) !important; 
+            color: var(--theme-contrast) !important; 
+            font-weight: 600; 
+            transform: scale(1.05); 
         }
-        @keyframes fadeIn {
-            from { opacity: 0; } to { opacity: 1; }
-        }
-        .fade-in {
-            animation: fadeIn 0.3s ease-out forwards;
-        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
         .hidden { display: none; }
     </style>
 </head>
-<body class="bg-gray-100">
+<body class="antialiased text-gray-800">
 
-    <div class="w-full bg-gray-900 bg-opacity-70 shadow-md">
-        <div class="container mx-auto max-w-2xl p-4 flex justify-between items-center">
-            
-            <a href="/landing.html" target="_blank" class="flex items-center gap-2 opacity-130 hover:opacity-200 transition-opacity">
-                <img src="images/logo_kairos.png" alt="Kairos Logo" class="h-9 w-auto">
-                <span class="text-white text-xs font-medium hidden sm:inline"></span>
+    <div class="fixed top-0 left-0 right-0 z-40 px-4 py-3">
+        <div class="glass-panel-dark rounded-full px-4 py-2 flex justify-between items-center max-w-2xl mx-auto">
+             <a href="/landing.html" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                <img src="images/logo_kairos.png" alt="Kairos" class="h-6 w-auto opacity-90">
             </a>
             
-            <button id="myAppointmentsBtn" class="flex items-center gap-2 text-sm font-semibold text-white opacity-80 hover:opacity-100 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            <button id="myAppointmentsBtn" class="text-xs font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>Meus Agendamentos</span>
+                Meus Agendamentos
             </button>
         </div>
     </div>
-    <div id="booking-view">
-        <div class="container mx-auto max-w-2xl p-4">
-            
-            <header class="mt-6"> 
-                <div class="flex flex-col items-center">
-                     <div class="flex items-center justify-center gap-3">
-                         <div id="logo-container" class="h-16 w-16 rounded-full bg-gray-200 animate-pulse border-2 border-white shadow-md">
-                            <img id="establishmentLogo" src="" alt="Logotipo do Estabelecimento" class="h-full w-full rounded-full object-cover opacity-0 transition-opacity duration-300">
-                        </div>
-                        <h1 id="establishmentName" class="text-3xl font-extrabold text-gray-900 tracking-tight">
-                            <div class="h-10 bg-gray-200 rounded-md w-64 animate-pulse"></div>
-                        </h1>
-                    </div>
-                    <p id="establishmentWelcomeMessage" class="text-base text-gray-600 mt-2">
-                        <div class="h-5 bg-gray-200 rounded-md w-48 animate-pulse"></div>
-                    </p>
+
+    <div id="booking-view" class="pt-20 pb-10 px-3 min-h-screen flex flex-col items-center justify-start">
+        
+        <header class="w-full max-w-lg mb-6 text-center fade-in"> 
+            <div class="relative inline-block mb-3">
+                <div id="logo-container" class="h-20 w-20 rounded-full bg-white p-1 shadow-lg mx-auto overflow-hidden">
+                    <img id="establishmentLogo" src="" alt="Logo" class="h-full w-full rounded-full object-cover opacity-0 transition-opacity duration-500">
                 </div>
-            </header>
-            <main class="space-y-12">
-                 <section id="services-section">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="flex items-center justify-center w-10 h-10 theme-bg-main theme-text-contrast rounded-full text-xl font-bold">1</div>
-                        <h2 class="text-2xl font-bold text-gray-800">Selecione o Serviço</h2>
+            </div>
+            <h1 id="establishmentName" class="text-2xl font-bold custom-text-color drop-shadow-sm mb-1 leading-tight">
+                <div class="h-8 bg-gray-200/50 rounded w-48 mx-auto animate-pulse"></div>
+            </h1>
+            <p id="establishmentWelcomeMessage" class="text-sm custom-text-color font-medium px-4 opacity-90">
+                <div class="h-4 bg-gray-200/50 rounded w-32 mx-auto animate-pulse mt-2"></div>
+            </p>
+        </header>
+
+        <main class="w-full max-w-lg glass-panel rounded-2xl p-4 sm:p-6 shadow-xl relative min-h-[400px]">
+            
+            <div class="absolute top-0 left-0 right-0 h-1 bg-gray-100 rounded-t-2xl overflow-hidden">
+                <div id="progress-bar" class="h-full theme-bg transition-all duration-500 w-1/4"></div>
+            </div>
+
+            <section id="services-section" class="fade-in">
+                <h2 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                    <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">1</span>
+                    Qual serviço deseja?
+                </h2>
+                <div id="services-container" class="space-y-2">
+                    <p class="text-center text-gray-500 text-sm py-4">A carregar serviços...</p>
+                </div>
+            </section>
+
+            <section id="professionals-section" class="hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">2</span>
+                        Com quem?
+                    </h2>
+                    <button id="professionals-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+                </div>
+                <div id="professionals-container" class="grid grid-cols-3 gap-2">
+                    <p class="col-span-full text-center text-gray-500 text-sm">A carregar...</p>
+                </div>
+            </section>
+
+            <section id="schedule-section" class="hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">3</span>
+                        Quando?
+                    </h2>
+                    <button id="schedule-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-2 mb-4 border border-gray-100">
+                    <div class="flex justify-between items-center mb-2">
+                        <button id="prev-week-btn" class="p-1 text-gray-400 hover:text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        </button>
+                        <h3 id="month-year-display" class="text-sm font-semibold text-gray-700 capitalize"></h3>
+                        <button id="next-week-btn" class="p-1 text-gray-400 hover:text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </button>
                     </div>
-                    <div id="services-container" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <p class="col-span-full text-gray-500">A carregar serviços...</p>
+                    <div id="week-container" class="grid grid-cols-7 gap-1"></div>
+                </div>
+
+                <div id="time-slots-container" class="space-y-4">
+                    <div>
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Manhã</h4>
+                        <div id="morning-slots" class="grid grid-cols-4 gap-2"></div>
                     </div>
-                </section>
-                <section id="professionals-section" class="hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="flex items-center justify-center w-10 h-10 theme-bg-main theme-text-contrast rounded-full text-xl font-bold">2</div>
-                        <h2 class="text-2xl font-bold text-gray-800">Selecione o Profissional</h2>
+                    <div>
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Tarde</h4>
+                        <div id="afternoon-slots" class="grid grid-cols-4 gap-2"></div>
                     </div>
-                    <div id="professionals-container" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                        <p class="col-span-full text-gray-500">A carregar profissionais...</p>
-                    </div>
-                    <div class="mt-6 text-center">
-                        <button id="professionals-back-btn" class="text-gray-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
-                    </div>
-                </section>
-                <section id="schedule-section" class="hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="flex items-center justify-center w-10 h-10 theme-bg-main theme-text-contrast rounded-full text-xl font-bold">3</div>
-                        <h2 class="text-2xl font-bold text-gray-800">Selecione a Data e o Horário</h2>
-                    </div>
-                    <div class="bg-white p-4 rounded-xl shadow-lg">
-                        <div class="flex justify-between items-center mb-4">
-                            <button id="prev-week-btn" class="p-2 rounded-full hover:bg-gray-200">
-                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                            </button>
-                            <h3 id="month-year-display" class="text-lg font-semibold text-gray-800"></h3>
-                            <button id="next-week-btn" class="p-2 rounded-full hover:bg-gray-200">
-                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                            </button>
+                </div>
+            </section>
+
+            <section id="confirmation-section" class="hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">4</span>
+                        Finalizar
+                    </h2>
+                    <button id="confirmation-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+                </div>
+
+                <div class="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-100 text-sm">
+                    <div class="flex items-start gap-3">
+                        <div id="summary-service-images" class="flex-shrink-0"></div>
+                        <div>
+                            <p class="font-bold text-gray-900" id="summary-service"></p>
+                            <p class="text-gray-600 text-xs mt-0.5">com <span id="summary-professional" class="font-medium"></span></p>
+                            <p class="theme-text font-medium mt-1" id="summary-datetime"></p>
                         </div>
-                        <div id="week-container" class="grid grid-cols-7 gap-1 mb-5">
-                        </div>
-                        <div id="time-slots-container" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <h4 class="font-semibold text-center text-sm mb-2">Manhã</h4>
-                                <div id="morning-slots" class="grid grid-cols-3 gap-2"></div>
-                            </div>
-                            <div>
-                                <h4 class="font-semibold text-center text-sm mb-2">Tarde</h4>
-                                <div id="afternoon-slots" class="grid grid-cols-3 gap-2"></div>
-                            </div>
-                        </div>
                     </div>
-                    <div class="mt-6 text-center">
-                        <button id="schedule-back-btn" class="text-gray-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-200 transition duration-300">Voltar</button>
+                </div>
+
+                <form id="confirmation-form" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Seu Nome</label>
+                        <input type="text" id="clientName" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="Ex: Maria Silva" required>
                     </div>
-                </section>
-                <section id="confirmation-section" class="hidden">
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="flex items-center justify-center w-10 h-10 theme-bg-main theme-text-contrast rounded-full text-xl font-bold">4</div>
-                        <h2 class="text-2xl font-bold text-gray-800">Confirme os Seus Dados</h2>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">WhatsApp</label>
+                        <input type="tel" id="clientPhone" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="(00) 00000-0000" required>
                     </div>
-                    <div class="bg-white p-4 rounded-xl shadow-lg">
-                        <div id="booking-summary" class="theme-bg-light p-4 rounded-lg mb-5 border-l-4 theme-border-main">
-                            <h3 class="font-bold text-lg text-gray-900 mb-3">Resumo do Agendamento</h3>
-                            <div id="summary-service-images" class="flex gap-2 mb-3"></div>
-                            <div class="space-y-2 text-gray-700 text-sm">
-                                <p><strong>Serviço:</strong> <span id="summary-service" class="font-semibold text-gray-900"></span></p>
-                                <p><strong>Profissional:</strong> <span id="summary-professional" class="font-semibold text-gray-900"></span></p>
-                                <p><strong>Data e Hora:</strong> <span id="summary-datetime" class="font-semibold text-gray-900"></span></p>
-                                <p><strong>Duração Total:</strong> <span id="summary-duration" class="font-semibold text-gray-900"></span></p>
-                            </div>
-                        </div>
-                        <form id="confirmation-form">
-                            <div class="mb-4">
-                                <label for="clientName" class="block mb-1 text-sm font-medium text-gray-900">Nome Completo</label>
-                                <input type="text" id="clientName" class="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-lg text-base" required>
-                            </div>
-                            <div>
-                                <label for="clientPhone" class="block mb-1 text-sm font-medium text-gray-900">Número do WhatsApp</label>
-                                <input type="tel" id="clientPhone" class="w-full p-3 bg-gray-50 border-2 border-gray-200 rounded-lg text-base" required>
-                            </div>
-                            <div class="flex gap-3 mt-5">
-                                <button type="button" id="confirmation-back-btn" class="w-full bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition duration-300">Voltar</button>
-                                <button type="submit" id="btn-confirm" class="w-full theme-bg-main theme-text-contrast font-bold py-3 px-4 rounded-lg hover:theme-bg-dark transition duration-300 shadow-md hover:shadow-lg">Confirmar Agendamento</button>
-                            </div>
-                        </form>
-                    </div>
-                </section>
-            </main>
+                    <button type="submit" id="btn-confirm" class="w-full theme-bg text-white font-bold py-3 rounded-lg shadow-md hover:opacity-90 transition mt-2">
+                        Confirmar Agendamento
+                    </button>
+                </form>
+            </section>
+
+        </main>
+        
+        <footer class="mt-6 text-center opacity-60">
+            <p class="text-xs custom-text-color font-medium">Desenvolvido por Kairos System</p>
+        </footer>
+    </div>
+    
+    <div id="my-appointments-view" class="hidden fixed inset-0 z-50 bg-gray-100 flex flex-col fade-in">
+        <div class="bg-white shadow-sm p-4 flex items-center gap-3">
+            <button data-action="close-appointments-view" class="p-1 rounded-full hover:bg-gray-100">
+                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <h2 class="text-lg font-bold text-gray-800">Meus Agendamentos</h2>
         </div>
+        <div id="appointments-content" class="flex-grow p-4 overflow-y-auto">
+             </div>
     </div>
     
-    <div id="my-appointments-view" class="hidden fixed inset-0 bg-gray-100 z-50 p-4 fade-in">
-    </div>
-    
-    <div id="notificationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-[100] p-4 hidden">
-        <div class="bg-white rounded-lg shadow-xl p-6 text-center max-w-sm w-full">
-          <h3 id="modal-title" class="text-lg leading-6 font-medium text-gray-900"></h3>
-          <div class="mt-2 px-7 py-3">
-            <p id="modal-message" class="text-sm text-gray-500"></p>
-          </div>
-          <div class="items-center px-4 py-3">
-            <button id="modal-ok-btn" class="px-4 py-2 theme-bg-main theme-text-contrast text-base font-medium rounded-md w-full shadow-sm hover:theme-bg-dark">OK</button>
-          </div>
+    <div id="notificationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-6 hidden backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
+          <h3 id="modal-title" class="text-lg font-bold text-gray-900 mb-2"></h3>
+          <p id="modal-message" class="text-sm text-gray-600 mb-6"></p>
+          <button id="modal-ok-btn" class="w-full py-2.5 theme-bg text-white font-semibold rounded-lg shadow hover:opacity-90">Entendi</button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const colorThemes = {
-                indigo: { main: '#4f46e5', light: '#e0e7ff', dark: '#4338ca', text: '#ffffff' },
-                rose: { main: '#e11d48', light: '#ffe4e6', dark: '#be123c', text: '#ffffff' },
-                green: { main: '#16a34a', light: '#d1fae5', dark: '#15803d', text: '#ffffff' },
-                sky: { main: '#0284c7', light: '#e0f2fe', dark: '#0369a1', text: '#ffffff' },
-                amber: { main: '#d97706', light: '#fef3c7', dark: '#b45309', text: '#1f2937' },
-            };
-
-            function applyTheme(themeKey) {
-                const theme = colorThemes[themeKey] || colorThemes.indigo;
+            
+            // 1. Função para Aplicar Personalizações (Cores e Fundo)
+            function applyCustomization(data) {
                 const root = document.documentElement;
-                root.style.setProperty('--theme-main', theme.main);
-                root.style.setProperty('--theme-light', theme.light);
-                root.style.setProperty('--theme-dark', theme.dark);
-                root.style.setProperty('--theme-text', theme.text);
+                
+                // Cor Principal
+                const primaryColor = data.primaryColor || data.themeColor || '#4f46e5'; 
+                root.style.setProperty('--theme-main', primaryColor);
+                
+                // Cor do Texto do Estabelecimento
+                if (data.textColor) {
+                    root.style.setProperty('--content-text-color', data.textColor);
+                }
+
+                // Imagem de Fundo
+                if (data.backgroundImage) {
+                    document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
+                } else {
+                    document.body.style.backgroundImage = 'none';
+                    document.body.style.backgroundColor = '#f3f4f6';
+                }
             }
 
-
+            // 2. Configurações Iniciais
             const API_BASE_URL = window.location.origin;
             const urlParams = new URLSearchParams(window.location.search);
             const ESTABLISHMENT_ID = urlParams.get('id');
@@ -218,21 +266,18 @@
             let currentWeekStart = getStartOfWeek(new Date());
             let allServicesData = [];
             let allProfessionalsData = [];
-
-            if (!ESTABLISHMENT_ID) {
-                document.body.innerHTML = '<h1 class="text-center text-red-500 mt-10 text-2xl">Erro: ID do estabelecimento não fornecido na URL.</h1>';
-                return;
-            }
-
+            
+            // Estado do Agendamento em memória
             const booking = { professionalId: null, professionalName: null, services: [], date: null, time: null, totalDuration: 0 };
 
+            // 3. Elementos DOM
             const bookingView = document.getElementById('booking-view');
             const myAppointmentsView = document.getElementById('my-appointments-view');
+            const myAppointmentsContent = document.getElementById('appointments-content');
             const myAppointmentsBtn = document.getElementById('myAppointmentsBtn');
             const establishmentNameEl = document.getElementById('establishmentName');
             const establishmentLogoEl = document.getElementById('establishmentLogo');
             const establishmentWelcomeMessageEl = document.getElementById('establishmentWelcomeMessage');
-            const logoContainer = document.getElementById('logo-container');
             const servicesContainer = document.getElementById('services-container');
             const professionalsContainer = document.getElementById('professionals-container');
             const timeSlotsContainer = document.getElementById('time-slots-container');
@@ -247,45 +292,36 @@
             const modalTitle = document.getElementById('modal-title');
             const modalMessage = document.getElementById('modal-message');
             const modalOkBtn = document.getElementById('modal-ok-btn');
-            const professionalsBackBtn = document.getElementById('professionals-back-btn');
-            const scheduleBackBtn = document.getElementById('schedule-back-btn');
-            const confirmationBackBtn = document.getElementById('confirmation-back-btn');
-            const sections = { services: document.getElementById('services-section'), professionals: document.getElementById('professionals-section'), schedule: document.getElementById('schedule-section'), confirmation: document.getElementById('confirmation-section') };
+            const progressBar = document.getElementById('progress-bar');
             
+            // Botões de Navegação ("Voltar")
+            document.getElementById('professionals-back-btn').addEventListener('click', () => showSection('services'));
+            document.getElementById('schedule-back-btn').addEventListener('click', () => showSection('professionals'));
+            document.getElementById('confirmation-back-btn').addEventListener('click', () => showSection('schedule'));
+
+            if (!ESTABLISHMENT_ID) {
+                document.body.innerHTML = '<div class="flex h-screen items-center justify-center p-4 text-center text-gray-500">Link inválido ou incompleto.</div>';
+                return;
+            }
+
+            const sections = { 
+                services: document.getElementById('services-section'), 
+                professionals: document.getElementById('professionals-section'), 
+                schedule: document.getElementById('schedule-section'), 
+                confirmation: document.getElementById('confirmation-section') 
+            };
+
+            function updateProgress(step) {
+                // Atualiza a barra de progresso (25% por passo)
+                progressBar.style.width = `${step * 25}%`;
+            }
+
             function showNotificationModal(title, message) {
                 modalTitle.textContent = title;
                 modalMessage.textContent = message;
                 notificationModal.classList.remove('hidden');
             }
-             function showConfirmation(title, message) {
-                return new Promise((resolve) => {
-                    const confirmModal = document.createElement('div');
-                    confirmModal.className = 'fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-[110] p-4 fade-in';
-                    confirmModal.innerHTML = `
-                        <div class="bg-white rounded-lg shadow-xl p-6 text-center max-w-sm w-full">
-                            <h3 class="text-lg font-medium text-gray-900">${title}</h3>
-                            <p class="mt-2 text-sm text-gray-600">${message}</p>
-                            <div class="mt-6 flex gap-4">
-                                <button class="cancel-btn w-full py-2 px-4 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">Não</button>
-                                <button class="confirm-btn w-full py-2 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Sim, Cancelar</button>
-                            </div>
-                        </div>`;
-                    document.body.appendChild(confirmModal);
-
-                    confirmModal.querySelector('.confirm-btn').onclick = () => {
-                        confirmModal.remove();
-                        resolve(true);
-                    };
-                    confirmModal.querySelector('.cancel-btn').onclick = () => {
-                        confirmModal.remove();
-                        resolve(false);
-                    };
-                });
-            }
-            
-            modalOkBtn.addEventListener('click', () => {
-                notificationModal.classList.add('hidden');
-            });
+            modalOkBtn.addEventListener('click', () => notificationModal.classList.add('hidden'));
 
             function getStartOfWeek(date) {
                 const d = new Date(date);
@@ -298,443 +334,387 @@
                 Object.keys(sections).forEach(key => sections[key].classList.add('hidden'));
                 sections[sectionName].classList.remove('hidden');
                 sections[sectionName].classList.add('fade-in');
-                setTimeout(() => { sections[sectionName].scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
-            };
-
-            if(professionalsBackBtn) professionalsBackBtn.addEventListener('click', () => showSection('services'));
-            if(scheduleBackBtn) scheduleBackBtn.addEventListener('click', () => showSection('professionals'));
-            if(confirmationBackBtn) confirmationBackBtn.addEventListener('click', () => showSection('schedule'));
-            
-            const renderAppointmentHistory = (appointments) => {
-                const allAppointments = [...appointments].sort((a,b) => new Date(b.startTime) - new Date(a.startTime));
-
-                const renderList = (list) => {
-                    if (list.length === 0) {
-                        return `<div class="text-center py-12 px-4 bg-white rounded-lg shadow-sm">
-                                    <svg class="mx-auto h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                    <h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum agendamento</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Não há agendamentos para mostrar.</p>
-                                </div>`;
-                    }
-                    return list.map(appt => {
-                        const date = new Date(appt.startTime);
-                        const status = appt.status;
-                        const photoUrl = appt.professionalPhoto || `https://placehold.co/64x64/7c3aed/FFFFFF?text=${encodeURIComponent(appt.professionalName.charAt(0))}`;
-                        let statusBadge = '';
-
-                        if (status === 'completed') {
-                            statusBadge = `<span class="bg-gray-200 text-gray-700 text-xs font-semibold px-3 py-1 rounded-full">Finalizado</span>`;
-                        } else if (status === 'cancelled') {
-                            statusBadge = `<span class="bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">Cancelado</span>`;
-                        } else if (date < new Date()) {
-                            statusBadge = `<span class="bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">Expirado</span>`;
-                        } else {
-                            statusBadge = `<button data-action="cancel-appointment" data-id="${appt.id}" class="bg-red-500 text-white text-xs font-semibold py-1 px-3 rounded-full hover:bg-red-600 transition-colors">Cancelar</button>`;
-                        }
-                        
-                        return `
-                            <div class="bg-white p-3 rounded-lg shadow border flex items-center gap-3">
-                                <img src="${photoUrl}" alt="Foto do Profissional" class="w-12 h-12 rounded-full object-cover"/>
-                                <div class="flex-grow">
-                                    <p class="font-bold text-sm text-gray-800">${appt.professionalName}</p>
-                                    <p class="text-xs text-gray-600">${appt.serviceName}</p>
-                                    <p class="text-xs text-gray-500">${date.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                                </div>
-                                <div class="flex-shrink-0">
-                                    ${statusBadge}
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                };
-
-                myAppointmentsView.innerHTML = `
-                    <div class="container mx-auto max-w-2xl h-full flex flex-col">
-                        <header class="flex-shrink-0 flex justify-between items-center py-4">
-                             <button data-action="close-appointments-view" class="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-gray-800">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                                Voltar
-                            </button>
-                            <button data-action="new-appointment-from-history" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-green-600 transition-colors">Novo Agendamento</button>
-                        </header>
-                        <div class="flex-grow overflow-y-auto">
-                             <div class="text-center mb-6">
-                                <img src="${establishmentLogoEl.src}" alt="Logotipo" class="w-14 h-14 rounded-full mx-auto mb-2 border-2 border-white shadow-md">
-                                <h2 class="text-xl font-bold text-gray-800">Meus agendamentos</h2>
-                                <p class="text-sm text-gray-500">Seja bem-vindo(a) ao ${establishmentNameEl.textContent.trim()}</p>
-                            </div>
-                            <div class="space-y-3">${renderList(allAppointments)}</div>
-                        </div>
-                    </div>
-                `;
-            };
-            
-            const handleLookupAppointments = async (phone) => {
-                myAppointmentsView.innerHTML = '<div class="flex items-center justify-center h-full"><div class="loader mx-auto"></div></div>';
-                try {
-                    const response = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${ESTABLISHMENT_ID}?phone=${encodeURIComponent(phone)}`);
-                    if (!response.ok) { throw new Error((await response.json()).message); }
-                    const appointments = await response.json();
-                    renderAppointmentHistory(appointments);
-                } catch (error) {
-                    showNotificationModal('Erro', error.message);
-                    openMyAppointmentView();
-                }
-            };
-            
-            const openMyAppointmentView = () => {
-                myAppointmentsView.innerHTML = `
-                    <div class="flex items-center justify-center h-full">
-                        <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full text-center fade-in">
-                            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full theme-bg-light">
-                                <svg class="h-6 w-6 theme-text-main" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
-                            </div>
-                            <h2 class="mt-4 text-xl font-bold text-gray-800">Consultar Agendamentos</h2>
-                            <p class="text-gray-600 mt-1 mb-4 text-sm">Insira o seu número de WhatsApp para ver o seu histórico.</p>
-                            <form id="lookupForm">
-                                <input type="tel" id="lookupPhone" class="w-full p-3 bg-gray-100 border-2 border-gray-200 rounded-lg text-base text-center" placeholder="(XX) XXXXX-XXXX" required>
-                                <button type="submit" class="w-full mt-3 theme-bg-main theme-text-contrast font-bold py-2 px-4 rounded-lg hover:theme-bg-dark transition">Consultar</button>
-                            </form>
-                             <button data-action="close-appointments-view" class="mt-3 text-xs text-gray-500 hover:text-gray-700">Voltar ao Agendamento</button>
-                        </div>
-                    </div>
-                `;
-            };
-            
-            myAppointmentsBtn.addEventListener('click', () => {
-                bookingView.classList.add('hidden');
-                myAppointmentsView.classList.remove('hidden');
-                openMyAppointmentView();
-            });
-
-            myAppointmentsView.addEventListener('submit', (e) => {
-                if (e.target.id === 'lookupForm') {
-                    e.preventDefault();
-                    const phone = document.getElementById('lookupPhone').value;
-                    sessionStorage.setItem('lookupPhone', phone);
-                    handleLookupAppointments(phone);
-                }
-            });
-
-             myAppointmentsView.addEventListener('click', async (e) => {
-                const actionButton = e.target.closest('[data-action]');
-                if (!actionButton) return;
                 
-                const action = actionButton.dataset.action;
+                const steps = { services: 1, professionals: 2, schedule: 3, confirmation: 4 };
+                updateProgress(steps[sectionName]);
+            };
 
-                if (action === 'close-appointments-view') {
-                    myAppointmentsView.classList.add('hidden');
-                    bookingView.classList.remove('hidden');
-                } else if (action === 'new-appointment-from-history') {
-                    myAppointmentsView.classList.add('hidden');
-                    bookingView.classList.remove('hidden');
-                    showSection('services');
-                } else if (action === 'cancel-appointment') {
-                    const appointmentId = actionButton.dataset.id;
-                    const phone = sessionStorage.getItem('lookupPhone');
-                    const confirmed = await showConfirmation('Confirmar Cancelamento', 'Tem a certeza que deseja cancelar este agendamento?');
-                    if (confirmed) {
-                         try {
-                            const response = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${appointmentId}/cancel`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ phone, establishmentId: ESTABLISHMENT_ID })
-                            });
-                            if (!response.ok) { throw new Error((await response.json()).message); }
-                            showNotificationModal('Sucesso', 'O seu agendamento foi cancelado.');
-                            handleLookupAppointments(phone);
-                        } catch (error) {
-                            showNotificationModal('Erro', `Não foi possível cancelar: ${error.message}`);
-                        }
-                    }
-                }
-            });
-            
+            // 4. Carregar Dados do Estabelecimento
             const loadEstablishmentDetails = async () => {
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || `HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error('Falha ao carregar dados.');
                     const data = await response.json();
 
-                    applyTheme(data.themeColor); 
+                    applyCustomization(data);
 
-                    establishmentNameEl.innerHTML = data.name || 'Nome do Estabelecimento';
-                    establishmentNameEl.querySelector('div')?.remove();
-                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Simples, rápido e à sua medida.';
+                    establishmentNameEl.innerHTML = data.name || 'Bem-vindo';
+                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Agende seu horário online.';
+                    
                     if (data.logo) {
-                        logoContainer.classList.remove('bg-gray-200', 'animate-pulse');
                         establishmentLogoEl.src = data.logo;
                         establishmentLogoEl.classList.remove('opacity-0');
-                    } else {
-                        logoContainer.classList.remove('animate-pulse');
                     }
                 } catch(error) {
-                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="text-center p-8 bg-white rounded-lg shadow-lg"><h2 class="text-2xl font-bold text-red-600 mb-2">Ops! Algo deu errado.</h2><p class="text-gray-700">${error.message || 'Não foi possível carregar os dados do estabelecimento.'}</p></div></div>`;
+                    console.error(error);
+                    establishmentNameEl.textContent = "Erro ao carregar";
                 }
             };
             
+            // 5. Carregar Serviços
             const loadServices = async () => {
-                servicesContainer.innerHTML = '<p class="col-span-full text-gray-500">A carregar serviços...</p>';
+                servicesContainer.innerHTML = '<div class="loader mx-auto"></div>';
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/services/${ESTABLISHMENT_ID}`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Falha ao buscar serviços.');
-                    }
+                    if (!response.ok) throw new Error();
                     const services = await response.json();
                     allServicesData = services;
                     servicesContainer.innerHTML = '';
+                    
                     if (services.length === 0) {
-                        servicesContainer.innerHTML = '<p class="col-span-full text-gray-600">Nenhum serviço encontrado.</p>';
+                        servicesContainer.innerHTML = '<p class="text-center text-sm text-gray-500">Nenhum serviço disponível.</p>';
                         return;
                     }
+
                     services.forEach(serv => {
                         const card = document.createElement('div');
-                        card.className = 'service-card flex items-center p-3 bg-white rounded-lg shadow-md cursor-pointer border-2 border-transparent transition-all';
+                        // Card Otimizado com Imagem
+                        card.className = 'service-card group flex items-center justify-between p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300';
                         card.dataset.id = serv.id;
+                        
+                        const duration = serv.duration ? `<span class="text-xs text-gray-400 font-medium ml-2">• ${serv.duration} min</span>` : '';
                         const photoSrc = serv.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(serv.name.charAt(0))}`;
+                        
                         card.innerHTML = `
-                            <img src="${photoSrc}" alt="Imagem de ${serv.name}" class="w-12 h-12 rounded-md object-cover mr-3">
-                            <div class="flex-grow">
-                                <h3 class="font-bold text-gray-900 text-base">${serv.name}</h3>
-                                <p class="text-xs text-gray-500">Duração: ${serv.duration} min</p>
+                            <div class="flex items-center gap-3 w-full">
+                                <img src="${photoSrc}" alt="${serv.name}" class="w-12 h-12 rounded-lg object-cover border border-gray-200 flex-shrink-0">
+                                <div class="flex-grow min-w-0">
+                                    <h3 class="font-bold text-gray-800 text-sm leading-tight truncate">${serv.name}</h3>
+                                    <p class="text-xs font-semibold theme-text mt-0.5">R$ ${serv.price.toFixed(2)} ${duration}</p>
+                                </div>
+                                <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0 flex items-center justify-center check-icon transition-all duration-200 ml-2">
+                                    <div class="w-2.5 h-2.5 rounded-full theme-bg opacity-0 transition-opacity"></div>
+                                </div>
                             </div>
-                            <span class="font-semibold text-base text-gray-900 ml-3 whitespace-nowrap">R$ ${serv.price.toFixed(2)}</span>`;
-                        card.addEventListener('click', () => handleServiceSelect(serv.id, card));
+                        `;
+                        
+                        card.addEventListener('click', () => {
+                            // Lógica de Seleção Visual
+                            const icon = card.querySelector('.check-icon div');
+                            const border = card.querySelector('.check-icon');
+                            const isSelected = card.classList.contains('selected');
+                            
+                            document.querySelectorAll('.service-card').forEach(c => {
+                                c.classList.remove('selected');
+                                c.querySelector('.check-icon').classList.remove('border-[color:var(--theme-main)]');
+                                c.querySelector('.check-icon div').classList.add('opacity-0');
+                            });
+
+                            if (!isSelected) {
+                                card.classList.add('selected');
+                                border.classList.add('border-[color:var(--theme-main)]');
+                                icon.classList.remove('opacity-0');
+                                
+                                booking.services = [{
+                                    id: serv.id, name: serv.name, duration: serv.duration, price: serv.price,
+                                    bufferTime: serv.bufferTime || 0, photo: serv.photo
+                                }];
+                                loadProfessionalsForService();
+                                setTimeout(() => showSection('professionals'), 300); 
+                            }
+                        });
                         servicesContainer.appendChild(card);
                     });
-                } catch (error) {
-                    servicesContainer.innerHTML = `<p class="col-span-full text-red-500">Erro ao carregar serviços: ${error.message}</p>`;
+                } catch {
+                    servicesContainer.innerHTML = '<p class="text-red-500 text-sm">Erro ao carregar serviços.</p>';
                 }
             };
             
-            const handleServiceSelect = (serviceId, cardElement) => {
-                const isAlreadySelected = cardElement.classList.contains('selected');
-                
-                document.querySelectorAll('.service-card').forEach(card => card.classList.remove('selected'));
-                booking.services = [];
-
-                if (!isAlreadySelected) {
-                    cardElement.classList.add('selected');
-                    const serviceData = allServicesData.find(s => s.id === serviceId);
-                    if (serviceData) {
-                        booking.services.push({
-                            id: serviceData.id, name: serviceData.name, duration: serviceData.duration, price: serviceData.price,
-                            bufferTime: serviceData.bufferTime || 0, photo: serviceData.photo || null
-                        });
-                        
-                        loadProfessionalsForService();
-                        showSection('professionals');
-                    }
-                }
-            };
-            
+            // 6. Carregar Profissionais
             const loadProfessionalsForService = async () => {
-                professionalsContainer.innerHTML = '<p class="col-span-full text-gray-500">A carregar profissionais...</p>';
+                professionalsContainer.innerHTML = '<div class="loader mx-auto col-span-3"></div>';
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/professionals/${ESTABLISHMENT_ID}`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Falha ao buscar profissionais.');
-                    }
+                    if (!response.ok) throw new Error();
                     allProfessionalsData = await response.json();
+                    
                     const selectedServiceIds = booking.services.map(s => s.id);
                     const professionals = allProfessionalsData.filter(prof => 
                         prof.services && selectedServiceIds.every(id => prof.services.includes(id))
                     );
+                    
                     professionalsContainer.innerHTML = '';
                     if (professionals.length === 0) {
-                        professionalsContainer.innerHTML = '<p class="col-span-full text-gray-600">Nenhum profissional realiza o serviço selecionado.</p>';
+                        professionalsContainer.innerHTML = '<p class="col-span-full text-sm text-gray-500 text-center">Indisponível.</p>';
                         return;
                     }
+
                     professionals.forEach(prof => {
                         const card = document.createElement('div');
-                        card.className = 'card professional-card p-3 bg-white rounded-lg shadow-md text-center cursor-pointer border-2 border-transparent transition-transform duration-300 hover:scale-105';
-                        card.dataset.id = prof.id;
-                        card.dataset.name = prof.name;
-                        const photoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name.charAt(0))}`;
+                        card.className = 'professional-card flex flex-col items-center justify-center p-2 bg-white border border-gray-200 rounded-xl cursor-pointer aspect-square';
+                        const photoSrc = prof.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name)}&background=random&color=fff`;
+                        
                         card.innerHTML = `
-                            <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-gray-200 object-cover">
-                            <h4 class="font-semibold text-sm text-gray-800">${prof.name}</h4>
+                            <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mb-2 border border-gray-100 shadow-sm">
+                            <h4 class="font-bold text-xs text-gray-800 text-center leading-tight line-clamp-2">${prof.name.split(' ')[0]}</h4>
                         `;
-                        card.addEventListener('click', () => handleProfessionalSelect(prof.id, prof.name, card));
+                        card.addEventListener('click', () => {
+                            document.querySelectorAll('.professional-card').forEach(c => c.classList.remove('selected'));
+                            card.classList.add('selected');
+                            booking.professionalId = prof.id;
+                            booking.professionalName = prof.name;
+                            renderWeek();
+                            showSection('schedule');
+                        });
                         professionalsContainer.appendChild(card);
                     });
-                } catch (error) {
-                    professionalsContainer.innerHTML = `<p class="col-span-full text-red-500">Erro ao carregar profissionais: ${error.message}</p>`;
+                } catch {
+                    professionalsContainer.innerHTML = '<p class="text-red-500 text-xs">Erro.</p>';
                 }
             };
 
-            const handleProfessionalSelect = (profId, profName, cardElement) => {
-                document.querySelectorAll('.professional-card').forEach(c => c.classList.remove('selected'));
-                cardElement.classList.add('selected');
-                booking.professionalId = profId;
-                booking.professionalName = profName;
-                renderWeek();
-                showSection('schedule');
-            };
-
+            // 7. Carregar Disponibilidade (Horários)
             const loadAvailability = async (selectedDate) => {
                 morningSlotsContainer.innerHTML = '';
                 afternoonSlotsContainer.innerHTML = '';
-                timeSlotsContainer.innerHTML = '<p class="col-span-full text-gray-500 text-center">A verificar horários...</p>';
                 booking.date = selectedDate;
                 const serviceIds = booking.services.map(s => s.id).join(',');
+                
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${ESTABLISHMENT_ID}&professionalId=${booking.professionalId}&serviceIds=${serviceIds}&date=${selectedDate}`);
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Falha ao buscar horários.');
-                    }
-                    let slots = await response.json();
-                    timeSlotsContainer.innerHTML = `<div><h4 class="font-semibold text-center text-sm mb-2">Manhã</h4><div id="morning-slots" class="grid grid-cols-3 gap-2"></div></div><div><h4 class="font-semibold text-center text-sm mb-2">Tarde</h4><div id="afternoon-slots" class="grid grid-cols-3 gap-2"></div></div>`;
-                    const updatedMorningSlots = document.getElementById('morning-slots');
-                    const updatedAfternoonSlots = document.getElementById('afternoon-slots');
+                    if (!response.ok) throw new Error();
+                    const slots = await response.json();
+                    
                     if (slots.length === 0) {
-                        timeSlotsContainer.innerHTML = '<p class="col-span-full text-gray-500 text-center">Nenhum horário disponível para este dia.</p>';
+                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs text-gray-400 text-center py-2">Sem horários</p>';
                         return;
                     }
+
                     const now = new Date();
-                    const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                    const isToday = booking.date === todayString;
-                    let availableSlotsCount = 0;
+                    const todayStr = now.toISOString().split('T')[0];
+                    const isToday = booking.date === todayStr;
+
                     slots.forEach(slot => {
-                        const [hour, minute] = slot.split(':').map(Number);
+                        const [h, m] = slot.split(':').map(Number);
                         if (isToday) {
-                            const currentHour = now.getHours();
-                            const currentMinute = now.getMinutes();
-                            if (hour < currentHour || (hour === currentHour && minute < currentMinute)) return;
+                            if (h < now.getHours() || (h === now.getHours() && m < now.getMinutes())) return;
                         }
-                        availableSlotsCount++;
-                        const container = hour < 12 ? updatedMorningSlots : updatedAfternoonSlots;
+
                         const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'time-slot-btn p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition';
+                        btn.className = 'time-slot-btn py-2 text-xs font-medium bg-white border border-gray-200 rounded-lg hover:border-gray-400 transition shadow-sm';
                         btn.textContent = slot;
-                        btn.addEventListener('click', () => handleTimeSelect(slot, btn));
-                        container.appendChild(btn);
+                        btn.onclick = () => {
+                            document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
+                            btn.classList.add('time-slot-selected');
+                            booking.time = slot;
+                            updateSummary();
+                            showSection('confirmation');
+                        };
+                        
+                        if (h < 12) morningSlotsContainer.appendChild(btn);
+                        else afternoonSlotsContainer.appendChild(btn);
                     });
-                    if (availableSlotsCount === 0) {
-                        timeSlotsContainer.innerHTML = isToday ? '<p class="col-span-full text-gray-500 text-center">Não há mais horários disponíveis para hoje.</p>' : '<p class="col-span-full text-gray-500 text-center">Nenhum horário disponível para este dia.</p>';
-                    } else {
-                        if (updatedMorningSlots.innerHTML === '') updatedMorningSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-xs">Nenhum horário de manhã.</p>';
-                        if (updatedAfternoonSlots.innerHTML === '') updatedAfternoonSlots.innerHTML = '<p class="col-span-full text-center text-gray-400 text-xs">Nenhum horário à tarde.</p>';
-                    }
-                } catch (error) {
-                    timeSlotsContainer.innerHTML = `<p class="col-span-full text-red-500 text-center">Erro ao carregar horários: ${error.message}</p>`;
+                    
+                    if (!morningSlotsContainer.hasChildNodes()) morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic">---</span>';
+                    if (!afternoonSlotsContainer.hasChildNodes()) afternoonSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic">---</span>';
+
+                } catch {
+                    morningSlotsContainer.innerHTML = '<p class="text-red-500 text-xs">Erro</p>';
                 }
             };
 
+            // 8. Renderizar Calendário da Semana
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
                 today.setHours(0,0,0,0);
+                
                 for (let i = 0; i < 7; i++) {
                     const day = new Date(currentWeekStart);
                     day.setDate(day.getDate() + i);
+                    
                     const btn = document.createElement('button');
-                    btn.className = 'day-button text-center p-1 border-2 rounded-lg';
-                    btn.innerHTML = `<span class="block text-xs font-bold uppercase">${day.toLocaleDateString('pt-BR', { weekday: 'short' })}</span><span class="block text-lg font-semibold">${day.getDate()}</span>`;
+                    btn.className = 'day-button flex flex-col items-center justify-center p-1 rounded-lg transition hover:bg-gray-100';
+                    const isSelected = booking.date === day.toISOString().split('T')[0];
+                    if(isSelected) btn.classList.add('bg-gray-200', 'font-bold');
+
+                    btn.innerHTML = `
+                        <span class="text-[10px] text-gray-500 uppercase">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                        <span class="text-sm font-semibold text-gray-800">${day.getDate()}</span>
+                    `;
+
                     if (day < today) {
-                        btn.disabled = true;
-                        btn.classList.add('bg-gray-100', 'text-gray-400', 'cursor-not-allowed');
+                        btn.classList.add('opacity-30', 'cursor-not-allowed');
                     } else {
-                        btn.addEventListener('click', () => handleDaySelect(day, btn));
+                        btn.onclick = () => {
+                            document.querySelectorAll('.day-button').forEach(b => {
+                                b.classList.remove('bg-gray-800', 'text-white', 'shadow-md');
+                                b.querySelectorAll('span').forEach(s => s.classList.remove('text-white'));
+                            });
+                            btn.classList.add('bg-gray-800', 'text-white', 'shadow-md');
+                            btn.querySelectorAll('span').forEach(s => s.classList.add('text-white'));
+                            
+                            const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+                            loadAvailability(dateStr);
+                        };
                     }
                     weekContainer.appendChild(btn);
                 }
                 monthYearDisplay.textContent = currentWeekStart.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             };
 
-            const handleDaySelect = (date, btnElement) => {
-                document.querySelectorAll('.day-button').forEach(b => b.classList.remove('selected'));
-                btnElement.classList.add('selected');
-                const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                loadAvailability(dateString);
-            };
-
-            const handleTimeSelect = (time, btnElement) => {
-                document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
-                btnElement.classList.add('time-slot-selected');
-                booking.time = time;
-                updateBookingSummary();
-                showSection('confirmation');
-            };
-
-            const updateBookingSummary = () => {
-                booking.totalDuration = booking.services.reduce((acc, s) => acc + s.duration + s.bufferTime, 0);
-                const summaryImagesContainer = document.getElementById('summary-service-images');
-                summaryImagesContainer.innerHTML = '';
-                if (booking.services.length > 0) {
-                    const firstService = booking.services[0];
-                    const photoSrc = firstService.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(firstService.name.charAt(0))}`;
-                    summaryImagesContainer.innerHTML = `<img src="${photoSrc}" alt="Imagem de ${firstService.name}" class="w-14 h-14 rounded-lg object-cover">`;
-                }
-                document.getElementById('summary-service').textContent = booking.services.map(s => s.name).join(', ');
+            // 9. Atualizar Resumo do Agendamento
+            const updateSummary = () => {
+                const s = booking.services[0];
+                document.getElementById('summary-service').textContent = s.name;
                 document.getElementById('summary-professional').textContent = booking.professionalName;
-                const formattedDate = new Date(booking.date + 'T00:00:00').toLocaleDateString('pt-BR');
-                document.getElementById('summary-datetime').textContent = `${formattedDate} às ${booking.time}`;
-                document.getElementById('summary-duration').textContent = `${booking.totalDuration} minutos`;
+                
+                const dateObj = new Date(booking.date + 'T00:00:00');
+                const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+                document.getElementById('summary-datetime').textContent = `${dateFormatted} às ${booking.time}`;
+                
+                const imgContainer = document.getElementById('summary-service-images');
+                imgContainer.innerHTML = '';
+                if(s.photo) {
+                    imgContainer.innerHTML = `<img src="${s.photo}" class="w-12 h-12 rounded-lg object-cover border border-gray-200">`;
+                } else {
+                    imgContainer.innerHTML = `<div class="w-12 h-12 rounded-lg theme-bg flex items-center justify-center text-white font-bold text-lg">${s.name[0]}</div>`;
+                }
             };
 
+            // 10. Confirmar Agendamento
             confirmationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const btn = document.getElementById('btn-confirm');
                 btn.disabled = true;
-                btn.textContent = 'A agendar...';
-                const startTimeAsDate = new Date(`${booking.date}T${booking.time}:00`);
+                btn.innerText = 'Agendando...';
+                
                 const data = {
                     establishmentId: ESTABLISHMENT_ID,
                     services: booking.services,
                     professionalId: booking.professionalId,
                     clientName: document.getElementById('clientName').value,
                     clientPhone: document.getElementById('clientPhone').value,
-                    startTime: startTimeAsDate.toISOString(),
+                    startTime: new Date(`${booking.date}T${booking.time}:00`).toISOString()
                 };
+
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/appointments`, {
+                    const res = await fetch(`${API_BASE_URL}/api/appointments`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(data)
                     });
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.message || 'Falha ao criar agendamento.');
-                    }
+                    if(!res.ok) throw new Error();
+                    
                     document.querySelector('main').innerHTML = `
-                        <div class="text-center py-20">
-                            <h2 class="text-3xl font-bold text-green-600 mb-4">Agendamento Confirmado!</h2>
-                            <p class="text-gray-700">O seu agendamento para <strong class="font-semibold">${booking.services.map(s => s.name).join(', ')}</strong> com <strong class="font-semibold">${booking.professionalName}</strong> no dia <strong class="font-semibold">${new Date(booking.date + 'T00:00:00').toLocaleDateString('pt-BR')} às ${booking.time}</strong> foi realizado com sucesso.</p>
-                            <p class="mt-4 text-gray-600">Receberá uma confirmação no seu WhatsApp em breve.</p>
+                        <div class="text-center py-10 fade-in">
+                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            </div>
+                            <h2 class="text-xl font-bold text-gray-800 mb-2">Agendado!</h2>
+                            <p class="text-sm text-gray-600 px-4">Seu horário está confirmado. Enviamos os detalhes para o seu WhatsApp.</p>
+                            <button onclick="location.reload()" class="mt-6 text-sm theme-text font-semibold hover:underline">Agendar outro</button>
                         </div>
                     `;
-                } catch (error) {
-                    console.error("Erro explícito no agendamento:", error);
-                    showNotificationModal('Erro no Agendamento', `Ocorreu um erro: ${error.message}`);
+                } catch {
+                    showNotificationModal('Erro', 'Não foi possível agendar. Tente novamente.');
                     btn.disabled = false;
-                    btn.textContent = 'Confirmar Agendamento';
+                    btn.innerText = 'Confirmar Agendamento';
                 }
             });
 
-            prevWeekBtn.addEventListener('click', () => {
-                currentWeekStart.setDate(currentWeekStart.getDate() - 7);
-                renderWeek();
-                timeSlotsContainer.innerHTML = '<p class="col-span-full text-gray-500 text-center">Selecione um dia para ver os horários.</p>';
+            // 11. Meus Agendamentos
+            const openAppointments = () => {
+                myAppointmentsView.classList.remove('hidden');
+                document.getElementById('booking-view').classList.add('hidden');
+                myAppointmentsContent.innerHTML = `
+                    <div class="text-center mt-10">
+                        <h3 class="font-bold text-gray-700 mb-2">Consultar Agendamentos</h3>
+                        <p class="text-xs text-gray-500 mb-4">Digite seu WhatsApp para buscar</p>
+                        <form id="lookupForm" class="max-w-xs mx-auto">
+                            <input type="tel" id="lookupPhone" class="w-full p-3 border rounded-lg text-center mb-3" placeholder="(00) 00000-0000" required>
+                            <button type="submit" class="w-full theme-bg text-white py-3 rounded-lg font-bold">Buscar</button>
+                        </form>
+                    </div>
+                `;
+                
+                document.getElementById('lookupForm').onsubmit = async (e) => {
+                    e.preventDefault();
+                    const phone = document.getElementById('lookupPhone').value;
+                    myAppointmentsContent.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+                    
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${ESTABLISHMENT_ID}?phone=${encodeURIComponent(phone)}`);
+                        if(!res.ok) throw new Error();
+                        const appts = await res.json();
+                        
+                        if(appts.length === 0) {
+                            myAppointmentsContent.innerHTML = '<p class="text-center text-gray-500 mt-10">Nenhum agendamento encontrado.</p>';
+                            return;
+                        }
+                        
+                        // (MODIFICADO) RENDERIZAÇÃO EM CARDS COM FOTO
+                        myAppointmentsContent.innerHTML = `<div class="space-y-3 pb-10">
+                            ${appts.map(a => {
+                                const photoUrl = a.professionalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(a.professionalName || 'P')}&background=random&color=fff`;
+                                const dateFormatted = new Date(a.startTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                                
+                                return `
+                                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-start gap-3">
+                                    <img src="${photoUrl}" alt="Profissional" class="w-12 h-12 rounded-full object-cover border border-gray-100 flex-shrink-0">
+                                    <div class="flex-grow min-w-0">
+                                        <div class="flex justify-between items-start">
+                                            <p class="font-bold text-sm text-gray-800 truncate">${a.professionalName || 'Profissional'}</p>
+                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${a.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-600'}">
+                                                ${a.status === 'completed' ? 'Finalizado' : 'Confirmado'}
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-gray-600 mt-0.5 font-medium">${a.serviceName}</p>
+                                        <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                            ${dateFormatted}
+                                        </p>
+                                        ${a.status !== 'completed' && a.status !== 'cancelled' ? 
+                                            `<button onclick="cancelAppt('${a.id}', '${phone}')" class="mt-3 w-full text-xs text-red-500 border border-red-200 py-1.5 rounded hover:bg-red-50 font-semibold transition-colors">Cancelar Agendamento</button>` 
+                                            : ''}
+                                    </div>
+                                </div>
+                                `;
+                            }).join('')}
+                        </div>`;
+                    } catch {
+                        myAppointmentsContent.innerHTML = '<p class="text-center text-red-500 mt-10">Erro ao buscar.</p>';
+                    }
+                };
+            };
+            
+            window.cancelAppt = async (id, phone) => {
+                if(!confirm('Deseja cancelar?')) return;
+                try {
+                    await fetch(`${API_BASE_URL}/api/client-portal/appointments/${id}/cancel`, {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({phone, establishmentId: ESTABLISHMENT_ID})
+                    });
+                    alert('Cancelado com sucesso.');
+                    location.reload(); 
+                } catch {
+                    alert('Erro ao cancelar.');
+                }
+            };
+
+            myAppointmentsBtn.addEventListener('click', openAppointments);
+            document.querySelector('[data-action="close-appointments-view"]').addEventListener('click', () => {
+                myAppointmentsView.classList.add('hidden');
+                document.getElementById('booking-view').classList.remove('hidden');
             });
 
-            nextWeekBtn.addEventListener('click', () => {
-                currentWeekStart.setDate(currentWeekStart.getDate() + 7);
-                renderWeek();
-                timeSlotsContainer.innerHTML = '<p class="col-span-full text-gray-500 text-center">Selecione um dia para ver os horários.</p>';
-            });
-
-            loadEstablishmentDetails().then(() => {
-                // Só carrega os serviços se os detalhes do estabelecimento foram carregados com sucesso
-                loadServices();
-            });
+            // Inicialização
+            loadEstablishmentDetails().then(loadServices);
+            
+            // Navegação da semana
+            prevWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() - 7); renderWeek(); };
+            nextWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() + 7); renderWeek(); };
         });
     </script>
 </body>

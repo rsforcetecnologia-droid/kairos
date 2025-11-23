@@ -16,6 +16,7 @@
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "@capacitor/ios": "^7.4.3",
+    "@capacitor/screen-orientation": "^7.0.2",
     "@types/node": "^22.13.11",
     "axios": "^1.12.2",
     "cors": "^2.8.5",

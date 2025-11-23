@@ -3,16 +3,14 @@
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-// (MODIFICADO) 'hasAccess' é removido da rota GET, mas mantido para as outras
 const { verifyToken, isOwner, hasAccess } = require('../middlewares/auth');
 
 /**
  * Rota GET para buscar detalhes de UM estabelecimento.
- * (MODIFICADA PARA SUPORTAR ACESSO PÚBLICO E PRIVADO)
  */
-router.get('/:establishmentId', async (req, res) => { // Removido verifyToken e hasAccess
+router.get('/:establishmentId', async (req, res) => { 
     const { establishmentId } = req.params;
-    const { db } = req; // Assumindo que addFirebaseInstances está no index.js
+    const { db } = req; 
 
     try {
         const establishmentRef = db.collection('establishments').doc(establishmentId);
@@ -31,35 +29,37 @@ router.get('/:establishmentId', async (req, res) => { // Removido verifyToken e 
             const token = authorization.split('Bearer ')[1];
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
-                // Verifica se o token pertence a este estabelecimento
                 if (decodedToken.establishmentId === establishmentId) {
                     isAuthenticated = true;
                 }
             } catch (error) {
-                isAuthenticated = false; // Token inválido ou expirado
+                isAuthenticated = false; 
             }
         }
 
         // Se for autenticado (vindo do painel admin), retorna todos os dados
         if (isAuthenticated) {
-            // Garante que o usuário só pode ver o seu próprio estabelecimento
-            // (Esta verificação é feita pelo decodedToken.establishmentId acima)
             return res.status(200).json({ id: doc.id, ...data });
         }
         
         // Se for acesso público (cliente.html):
-        
-        // 1. Verifica se o agendamento público está habilitado
         if (data.publicBookingEnabled === false) {
              return res.status(403).json({ message: 'Este estabelecimento não está aceitando agendamentos online no momento.' });
         }
 
-        // 2. Retorna apenas dados públicos e seguros
+        // 2. Retorna dados públicos
         const publicData = {
             id: doc.id,
             name: data.name,
             logo: data.logo || null,
-            themeColor: data.themeColor || 'indigo',
+            themeColor: data.themeColor || 'indigo', // Fallback
+            
+            // --- PERSONALIZAÇÃO ---
+            primaryColor: data.primaryColor || null, // Cor dos botões
+            textColor: data.textColor || '#111827', // (NOVO) Cor do texto do nome/título
+            backgroundImage: data.backgroundImage || null, // Imagem de fundo
+            // ----------------------
+            
             welcomeMessage: data.welcomeMessage || 'Seja bem-vindo(a)!'
         };
         
@@ -74,13 +74,11 @@ router.get('/:establishmentId', async (req, res) => { // Removido verifyToken e 
 
 /**
  * Rota PUT para atualizar os detalhes de UM estabelecimento.
- * Protegida por token, apenas o DONO (owner) pode fazer isso.
- * (Esta rota permanece protegida e inalterada)
  */
 router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
     const { establishmentId } = req.params;
     const { db } = req;
-    const updatedData = req.body; // Dados vêm do frontend
+    const updatedData = req.body; 
 
     try {
         const establishmentRef = db.collection('establishments').doc(establishmentId);
@@ -90,13 +88,10 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
             return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
         }
 
-        // Garante que o dono só pode editar o seu próprio estabelecimento
         if (doc.id !== req.user.establishmentId) {
              return res.status(403).json({ message: 'Acesso negado.' });
         }
 
-        // Atualiza o documento
-        // O 'set' com 'merge: true' é mais seguro pois apenas atualiza os campos enviados
         await establishmentRef.set(updatedData, { merge: true });
 
         res.status(200).json({ message: 'Estabelecimento atualizado com sucesso.' });
@@ -107,20 +102,14 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
     }
 });
 
-// ####################################################################
-// ### ROTA DE STATUS DE AGENDAMENTO (JÁ EXISTENTE) ###
-// ####################################################################
-
 /**
  * Rota PATCH para atualizar SOMENTE o status do agendamento público.
- * Protegida por token, apenas o DONO (owner) pode fazer isso.
  */
 router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (req, res) => {
     const { establishmentId } = req.params;
     const { db } = req;
-    const { publicBookingEnabled } = req.body; // Espera: { "publicBookingEnabled": true } ou { "publicBookingEnabled": false }
+    const { publicBookingEnabled } = req.body; 
 
-    // Validação
     if (typeof publicBookingEnabled !== 'boolean') {
         return res.status(400).json({ message: 'O valor de "publicBookingEnabled" deve ser um booleano (true/false).' });
     }
@@ -133,12 +122,10 @@ router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (re
             return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
         }
 
-        // Garante que o dono só pode editar o seu próprio estabelecimento
         if (doc.id !== req.user.establishmentId) {
              return res.status(403).json({ message: 'Acesso negado.' });
         }
 
-        // Atualiza apenas o campo 'publicBookingEnabled'
         await establishmentRef.update({
             publicBookingEnabled: publicBookingEnabled
         });
@@ -151,25 +138,18 @@ router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (re
     }
 });
 
-// ####################################################################
-// ### ROTA CORRIGIDA PARA ALTERAR E-MAIL (CAUSA DO 404) ###
-// ####################################################################
-
 /**
- * (NOVA ROTA ADICIONADA) Rota PATCH para atualizar SOMENTE o e-mail do proprietário.
- * Protegida por token, apenas o DONO (owner) pode fazer isso.
+ * Rota PATCH para atualizar SOMENTE o e-mail do proprietário.
  */
 router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, res) => {
     const { establishmentId } = req.params;
     const { db } = req;
     const { newEmail } = req.body;
 
-    // Validação
     if (!newEmail || typeof newEmail !== 'string') {
         return res.status(400).json({ message: 'O "newEmail" é obrigatório.' });
     }
 
-    // Verifica se o ID do token corresponde ao ID da rota
     if (establishmentId !== req.user.establishmentId) {
         return res.status(403).json({ message: 'Acesso negado.' });
     }
@@ -177,7 +157,6 @@ router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, 
     try {
         const establishmentRef = db.collection('establishments').doc(establishmentId);
         
-        // Atualiza apenas o campo 'ownerEmail' no Firestore
         await establishmentRef.update({
             ownerEmail: newEmail
         });
@@ -189,6 +168,5 @@ router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, 
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
-
 
 module.exports = router;

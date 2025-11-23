@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado com Pré-carregamento + Correção de Scroll + Fix Bloqueios)
+// js/ui/agenda.js (Otimizado + Mobile Friendly Force View)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -15,7 +15,6 @@ import { navigateTo } from '../main.js';
 const contentDiv = document.getElementById('content');
 const API_BASE_URL = window.location.origin;
 let currentTimeInterval = null;
-// NOVO: Variável de controlo para prevenir múltiplos ouvintes
 let hasContentDelegationInitialized = false; 
 
 // NOVA PALETA DE CORES DE ALTO CONTRASTE
@@ -30,28 +29,27 @@ const colorPalette = [
     { bg: '#fce7f3', border: '#db2777', main: '#db2777' }, // Fuchsia
 ];
 
-// (MODIFICADO) Estas agora são variáveis de cache pré-carregadas
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
-let allClientsData = []; // Cache de clientes para a busca
+let allClientsData = []; 
 
-// (MODIFICADO) Estado local da página da agenda
+// (MODIFICADO) Estado local
 let localState = {
-    currentView: 'list', // 'list' ou 'week'
-    weekViewDays: 7, // NOVO: 3, 5, ou 7
+    currentView: 'list', // Será sobrescrito no load se for mobile
+    weekViewDays: 7, 
     currentDate: new Date(),
-    selectedProfessionalId: 'all', // NOVO: ID do profissional selecionado ('all' por padrão)
-    profSearchTerm: '', // NOVO: Termo de busca para o filtro de fotos
-    showInactiveProfs: false, // NOVO: Estado para mostrar inativos
-    scrollToAppointmentId: null // <-- NOVO (CORREÇÃO SCROLL): Armazena o ID para o qual devemos rolar
+    selectedProfessionalId: 'all', 
+    profSearchTerm: '', 
+    showInactiveProfs: false, 
+    scrollToAppointmentId: null 
 };
 
 // ESTADO CENTRALIZADO DO NOVO FLUXO DE AGENDAMENTO
 let newAppointmentState = {
-    step: 1, // 1: Cliente, 2: Serviço, 3: Profissional, 4: Data/Hora
+    step: 1, 
     data: {
-        id: null, // <-- AJUSTE FEITO (1/3): Adicionado ID para rastrear a edição
+        id: null, 
         clientName: '',
         clientPhone: '',
         selectedServiceIds: [],
@@ -60,48 +58,36 @@ let newAppointmentState = {
         date: null,
         time: null,
         redeemedReward: null,
-        // (NOVO) Campos para controlar a fidelidade no modal
         clientHasRewards: false,
         clientLoyaltyPoints: 0
     }
 };
 
-// --- NOVO: Função para formatar a data de forma reduzida (Ex: Sex, 26 Set) ---
 function formatDateReduced(date) {
     return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).format(date).replace(/\./g, '');
 }
 
-// --- NOVO: Função para obter o início do bloco de visualização (substitui getStartOfWeek) ---
 function getWeekStart(date) {
     const d = new Date(date);
     d.setHours(0, 0, 0, 0);
-    
-    // Só faz o 'snap' para a segunda-feira se a visualização for de 7 dias completos.
     if (localState.currentView === 'week' && localState.weekViewDays === 7) {
         const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Garante que a semana começa na Segunda-feira (1)
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
         return new Date(d.setDate(diff));
     }
-    
-    // Para 'list' (1 dia) ou blocos de 3/5 dias na 'week' view, 
-    // a data atual (d) já é o início do bloco que queremos exibir.
     return d;
 }
 
-
-// --- NOVO: Função para renderizar a faixa de seleção de profissionais ---
 function renderProfessionalSelector() {
     const container = document.getElementById('profSelectorContainer');
     const searchTerm = localState.profSearchTerm.toLowerCase();
     
     if (!container || !state.professionals) return;
 
-    // 1. FILTRAGEM POR STATUS (Inativos só aparecem se o toggle estiver ativo)
     let availableProfs = state.professionals.filter(p => 
         localState.showInactiveProfs || p.status !== 'inactive'
     );
 
-    // 2. Aplica o filtro de busca
     if (searchTerm) {
         availableProfs = availableProfs.filter(p => 
             p.name.toLowerCase().includes(searchTerm)
@@ -117,7 +103,6 @@ function renderProfessionalSelector() {
         const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
         const isActive = prof.status !== 'inactive';
         
-        // Obtém a cor do mapa, garantindo que 'all' use uma cor neutra
         const defaultColor = colorPalette[0];
         const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
         
@@ -125,32 +110,25 @@ function renderProfessionalSelector() {
         const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
         const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
         
-        // CORREÇÃO (BUG 1): Adiciona a lógica da moldura colorida via style inline
-        const borderColor = isSelected ? profColor.border : 'transparent'; // Use 'border' for the visible color
+        const borderColor = isSelected ? profColor.border : 'transparent'; 
         const borderStyle = `border: 3px solid ${borderColor}; box-shadow: ${isSelected ? '0 0 0 2px ' + profColor.border : 'none'};`;
 
         return `
             <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
                  data-action="select-professional" 
                  data-prof-id="${prof.id}">
-                
                 ${prof.id === 'all' 
                     ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
                            ${initials}
                           </div>`
                     : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${borderStyle}" />`
                 }
-                
                 <span class="prof-card-name">${profName}</span>
             </div>
         `;
     }).join('');
 }
 
-/**
- * Gera a URL do WhatsApp com a mensagem de confirmação pré-preenchida.
- * [Restante da função createWhatsAppLink...]
- */
 function createWhatsAppLink(phone, clientName, serviceName, professionalName, startTime) {
     const cleanedPhone = (phone || '').replace(/\D/g, '');
     const date = new Date(startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -238,29 +216,20 @@ function renderListView(allEvents) {
     agendaView.innerHTML = `<div class="list-view-container">${cardsHTML}</div>`;
 }
 
-// ### ALTERAÇÃO 1 (Helper Function) ###
-// Esta função verifica se estamos no mobile e retorna 3 dias
-// caso contrário, retorna a seleção do utilizador
 function getActiveWeekDays() {
     const isMobile = window.innerWidth < 768;
-    // Se for mobile E a vista for 'semana', força 3 dias
     if (isMobile && localState.currentView === 'week') {
         return 3;
     }
-    // Caso contrário, usa o estado normal (3, 5 ou 7)
     return localState.weekViewDays;
 }
 
-
-// ### ALTERAÇÃO 2: Compactar o card da VISTA SEMANAL ###
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
     const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     const weekStart = getWeekStart(localState.currentDate);
     
     const numDays = getActiveWeekDays();
-
-    // Reduzido grid-template-columns para 3 no mobile (feito por getActiveWeekDays)
     let weekHTML = `<div class="grid divide-x divide-gray-200 min-h-[60vh]" style="grid-template-columns: repeat(${numDays}, minmax(0, 1fr));">`;
 
     for (let i = 0; i < numDays; i++) {
@@ -273,7 +242,7 @@ function renderWeekView(allEvents) {
             .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
-        let eventsHTML = '<div class="p-1 space-y-2">'; // Reduzido padding para p-1
+        let eventsHTML = '<div class="p-1 space-y-2">'; 
         if (dayEvents.length > 0) {
             eventsHTML += dayEvents.map(event => {
                 const startTime = new Date(event.startTime);
@@ -281,7 +250,6 @@ function renderWeekView(allEvents) {
                 const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
                 
                 if (event.type === 'blockage') {
-                    // Card de BLOQUEIO compactado
                     return `
                         <div class="p-2 rounded-lg border-l-4 flex flex-col bg-red-100" style="border-left-color: ${profColor.border};">
                             <span class="font-bold text-xs text-red-900">${startTimeStr}</span>
@@ -298,7 +266,6 @@ function renderWeekView(allEvents) {
                 const hasRewards = event.hasRewards && !isRedeemed;
                 const isCompleted = event.status === 'completed';
 
-                // Card de AGENDAMENTO compactado
                 return `
                     <div class="p-2 rounded-lg border-l-4 flex flex-col cursor-pointer" 
                          style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};"
@@ -338,11 +305,9 @@ function renderWeekView(allEvents) {
     weekHTML += '</div>';
     agendaView.innerHTML = weekHTML;
 }
-// ### FIM DA ALTERAÇÃO ###
 
 function renderAgenda() {
     const filteredEvents = state.allEvents.filter(event => {
-        // Filtra pelo profissional selecionado
         const profMatch = localState.selectedProfessionalId === 'all' || event.professionalId === localState.selectedProfessionalId;
         return profMatch;
     });
@@ -354,7 +319,6 @@ function renderAgenda() {
     }
 }
 
-// (MODIFICADO) Função 'fetchAndDisplayAgenda' agora faz o scroll e highlight
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
     if (!agendaView) return;
@@ -368,20 +332,18 @@ async function fetchAndDisplayAgenda() {
         start.setHours(0, 0, 0, 0);
         end = new Date(localState.currentDate);
         end.setHours(23, 59, 59, 999);
-        // ATUALIZAÇÃO: Usa o formato reduzido
         weekRangeSpan.textContent = formatDateReduced(start);
     } else {
-        const numDays = getActiveWeekDays(); // Obtém 3, 5 ou 7
+        const numDays = getActiveWeekDays(); 
         
         start = getWeekStart(new Date(localState.currentDate)); 
         end = new Date(start);
-        end.setDate(start.getDate() + (numDays - 1)); // Calcula o fim com base no numDays correto
+        end.setDate(start.getDate() + (numDays - 1)); 
         end.setHours(23, 59, 59, 999);
         weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} - ${end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}`;
     }
 
     try {
-        // Envia o ID do profissional selecionado no filtro (se não for 'all')
         const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(
             state.establishmentId, 
             start.toISOString(), 
@@ -396,15 +358,10 @@ async function fetchAndDisplayAgenda() {
             localState.selectedProfessionalId
         );
         
-        // --- INÍCIO DA CORREÇÃO: Preencher nome do profissional nos bloqueios ---
-        // Como a API de bloqueios pode não retornar o nome (apenas ID), 
-        // buscamos o nome na lista de profissionais carregada localmente.
         const enrichedBlockages = blockagesData.map(b => {
             let profName = b.professionalName;
             
             if (!profName && b.professionalId) {
-                // Tenta encontrar o profissional no estado global (cache)
-                // state.professionals já foi carregado pelo populateFilters
                 const prof = state.professionals ? state.professionals.find(p => p.id === b.professionalId) : null;
                 if (prof) {
                     profName = prof.name;
@@ -417,44 +374,29 @@ async function fetchAndDisplayAgenda() {
                 professionalName: profName || 'Não identificado' 
             };
         });
-        // --- FIM DA CORREÇÃO ---
         
-        // Combina agendamentos e bloqueios numa única lista de eventos
         const allEvents = [
             ...appointmentsData.map(a => ({ ...a, type: 'appointment' })),
-            ...enrichedBlockages // Usa a lista enriquecida
+            ...enrichedBlockages 
         ];
         
-        state.allEvents = allEvents; // Armazena a lista combinada no estado global
+        state.allEvents = allEvents; 
         
-        // Recarrega o seletor de profissionais para atualizar o estado de 'selected'
         renderProfessionalSelector();
-        
-        renderAgenda(); // <-- HTML é construído aqui
+        renderAgenda(); 
 
-        // --- INÍCIO DA MODIFICAÇÃO (Scroll e Highlight) ---
         if (localState.scrollToAppointmentId) {
-            // Tenta encontrar o card do agendamento
-            // Usamos a sintaxe de seletor de atributo para encontrar o JSON dentro do data-appointment
             const targetCard = document.querySelector(`[data-appointment*='"id":"${localState.scrollToAppointmentId}"']`);
-            
             if (targetCard) {
-                // Rola a tela até o card
                 targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                // Adiciona um destaque temporário
                 targetCard.style.transition = 'background-color 0.5s ease-in-out';
-                targetCard.style.backgroundColor = '#e0e7ff'; // Cor indigo-100 (azul claro)
-                
+                targetCard.style.backgroundColor = '#e0e7ff'; 
                 setTimeout(() => {
-                    targetCard.style.backgroundColor = ''; // Remove o destaque
-                }, 2500); // Duração do destaque: 2.5 segundos
+                    targetCard.style.backgroundColor = ''; 
+                }, 2500); 
             }
-            
-            // Limpa o ID para não fazer scroll novamente ao mudar filtro
             localState.scrollToAppointmentId = null; 
         }
-        // --- FIM DA MODIFICAÇÃO ---
 
     } catch (error) {
         showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
@@ -462,34 +404,23 @@ async function fetchAndDisplayAgenda() {
     }
 }
 
-// (MODIFICADO) Função 'populateFilters' agora pré-carrega dados para o modal
 async function populateFilters() {
     try {
-        // Usa Promise.all para carregar tudo em paralelo
         const [profs, services, clients, establishmentDetails] = await Promise.all([
-            // Carrega profissionais se não estiverem no estado
             (state.professionals && state.professionals.length > 0) 
                 ? Promise.resolve(state.professionals) 
                 : professionalsApi.getProfessionals(state.establishmentId),
-            
-            // Carrega serviços se não estiverem no estado
             (state.services && state.services.length > 0) 
                 ? Promise.resolve(state.services)
                 : servicesApi.getServices(state.establishmentId),
-            
-            // Carrega clientes (vamos sempre buscar a lista fresca, ou podemos usar cache)
-            // Para esta otimização, vamos carregar uma vez
             (allClientsData.length > 0) 
                 ? Promise.resolve(allClientsData)
                 : clientsApi.getClients(state.establishmentId),
-
-            // Carrega detalhes do estabelecimento (para fidelidade)
             (loyaltySettingsForModal.enabled !== undefined)
-                ? Promise.resolve(null) // Já carregado
+                ? Promise.resolve(null)
                 : establishmentApi.getEstablishmentDetails(state.establishmentId)
         ]);
 
-        // Atualiza os estados/caches apenas se necessário
         if (!state.professionals || state.professionals.length === 0) {
             state.professionals = profs || [];
         }
@@ -499,16 +430,14 @@ async function populateFilters() {
         if (allClientsData.length === 0) {
             allClientsData = clients || [];
         }
-        if (establishmentDetails) { // establishmentDetails será 'null' se já estava em cache
+        if (establishmentDetails) { 
             loyaltySettingsForModal = establishmentDetails.loyaltyProgram || { enabled: false };
         }
 
-        // Aplica a cor para o filtro de card
         state.professionals.forEach((prof, index) => {
             state.professionalColors.set(prof.id, colorPalette[index % colorPalette.length]);
         });
         
-        // Renderiza o seletor de fotos na primeira carga
         renderProfessionalSelector();
 
     } catch (error) {
@@ -517,45 +446,32 @@ async function populateFilters() {
     }
 }
 
-
-// --- LÓGICA DE MANIPULAÇÃO DO FLUXO DO MODAL ---
-
-/**
- * Atualiza o estado da nova marcação e renderiza a view correta.
- * @param {number} step - O passo para onde navegar (1-4).
- */
 function navigateModalStep(step) {
     if (step < 1 || step > 4) return;
     newAppointmentState.step = step;
-    openAppointmentModal(null, true); // O segundo parâmetro true indica que é uma navegação interna
+    openAppointmentModal(null, true); 
 }
 
-// Lógica para selecionar Serviço no Step 2
 function handleServiceCardClick(serviceId, element) {
     const isSelected = element.classList.contains('selected');
     const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
 
     if (isSelected) {
-        element.classList.remove('selected', 'border-blue-500'); // CORREÇÃO: Remove a classe da borda
-        // Remove o ID do serviço da lista
+        element.classList.remove('selected', 'border-blue-500');
         if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
     } else {
-        element.classList.add('selected', 'border-blue-500'); // CORREÇÃO: Adiciona a classe da borda
-        // Adiciona o ID do serviço à lista
+        element.classList.add('selected', 'border-blue-500');
         newAppointmentState.data.selectedServiceIds.push(serviceId);
     }
 }
 
-// Lógica para selecionar Profissional no Step 3
 function handleProfessionalCardClick(professionalId, element) {
     const professionalContainer = document.querySelector('.professional-step-cards');
     if (!professionalContainer) return;
     
-    // Limpa a seleção anterior
-    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-blue-500')); // CORREÇÃO: Remove a classe da borda
+    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-blue-500'));
     
-    // Seleciona o novo
-    element.classList.add('selected', 'border-blue-500'); // CORREÇÃO: Adiciona a classe da borda
+    element.classList.add('selected', 'border-blue-500');
     
     const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
     
@@ -563,8 +479,6 @@ function handleProfessionalCardClick(professionalId, element) {
     newAppointmentState.data.professionalName = professional ? professional.name : 'N/A';
 }
 
-
-// Lógica para selecionar Horário no Step 4
 function handleTimeSlotClick(slot, element) {
     const timeContainer = document.getElementById('availableTimesContainer');
     if (!timeContainer) return;
@@ -573,9 +487,6 @@ function handleTimeSlotClick(slot, element) {
     element.classList.add('selected');
     newAppointmentState.data.time = slot;
 }
-
-
-// --- LÓGICA DE ATUALIZAÇÃO E VALIDAÇÃO ---
 
 async function updateTimesAndDuration() {
     const totalDurationSpan = document.getElementById('apptTotalDuration');
@@ -587,7 +498,7 @@ async function updateTimesAndDuration() {
     const selectedServiceIds = newAppointmentState.data.selectedServiceIds;
     const date = document.getElementById('apptDate').value;
     
-    newAppointmentState.data.date = date; // Salva a data
+    newAppointmentState.data.date = date; 
 
     const totalDuration = selectedServiceIds.reduce((acc, id) => {
         const service = availableServicesForModal.find(s => s.id === id);
@@ -610,7 +521,6 @@ async function updateTimesAndDuration() {
         
         let slots = await res.json();
         
-        // Filtra slots passados
         const now = new Date();
         const selectedDateObj = new Date(date + 'T00:00:00');
         if (selectedDateObj.toDateString() === now.toDateString()) {
@@ -629,11 +539,9 @@ async function updateTimesAndDuration() {
                 card.type = 'button';
                 card.className = `time-slot-card p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition ${newAppointmentState.data.time === slot ? 'selected' : ''}`;
                 card.textContent = slot;
-                // CORREÇÃO: Anexando o listener de clique no slot
                 card.addEventListener('click', () => handleTimeSlotClick(slot, card));
                 timeContainer.appendChild(card);
             });
-            // Re-seleciona o horário se ele ainda estiver no estado
             if (newAppointmentState.data.time) {
                 const selectedSlot = timeContainer.querySelector(`[data-action="time-slot"][data-time="${newAppointmentState.data.time}"]`);
                 if (selectedSlot) selectedSlot.classList.add('selected');
@@ -646,7 +554,6 @@ async function updateTimesAndDuration() {
     }
 }
 
-// --- (NOVO) LÓGICA DE FIDELIDADE NO MODAL (STEP 4) ---
 function renderLoyaltyRewards() {
     const container = document.getElementById('loyaltyRewardsContainer');
     if (!container) return;
@@ -654,7 +561,6 @@ function renderLoyaltyRewards() {
     const { clientHasRewards, clientLoyaltyPoints, redeemedReward } = newAppointmentState.data;
     const { enabled, rewards, pointsPerCurrency } = loyaltySettingsForModal;
     
-    // Esconde o container se a fidelidade estiver desativada, ou o cliente não tiver prêmios, ou não houver prêmios cadastrados
     if (!enabled || !clientHasRewards || !rewards || rewards.length === 0) {
         container.classList.add('hidden');
         container.innerHTML = '';
@@ -672,7 +578,7 @@ function renderLoyaltyRewards() {
     if (availableRewards.length > 0) {
         rewardsHTML += '<div class="space-y-2">';
         rewardsHTML += availableRewards.map(reward => {
-            const isChecked = redeemedReward?.reward === reward.reward; // Verifica se este prêmio está selecionado
+            const isChecked = redeemedReward?.reward === reward.reward; 
             return `
                 <label class="flex items-center p-3 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
                     <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600" 
@@ -693,7 +599,6 @@ function renderLoyaltyRewards() {
 
     container.innerHTML = rewardsHTML;
 
-    // Anexa listeners de seleção aos inputs de rádio
     container.querySelectorAll('input[name="loyaltyReward"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
             if (e.target.checked) {
@@ -705,7 +610,6 @@ function renderLoyaltyRewards() {
         });
     });
     
-    // Adiciona uma opção para "Nenhum" (para desmarcar)
     container.insertAdjacentHTML('beforeend', `
         <label class="flex items-center p-3 mt-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
             <input type="radio" name="loyaltyReward" class="form-radio text-gray-400" 
@@ -721,14 +625,11 @@ function renderLoyaltyRewards() {
     });
 }
 
-
-// --- FUNÇÃO DE SUBMISSÃO FINAL ---
 async function handleAppointmentFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
 
-    // Validação final
     if (!newAppointmentState.data.time || newAppointmentState.data.selectedServiceIds.length === 0 || !newAppointmentState.data.professionalId) {
         return showNotification('Erro de Validação', 'Por favor, selecione o horário, serviço(s) e profissional antes de confirmar.', 'error');
     }
@@ -746,15 +647,14 @@ async function handleAppointmentFormSubmit(e) {
 
     const appointmentData = {
         establishmentId: state.establishmentId,
-        clientName: newAppointmentState.data.clientName, // Pego do estado
-        clientPhone: newAppointmentState.data.clientPhone, // Pego do estado
+        clientName: newAppointmentState.data.clientName,
+        clientPhone: newAppointmentState.data.clientPhone,
         services: servicesData,
-        professionalId: newAppointmentState.data.professionalId, // Pego do estado
+        professionalId: newAppointmentState.data.professionalId,
         startTime: startTimeAsDate.toISOString(),
         redeemedReward: newAppointmentState.data.redeemedReward
     };
     
-    // Se estiver editando, adicione o ID
     const appointmentId = form.querySelector('#appointmentId').value;
     if (appointmentId) {
         appointmentData.id = appointmentId;
@@ -777,9 +677,6 @@ async function handleAppointmentFormSubmit(e) {
         submitButton.textContent = 'Confirmar Agendamento';
     }
 }
-
-
-// --- RENDERIZADORES DE ETAPA ---
 
 function renderClientCard(client) {
     const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
@@ -804,7 +701,6 @@ async function handleClientSearch(searchTerm) {
     const resultsContainer = document.getElementById('clientSearchResults');
     if (!resultsContainer) return;
     
-    // CORREÇÃO: A busca deve ser case-insensitive
     const term = searchTerm.toLowerCase().trim();
 
     if (term.length < 3) {
@@ -812,7 +708,6 @@ async function handleClientSearch(searchTerm) {
         return;
     }
     
-    // Filtra no cache local (que deve ser carregado na inicialização)
     const filteredClients = allClientsData.filter(client => 
         client.name.toLowerCase().includes(term) || 
         client.phone.includes(term)
@@ -825,22 +720,18 @@ async function handleClientSearch(searchTerm) {
 
     resultsContainer.innerHTML = filteredClients.map(renderClientCard).join('');
     
-    // Anexa listeners de seleção aos novos cards renderizados
     resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
         card.addEventListener('click', (e) => {
             const clientName = card.dataset.clientName;
             const clientPhone = card.dataset.clientPhone;
             
-            // (NOVO) Busca o cliente completo no cache para verificar pontos
             const client = allClientsData.find(c => c.phone === clientPhone && c.name === clientName);
 
-            // Atualiza o estado
             newAppointmentState.data.clientName = clientName;
             newAppointmentState.data.clientPhone = clientPhone;
             
-            // (MODIFICADO) Usa a lógica de verificação de prêmio do backend (loyaltyPoints >= minPoints)
             if (client) {
-                const loyaltyProgram = loyaltySettingsForModal; // Pega as regras do modal
+                const loyaltyProgram = loyaltySettingsForModal; 
                 const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
                 
                 newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
@@ -854,11 +745,9 @@ async function handleClientSearch(searchTerm) {
                 newAppointmentState.data.clientLoyaltyPoints = 0;
             }
             
-            // Atualiza a UI da etapa 1 (Inputs e Resultados)
             document.getElementById('apptClientName').value = clientName;
             document.getElementById('apptClientPhone').value = clientPhone;
             
-            // Força a atualização visual (deseleciona todos e seleciona o atual)
             document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
             card.classList.add('selected', 'border-blue-500');
         });
@@ -888,24 +777,16 @@ async function handleClientRegistration(e) {
     registerButton.textContent = 'A salvar...';
 
     try {
-        // CORREÇÃO: Chama a API real para criar o cliente
         await clientsApi.createClient(clientData);
-        
-        // Adiciona o novo cliente ao cache local para que a busca o encontre imediatamente
         allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
         
-        // ATUALIZAÇÃO DO ESTADO DE AGENDAMENTO
         newAppointmentState.data.clientName = clientData.name;
         newAppointmentState.data.clientPhone = clientData.phone;
-        newAppointmentState.data.clientHasRewards = false; // Novo cliente
-        newAppointmentState.data.clientLoyaltyPoints = 0; // Novo cliente
+        newAppointmentState.data.clientHasRewards = false; 
+        newAppointmentState.data.clientLoyaltyPoints = 0; 
         
         showNotification('Cliente cadastrado com sucesso!', 'success');
-        
-        // CORREÇÃO: Fecha o modal genérico
         document.getElementById('genericModal').style.display = 'none';
-        
-        // Re-renderiza a Step 1 para mostrar o cliente selecionado
         navigateModalStep(1); 
         
     } catch (error) {
@@ -917,7 +798,6 @@ async function handleClientRegistration(e) {
 }
 
 function renderClientRegistrationModal() {
-    // CORREÇÃO: O conteúdo agora é apenas o formulário, pois o modal genérico cria a estrutura.
     const modalContent = `
         <form id="clientRegistrationForm" class="flex flex-col h-full">
             <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
@@ -938,20 +818,17 @@ function renderClientRegistrationModal() {
         </form>
     `;
 
-    // CORREÇÃO: Usa a assinatura correta de `showGenericModal`
     showGenericModal({
         title: 'Cadastrar Novo Cliente',
         contentHTML: modalContent,
         maxWidth: 'max-w-2xl'
     });
     
-    // CORREÇÃO: Anexa o listener de submit ao formulário DEPOIS que o modal é renderizado.
     const form = document.getElementById('clientRegistrationForm');
     if (form) {
          form.addEventListener('submit', handleClientRegistration);
     }
 }
-
 
 function openClientRegistrationModal() {
     renderClientRegistrationModal();
@@ -1068,7 +945,6 @@ function renderStep3_Professional() {
 function renderStep4_Schedule(appointment) {
     const title = appointment ? 'Confirmar Edição' : 'Data e Horário';
     
-    // Obter data formatada para a exibição no cabeçalho
     const today = new Date();
     const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const initialDate = newAppointmentState.data.date || todayString;
@@ -1112,7 +988,6 @@ function renderStep4_Schedule(appointment) {
     return { title: title, content: formContent };
 }
 
-// --- FUNÇÕES DE BUSCA NO MODAL ---
 function handleServiceSearchInModal(searchTerm) {
     const container = document.getElementById('apptServicesContainer');
     if (!container) return;
@@ -1135,7 +1010,6 @@ function handleServiceSearchInModal(searchTerm) {
             </div>`;
     }).join('');
 
-    // Reanexa os listeners de clique aos cards filtrados
     container.querySelectorAll('.service-card').forEach(card => {
         card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
     });
@@ -1159,14 +1033,11 @@ function handleProfessionalSearchInModal(searchTerm) {
              </div>`;
     }).join('');
 
-    // Reanexa os listeners de clique aos cards filtrados
     container.querySelectorAll('.professional-modal-card').forEach(card => {
         card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
     });
 }
 
-
-// --- FUNÇÃO PRINCIPAL DO MODAL (OTIMIZADA) ---
 
 async function openAppointmentModal(appointment = null, isNavigating = false) {
     const modal = document.getElementById('appointmentModal');
@@ -1198,7 +1069,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         };
     }
     
-    // --- Atribuição de Dados (Usando o Cache) ---
     if (!state.services || !state.professionals || !allClientsData || loyaltySettingsForModal.enabled === undefined) {
          showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
          return;
@@ -1214,7 +1084,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         }
     }
     
-    // --- Renderiza a Etapa Atual ---
     let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
     
     switch (newAppointmentState.step) {
@@ -1225,7 +1094,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         default: break;
     }
     
-    // 3. Monta o Modal
     modal.innerHTML = `
         <div class="modal-content max-w-4xl p-0 rounded-xl overflow-hidden shadow-2xl">
             <header class="p-5 border-b flex justify-between items-center bg-gray-50">
@@ -1244,7 +1112,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             </form>
         </div>`;
 
-    // 4. Anexa Listeners de Navegação/Ação
     modal.querySelectorAll('[data-action="next-step"]').forEach(btn => {
         btn.addEventListener('click', () => {
             const currentStep = parseInt(btn.dataset.currentStep, 10);
@@ -1335,21 +1202,21 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
 }
 
 
-// --- 5. FUNÇÃO PRINCIPAL EXPORTADA (MODIFICADA) ---
+// --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
 
-export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
+export async function loadAgendaPage(params = {}) { 
     if (currentTimeInterval) clearInterval(currentTimeInterval);
     
-    // --- INÍCIO DA MODIFICAÇÃO ---
-    // Usa a data dos parâmetros se existir, senão usa a data local, senão usa hoje
     localState.currentDate = params.targetDate ? new Date(params.targetDate) : (localState.currentDate || new Date());
-    // Armazena o ID para o qual devemos rolar
     localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
-    // --- FIM DA MODIFICAÇÃO ---
     
     localState.profSearchTerm = ''; 
 
-    // ################## INÍCIO DA CORREÇÃO DE LAYOUT ##################
+    // NOVO: FORÇA A VISÃO DE LISTA SE FOR MOBILE
+    if (window.innerWidth < 768) {
+        localState.currentView = 'list';
+    }
+
     contentDiv.innerHTML = `
         <section>
             <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
@@ -1358,10 +1225,10 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                     <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
                     <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
                         <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
-                            <button data-view="list" class="view-btn active">Lista</button>
-                            <button data-view="week" class="view-btn">Semana</button>
+                            <button data-view="list" class="view-btn ${localState.currentView === 'list' ? 'active' : ''}">Lista</button>
+                            <button data-view="week" class="view-btn ${localState.currentView === 'week' ? 'active' : ''}">Semana</button>
                         </div>
-                        <div id="week-days-toggle" class="hidden items-center gap-1 rounded-lg bg-gray-200 p-1">
+                        <div id="week-days-toggle" class="${localState.currentView === 'week' ? 'flex' : 'hidden'} items-center gap-1 rounded-lg bg-gray-200 p-1">
                             <button data-days="3" class="week-days-btn view-btn">3 dias</button>
                             <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
                             <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
@@ -1401,10 +1268,7 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                 </svg>
             </button>
         </section>`;
-    // ################## FIM DA CORREÇÃO DE LAYOUT ##################
 
-
-    // Adiciona listeners aos botões de navegação
     document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('active'));
@@ -1415,8 +1279,7 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
             if (localState.currentView === 'week') {
                 weekDaysToggle.style.display = 'flex';
                 
-                // ### ALTERAÇÃO 6 (Forçar 3 dias JS) ###
-                // Se for mobile, força o estado para 3 dias e atualiza os botões
+                // (NOVO) Lógica extra de proteção se redimensionar
                 if (window.innerWidth < 768) {
                     localState.weekViewDays = 3;
                     document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
@@ -1433,8 +1296,6 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
 
     document.querySelectorAll('.week-days-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            // A lógica de esconder os botões 5 e 7 no HTML/CSS já previne cliques indesejados no mobile.
-            // Esta lógica original pode ser mantida.
             document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             localState.weekViewDays = parseInt(btn.dataset.days, 10);
@@ -1447,11 +1308,8 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
         fetchAndDisplayAgenda();
     });
     
-    // Lógica unificada para navegação semanal
     const handleNavigationClick = (e) => {
         const amount = parseInt(e.currentTarget.dataset.amount, 10);
-        // ### ALTERAÇÃO 7 (Usa a Helper Function) ###
-        // Usa a nova função para que o "pulo" (step) seja de 3 dias no mobile
         const step = localState.currentView === 'week' ? getActiveWeekDays() : 1;
         
         const newDate = new Date(localState.currentDate);
@@ -1464,7 +1322,6 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
     document.getElementById('prevBtn').addEventListener('click', handleNavigationClick);
     document.getElementById('nextBtn').addEventListener('click', handleNavigationClick);
     
-    // NOVO: Listeners para o filtro de profissionais (Busca, Seleção e Toggle)
     document.getElementById('profSearchInput').addEventListener('input', (e) => {
         localState.profSearchTerm = e.target.value;
         renderProfessionalSelector();
@@ -1472,28 +1329,22 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
 
     document.getElementById('showInactiveProfsToggle').addEventListener('change', (e) => {
         localState.showInactiveProfs = e.target.checked;
-        // Se a busca estiver ativa, o render vai lidar com a filtragem
-        // Se a busca estiver vazia, apenas atualiza a lista de seleção
         renderProfessionalSelector(); 
-        fetchAndDisplayAgenda(); // Adiciona o fetch para reatualizar a agenda com base nos inativos/ativos
+        fetchAndDisplayAgenda(); 
     });
     
-    // --- INÍCIO DA CORREÇÃO PRINCIPAL: Previne que o listener de delegação seja anexado múltiplas vezes ---
     if (!hasContentDelegationInitialized) {
         contentDiv.addEventListener('click', async (e) => {
             const targetElement = e.target.closest('[data-action]');
             
-            // LÓGICA DE SELEÇÃO DE PROFISSIONAL
             if (e.target.closest('[data-action="select-professional"]')) {
                 const selectedProfCard = e.target.closest('[data-action="select-professional"]');
                 const profId = selectedProfCard.dataset.profId;
                 
-                // Verifica se está deselecionando o profissional atual
                 const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
                 
                 localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
 
-                // Limpa o termo de busca se um profissional foi selecionado
                 if (profId !== 'all') {
                     const searchInput = document.getElementById('profSearchInput');
                     if(searchInput) {
@@ -1502,7 +1353,7 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                     localState.profSearchTerm = '';
                 }
                 
-                await fetchAndDisplayAgenda(); // Atualiza a agenda com o novo filtro
+                await fetchAndDisplayAgenda(); 
                 return;
             }
 
@@ -1521,19 +1372,14 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                     break;
                 case 'edit-appointment':
                     if (!apptData) return;
-                    
-                    // --- CORREÇÃO SOLICITADA: Bloquear edição se finalizada ---
                     if (apptData.status === 'completed') {
                         showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
                         return;
                     }
-                    // --- FIM CORREÇÃO SOLICITADA ---
 
-                    // --- (MODIFICADO) NOTIFICAÇÃO DE PRÊMIOS ---
                     if (apptData.hasRewards && !apptData.redeemedReward) {
                         showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos para resgatar. Verifique a Etapa 4 do agendamento.', 'info');
                     }
-                    // --- FIM DA NOTIFICAÇÃO ---
 
                     openAppointmentModal(apptData);
                     break;
@@ -1553,13 +1399,9 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                 }
                 case 'open-comanda':
                     if (apptData) {
-                        
-                        // --- (MODIFICADO) NOTIFICAÇÃO DE PRÊMIOS ---
                         if (apptData.hasRewards && !apptData.redeemedReward && apptData.status !== 'completed') {
                              showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos de fidelidade para resgatar.', 'info');
                         }
-                        // --- FIM DA NOTIFICAÇÃO ---
-
                         const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
                         const params = { 
                             selectedAppointmentId: apptData.id,
@@ -1573,12 +1415,9 @@ export async function loadAgendaPage(params = {}) { // <-- ACEITA PARAMS
                     break;
             }
         });
-        hasContentDelegationInitialized = true; // Define a flag após anexar
+        hasContentDelegationInitialized = true; 
     }
-    // --- FIM DA CORREÇÃO PRINCIPAL ---
 
-    // (MODIFICADO) Inicia o pré-carregamento dos filtros E dos dados do modal
     await populateFilters();
-    // (MODIFICADO) A busca da agenda agora é chamada DEPOIS do populateFilters
     await fetchAndDisplayAgenda();
 }

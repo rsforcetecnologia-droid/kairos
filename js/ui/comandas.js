@@ -1,4 +1,4 @@
-// js/ui/comandas.js (Card Otimizado)
+// js/ui/comandas.js
 
 // --- 1. IMPORTAÇÕES ---
 import * as comandasApi from '../api/comandas.js';
@@ -9,10 +9,10 @@ import * as servicesApi from '../api/services.js';
 import * as clientsApi from '../api/clients.js';
 import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
-import * as professionalsApi from '../api/professionals.js'; // <-- IMPORTAÇÃO ADICIONADA
+import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
-import { navigateTo } from '../main.js'; // <-- Importa a função de navegação
+import { navigateTo } from '../main.js';
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
@@ -32,7 +32,32 @@ let localState = {
 let pageEventListener = null;
 let contentDiv = null;
 
-// --- 3. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
+// --- 3. FUNÇÕES AUXILIARES (MOBILE & UI) ---
+
+/** * Ativa o modo de detalhes (Slide para a esquerda no mobile) 
+ * e garante que o scroll esteja no topo.
+ */
+function showMobileDetail() {
+    const layout = document.getElementById('comandas-layout');
+    if (layout) {
+        layout.classList.add('detail-view-active');
+        
+        // Rolar o container de detalhes para o topo
+        const detailContainer = document.getElementById('comanda-detail-container');
+        if(detailContainer) detailContainer.scrollTop = 0;
+    }
+}
+
+/** * Volta para a lista (Slide para a direita no mobile) 
+ */
+function hideMobileDetail() {
+    const layout = document.getElementById('comandas-layout');
+    if (layout) {
+        layout.classList.remove('detail-view-active');
+    }
+}
+
+// --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
 /** Renderiza o layout base da página de comandas */
 function renderPageLayout() {
@@ -145,37 +170,27 @@ function renderComandaList() {
         return;
     }
 
-    // Início da nova lógica de renderização do card
     listContainer.innerHTML = filteredComandas.map(comanda => {
-        
-        // ###################### INÍCIO DA CORREÇÃO ######################
-        // A comanda carregada (se for venda avulsa) tem os itens em `comanda.items`.
-        // Precisamos incluir isso no cálculo do total.
+        // Cálculo do total incluindo todos os possíveis arrays de itens
         const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
         const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
-        // ####################### FIM DA CORREÇÃO ########################
         
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         
-        // --- Lógica das Novas Features (Ícone, Tag, etc.) ---
         const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
         
-        // Se for Venda Avulsa, mostra a tag. Se não, mostra o nome do profissional.
         const typeIndicator = isWalkIn
             ? `<span class="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">Venda Avulsa</span>`
-            : `<p class="text-xs text-gray-500 truncate" title="${comanda.professionalName}">${comanda.professionalName}</p>`; // <-- Preenche o espaço em branco
+            : `<p class="text-xs text-gray-500 truncate" title="${comanda.professionalName}">${comanda.professionalName}</p>`;
 
-        // Botão de ir para agenda (só para não-avulsas)
         const goToAppointmentBtn = !isWalkIn
             ? `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" 
                         class="p-1 rounded-full hover:bg-indigo-100 text-indigo-600" title="Ir para o agendamento">
                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                </button>`
             : '';
-        // --- Fim da Lógica ---
 
-        // --- Nova Estrutura HTML do Card Otimizada ---
         return `
             <div data-action="select-comanda" data-comanda-id="${comanda.id}" 
                  class="comanda-card p-3 rounded-lg border-l-4 cursor-pointer transition-all 
@@ -198,11 +213,9 @@ function renderComandaList() {
             </div>
         `;
     }).join('');
-    // Fim da nova lógica
 
     renderPaginationControls(listContainer);
 }
-
 
 /** Renderiza os controles de paginação */
 function renderPaginationControls(container) {
@@ -277,29 +290,19 @@ function renderComandaDetail() {
         return;
     }
 
-    // Garante que o container tenha o loader enquanto os detalhes estão sendo preparados (caso a busca de dados demore)
     detailContainer.innerHTML = `<div class="loader mx-auto my-auto"></div>`;
 
-    // ###################### INÍCIO DA CORREÇÃO ######################
-    // Inclui `comanda.items` na lista de exibição
     const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
-    // ####################### FIM DA CORREÇÃO ########################
-    
     const isCompleted = comanda.status === 'completed';
-
-    // --- LÓGICA DE EXIBIÇÃO DOS BOTÕES (JÁ INCLUI A TRAVA) ---
     const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
     
     const reopenButton = isCompleted
         ? `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="py-2 px-4 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 flex-shrink-0">Reabrir</button>`
         : '';
         
-    // Botão de Excluir (só para Venda Avulsa E não-finalizada)
     const deleteButton = isWalkIn && !isCompleted
         ? `<button data-action="delete-walk-in" data-id="${comanda.id}" class="py-2 px-4 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 flex-shrink-0 ml-2">Excluir Venda</button>`
         : '';
-    // --- FIM DA LÓGICA ---
-
 
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
@@ -364,15 +367,9 @@ function renderComandaDetail() {
     `;
 }
 
-// --- 4. FUNÇÕES DE MODAIS ---
+// --- 5. FUNÇÕES DE MODAIS ---
 
-// --- INÍCIO DA CORREÇÃO: Funções de Cadastro de Cliente ---
-
-/**
- * Renderiza o HTML do formulário de cadastro de cliente dentro de um modal genérico.
- */
 function _comandas_renderClientRegistrationModal() {
-    // Conteúdo do modal
     const modalContent = `
         <form id="comandas_clientRegistrationForm" class="flex flex-col h-full">
             <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
@@ -413,23 +410,18 @@ function _comandas_renderClientRegistrationModal() {
         </form>
     `;
 
-    // Usa o modal genérico para exibir o formulário
     showGenericModal({
         title: 'Cadastrar Novo Cliente',
         contentHTML: modalContent,
         maxWidth: 'max-w-2xl'
     });
     
-    // Anexa o listener de submit ao formulário DEPOIS que o modal é renderizado.
     const form = document.getElementById('comandas_clientRegistrationForm');
     if (form) {
          form.addEventListener('submit', _comandas_handleClientRegistration);
     }
 }
 
-/**
- * Processa o submit do formulário de cadastro de novo cliente.
- */
 async function _comandas_handleClientRegistration(e) {
     e.preventDefault();
     const form = document.getElementById('comandas_clientRegistrationForm');
@@ -454,19 +446,11 @@ async function _comandas_handleClientRegistration(e) {
     registerButton.textContent = 'A salvar...';
 
     try {
-        // 1. Chama a API para criar o cliente
         const newClient = await clientsApi.createClient(clientData);
-        
-        // 2. Adiciona o novo cliente ao cache local
         localState.clients.push({ id: newClient.id, ...clientData });
-        
         showNotification('Cliente cadastrado com sucesso!', 'success');
-        
-        // 3. Fecha o modal de cadastro
         document.getElementById('genericModal').style.display = 'none';
-        
-        // 4. Reabre o modal de "Nova Venda", agora com o novo cliente selecionado
-        openNewSaleModal(newClient.id); // Passa o ID do novo cliente
+        openNewSaleModal(newClient.id);
 
     } catch (error) {
         showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
@@ -476,16 +460,13 @@ async function _comandas_handleClientRegistration(e) {
     }
 }
 
-// --- FIM DA CORREÇÃO ---
-
 function openAddItemModal() {
-    // Validação: bloqueia se caixa fechado
     if (!localState.isCashierOpen) {
         showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
         return;
     }
     
-    const { modalElement, setContent, close } = showGenericModal({ 
+    const { modalElement, close } = showGenericModal({ 
         title: "Adicionar Item à Comanda", 
         contentHTML: '<div id="add-item-content"></div>', 
         maxWidth: 'max-w-4xl' 
@@ -596,15 +577,12 @@ function openAddItemModal() {
     renderCatalogView();
 }
 
-// CORREÇÃO: A função agora aceita um newClientId opcional
 async function openNewSaleModal(newClientId = null) {
-    // Validação: bloqueia se caixa fechado
     if (!localState.isCashierOpen) {
         showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
         return;
     }
     
-    // CORREÇÃO: Garante que os dados de clientes e profissionais estejam carregados
     if (!localState.clients || localState.clients.length === 0) {
         try {
              localState.clients = await clientsApi.getClients(state.establishmentId);
@@ -623,7 +601,6 @@ async function openNewSaleModal(newClientId = null) {
     }
     
     const clientsOptions = localState.clients.map(c => {
-        // CORREÇÃO: Seleciona o novo cliente se o ID for passado
         const isSelected = c.id === newClientId ? 'selected' : '';
         return `<option value="${c.id}" ${isSelected}>${c.name} - ${c.phone}</option>`;
     }).join('');
@@ -655,26 +632,19 @@ async function openNewSaleModal(newClientId = null) {
 
     const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML, maxWidth: 'max-w-md' });
 
-    // Listener que já existia (para o submit)
     modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
     
-    // --- INÍCIO DA CORREÇÃO: Adiciona o listener que faltava ---
     const newClientBtn = modalElement.querySelector('[data-action="new-client-from-sale"]');
     if (newClientBtn) {
         newClientBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            // Fecha o modal atual ANTES de abrir o outro
             modalElement.style.display = 'none'; 
-            // Chama a nova função que criamos no Passo 1
             _comandas_renderClientRegistrationModal(); 
         });
     }
-    // --- FIM DA CORREÇÃO ---
 }
 
-
 function openCheckoutModal() {
-    // Validação: bloqueia se caixa fechado
     if (!localState.isCashierOpen) {
         showNotification('Caixa Fechado', 'Abra o caixa antes de finalizar pagamentos.', 'error');
         return;
@@ -683,7 +653,7 @@ function openCheckoutModal() {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])]; // <-- CORREÇÃO AQUI
+    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
     const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
 
     let payments = [];
@@ -701,8 +671,6 @@ function openCheckoutModal() {
         const changeContainer = document.getElementById('change-container');
         const installmentsContainer = document.getElementById('installments-container');
         const paymentValueInput = document.getElementById('payment-value');
-        
-        // (NOVO) Referência ao container dos controles de adição
         const paymentControls = document.getElementById('payment-controls');
 
         const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
@@ -717,33 +685,20 @@ function openCheckoutModal() {
                 </div>
             </div>`).join('');
 
-        // Lógica de exibição principal (O que mudou)
         if (modalInternalState.remainingAmount <= 0.001) {
-            // TOTAL PAGO
             remainingEl.textContent = 'Total Pago!';
             remainingEl.className = `text-lg font-bold text-center mb-4 text-green-600`;
-            
-            // CORREÇÃO ESTRUTURAL: Definimos o valor como 0.00, mas o controle estará oculto.
             paymentValueInput.value = ''; 
-            finalizeBtn.disabled = false; // Habilita o botão Finalizar
-            
-            // ESCONDE os controles de adicionar pagamento
+            finalizeBtn.disabled = false;
             if (paymentControls) paymentControls.style.display = 'none';
-
         } else {
-            // AINDA FALTA PAGAR
             remainingEl.textContent = `Faltam: R$ ${modalInternalState.remainingAmount.toFixed(2)}`;
             remainingEl.className = `text-lg font-bold text-center mb-4 text-red-600`;
-            
-            // Preenche o input com o valor que falta
             paymentValueInput.value = modalInternalState.remainingAmount.toFixed(2);
-            finalizeBtn.disabled = true; // Desabilita o botão Finalizar
-            
-            // MOSTRA os controles de adicionar pagamento
+            finalizeBtn.disabled = true;
             if (paymentControls) paymentControls.style.display = 'block';
         }
         
-        // O restante da lógica de render (seleção de método, parcelas, troco) permanece o mesmo
         document.querySelectorAll('.payment-method-btn').forEach(btn => {
             btn.classList.toggle('ring-2', btn.dataset.method === modalInternalState.selectedMethod);
             btn.classList.toggle('ring-offset-2', btn.dataset.method === modalInternalState.selectedMethod);
@@ -760,14 +715,11 @@ function openCheckoutModal() {
         const valueInput = document.getElementById('payment-value');
         let value = parseFloat(valueInput.value);
         
-        // CORREÇÃO DA VALIDAÇÃO (MAIS ROBUSTA)
-        // Checa se é NaN (ex: `parseFloat('')`) OU se é um valor não positivo.
         if (isNaN(value) || value <= 0) {
             showNotification('Valor Inválido', 'Insira um valor de pagamento válido e maior que zero.', 'error');
             return;
         }
         
-        // Verifica se excede o saldo restante (regra de negócio)
         if (value > modalInternalState.remainingAmount + 0.001) {
              showNotification('Valor Inválido', 'O valor excede o saldo restante.', 'error');
             return;
@@ -783,14 +735,12 @@ function openCheckoutModal() {
         }
         
         payments.push(newPayment);
-        
         modalInternalState.selectedMethod = 'dinheiro';
         modalInternalState.installments = 1;
         document.getElementById('installments-select').value = 1;
         render();
     };
 
-    // ################## INÍCIO DA CORREÇÃO (COMPACTAÇÃO) ##################
     const contentHTML = `
         <div class="text-center mb-4">
             <p class="text-lg text-gray-600">Valor Total</p>
@@ -831,8 +781,6 @@ function openCheckoutModal() {
         </div>
         <div class="mt-6 pt-4 border-t"><button id="finalize-checkout-btn" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-400" disabled>Finalizar</button></div>
     `;
-    // ################## FIM DA CORREÇÃO (COMPACTAÇÃO) ##################
-
 
     const { modalElement } = showGenericModal({ title: "Finalizar Pagamento", contentHTML, maxWidth: 'max-w-md' });
     document.getElementById('payment-value').value = modalInternalState.remainingAmount.toFixed(2);
@@ -873,27 +821,13 @@ async function openCashierModal() {
                 <label for="initial-amount" class="block text-sm font-medium text-gray-700">Valor Inicial do Caixa</label>
                 <div class="mt-1 relative">
                     <span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span>
-                    <input 
-                        type="number" 
-                        step="0.01" 
-                        min="0"
-                        id="initial-amount" 
-                        required 
-                        class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" 
-                        placeholder="0.00"
-                        value="0.00"
-                    >
+                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="0.00">
                 </div>
                 <p class="text-xs text-gray-500 mt-1">Digite o valor inicial disponível no caixa (pode ser R$ 0,00)</p>
             </div>
             <div>
                 <label for="cashier-notes" class="block text-sm font-medium text-gray-700">Observações (opcional)</label>
-                <textarea 
-                    id="cashier-notes" 
-                    rows="3" 
-                    class="mt-1 w-full p-2 border rounded-md" 
-                    placeholder="Notas sobre a abertura do caixa..."
-                ></textarea>
+                <textarea id="cashier-notes" rows="3" class="mt-1 w-full p-2 border rounded-md" placeholder="Notas sobre a abertura do caixa..."></textarea>
             </div>
             <div class="pt-4 border-t">
                 <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition">Abrir Caixa</button>
@@ -909,7 +843,6 @@ async function openCashierModal() {
         const initialAmountInput = document.getElementById('initial-amount');
         const initialAmountValue = initialAmountInput.value.trim();
         const notes = document.getElementById('cashier-notes').value.trim();
-
         const initialAmount = parseFloat(initialAmountValue);
 
         if (initialAmountValue === '' || isNaN(initialAmount) || initialAmount < 0) {
@@ -923,40 +856,27 @@ async function openCashierModal() {
                 establishmentId: state.establishmentId,
                 initialAmount: parseFloat(initialAmount.toFixed(2)),
             };
-
-            if (notes) {
-                payload.notes = notes;
-            }
-
-            console.log('Abrindo caixa com payload:', payload);
+            if (notes) payload.notes = notes;
 
             const session = await cashierApi.openCashier(payload);
-            
             localState.isCashierOpen = true;
             localState.activeCashierSessionId = session.id;
             
-            // Recarrega toda a página para refletir o estado do caixa
             await loadComandasPage();
-            
             document.getElementById('genericModal').style.display = 'none';
             showNotification('Sucesso!', `Caixa aberto com valor inicial de R$ ${initialAmount.toFixed(2)}`, 'success');
         } catch (error) {
-            console.error('Erro ao abrir caixa:', error);
             showNotification('Erro', `Não foi possível abrir o caixa: ${error.message}`, 'error');
         }
     });
 }
 
-// (NOVA FUNÇÃO) Substitui a antiga 'handleCloseCashier'
 async function handleOpenCloseCashierModal() {
     const sessionId = localState.activeCashierSessionId;
-    if (!sessionId) return; // Segurança
+    if (!sessionId) return;
 
     try {
-        // 1. Busca os dados da sessão atual
         const report = await cashierApi.getCloseCashierReport(sessionId);
-        
-        // 2. Monta o HTML do modal
         const contentHTML = `
             <form id="close-cashier-form" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4 text-center">
@@ -987,10 +907,8 @@ async function handleOpenCloseCashierModal() {
             </form>
         `;
 
-        // 3. Exibe o modal
         const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-md' });
 
-        // 4. Adiciona o listener de submit
         modalElement.querySelector('#close-cashier-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const finalAmount = parseFloat(document.getElementById('final-amount').value);
@@ -1003,10 +921,8 @@ async function handleOpenCloseCashierModal() {
                 await cashierApi.closeCashier(sessionId, finalAmount);
                 localState.isCashierOpen = false;
                 localState.activeCashierSessionId = null;
-                
                 document.getElementById('genericModal').style.display = 'none';
-                await loadComandasPage(); // Recarrega a página
-                
+                await loadComandasPage();
                 showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
             } catch (error) {
                 showNotification('Erro', `Não foi possível fechar o caixa: ${error.message}`, 'error');
@@ -1018,8 +934,7 @@ async function handleOpenCloseCashierModal() {
     }
 }
 
-
-// --- 5. HANDLERS ---
+// --- 6. HANDLERS ---
 
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
@@ -1031,12 +946,11 @@ async function handleFilterClick(filter) {
     
     document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
     
+    // Esconde o detalhe no mobile ao trocar o filtro
+    hideMobileDetail();
+
     await fetchAndDisplayData();
     localState.selectedComandaId = null;
-    
-    // ATUALIZAÇÃO RESPONSIVA: Garante que a lista esteja visível ao trocar de filtro
-    const layout = document.getElementById('comandas-layout');
-    if (layout) layout.classList.remove('detail-view-active');
     
     // Renderiza o placeholder no desktop
     if (window.innerWidth >= 1024) {
@@ -1046,21 +960,16 @@ async function handleFilterClick(filter) {
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
-    renderComandaList(); // Apenas atualiza o highlight da lista
+    renderComandaList();
 
-    // ATUALIZAÇÃO RESPONSIVA: Ativa a view de detalhe no mobile
-    const layout = document.getElementById('comandas-layout');
-    if (layout) layout.classList.add('detail-view-active');
+    // Ativa a view de detalhe no mobile com animação
+    showMobileDetail();
 
-    // CORREÇÃO DE TIMING (Bug do Estouro):
-    // Espera a animação de slide de 300ms (definida no styles.css) terminar
-    // ANTES de tentar renderizar o conteúdo do painel de detalhes.
     setTimeout(() => {
-        // Só renderiza se o usuário ainda estiver nesta comanda (evita race condition)
         if (localState.selectedComandaId === comandaId) {
-            renderComandaDetail(); // Renderiza o conteúdo DEPOIS da animação
+            renderComandaDetail(); 
         }
-    }, 300); // 300ms = tempo da transição em css/styles.css
+    }, 300);
 }
 
 
@@ -1078,27 +987,20 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda.comandaItems = comanda.comandaItems || [];
     comanda.comandaItems.push(...itemsToAdd);
 
-    // ### INÍCIO DA CORREÇÃO ###
-    // Se a comanda é uma 'Venda Avulsa' (walk-in) e ainda é temporária (não foi salva),
-    // apenas atualiza a UI local. Não chama a API.
     if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
         showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
-        renderComandaDetail(); // A comanda no localState foi atualizada, só re-renderiza
-        renderComandaList(); // Atualiza o total na lista
-        return; // Para a execução aqui
+        renderComandaDetail(); 
+        renderComandaList();
+        return; 
     }
-    // ### FIM DA CORREÇÃO ###
 
-    // Se for um agendamento existente, continua o fluxo normal da API
     try {
-        // A API de updateAppointment lida com a persistência de itens de comanda no backend
         await appointmentsApi.updateAppointment(comanda.id, comanda);
         showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
         renderComandaDetail();
         renderComandaList();
     } catch (error) {
         showNotification('Erro', `Não foi possível adicionar o item: ${error.message}`, 'error');
-        // Reverte a alteração local em caso de erro
         comanda.comandaItems.splice(comanda.comandaItems.length - quantity, quantity);
     }
 }
@@ -1110,19 +1012,16 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     let itemRemoved = false;
 
-    // Tenta remover dos itens adicionais (comandaItems)
     let comandaItemIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
     if (comandaItemIndex > -1) {
         comanda.comandaItems.splice(comandaItemIndex, 1);
         itemRemoved = true;
     } else {
-        // Tenta remover dos serviços originais (services)
         let serviceIndex = (comanda.services || []).findIndex(item => item.id === itemId);
         if (serviceIndex > -1) {
             comanda.services.splice(serviceIndex, 1);
             itemRemoved = true;
         } else {
-            // Tenta remover dos itens de venda (items)
              let saleItemIndex = (comanda.items || []).findIndex(item => item.id === itemId && item.type === itemType);
              if (saleItemIndex > -1) {
                 comanda.items.splice(saleItemIndex, 1);
@@ -1132,17 +1031,13 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     }
     
     if (itemRemoved) {
-        // ### INÍCIO DA CORREÇÃO ###
-        // Se for uma Venda Avulsa temporária, apenas atualiza a UI local
         if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
              showNotification('Sucesso', 'Item removido!', 'success');
              renderComandaDetail();
              renderComandaList();
              return;
         }
-        // ### FIM DA CORREÇÃO ###
         
-        // Se for um agendamento existente, chama a API
         try {
             await appointmentsApi.updateAppointment(comanda.id, comanda);
             showNotification('Sucesso', 'Item removido!', 'success');
@@ -1157,7 +1052,7 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
 async function handleFinalizeCheckout(comanda, totalAmount, payments) {
     const isAppointment = comanda.type === 'appointment';
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])]; // <-- CORREÇÃO AQUI
+    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
     const data = {
         payments,
         totalAmount,
@@ -1169,20 +1064,18 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         if (isAppointment) {
             await appointmentsApi.checkoutAppointment(comanda.id, data);
         } else {
-            // Se for walk-in, usa a API de criação de venda (sales)
             data.clientName = comanda.clientName;
             data.professionalId = comanda.professionalId;
-            data.clientPhone = comanda.clientPhone; // Garante que o telefone seja enviado
+            data.clientPhone = comanda.clientPhone;
             await salesApi.createSale(data);
         }
         showNotification('Sucesso!', 'Venda finalizada com sucesso!', 'success');
         document.getElementById('genericModal').style.display = 'none';
 
-        // ATUALIZAÇÃO RESPONSIVA: Volta para a lista após finalizar
-        const layout = document.getElementById('comandas-layout');
-        if (layout) layout.classList.remove('detail-view-active');
+        // Esconde o detalhe no mobile (volta para a lista)
+        hideMobileDetail();
+        
         localState.selectedComandaId = null;
-
         await fetchAndDisplayData();
     } catch (error) {
         showNotification('Erro no Checkout', error.message, 'error');
@@ -1219,11 +1112,11 @@ async function handleCreateNewSale(e) {
     
     document.getElementById('genericModal').style.display = 'none';
     
-    // Aplica a mesma lógica de clique para a nova comanda
+    // Chama o handler que já cuida da animação e renderização
     handleComandaClick(newComanda.id);
 }
 
-// --- 6. INICIALIZAÇÃO ---
+// --- 7. INICIALIZAÇÃO ---
 
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
@@ -1234,17 +1127,15 @@ async function fetchAndDisplayData() {
         : null;
 
     try {
-        // Primeiro verifica estado do caixa
         const activeSession = await cashierApi.getActiveSession();
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
         
         renderCashierControls();
         
-        // Se caixa fechado no modo "atendimento", não carrega comandas
         if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
             renderComandaList();
-            renderComandaDetail(); // Isso vai mostrar o placeholder de "caixa fechado"
+            renderComandaDetail();
             return;
         }
         
@@ -1264,21 +1155,18 @@ async function fetchAndDisplayData() {
                 productsApi.getProducts(state.establishmentId),
                 packagesApi.getPackages(state.establishmentId),
                 clientsApi.getClients(state.establishmentId),
-                professionalsApi.getProfessionals(state.establishmentId) // <-- CORREÇÃO: Carrega profissionais
+                professionalsApi.getProfessionals(state.establishmentId)
             ]);
             localState.catalog = { services, products, packages };
             localState.clients = clients;
-            state.professionals = professionals; // <-- CORREÇÃO: Salva no state global
+            state.professionals = professionals;
         }
         
         renderComandaList();
         
-        // ATUALIZAÇÃO RESPONSIVA: Só renderiza o detalhe se um ID estiver selecionado
-        // E NÃO ESTIVERMOS EM MODO MOBILE (pois o 'handleComandaClick' cuidará disso)
         if (localState.selectedComandaId && window.innerWidth >= 1024) {
              renderComandaDetail();
         } else {
-             // Garante que o placeholder seja renderizado no desktop
              if (window.innerWidth >= 1024) {
                  renderComandaDetail();
              }
@@ -1293,7 +1181,6 @@ async function fetchAndDisplayData() {
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
     
-    // Verifica primeiro o estado do caixa
     try {
         const activeSession = await cashierApi.getActiveSession();
         localState.isCashierOpen = !!activeSession;
@@ -1303,7 +1190,6 @@ export async function loadComandasPage(params = {}) {
         localState.isCashierOpen = false;
     }
     
-    // Limpa o estado de seleção ao carregar a página
     localState.selectedComandaId = params.selectedAppointmentId || null;
     
     renderPageLayout();
@@ -1314,7 +1200,6 @@ export async function loadComandasPage(params = {}) {
     }
 
     pageEventListener = async (e) => {
-        // (MODIFICADO) Adicionado 'data-id' para capturar cliques nos novos botões
         const target = e.target.closest('[data-action], [data-filter], [data-comanda-id], [data-id]');
         
         if (e.target.id === 'filter-date' && localState.activeFilter === 'finalizadas') {
@@ -1328,7 +1213,6 @@ export async function loadComandasPage(params = {}) {
         if (target.matches('[data-filter]')) {
             handleFilterClick(target.dataset.filter);
         } else if (target.matches('[data-comanda-id]')) {
-            // Impede que o clique no botão "go-to-appointment" selecione a comanda
             if (e.target.closest('[data-action="go-to-appointment"]')) {
                 e.stopPropagation();
                 return;
@@ -1336,16 +1220,13 @@ export async function loadComandasPage(params = {}) {
             handleComandaClick(target.dataset.comandaId);
         } else if (target.matches('[data-action]')) {
             const action = target.dataset.action;
-            // (MODIFICADO) Pega o ID do target, que pode ser a comanda ou um botão específico
             const comandaId = target.dataset.id || localState.selectedComandaId;
             
             switch (action) {
-                // ATUALIZAÇÃO RESPONSIVA: Adicionado 'back-to-list'
                 case 'back-to-list': {
-                    const layout = document.getElementById('comandas-layout');
-                    if (layout) layout.classList.remove('detail-view-active');
+                    hideMobileDetail();
                     localState.selectedComandaId = null;
-                    renderComandaList(); // Re-renderiza para tirar o highlight
+                    renderComandaList(); 
                     break;
                 }
                 case 'new-sale': 
@@ -1361,18 +1242,11 @@ export async function loadComandasPage(params = {}) {
                     openCashierModal();
                     break;
                 case 'close-cashier':
-                    // (MODIFICADO) Chama o novo modal de fechamento
                     await handleOpenCloseCashierModal();
                     break;
-                
-                // ### INÍCIO DA CORREÇÃO ###
                 case 'view-sales-report':
-                    // Ação corrigida: Sempre navega para a página de relatórios,
-                    // que contém o histórico de caixas.
                     navigateTo('sales-report-section'); 
                     break;
-                // ### FIM DA CORREÇÃO ###
-
                 case 'remove-item':
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
                     break;
@@ -1380,28 +1254,19 @@ export async function loadComandasPage(params = {}) {
                     const confirmed = await showConfirmation('Reabrir Comanda', 'Tem certeza? O pagamento será estornado e os produtos devolvidos ao estoque.');
                     if (confirmed) {
                         try {
-                            // 1. CHAMA API DO BACKEND
                             await appointmentsApi.reopenAppointment(comandaId);
-                            
-                            // 2. AJUSTE CRÍTICO: Limpa o objeto em MEMÓRIA (localState) imediatamente
                             const reopenedComandaIndex = localState.allComandas.findIndex(c => c.id === comandaId);
                             if (reopenedComandaIndex !== -1) {
-                                // REMOVE os campos que continham a forma de pagamento anterior
                                 delete localState.allComandas[reopenedComandaIndex].transaction; 
                                 delete localState.allComandas[reopenedComandaIndex].cashierSessionId; 
                                 delete localState.allComandas[reopenedComandaIndex].redeemedReward;
-                                localState.allComandas[reopenedComandaIndex].status = 'confirmed'; // Garante o status correto para reexibição
+                                localState.allComandas[reopenedComandaIndex].status = 'confirmed';
                             }
                             
-                            // 3. Limpa a seleção para forçar o re-render
                             localState.selectedComandaId = null; 
-                            
-                            // ATUALIZAÇÃO RESPONSIVA: Volta para a lista
-                            const layout = document.getElementById('comandas-layout');
-                            if (layout) layout.classList.remove('detail-view-active');
+                            hideMobileDetail();
 
                             showNotification('Sucesso!', 'Comanda reaberta para edição.', 'success');
-                            // 4. Recarrega a lista do backend (obtém os dados mais limpos)
                             await fetchAndDisplayData(); 
                         } catch (error) {
                             showNotification('Erro', `Não foi possível reabrir: ${error.message}`, 'error');
@@ -1416,9 +1281,7 @@ export async function loadComandasPage(params = {}) {
                             await salesApi.reopenSale(comandaId);
                             showNotification('Sucesso!', 'Venda revertida.');
                             
-                            // ATUALIZAÇÃO RESPONSIVA: Volta para a lista
-                            const layout = document.getElementById('comandas-layout');
-                            if (layout) layout.classList.remove('detail-view-active');
+                            hideMobileDetail();
                             localState.selectedComandaId = null;
 
                             await fetchAndDisplayData();
@@ -1428,8 +1291,6 @@ export async function loadComandasPage(params = {}) {
                     }
                     break;
                 }
-                
-                // ### INÍCIO DAS NOVAS AÇÕES ###
                 case 'go-to-appointment': {
                     const appointmentId = target.dataset.id;
                     const startTime = target.dataset.date;
@@ -1439,24 +1300,23 @@ export async function loadComandasPage(params = {}) {
                     });
                     break;
                 }
-                
                 case 'delete-walk-in': {
                     const confirmed = await showConfirmation('Excluir Venda', 'Tem certeza que deseja excluir esta venda avulsa? O estoque dos produtos será devolvido.');
                     if (confirmed) {
-                        // Se for um 'temp-' id, apenas remove localmente
                         if (comandaId.startsWith('temp-')) {
                             localState.allComandas = localState.allComandas.filter(c => c.id !== comandaId);
                             localState.selectedComandaId = null;
                             renderComandaList();
-                            renderComandaDetail(); // Mostra o placeholder
+                            renderComandaDetail(); 
                             showNotification('Sucesso', 'Venda avulsa removida.', 'success');
+                            hideMobileDetail(); // Esconde o detalhe no mobile
                         } else {
-                            // Se for um ID real, chama a API
                             try {
                                 await salesApi.deleteSale(comandaId);
                                 showNotification('Sucesso', 'Venda avulsa excluída com sucesso.', 'success');
                                 localState.selectedComandaId = null;
-                                await fetchAndDisplayData(); // Recarrega do zero
+                                hideMobileDetail(); // Esconde o detalhe no mobile
+                                await fetchAndDisplayData();
                             } catch (error) {
                                 showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
                             }
@@ -1464,7 +1324,6 @@ export async function loadComandasPage(params = {}) {
                     }
                     break;
                 }
-                // ### FIM DAS NOVAS AÇÕES ###
             }
         }
     };
@@ -1489,8 +1348,6 @@ export async function loadComandasPage(params = {}) {
 
     await fetchAndDisplayData();
 
-    // ATUALIZAÇÃO RESPONSIVA: Se uma comanda foi passada por parâmetro (ex: vindo da agenda),
-    // ativa a view de detalhe imediatamente, mas com o atraso para a animação.
     if (localState.selectedComandaId) {
         handleComandaClick(localState.selectedComandaId);
     }
