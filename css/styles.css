@@ -1,21 +1,18 @@
 /* --- ESTILO GLOBAL PARA AJUSTAR O TAMANHO DA INTERFACE --- */
 html {
-font-size: 14px;
+    font-size: 14px;
 }
-
 
 /* --- ESTILOS GERAIS E LAYOUT --- */
 body {
-font-family: 'Inter', sans-serif;
-/* --- MODIFICAÇÃO: Padrão de fonte do corpo --- */
-font-size: 1rem; /* Define o padrão do site para 14px */
-/* Removido padding-top para compensar o header fixo */
-/* padding-top: 4rem; */ 
+    font-family: 'Inter', sans-serif;
+    /* --- MODIFICAÇÃO: Padrão de fonte do corpo --- */
+    font-size: 1rem; /* Define o padrão do site para 14px */
+    /* Removido padding-top para compensar o header fixo */
+    /* padding-top: 4rem; */ 
 }
 
 /* --- NOVO: ESTILOS DA BARRA SUPERIOR (HEADER) --- */
-/* Esta é uma suposição, assumindo que o seu HTML tem um <header class="app-header"> */
-/* A barra superior agora ficará ao lado da sidebar */
 .app-header {
     position: fixed;
     top: 0;
@@ -36,28 +33,27 @@ body.sidebar-collapsed .app-header {
     left: 4.5rem; /* Largura da sidebar colapsada */
 }
 
-
 .sidebar-link {
-display: flex;
-align-items: center;
-padding: 0.75rem 1rem;
-border-radius: 0.5rem;
-transition: background-color 0.2s, color 0.2s;
-cursor: pointer;
-font-weight: 500;
-white-space: nowrap;
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s, color 0.2s;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
 }
 .sidebar-link:hover {
-background-color: #374151; /* gray-700 */
+    background-color: #374151; /* gray-700 */
 }
 .sidebar-link.active {
-background-color: #4f46e5; /* indigo-600 */
-color: white;
-font-weight: 600;
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+    font-weight: 600;
 }
 .sidebar-link svg {
-margin-right: 0.75rem;
-flex-shrink: 0;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
 }
 
 /* ----------------------------------------------- */
@@ -102,535 +98,405 @@ flex-shrink: 0;
 }
 /* ----------------------------------------------- */
 
-
 /* --- COMPONENTES --- */
 .loader {
-border: 4px solid #f3f3f3;
-border-top: 4px solid #4f46e5;
-border-radius: 50%;
-width: 40px;
-height: 40px;
-animation: spin 1s linear infinite;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #4f46e5;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-0% { transform: rotate(0deg); }
-100% { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .modal {
-display: none;
-position: fixed;
-z-index: 100;
-left: 0;
-top: 0;
-width: 100%;
-height: 100%;
-overflow: auto;
-background-color: rgba(0,0,0,0.6);
-align-items: center;
-justify-content: center;
+    display: none;
+    position: fixed;
+    z-index: 100;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.6);
+    align-items: center;
+    justify-content: center;
 }
 .modal-content {
-background-color: #fefefe;
-padding: 1.5rem; /* Ajustado para ser mais compacto */
-border: 1px solid #888;
-width: 90%;
-max-width: 700px;
-/* PADRONIZAÇÃO DE ESTILO: Aumento do arredondamento e sombra suave */
-border-radius: 1rem; /* Aumentado para 1rem (16px) */
-box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.05); /* Sombra mais suave */
-animation: fadeIn 0.3s;
+    background-color: #fefefe;
+    padding: 1.5rem; /* Ajustado para ser mais compacto */
+    border: 1px solid #888;
+    width: 90%;
+    max-width: 700px;
+    /* PADRONIZAÇÃO DE ESTILO: Aumento do arredondamento e sombra suave */
+    border-radius: 1rem; /* Aumentado para 1rem (16px) */
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.05); /* Sombra mais suave */
+    animation: fadeIn 0.3s;
 }
 
 @keyframes fadeIn {
-from { opacity: 0; transform: scale(0.98); } /* Ajustado o scale para transição mais suave */
-to { opacity: 1; transform: scale(1); }
+    from { opacity: 0; transform: scale(0.98); } /* Ajustado o scale para transição mais suave */
+    to { opacity: 1; transform: scale(1); }
 }
 
 .toggle-bg:after {
-content: '';
-position: absolute;
-top: 2px;
-left: 2px;
-background: white;
-width: 1.25rem;
-height: 1.25rem;
-border-radius: 9999px;
-transition: transform 0.2s ease-in-out;
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    background: white;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 9999px;
+    transition: transform 0.2s ease-in-out;
 }
 input:checked + .toggle-bg:after {
-transform: translateX(100%);
+    transform: translateX(100%);
 }
 input:checked + .toggle-bg {
-background-color: #4f46e5;
+    background-color: #4f46e5;
 }
 
 /* --- ESTILOS DE TOAST NOTIFICATION (AJUSTADO) --- */
 #toast-container {
-position: fixed;
-bottom: 1.25rem;
-right: 1.25rem;
-z-index: 200;
-display: flex;
-flex-direction: column;
-gap: 0.5rem;
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
 .toast {
-display: flex;
-align-items: center; /* Alinha o ícone e o texto verticalmente */
-padding: 0.4rem 0.8rem; /* Padding vertical e horizontal reduzidos */
-border-radius: 0.75rem;
-box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-min-width: auto;
-max-width: 280px; /* Largura máxima reduzida */
-border-left-width: 4px;
-position: relative;
-overflow: hidden;
-animation: slideInFromRight 0.4s ease-out, fadeOutToTop 0.5s ease-in 3.5s forwards;
+    display: flex;
+    align-items: center; /* Alinha o ícone e o texto verticalmente */
+    padding: 0.4rem 0.8rem; /* Padding vertical e horizontal reduzidos */
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    min-width: auto;
+    max-width: 280px; /* Largura máxima reduzida */
+    border-left-width: 4px;
+    position: relative;
+    overflow: hidden;
+    animation: slideInFromRight 0.4s ease-out, fadeOutToTop 0.5s ease-in 3.5s forwards;
 }
 
 .toast.success { background-color: #f0fdf4; border-color: #22c55e; color: #15803d; }
 .toast.error { background-color: #fef2f2; border-color: #ef4444; color: #b91c1c; }
 .toast.info { background-color: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
 
-
 .toast-icon {
-flex-shrink: 0;
-margin-right: 0.5rem; /* Margem reduzida */
+    flex-shrink: 0;
+    margin-right: 0.5rem; /* Margem reduzida */
 }
 
 .toast-content {
-flex-grow: 1;
+    flex-grow: 1;
 }
 
 .toast-close {
-position: absolute;
-top: 2px; /* Ajustado */
-right: 6px; /* Ajustado */
-background: none;
-border: none;
-font-size: 1.25rem; /* Tamanho reduzido */
-line-height: 1;
-color: inherit;
-opacity: 0.5;
-cursor: pointer;
+    position: absolute;
+    top: 2px; /* Ajustado */
+    right: 6px; /* Ajustado */
+    background: none;
+    border: none;
+    font-size: 1.25rem; /* Tamanho reduzido */
+    line-height: 1;
+    color: inherit;
+    opacity: 0.5;
+    cursor: pointer;
 }
 .toast-close:hover {
-opacity: 1;
+    opacity: 1;
 }
 
 .toast-progress-bar {
-position: absolute;
-bottom: 0;
-left: 0;
-height: 4px;
-width: 100%;
-background-color: rgba(0,0,0,0.1);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    width: 100%;
+    background-color: rgba(0,0,0,0.1);
 }
 
 .toast-progress {
-height: 100%;
-width: 100%;
-animation: shrink 3.5s linear forwards;
+    height: 100%;
+    width: 100%;
+    animation: shrink 3.5s linear forwards;
 }
 
 @keyframes slideInFromRight {
-from { opacity: 0; transform: translateX(100%); }
-to { opacity: 1; transform: translateX(0); }
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes fadeOutToTop {
-from { opacity: 1; transform: translateY(0); }
-to { opacity: 0; transform: translateY(-20px); }
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-20px); }
 }
 
 @keyframes shrink {
-from { width: 100%; }
-to { width: 0%; }
+    from { width: 100%; }
+    to { width: 0%; }
 }
-
 
 /* --- ESTILOS DA AGENDA --- */
 .view-btn {
-padding: 0.25rem 0.75rem;
-border-radius: 0.5rem; /* Arredondado */
-font-weight: 500;
-transition: all 0.2s ease-in-out;
-border: none;
-background-color: transparent;
-color: #4b5563; /* gray-600 */
-cursor: pointer;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.5rem; /* Arredondado */
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+    border: none;
+    background-color: transparent;
+    color: #4b5563; /* gray-600 */
+    cursor: pointer;
 }
 .view-btn.active {
-background-color: white;
-color: #111827; /* gray-900 */
-box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    background-color: white;
+    color: #111827; /* gray-900 */
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 
 /* Visão de Grelha (Semana) */
 .calendar-grid {
-display: grid;
-grid-template-columns: 60px repeat(7, 1fr);
-position: relative;
+    display: grid;
+    grid-template-columns: 60px repeat(7, 1fr);
+    position: relative;
 }
 .time-col {
-padding-top: 2.5rem;
+    padding-top: 2.5rem;
 }
 .day-col {
-border-left: 1px solid #e5e7eb;
-position: relative;
+    border-left: 1px solid #e5e7eb;
+    position: relative;
 }
 .day-col.current-day {
-background-color: #f9fafb;
+    background-color: #f9fafb;
 }
 .time-slot {
-height: 3rem;
-border-top: 1px dotted #d1d5db;
+    height: 3rem;
+    border-top: 1px dotted #d1d5db;
 }
 .time-slot-hour {
-border-top: 1px solid #e5e7eb;
+    border-top: 1px solid #e5e7eb;
 }
 .appointment-card {
-position: absolute;
-left: 0.25rem;
-right: 0.25rem;
-color: white;
-border-radius: 0.5rem; /* Arredondado */
-padding: 0.25rem 0.5rem;
-/* --- MODIFICAÇÃO: Aumento da fonte --- */
-font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
-line-height: 1.2;
-overflow: hidden;
-border-left-width: 4px;
-cursor: pointer;
-transition: all 0.2s ease-in-out;
-box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-z-index: 5;
+    position: absolute;
+    left: 0.25rem;
+    right: 0.25rem;
+    color: white;
+    border-radius: 0.5rem; /* Arredondado */
+    padding: 0.25rem 0.5rem;
+    /* --- MODIFICAÇÃO: Aumento da fonte --- */
+    font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+    line-height: 1.2;
+    overflow: hidden;
+    border-left-width: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    z-index: 5;
 }
 .appointment-card:hover {
-box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-transform: translateY(-4px) scale(1.02);
-z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    transform: translateY(-4px) scale(1.02);
+    z-index: 10;
 }
 .appointment-card.completed {
-background-color: #16a34a !important;
-border-left-color: #14532d !important;
-opacity: 0.8;
+    background-color: #16a34a !important;
+    border-left-color: #14532d !important;
+    opacity: 0.8;
 }
 .appointment-card .actions {
-display: none;
-position: absolute;
-top: 4px;
-right: 4px;
-background-color: rgba(0,0,0,0.4);
-border-radius: 0.375rem;
-gap: 4px;
-padding: 4px;
+    display: none;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background-color: rgba(0,0,0,0.4);
+    border-radius: 0.375rem;
+    gap: 4px;
+    padding: 4px;
 }
 .appointment-card:hover .actions {
-display: flex;
+    display: flex;
 }
 
 /* --- Visão de Lista (Dia) - ALTERAÇÕES AQUI --- */
 .list-view-container {
-display: flex;
-flex-direction: column;
-gap: 0.75rem;
-/* ALTERAÇÃO: Padding reduzido para se ajustar à tela principal */
-padding: 0.5rem; 
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    /* ALTERAÇÃO: Padding reduzido para se ajustar à tela principal */
+    padding: 0.5rem; 
 }
 .appointment-list-card {
-display: flex;
-align-items: center;
-background-color: #f9fafb;
-border-radius: 0.75rem; /* Arredondado */
-/* ALTERAÇÃO: Padding reduzido de 1rem para 0.75rem (p-3) */
-padding: 0.75rem;
-border-left-width: 4px;
-box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-transition: all 0.2s ease-in-out;
-cursor: pointer;
+    display: flex;
+    align-items: center;
+    background-color: #f9fafb;
+    border-radius: 0.75rem; /* Arredondado */
+    /* ALTERAÇÃO: Padding reduzido de 1rem para 0.75rem (p-3) */
+    padding: 0.75rem;
+    border-left-width: 4px;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
 }
 .appointment-list-card:hover {
-box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-transform: translateY(-4px);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    transform: translateY(-4px);
 }
 .time-info {
-flex-shrink: 0;
-/* ALTERAÇÃO: Largura reduzida de 80px para 72px (w-18) */
-width: 72px;
-text-align: center;
-border-right: 1px solid #e5e7eb;
-/* ALTERAÇÃO: Espaçamento reduzido de 1rem para 0.75rem (pr-3, mr-3) */
-padding-right: 0.75rem;
-margin-right: 0.75rem;
+    flex-shrink: 0;
+    /* ALTERAÇÃO: Largura reduzida de 80px para 72px (w-18) */
+    width: 72px;
+    text-align: center;
+    border-right: 1px solid #e5e7eb;
+    /* ALTERAÇÃO: Espaçamento reduzido de 1rem para 0.75rem (pr-3, mr-3) */
+    padding-right: 0.75rem;
+    margin-right: 0.75rem;
 }
 .details-info {
-flex-grow: 1;
+    flex-grow: 1;
 }
 .status-info {
-display: flex;
-/* ALTERAÇÃO: Alterado para coluna e alinhado à direita */
-flex-direction: column;
-align-items: flex-end;
-gap: 0.5rem; /* Reduzido de 1rem */
+    display: flex;
+    /* ALTERAÇÃO: Alterado para coluna e alinhado à direita */
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem; /* Reduzido de 1rem */
 }
 .status-badge {
-padding: 0.25rem 0.75rem;
-border-radius: 9999px;
-/* --- MODIFICAÇÃO: Aumento da fonte --- */
-font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
-font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    /* --- MODIFICAÇÃO: Aumento da fonte --- */
+    font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+    font-weight: 500;
 }
 .card-actions {
-display: flex;
-gap: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
 }
 .action-btn {
-color: #6b7280; /* gray-500 */
-padding: 0.25rem;
-border-radius: 9999px;
-transition: background-color 0.2s, color 0.2s;
+    color: #6b7280; /* gray-500 */
+    padding: 0.25rem;
+    border-radius: 9999px;
+    transition: background-color 0.2s, color 0.2s;
 }
 .action-btn:hover {
-background-color: #e5e7eb; /* gray-200 */
-color: #111827; /* gray-900 */
+    background-color: #e5e7eb; /* gray-200 */
+    color: #111827; /* gray-900 */
 }
 
 
 .current-time-line {
-position: absolute;
-left: -5px;
-right: 0;
-height: 2px;
-background-color: #ef4444;
-z-index: 20;
+    position: absolute;
+    left: -5px;
+    right: 0;
+    height: 2px;
+    background-color: #ef4444;
+    z-index: 20;
 }
 .current-time-line::before {
-content: '';
-position: absolute;
-left: 0;
-top: -4px;
-width: 10px;
-height: 10px;
-background-color: #ef4444;
-border-radius: 50%;
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    background-color: #ef4444;
+    border-radius: 50%;
 }
 
 
 /* --- ESTILOS DO MODAL DE AGENDAMENTO --- */
 .time-slot-card {
-padding: 0.75rem;
-border: 1px solid #e5e7eb;
-border-radius: 0.5rem;
-text-align: center;
-cursor: pointer;
-transition: all 0.2s ease-in-out;
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
 }
 .time-slot-card:hover {
-background-color: #f3f4f6;
+    background-color: #f3f4f6;
 }
 .time-slot-card.selected {
-background-color: #4f46e5;
-color: white;
-border-color: #4f46e5;
-font-weight: 600;
+    background-color: #4f46e5;
+    color: white;
+    border-color: #4f46e5;
+    font-weight: 600;
 }
 
 /* --- ESTILOS DA PÁGINA DE CLIENTES --- */
 .client-card {
-transition: transform 0.2s, box-shadow 0.2s;
-border-radius: 0.75rem; /* Arredondado */
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-radius: 0.75rem; /* Arredondado */
 }
 .client-card:hover {
-transform: translateY(-4px);
-box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 .loyalty-progress-bar {
-background-color: #e5e7eb; /* gray-200 */
+    background-color: #e5e7eb; /* gray-200 */
 }
 .loyalty-progress {
-transition: width 0.5s ease-in-out;
+    transition: width 0.5s ease-in-out;
 }
 
 
 /* --- ESTILOS DIVERSOS DE PÁGINAS --- */
 .day-schedule-card.disabled .time-inputs {
-opacity: 0.5;
-pointer-events: none;
-}
-
-/* --- ESTILOS PARA A PÁGINA DE COMANDAS --- */
-.status-filter-btn {
-padding: 0.5rem 1rem;
-border-radius: 0.5rem; /* Arredondado */
-font-weight: 600;
-transition: all 0.2s ease-in-out;
-border: none;
-background-color: transparent;
-color: #4b5563; /* gray-600 */
-flex-grow: 1;
-text-align: center;
-}
-.status-filter-btn.active {
-background-color: white;
-color: #4f46e5; /* indigo-600 */
-box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-}
-
-.comanda-card.selected {
-background-color: #e0e7ff; /* indigo-100 */
-border-left-color: #4f46e5; /* indigo-600 */
-}
-
-.comanda-detail-header {
-padding-bottom: 1rem;
-margin-bottom: 1rem;
-border-bottom: 1px solid #e5e7eb;
-display: flex;
-justify-content: space-between;
-align-items: flex-start;
-}
-
-.comanda-detail-footer {
-margin-top: auto;
-padding-top: 1.5rem;
-border-top: 1px solid #e5e7eb;
-}
-
-.item-list {
-display: flex;
-flex-direction: column;
-gap: 0.5rem;
-}
-
-.comanda-item {
-display: flex;
-justify-content: space-between;
-align-items: center;
-padding: 0.75rem;
-background-color: #f9fafb;
-border-radius: 0.5rem;
-}
-
-.remove-item-btn {
-background: none;
-border: none;
-color: #ef4444;
-font-size: 1.5rem;
-line-height: 1;
-cursor: pointer;
-transition: color 0.2s;
-}
-.remove-item-btn:hover {
-color: #b91c1c;
-}
-
-.action-btn-primary {
-padding: 0.625rem 1rem; /* Mais compacto */
-background-color: #4f46e5;
-color: white;
-font-weight: 600;
-border-radius: 0.5rem;
-border: none;
-cursor: pointer;
-transition: background-color 0.2s;
-}
-.action-btn-primary:hover {
-background-color: #4338ca;
-}
-.action-btn-primary:disabled {
-background-color: #a5b4fc;
-cursor: not-allowed;
-}
-
-.action-btn-secondary {
-padding: 0.625rem 1rem; /* Mais compacto */
-background-color: #f3f4f6;
-color: #1f2937;
-font-weight: 600;
-border-radius: 0.5rem;
-border: 1px solid #d1d5db;
-cursor: pointer;
-transition: background-color 0.2s;
-}
-.action-btn-secondary:hover {
-background-color: #e5e7eb;
-}
-
-.item-selection-container {
-max-height: 400px;
-overflow-y: auto;
-background-color: #f9fafb;
-border-radius: 0.5rem;
-padding: 0.5rem;
-display: flex;
-flex-direction: column;
-gap: 0.5rem;
-}
-
-.item-selection-card {
-width: 100%;
-display: flex;
-justify-content: space-between;
-align-items: center;
-padding: 0.75rem;
-border-radius: 0.5rem; /* Arredondado */
-background-color: white;
-border: 1px solid #e5e7eb;
-text-align: left;
-cursor: pointer;
-transition: all 0.2s;
-}
-.item-selection-card:hover {
-background-color: #eff6ff;
-border-color: #3b82f6;
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* --- NOVOS ESTILOS PARA O SINO DE NOTIFICAÇÃO --- */
 .notification-badge {
-position: absolute;
-top: -4px;
-right: -4px;
-width: 20px;
-height: 20px;
-background-color: #ef4444; /* red-500 */
-color: white;
-border-radius: 9999px;
-display: flex;
-align-items: center;
-justify-content: center;
-/* --- MODIFICAÇÃO: Aumento da fonte --- */
-font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
-font-weight: bold;
-border: 2px solid white;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 20px;
+    height: 20px;
+    background-color: #ef4444; /* red-500 */
+    color: white;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* --- MODIFICAÇÃO: Aumento da fonte --- */
+    font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+    font-weight: bold;
+    border: 2px solid white;
 }
 
 .notification-panel {
-position: absolute;
-top: 100%;
-right: 0;
-margin-top: 0.5rem;
-width: 280px; /* Reduzido de 320px */
-background-color: white;
-border-radius: 0.75rem; /* Arredondado */
-box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-border: 1px solid #e5e7eb;
-z-index: 50;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    width: 280px; /* Reduzido de 320px */
+    background-color: white;
+    border-radius: 0.75rem; /* Arredondado */
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    border: 1px solid #e5e7eb;
+    z-index: 50;
 }
 
 .notification-item {
-padding: 0.5rem 0.75rem; /* Reduzido de 0.75rem 1rem */
-border-bottom: 1px solid #f3f4f6;
-transition: background-color 0.2s;
+    padding: 0.5rem 0.75rem; /* Reduzido de 0.75rem 1rem */
+    border-bottom: 1px solid #f3f4f6;
+    transition: background-color 0.2s;
 }
 .notification-item:hover {
-background-color: #f9fafb;
+    background-color: #f9fafb;
 }
 .notification-item.unread {
-background-color: #eff6ff; /* blue-50 */
+    background-color: #eff6ff; /* blue-50 */
 }
 
 /* --- NOVOS ESTILOS PARA O MENU DE PERFIL --- */
@@ -914,31 +780,6 @@ body {
 }
 
 
-/* #################################################################### */
-/* ### INÍCIO DA MODIFICAÇÃO: REMOÇÃO DO CSS DA LOGO ANTIGA ### */
-/* #################################################################### */
-
-/* As regras CSS abaixo, que forçavam a logo a ser 5rem x 5rem,
-   foram REMOVIDAS para permitir que a logo retangular 'logo_kairos.png'
-   seja exibida corretamente com as classes do Tailwind (h-10 w-auto). */
-
-/* #sidebar:not(.collapsed) #panelLogoContainer,
-#sidebar:not(.collapsed) #panelEstablishmentLogo {
-    height: 5rem; 
-    width: 5rem;  
-    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
-}
-
-#sidebar.collapsed #panelLogoContainer,
-#sidebar.collapsed #panelEstablishmentLogo {
-    transition: height 0.3s ease-in-out, width 0.3s ease-in-out;
-}
-*/
-/* #################################################################### */
-/* ### FIM DA MODIFICAÇÃO ### */
-/* #################################################################### */
-
-
 /* --- INÍCIO DA NOVA SEÇÃO: ESTILOS PARA O MENU MOBILE (OVERLAY) --- */
 @media (max-width: 767px) { 
 
@@ -1002,67 +843,141 @@ body {
 /* --- FIM DA NOVA SEÇÃO --- */
 
 
-/* --- NOVO: ESTILOS PARA A PÁGINA DE COMANDAS (Mobile-First) --- */
-/* O container principal terá 'overflow-x: hidden' para permitir a transição */
+/* ============================================================ */
+/* === REFORMULAÇÃO VISUAL: TELA DE COMANDAS (FINAL) === */
+/* ============================================================ */
+
+/* Container Principal */
 #comandas-layout {
-    display: flex;
-    position: relative;
-    overflow-x: hidden;
+    width: 100%;
+    min-height: calc(100vh - 150px); /* Garante altura mínima */
 }
 
-/* Em desktop (lg), volta ao grid normal */
+/* --- ESTILO DESKTOP (Telas Grandes > 1024px) --- */
 @media (min-width: 1024px) {
     #comandas-layout {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 2rem; /* gap-8 */
+        grid-template-columns: 350px 1fr; /* Coluna fixa p/ lista, resto p/ detalhe */
+        gap: 1.5rem;
+        align-items: start;
     }
 
     #comandas-list-column {
-        grid-column: span 1 / span 1;
+        display: block !important; /* Sempre visível */
+        height: calc(100vh - 140px); /* Altura fixa com scroll interno */
+        overflow-y: auto;
+        background-color: white;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
     }
 
     #comanda-detail-container {
-        grid-column: span 2 / span 2;
+        display: flex !important; /* Sempre visível */
+        flex-direction: column;
+        height: calc(100vh - 140px);
+        background-color: white;
+        border-radius: 1rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e5e7eb;
+        overflow: hidden; /* Header fixo, corpo rola */
+    }
+
+    /* Esconde elementos exclusivos de mobile no desktop */
+    .mobile-only-header {
+        display: none !important;
     }
 }
 
-/* Em mobile (até lg) */
+/* --- ESTILO MOBILE (Celulares e Tablets < 1023px) --- */
 @media (max-width: 1023px) {
     #comandas-layout {
-        flex-direction: row;
-        width: 100%;
+        display: block; /* Remove flex/grid complexos */
+        padding-bottom: 80px; /* Espaço para o rodapé não cortar */
     }
 
-    /* Ambas as colunas terão 100% da largura e transição */
-    #comandas-list-column,
-    #comanda-detail-container {
-        width: 100%;
-        flex-shrink: 0;
-        transition: transform 0.3s ease-in-out;
-    }
-
-    /* Por defeito, a lista está visível e o detalhe está fora do ecrã à direita */
+    /* --- ESTADO 1: Vendo a Lista (Padrão) --- */
     #comandas-list-column {
-        transform: translateX(0);
-    }
-    #comanda-detail-container {
-        transform: translateX(100%);
-        /* Garante que o detalhe não está 'display: none' para a animação funcionar */
-        display: flex; 
-    }
-    
-    /* Quando a classe 'detail-view-active' é adicionada ao layout: */
-    
-    /* 1. A Lista desliza para a esquerda */
-    #comandas-layout.detail-view-active #comandas-list-column {
-        transform: translateX(-100%);
+        display: block;
+        width: 100%;
     }
 
-    /* 2. O Detalhe desliza para o centro */
-    #comandas-layout.detail-view-active #comanda-detail-container {
-        transform: translateX(-100%); /* Move 100% para a esquerda (da sua posição original de +100%) */
+    #comanda-detail-container {
+        display: none; /* Esconde completamente o detalhe (evita tela branca) */
     }
+
+    /* --- ESTADO 2: Vendo o Detalhe (Ativado pelo JS) --- */
+    #comandas-layout.detail-view-active #comandas-list-column {
+        display: none; /* Esconde a lista */
+    }
+
+    #comandas-layout.detail-view-active #comanda-detail-container {
+        display: flex; /* Mostra o detalhe */
+        flex-direction: column;
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+        background-color: white;
+        position: fixed; /* Ocupa a tela toda */
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 60; /* Fica acima de tudo (header/menu) */
+        overflow-y: auto;
+    }
+
+    /* Header Específico do Mobile no Detalhe */
+    .mobile-only-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background-color: white;
+        border-bottom: 1px solid #e5e7eb;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+}
+
+/* --- AJUSTES VISUAIS GERAIS PARA OS CARDS --- */
+
+/* Card da Comanda na Lista */
+.comanda-card {
+    background: white;
+    border: 1px solid #f3f4f6;
+    border-left: 4px solid transparent; /* Prepara para a cor de status */
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: all 0.2s;
+}
+
+.comanda-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.comanda-card.selected {
+    background-color: #eff6ff; /* Azul bem claro */
+    border-left-color: #4f46e5; /* Roxo principal */
+    border-color: #c7d2fe;
+}
+
+/* Botão Voltar (Mobile) */
+.btn-back-mobile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #f3f4f6;
+    color: #374151;
+    border: none;
+    font-size: 1.2rem;
 }
 
 /* ============================================== */
@@ -1234,5 +1149,96 @@ header {
     /* Se as notificações aparecerem no topo (futuramente), elas respeitarão a margem */
     #toast-container {
         /* Se decidir mudar para o topo: top: calc(1.25rem + var(--safe-area-top)); */
+    }
+}
+/* ============================================================ */
+/* === CORREÇÃO DE ÁREA SEGURA (SAFE AREA / NOTCH) === */
+/* ============================================================ */
+
+:root {
+    /* Captura a altura da barra de status do celular (Notch) */
+    --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+/* 1. Empurra todo o site para baixo para não ficar atrás do Header */
+body {
+    /* 4rem (altura do header) + tamanho da barra do celular */
+    padding-top: calc(4rem + var(--safe-area-top)) !important;
+}
+
+/* 2. Aumenta a altura do Header e empurra o conteúdo interno */
+.app-header {
+    height: calc(4rem + var(--safe-area-top)) !important;
+    padding-top: var(--safe-area-top) !important;
+    align-items: center;
+}
+
+/* 3. Empurra o conteúdo da Sidebar (Menu) para não cortar o logo */
+#sidebar {
+    padding-top: var(--safe-area-top) !important;
+}
+
+/* 4. Garante que Modais (janelas flutuantes) não colem no topo */
+.modal {
+    padding-top: var(--safe-area-top) !important;
+}
+
+/* 5. Ajuste específico para quando o menu mobile abre */
+@media (max-width: 767px) {
+    .mobile-only-header {
+        /* O header interno da comanda também respeita o topo */
+        padding-top: var(--safe-area-top) !important;
+        /* Aumenta um pouco a altura para compensar */
+        min-height: calc(3.5rem + var(--safe-area-top)); 
+    }
+}
+/* ============================================================ */
+/* === CORREÇÃO DEFINITIVA DE ESPAÇAMENTO (HEADER STICKY) === */
+/* ============================================================ */
+
+@media (max-width: 767px) {
+    /* 1. Remove o espaçamento forçado do corpo que criava o buraco */
+    body {
+        padding-top: 0 !important;
+        overscroll-behavior-y: none; /* Evita o efeito elástico branco excessivo */
+    }
+
+    /* 2. Cabeçalho "Sticky": Ele ocupa espaço real e empurra o conteúdo */
+    .app-header {
+        position: sticky !important; /* Muda de fixed para sticky */
+        top: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        /* Mantém altura correta somando a área segura */
+        height: auto !important; 
+        min-height: calc(4rem + var(--safe-area-top));
+        padding-top: var(--safe-area-top) !important;
+        z-index: 50;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+
+    /* 3. Ajuste do container principal para colar no header corretamente */
+    .main-content-shift {
+        padding-top: 0 !important; /* Remove padding extra */
+        margin-top: 0 !important;
+    }
+
+    /* 4. Ajuste Fino: Se houver um título/filtro logo no início, dá um pequeno respiro */
+    #comandas-list-column .sticky.top-0 {
+        top: 0 !important; /* Garante que o filtro cole no topo relativo */
+    }
+    
+    /* 5. Correção para o Modal de Detalhes (Tela Cheia) */
+    #comandas-layout.detail-view-active #comanda-detail-container {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 100vh;
+        padding-top: var(--safe-area-top);
+        z-index: 100; /* Fica acima do header sticky */
+        background-color: white;
     }
 }

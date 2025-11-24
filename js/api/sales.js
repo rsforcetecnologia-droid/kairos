@@ -15,6 +15,16 @@ export const createSale = (saleData) => {
 };
 
 /**
+ * CORREÇÃO: Função adicionada para buscar vendas de um único dia.
+ * @param {string} establishmentId 
+ * @param {string} date - Data no formato YYYY-MM-DD
+ */
+export const getSales = (establishmentId, date) => {
+    // Chama a API passando a data específica
+    return authenticatedFetch(`/api/sales/${establishmentId}?date=${date}`);
+};
+
+/**
  * Busca o histórico de vendas dentro de um intervalo de datas.
  * @param {string} establishmentId - ID do estabelecimento.
  * @param {string} startDateISO - Data de início no formato ISO.

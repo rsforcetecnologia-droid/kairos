@@ -1,3 +1,5 @@
+// js/api/apiService.js
+
 import { auth } from '../firebase-config.js';
 
 /**
@@ -21,7 +23,8 @@ async function getAuthHeaders() {
         // Se não houver utilizador, redireciona para a página de login.
         console.warn("Usuário não logado, tentando redirecionar para /login");
         window.location.href = '/login';
-        return null;
+        // Retorna null para sinalizar que a requisição não deve prosseguir
+        return null; 
     }
     const token = await user.getIdToken();
     return {
@@ -52,15 +55,20 @@ export async function authenticatedFetch(endpoint, options = {}) {
         });
 
         if (!response.ok) {
+            let errorMessage = `Erro na API: ${response.status}`;
+            
             // Tenta extrair uma mensagem de erro do corpo da resposta, senão usa o status text.
             const errorData = await response.json().catch(() => ({ message: response.statusText }));
             
-            const errorMessage = errorData.message || `Erro na API: ${response.status}`;
-            
+            // Prioriza a mensagem do servidor se ela for mais detalhada
+            if (errorData.message) {
+                errorMessage = errorData.message;
+            }
+
             // Verifica se é o erro específico de "Índice Faltando" do Firestore
             if (errorMessage.includes('FAILED_PRECONDITION') && errorMessage.includes('requires an index')) {
                 
-                // Extrai apenas o URL da mensagem de erro
+                // Extrai o URL do índice do Firebase para facilitar o clique do desenvolvedor
                 const urlRegex = /(https:\/\/[^\s]+)/;
                 const match = errorMessage.match(urlRegex);
                 const firebaseUrl = match ? match[0] : 'URL não encontrada na mensagem de erro.';
@@ -68,12 +76,11 @@ export async function authenticatedFetch(endpoint, options = {}) {
                 // Loga uma mensagem grande e clara no console para o desenvolvedor
                 console.warn(
                     `%c AVISO IMPORTANTE (FIREBASE): ÍNDICE NECESSÁRIO! %c
-                    
 Sua consulta em '${endpoint}' falhou porque um índice composto do Firestore é necessário.
 Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índice:
-                    
+ 
 %c${firebaseUrl}%c
-                    
+
 --------------------------------------------------------------------`,
                     "background-color: #ffc; color: #663300; font-size: 14px; font-weight: bold; padding: 5px;",
                     "color: #663300; font-size: 12px;",
