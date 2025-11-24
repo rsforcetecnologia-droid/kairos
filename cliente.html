@@ -261,7 +261,10 @@
             // 2. Configurações Iniciais
             const API_BASE_URL = window.location.origin;
             const urlParams = new URLSearchParams(window.location.search);
-            const ESTABLISHMENT_ID = urlParams.get('id');
+            const URL_ID = urlParams.get('id'); // Pode ser o ID Real ou o Slug
+            
+            // *** VARIÁVEL NOVA PARA O ID REAL ***
+            let REAL_ESTABLISHMENT_ID = null; 
             
             let currentWeekStart = getStartOfWeek(new Date());
             let allServicesData = [];
@@ -299,7 +302,7 @@
             document.getElementById('schedule-back-btn').addEventListener('click', () => showSection('professionals'));
             document.getElementById('confirmation-back-btn').addEventListener('click', () => showSection('schedule'));
 
-            if (!ESTABLISHMENT_ID) {
+            if (!URL_ID) {
                 document.body.innerHTML = '<div class="flex h-screen items-center justify-center p-4 text-center text-gray-500">Link inválido ou incompleto.</div>';
                 return;
             }
@@ -312,7 +315,6 @@
             };
 
             function updateProgress(step) {
-                // Atualiza a barra de progresso (25% por passo)
                 progressBar.style.width = `${step * 25}%`;
             }
 
@@ -339,19 +341,17 @@
                 updateProgress(steps[sectionName]);
             };
 
-            // 4. Carregar Dados do Estabelecimento (COM VERIFICAÇÃO DE BLOQUEIO CORRIGIDA)
+            // 4. Carregar Dados do Estabelecimento
             const loadEstablishmentDetails = async () => {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/establishments/${ESTABLISHMENT_ID}`);
+                    // Busca pelo SLUG ou ID (O backend já suporta ambos na rota /:id)
+                    const response = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}`);
                     if (!response.ok) throw new Error('Falha ao carregar dados.');
                     const data = await response.json();
 
-                    // --- CORREÇÃO: BLOQUEIO DE LINK INATIVO ---
-                    // Se estiver inativo, bloqueia e RETORNA FALSE para parar o fluxo
                     if (data.publicBookingEnabled === false) {
                         document.body.innerHTML = ''; 
                         document.body.className = 'bg-gray-100 h-screen flex items-center justify-center p-4 font-sans';
-                        
                         document.body.innerHTML = `
                             <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center">
                                 <div class="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -363,14 +363,13 @@
                                 <p class="text-gray-600 mb-6 text-sm leading-relaxed">
                                     O agendamento online para <strong class="text-gray-800">${data.name || 'este estabelecimento'}</strong> está temporariamente desativado.
                                 </p>
-                                <div class="border-t pt-6">
-                                    <p class="text-xs text-gray-400">Entre em contato diretamente com o estabelecimento.</p>
-                                </div>
                             </div>
                         `;
-                        return false; // <--- IMPORTANTE: Retorna FALSE indicando bloqueio
+                        return false;
                     }
-                    // --- FIM DO BLOQUEIO ---
+
+                    // *** IMPORTANTE: CAPTURA O ID REAL ***
+                    REAL_ESTABLISHMENT_ID = data.id; 
 
                     applyCustomization(data);
 
@@ -381,21 +380,21 @@
                         establishmentLogoEl.src = data.logo;
                         establishmentLogoEl.classList.remove('opacity-0');
                     }
-                    return true; // <--- SUCESSO: Retorna TRUE para continuar
+                    return true;
 
                 } catch(error) {
                     console.error(error);
-                    // Em caso de erro fatal (ex: API fora do ar), limpa a tela também
                     document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="text-center text-red-500 p-4">Não é possível realizar agendamentos para este estabelecimento.</div></div>`;
-                    return false; // <--- FALHA: Retorna FALSE
+                    return false;
                 }
             };
             
-            // 5. Carregar Serviços
+            // 5. Carregar Serviços (USANDO REAL_ESTABLISHMENT_ID)
             const loadServices = async () => {
                 servicesContainer.innerHTML = '<div class="loader mx-auto"></div>';
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/services/${ESTABLISHMENT_ID}`);
+                    // Usa o ID REAL, não o da URL
+                    const response = await fetch(`${API_BASE_URL}/api/services/${REAL_ESTABLISHMENT_ID}`);
                     if (!response.ok) throw new Error();
                     const services = await response.json();
                     allServicesData = services;
@@ -408,7 +407,6 @@
 
                     services.forEach(serv => {
                         const card = document.createElement('div');
-                        // Card Otimizado com Imagem
                         card.className = 'service-card group flex items-center justify-between p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300';
                         card.dataset.id = serv.id;
                         
@@ -429,7 +427,6 @@
                         `;
                         
                         card.addEventListener('click', () => {
-                            // Lógica de Seleção Visual
                             const icon = card.querySelector('.check-icon div');
                             const border = card.querySelector('.check-icon');
                             const isSelected = card.classList.contains('selected');
@@ -460,11 +457,12 @@
                 }
             };
             
-            // 6. Carregar Profissionais
+            // 6. Carregar Profissionais (USANDO REAL_ESTABLISHMENT_ID)
             const loadProfessionalsForService = async () => {
                 professionalsContainer.innerHTML = '<div class="loader mx-auto col-span-3"></div>';
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/professionals/${ESTABLISHMENT_ID}`);
+                    // Usa o ID REAL
+                    const response = await fetch(`${API_BASE_URL}/api/professionals/${REAL_ESTABLISHMENT_ID}`);
                     if (!response.ok) throw new Error();
                     allProfessionalsData = await response.json();
                     
@@ -503,7 +501,7 @@
                 }
             };
 
-            // 7. Carregar Disponibilidade (Horários)
+            // 7. Carregar Disponibilidade (USANDO REAL_ESTABLISHMENT_ID)
             const loadAvailability = async (selectedDate) => {
                 morningSlotsContainer.innerHTML = '';
                 afternoonSlotsContainer.innerHTML = '';
@@ -511,7 +509,8 @@
                 const serviceIds = booking.services.map(s => s.id).join(',');
                 
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${ESTABLISHMENT_ID}&professionalId=${booking.professionalId}&serviceIds=${serviceIds}&date=${selectedDate}`);
+                    // Usa o ID REAL na query string
+                    const response = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${REAL_ESTABLISHMENT_ID}&professionalId=${booking.professionalId}&serviceIds=${serviceIds}&date=${selectedDate}`);
                     if (!response.ok) throw new Error();
                     const slots = await response.json();
                     
@@ -553,7 +552,7 @@
                 }
             };
 
-            // 8. Renderizar Calendário da Semana
+            // 8. Renderizar Calendário
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
@@ -593,7 +592,7 @@
                 monthYearDisplay.textContent = currentWeekStart.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             };
 
-            // 9. Atualizar Resumo do Agendamento
+            // 9. Atualizar Resumo
             const updateSummary = () => {
                 const s = booking.services[0];
                 document.getElementById('summary-service').textContent = s.name;
@@ -612,7 +611,7 @@
                 }
             };
 
-            // 10. Confirmar Agendamento
+            // 10. Confirmar Agendamento (USANDO REAL_ESTABLISHMENT_ID)
             confirmationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const btn = document.getElementById('btn-confirm');
@@ -620,7 +619,7 @@
                 btn.innerText = 'Agendando...';
                 
                 const data = {
-                    establishmentId: ESTABLISHMENT_ID,
+                    establishmentId: REAL_ESTABLISHMENT_ID, // Usa ID REAL
                     services: booking.services,
                     professionalId: booking.professionalId,
                     clientName: document.getElementById('clientName').value,
@@ -653,7 +652,7 @@
                 }
             });
 
-            // 11. Meus Agendamentos
+            // 11. Meus Agendamentos (USANDO REAL_ESTABLISHMENT_ID)
             const openAppointments = () => {
                 myAppointmentsView.classList.remove('hidden');
                 document.getElementById('booking-view').classList.add('hidden');
@@ -674,7 +673,8 @@
                     myAppointmentsContent.innerHTML = '<div class="loader mx-auto mt-10"></div>';
                     
                     try {
-                        const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${ESTABLISHMENT_ID}?phone=${encodeURIComponent(phone)}`);
+                        // Usa ID REAL
+                        const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${REAL_ESTABLISHMENT_ID}?phone=${encodeURIComponent(phone)}`);
                         if(!res.ok) throw new Error();
                         const appts = await res.json();
                         
@@ -683,7 +683,6 @@
                             return;
                         }
                         
-                        // (MODIFICADO) RENDERIZAÇÃO EM CARDS COM FOTO
                         myAppointmentsContent.innerHTML = `<div class="space-y-3 pb-10">
                             ${appts.map(a => {
                                 const photoUrl = a.professionalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(a.professionalName || 'P')}&background=random&color=fff`;
@@ -724,7 +723,7 @@
                     await fetch(`${API_BASE_URL}/api/client-portal/appointments/${id}/cancel`, {
                         method: 'POST',
                         headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({phone, establishmentId: ESTABLISHMENT_ID})
+                        body: JSON.stringify({phone, establishmentId: REAL_ESTABLISHMENT_ID}) // Usa ID REAL
                     });
                     alert('Cancelado com sucesso.');
                     location.reload(); 
@@ -739,16 +738,13 @@
                 document.getElementById('booking-view').classList.remove('hidden');
             });
 
-            // --- INICIALIZAÇÃO CORRIGIDA ---
-            // Só carrega serviços se loadEstablishmentDetails retornar TRUE (sucesso e não bloqueado)
+            // --- EXECUÇÃO INICIAL ---
             loadEstablishmentDetails().then((success) => {
                 if (success) {
                     loadServices();
                 }
             });
-            // -------------------------------
             
-            // Navegação da semana
             prevWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() - 7); renderWeek(); };
             nextWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() + 7); renderWeek(); };
         });

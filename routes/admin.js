@@ -17,12 +17,7 @@ const defaultModules = {
     mobileApp: true
 };
 
-// ####################################################################
-// ### INÍCIO DA MODIFICAÇÃO (PERMISSÕES MASTER) ###
-// ####################################################################
-
 // Define o objeto de permissões totais para o "Usuário Master" (Dono)
-// Baseado nos módulos definidos em js/ui/users.js
 const masterPermissions = {
     'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
     'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
@@ -38,18 +33,23 @@ const masterPermissions = {
     'users-section': { view: true, create: true, edit: true }
 };
 
-// ####################################################################
-// ### FIM DA MODIFICAÇÃO ###
-// ####################################################################
+// --- FUNÇÃO AUXILIAR PARA TRATAMENTO SEGURO DE DATAS ---
+// Previne o erro 500 quando o campo não é um Timestamp válido
+const getSafeDate = (dateVal) => {
+    if (!dateVal) return null;
+    if (typeof dateVal.toDate === 'function') {
+        return dateVal.toDate(); // É um Timestamp do Firestore
+    }
+    const d = new Date(dateVal); // Tenta converter string ou número
+    return isNaN(d.getTime()) ? null : d;
+};
 
-
-// NOVO: Rota para obter configurações da plataforma (ex: URL do Logotipo)
+// Rota para obter configurações da plataforma (ex: URL do Logotipo)
 router.get('/config', async (req, res) => {
     try {
         const { db } = req;
         const configDoc = await db.collection('config').doc('plataforma').get();
         
-        // Retorna a URL do logo se ela existir, caso contrário retorna um objeto vazio
         if (configDoc.exists && configDoc.data().logoUrl) {
             return res.status(200).json({ logoUrl: configDoc.data().logoUrl });
         }
@@ -60,29 +60,109 @@ router.get('/config', async (req, res) => {
     }
 });
 
+// ####################################################################
+// ### ROTA DO DASHBOARD (ANALYTICS AVANÇADO) ###
+// ####################################################################
 router.get('/dashboard-stats', async (req, res) => {
     try {
         const { db } = req;
+
+        // 1. Buscar Planos (para saber os preços e calcular MRR)
+        const plansSnapshot = await db.collection('subscriptionPlans').get();
+        const planPrices = {};
+        plansSnapshot.forEach(doc => {
+            planPrices[doc.id] = doc.data().price || 0;
+        });
+
+        // 2. Buscar Estabelecimentos
         const establishmentsSnapshot = await db.collection('establishments').get();
         
+        let totalEstablishments = 0;
         let activeCount = 0;
+        let cancelledCount = 0;
+        let mrr = 0;
+        
+        // Array para o gráfico (últimos 30 dias)
+        const newSubscribersLast30Days = Array(30).fill(0); 
+        const attentionList = [];
+        
+        const now = new Date();
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(now.getDate() - 30);
+
         establishmentsSnapshot.forEach(doc => {
-            if (doc.data().status === 'active') {
+            totalEstablishments++;
+            const est = doc.data();
+            const sub = est.subscription || {};
+            
+            // --- Análise de Status, MRR e Atenção ---
+            if (est.status === 'active') {
                 activeCount++;
+                
+                // Soma ao MRR se tiver plano válido e preço numérico
+                if (sub.planId && typeof planPrices[sub.planId] === 'number') {
+                    mrr += planPrices[sub.planId];
+                }
+
+                // Verifica expiração (Lista de Atenção) com data segura
+                const expiry = getSafeDate(sub.expiryDate);
+                if (expiry) {
+                    const diffTime = expiry - now;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    // Se expira em 5 dias ou menos (ou já venceu)
+                    if (diffDays <= 5) {
+                        attentionList.push({
+                            id: doc.id,
+                            name: est.name,
+                            expiryDate: expiry,
+                            daysLeft: diffDays,
+                            status: diffDays < 0 ? 'Vencido' : 'A vencer'
+                        });
+                    }
+                }
+
+            } else if (est.status === 'deleted' || est.status === 'inactive') {
+                cancelledCount++;
+            }
+
+            // --- Dados para o Gráfico (Criação nos últimos 30 dias) ---
+            const created = getSafeDate(est.createdAt);
+            if (created && created >= thirtyDaysAgo) {
+                const daysAgo = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+                // Inverte o índice: 0 = hoje, 29 = 30 dias atrás
+                if (daysAgo >= 0 && daysAgo < 30) {
+                    newSubscribersLast30Days[29 - daysAgo]++; 
+                }
             }
         });
 
+        // Cálculo de Churn Rate
+        const churnRate = totalEstablishments > 0 ? ((cancelledCount / totalEstablishments) * 100).toFixed(1) : 0;
+
         res.status(200).json({
-            total: establishmentsSnapshot.size,
-            active: activeCount,
-            inactive: establishmentsSnapshot.size - activeCount
+            kpis: {
+                mrr: mrr,
+                activeUsers: activeCount,
+                newSubscribersData: newSubscribersLast30Days,
+                churnRate: churnRate,
+                totalUsers: totalEstablishments
+            },
+            // Retorna apenas os top 5 mais urgentes
+            attentionList: attentionList.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 5) 
         });
+
     } catch (error) {
         console.error("Erro ao buscar estatísticas do dashboard:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
+// ####################################################################
+// ### ROTAS DE GESTÃO DE ESTABELECIMENTOS ###
+// ####################################################################
+
+// Rota POST para criar novo estabelecimento
 router.post('/establishments', async (req, res) => {
     const { establishmentId, name, ownerEmail, ownerPassword, modules, subscription } = req.body;
     if (!establishmentId || !name || !ownerEmail || !ownerPassword) {
@@ -90,6 +170,13 @@ router.post('/establishments', async (req, res) => {
     }
     try {
         const { db, auth } = req;
+
+        // ATUALIZAÇÃO: Verificar se o ID (que será o urlId inicial) já está em uso por OUTRO documento
+        const slugCheck = await db.collection('establishments').where('urlId', '==', establishmentId).get();
+        if (!slugCheck.empty) {
+             return res.status(409).json({ message: 'Este ID de URL já está em uso.' });
+        }
+
         const userRecord = await auth.createUser({
             email: ownerEmail,
             password: ownerPassword,
@@ -101,6 +188,7 @@ router.post('/establishments', async (req, res) => {
             ownerUid: userRecord.uid,
             ownerEmail: ownerEmail,
             status: 'active',
+            urlId: establishmentId, // Salva o ID como urlId inicial
             modules: modules || defaultModules,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
@@ -121,31 +209,23 @@ router.post('/establishments', async (req, res) => {
             };
         }
         
+        // Usa o establishmentId como chave do documento
         await db.collection('establishments').doc(establishmentId).set(establishmentData);
         
         await auth.setCustomUserClaims(userRecord.uid, { role: 'owner', establishmentId: establishmentId });
 
-        // ####################################################################
-        // ### INÍCIO DA MODIFICAÇÃO (CRIAR "USUÁRIO MASTER") ###
-        // ####################################################################
-        
         // Cria também um documento na coleção 'users' para o dono (master user)
-        // Isso permite que ele apareça na tela de "Usuários" e seja associado a um profissional
         const newUserRef = db.collection('users').doc(userRecord.uid);
         await newUserRef.set({
-            name: name, // Usa o nome do dono/estabelecimento
+            name: name,
             email: ownerEmail,
             establishmentId: establishmentId,
-            permissions: masterPermissions, // Atribui todas as permissões
-            professionalId: null, // Começa desassociado
+            permissions: masterPermissions,
+            professionalId: null,
             status: 'active',
-            isOwnerMaster: true, // Flag para identificar que este é o "usuário" dono
+            isOwnerMaster: true,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-
-        // ####################################################################
-        // ### FIM DA MODIFICAÇÃO ###
-        // ####################################################################
 
         res.status(201).json({ message: 'Estabelecimento e dono criados com sucesso!', uid: userRecord.uid });
     } catch (error) {
@@ -157,37 +237,114 @@ router.post('/establishments', async (req, res) => {
     }
 });
 
+// Rota GET para listar estabelecimentos com PAGINAÇÃO, FILTROS e ORDENAÇÃO
+// ATUALIZADA: Retorna { data, pagination } para corrigir o erro no frontend
 router.get('/establishments', async (req, res) => {
     try {
         const { db } = req;
-        const { includeDeleted } = req.query;
+        
+        // 1. Receber parâmetros da Query String
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const search = (req.query.search || '').toLowerCase();
+        const status = req.query.status; // 'active', 'inactive', 'deleted', 'all'
+        const planId = req.query.plan;
+        const dateRange = req.query.dateRange; // 'this_month', etc.
+        const sortBy = req.query.sortBy || 'createdAt';
+        const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
 
         let query = db.collection('establishments');
 
-        if (includeDeleted === 'true') {
-            query = query.where('status', '==', 'deleted');
-        } else {
+        // 2. Aplicar Filtros de Banco de Dados (Firestore)
+        
+        // Filtro de Status
+        if (status && status !== 'all') {
+            query = query.where('status', '==', status);
+        } else if (!status) {
+            // Padrão: não mostrar deletados se não for solicitado especificamente
             query = query.where('status', 'in', ['active', 'inactive']);
         }
 
-        const snapshot = await query.orderBy('createdAt', 'desc').get();
-        if (snapshot.empty) return res.status(200).json([]);
-        
-        const establishments = snapshot.docs.map(doc => {
+        // Filtro de Data (Criados este mês)
+        if (dateRange === 'this_month') {
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            query = query.where('createdAt', '>=', admin.firestore.Timestamp.fromDate(startOfMonth))
+                         .where('createdAt', '<=', admin.firestore.Timestamp.fromDate(endOfMonth));
+        }
+
+        const snapshot = await query.get();
+        let establishments = snapshot.docs.map(doc => {
             const data = doc.data();
             return { 
                 id: doc.id, 
                 ...data,
-                modules: data.modules || defaultModules 
+                // Normaliza dados para ordenação/filtro e evita crash com getSafeDate
+                planId: data.subscription?.planId || 'N/A',
+                urlId: data.urlId || doc.id, // Garante que urlId exista
+                createdAtDate: getSafeDate(data.createdAt) || new Date(0)
             };
         });
-        res.status(200).json(establishments);
+
+        // 3. Aplicar Filtros em Memória (Busca textual e Plano)
+        if (search) {
+            establishments = establishments.filter(est => 
+                (est.name && est.name.toLowerCase().includes(search)) || 
+                (est.id && est.id.toLowerCase().includes(search)) ||
+                (est.urlId && est.urlId.toLowerCase().includes(search)) || // Busca também pelo urlId
+                (est.ownerEmail && est.ownerEmail.toLowerCase().includes(search))
+            );
+        }
+
+        if (planId && planId !== 'all') {
+            establishments = establishments.filter(est => est.planId === planId);
+        }
+
+        // 4. Ordenação
+        establishments.sort((a, b) => {
+            let valA = a[sortBy];
+            let valB = b[sortBy];
+
+            // Tratamento especial para datas
+            if (sortBy === 'createdAt') {
+                valA = a.createdAtDate; 
+                valB = b.createdAtDate;
+            } else {
+                // Tratamento para strings
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // 5. Paginação
+        const total = establishments.length;
+        const totalPages = Math.ceil(total / limit);
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const paginatedData = establishments.slice(startIndex, endIndex);
+
+        // 6. Retorno formatado (OBJETO com DATA e PAGINATION)
+        // Isso corrige o TypeError no frontend
+        res.status(200).json({
+            data: paginatedData,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages
+            }
+        });
+
     } catch (error) {
         console.error("Erro ao listar estabelecimentos:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
-
 
 router.delete('/establishments/:id', async (req, res) => {
     const { id } = req.params;
@@ -241,22 +398,35 @@ router.post('/establishments/:id/restore', async (req, res) => {
     }
 });
 
-
+// Rota PUT para editar detalhes (Nome e URL Personalizada)
 router.put('/establishments/:id/details', async (req, res) => {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, urlId } = req.body;
+    
     if (!name) return res.status(400).json({ message: "O nome é obrigatório." });
 
     try {
         const { db } = req;
-        await db.collection('establishments').doc(id).update({ name });
-        res.status(200).json({ message: 'Nome do estabelecimento atualizado.' });
+        
+        // Se foi enviado um urlId novo, verifica unicidade
+        if (urlId) {
+            const existing = await db.collection('establishments').where('urlId', '==', urlId).get();
+            // Se existe algum doc com este urlId E não é o documento que estamos editando
+            if (!existing.empty && existing.docs[0].id !== id) {
+                return res.status(409).json({ message: 'Este ID Personalizado (URL) já está em uso por outro estabelecimento.' });
+            }
+        }
+
+        const updateData = { name };
+        if (urlId) updateData.urlId = urlId;
+
+        await db.collection('establishments').doc(id).update(updateData);
+        res.status(200).json({ message: 'Dados atualizados com sucesso.' });
     } catch (error) {
-        console.error("Erro ao atualizar nome:", error);
+        console.error("Erro ao atualizar detalhes:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
-
 
 router.patch('/establishments/:id/modules', async (req, res) => {
     const { id } = req.params;
@@ -294,22 +464,18 @@ router.patch('/establishments/:id/status', async (req, res) => {
         
         const allUsersToUpdate = [];
 
-        // Adiciona o dono à lista de usuários para atualizar
         if (establishment.ownerUid) {
             allUsersToUpdate.push(establishment.ownerUid);
         }
 
-        // Busca todos os funcionários do estabelecimento
         const employeesSnapshot = await db.collection('users').where('establishmentId', '==', id).get();
         employeesSnapshot.forEach(employeeDoc => {
             allUsersToUpdate.push(employeeDoc.id);
         });
 
-        // Atualiza todos os usuários (dono e funcionários) em paralelo
         const userUpdatePromises = allUsersToUpdate.map(uid => auth.updateUser(uid, { disabled: shouldBeDisabled }));
         await Promise.all(userUpdatePromises);
         
-        // Atualiza o status do estabelecimento
         await establishmentRef.update({ status: status });
         
         res.status(200).json({ message: `Estabelecimento ${id} e todos os seus ${allUsersToUpdate.length} usuários foram ${status === 'active' ? 'ativados' : 'inativados'}.` });
@@ -318,6 +484,10 @@ router.patch('/establishments/:id/status', async (req, res) => {
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
+
+// ####################################################################
+// ### ROTAS DE GESTÃO DE USUÁRIOS (SUPER ADMIN) ###
+// ####################################################################
 
 router.post('/users', async (req, res) => {
     const { email, password } = req.body;
@@ -372,6 +542,42 @@ router.delete('/users/:uid', async (req, res) => {
             return res.status(404).json({ message: 'Utilizador não encontrado.' });
         }
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+// ####################################################################
+// ### ROTA DE IMPERSONATION (LOGIN COMO CLIENTE) ###
+// ####################################################################
+
+router.post('/establishments/:id/impersonate', async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const { db, auth } = req;
+        
+        const doc = await db.collection('establishments').doc(id).get();
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+        
+        const establishment = doc.data();
+        const ownerUid = establishment.ownerUid;
+
+        if (!ownerUid) {
+            return res.status(400).json({ message: 'Este estabelecimento não possui um dono vinculado.' });
+        }
+
+        const customToken = await auth.createCustomToken(ownerUid, { 
+            role: 'owner', 
+            establishmentId: id,
+            impersonated: true 
+        });
+
+        res.status(200).json({ token: customToken });
+
+    } catch (error) {
+        console.error("Erro ao gerar token de impersonation:", error);
+        res.status(500).json({ message: 'Erro ao gerar acesso.' });
     }
 });
 

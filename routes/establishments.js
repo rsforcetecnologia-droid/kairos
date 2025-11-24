@@ -7,20 +7,37 @@ const { verifyToken, isOwner, hasAccess } = require('../middlewares/auth');
 
 /**
  * Rota GET para buscar detalhes de UM estabelecimento.
+ * ATUALIZADO: Busca por urlId (slug) ou docId.
  */
 router.get('/:establishmentId', async (req, res) => { 
     const { establishmentId } = req.params;
     const { db } = req; 
 
     try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        const doc = await establishmentRef.get();
+        let doc;
+        let establishmentRef;
 
-        if (!doc.exists) {
+        // 1. Tenta buscar pelo campo personalizado 'urlId' (Slug)
+        const slugQuery = await db.collection('establishments')
+            .where('urlId', '==', establishmentId)
+            .limit(1)
+            .get();
+
+        if (!slugQuery.empty) {
+            doc = slugQuery.docs[0];
+            establishmentRef = doc.ref;
+        } else {
+            // 2. Fallback: Tenta buscar pelo ID do documento (comportamento antigo)
+            establishmentRef = db.collection('establishments').doc(establishmentId);
+            doc = await establishmentRef.get();
+        }
+
+        if (!doc || !doc.exists) {
             return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
         }
         
         const data = doc.data();
+        const realDocId = doc.id; // ID real do documento
 
         // Verifica se é um usuário autenticado (dono/funcionário)
         const { authorization } = req.headers;
@@ -29,7 +46,7 @@ router.get('/:establishmentId', async (req, res) => {
             const token = authorization.split('Bearer ')[1];
             try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
-                if (decodedToken.establishmentId === establishmentId) {
+                if (decodedToken.establishmentId === realDocId) {
                     isAuthenticated = true;
                 }
             } catch (error) {
@@ -39,7 +56,7 @@ router.get('/:establishmentId', async (req, res) => {
 
         // Se for autenticado (vindo do painel admin), retorna todos os dados
         if (isAuthenticated) {
-            return res.status(200).json({ id: doc.id, ...data });
+            return res.status(200).json({ id: realDocId, ...data });
         }
         
         // Se for acesso público (cliente.html):
@@ -49,17 +66,14 @@ router.get('/:establishmentId', async (req, res) => {
 
         // 2. Retorna dados públicos
         const publicData = {
-            id: doc.id,
+            id: realDocId, // Retorna o ID real para as operações internas
+            urlId: data.urlId || realDocId, // Retorna o ID visual
             name: data.name,
             logo: data.logo || null,
-            themeColor: data.themeColor || 'indigo', // Fallback
-            
-            // --- PERSONALIZAÇÃO ---
-            primaryColor: data.primaryColor || null, // Cor dos botões
-            textColor: data.textColor || '#111827', // (NOVO) Cor do texto do nome/título
-            backgroundImage: data.backgroundImage || null, // Imagem de fundo
-            // ----------------------
-            
+            themeColor: data.themeColor || 'indigo',
+            primaryColor: data.primaryColor || null,
+            textColor: data.textColor || '#111827',
+            backgroundImage: data.backgroundImage || null,
             welcomeMessage: data.welcomeMessage || 'Seja bem-vindo(a)!'
         };
         
@@ -92,6 +106,9 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
              return res.status(403).json({ message: 'Acesso negado.' });
         }
 
+        // Proteção: Não permitir alterar urlId por aqui sem validação (feito pelo Admin)
+        delete updatedData.urlId; 
+
         await establishmentRef.set(updatedData, { merge: true });
 
         res.status(200).json({ message: 'Estabelecimento atualizado com sucesso.' });
@@ -102,6 +119,7 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
     }
 });
 
+// ... (Mantenha as rotas PATCH de booking-status e owner-email iguais)
 /**
  * Rota PATCH para atualizar SOMENTE o status do agendamento público.
  */
