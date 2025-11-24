@@ -1,14 +1,14 @@
+// js/ui/products.js (Versão Final Mobile Adaptativa)
+
 // --- 1. IMPORTAÇÕES ---
 import * as productsApi from '../api/products.js';
 import * as categoriesApi from '../api/categories.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
-import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let pageEventListener = null;
-// Variável de submit removida, não é mais necessária
 
 let currentView = 'products'; // 'products' ou 'movements'
 let activeStockFilter = 'all'; // Filtro para os cartões de indicadores
@@ -51,7 +51,7 @@ async function fetchAndDisplayCategoriesInModal() {
     listDiv.innerHTML = '<div class="loader mx-auto my-4"></div>';
     try {
         const categories = await categoriesApi.getCategories(state.establishmentId, 'products');
-        state.categories = categories; // Usa state.categories como no original
+        state.categories = categories; 
         listDiv.innerHTML = '';
         if (categories.length > 0) {
             listDiv.innerHTML = categories.map(cat => `
@@ -120,7 +120,6 @@ async function handleDeleteProduct(productId) {
      }
 }
 
-// CORREÇÃO: Recebe 'form' como argumento, não o evento 'e'
 async function handleProductFormSubmit(form) {
     const productId = form.querySelector('#productId').value;
     
@@ -152,7 +151,6 @@ async function handleProductFormSubmit(form) {
         showNotification('Sucesso', `Produto ${productId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
         await fetchBaseData(); 
     } catch (error) {
-         // Lança o erro para o listener de clique poder re-ativar o botão
          throw new Error(error.message);
     }
 }
@@ -195,7 +193,6 @@ function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 
     });
 }
 
-// CORREÇÃO: Modal flutuante (NÃO tela cheia) e com altura máxima corrigida
 function openProductModal(product = null) {
     const modal = document.getElementById('productModal');
     
@@ -205,8 +202,6 @@ function openProductModal(product = null) {
         `<option value="${c.id}" ${product?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
     ).join('');
 
-    // REVERSÃO: Voltamos ao modal flutuante
-    // CORREÇÃO: Adicionado 'overflow-y-auto' e 'max-h-[90vh]' para corrigir o bug de scroll no notebook
     modal.innerHTML = `
     <div class="modal-content max-w-3xl overflow-y-auto max-h-[90vh]">
         <form id="productForm">
@@ -219,7 +214,6 @@ function openProductModal(product = null) {
             </div>
 
             <div class="p-0">
-                <!-- ABAS -->
                 <div class="border-b border-gray-200 mb-6">
                     <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                         <button type="button" data-tab="dados" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">Dados</button>
@@ -227,7 +221,6 @@ function openProductModal(product = null) {
                     </nav>
                 </div>
 
-                <!-- ABA 1: DADOS -->
                 <div id="tab-content-dados" class="tab-content space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                         <div class="md:col-span-1 space-y-4">
@@ -247,7 +240,6 @@ function openProductModal(product = null) {
                     </div></div>
                 </div>
 
-                <!-- ABA 2: AJUSTE DE ESTOQUE -->
                 <div id="tab-content-stock" class="tab-content hidden space-y-6">
                     <p class="text-sm text-gray-600">Use esta secção para registar entradas (compras) ou saídas (perdas) manuais. O estoque atual é <strong id="currentStockDisplay" class="text-lg">${product?.currentStock || 0}</strong>.</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
@@ -273,7 +265,6 @@ function openProductModal(product = null) {
                 </div>
             </div> 
             
-            <!-- 3. RODAPÉ -->
             <div class="mt-8 pt-6 border-t flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
                 <button 
                     type="button" 
@@ -288,20 +279,11 @@ function openProductModal(product = null) {
                 </button>
                 <div class="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
                     <button type="button" data-action="close-modal" data-target="productModal" class="w-full sm:w-auto py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
-                    <!-- CORREÇÃO: type="button" e data-action="save-product-modal" para corrigir clique triplo/mobile -->
                     <button type="button" data-action="save-product-modal" class="w-full sm:w-auto py-2 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar Alterações</button>
                 </div>
             </div>
         </form>
     </div>`;
-
-    // CORREÇÃO: Removemos o listener 'submit' e usamos 'click'
-    // const form = modal.querySelector('#productForm');
-    // if (modalFormSubmitHandler) {
-    //     form.removeEventListener('submit', modalFormSubmitHandler);
-    // }
-    // modalFormSubmitHandler = handleProductFormSubmit;
-    // form.addEventListener('submit', modalFormSubmitHandler);
 
     
     const categorySelect = modal.querySelector('#productCategory');
@@ -339,11 +321,9 @@ function openProductModal(product = null) {
         }
     };
 
-    // CORREÇÃO: Clonamos o nó para limpar TODOS os listeners antigos e evitar cliques duplicados/falhas
     const newModal = modal.cloneNode(true);
     modal.parentNode.replaceChild(newModal, modal);
     
-    // Adicionamos um NOVO listener de clique que lida com TUDO
     newModal.addEventListener('click', async (e) => {
         const button = e.target.closest('button[data-action]');
         if (!button) return;
@@ -361,14 +341,12 @@ function openProductModal(product = null) {
             await handleDeleteProduct(productId); 
         }
 
-        // CORREÇÃO: Lógica de salvar movida para o listener de CLIQUE
         if (action === 'save-product-modal') {
-            const form = newModal.querySelector('#productForm'); // Pega o form dentro do newModal
+            const form = newModal.querySelector('#productForm'); 
             if (form) {
-                // Validação simples
                 if (!form.querySelector('#productName').value || !form.querySelector('#productPrice').value) {
-                     showNotification('Erro', 'Nome e Preço de Venda são obrigatórios.', 'error');
-                     return;
+                      showNotification('Erro', 'Nome e Preço de Venda são obrigatórios.', 'error');
+                      return;
                 }
                 
                 const saveButton = button.closest('button[data-action="save-product-modal"]');
@@ -376,10 +354,9 @@ function openProductModal(product = null) {
                 saveButton.textContent = 'A salvar...';
 
                 try {
-                    await handleProductFormSubmit(form); // Passa o elemento do formulário
+                    await handleProductFormSubmit(form);
                 } catch (error) {
                     showNotification('Erro', `Falha ao salvar: ${error.message}`, 'error');
-                    // Reativa o botão em caso de erro
                     saveButton.disabled = false;
                     saveButton.textContent = 'Salvar Alterações';
                 }
@@ -424,7 +401,6 @@ function openProductModal(product = null) {
         }
     });
 
-    // Adiciona listeners para as abas e foto no novo modal
     const tabs = newModal.querySelectorAll('.tab-btn');
     const tabContents = newModal.querySelectorAll('.tab-content');
     tabs.forEach(tab => {
@@ -468,13 +444,11 @@ function openProductModal(product = null) {
         }
     };
 
-
     newModal.style.display = 'flex';
 }
 
 // --- FUNÇÕES DE RENDERIZAÇÃO DAS ABAS ---
 
-// CORREÇÃO: Aplicando UX Mobile (FAB, Grid Responsivo)
 function renderProductsView() {
     const container = document.getElementById('products-content-container');
     container.innerHTML = `
@@ -485,10 +459,8 @@ function renderProductsView() {
                     <option value="all">Todas as categorias</option>
                 </select>
             </div>
-            <!-- Botão "Adicionar produto" movido para FAB -->
         </div>
         
-        <!-- CORREÇÃO: Grid 2x2 no mobile para indicadores -->
         <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4 lg:gap-4">
             <div data-action="filter-stock" data-filter-type="ok" class="indicator-card bg-green-50 border-l-4 border-green-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
                 <div class="bg-green-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.085a2 2 0 00-1.736.93L5.5 8m7 2H5m7 2v4m0 0H5"></path></svg></div>
@@ -508,11 +480,9 @@ function renderProductsView() {
             </div>
         </div>
         
-        <div id="productsList" class="pb-20"> <!-- Padding-bottom para o FAB -->
-            <div class="loader col-span-full mx-auto my-10"></div>
+        <div id="productsList" class="pb-20"> <div class="loader col-span-full mx-auto my-10"></div>
         </div>
 
-        <!-- Botão de Ação Flutuante (FAB) "Novo Produto" -->
         <button data-action="new-product" class="fixed z-30 bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-105">
             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
         </button>
@@ -527,6 +497,7 @@ function renderProductsView() {
     renderProductsList();
 }
 
+// CORREÇÃO: "Visualização Híbrida" (Table vs Cards)
 function renderStockReportView() {
     const container = document.getElementById('products-content-container');
     const today = new Date().toISOString().split('T')[0];
@@ -534,24 +505,28 @@ function renderStockReportView() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
+    // Removemos estilos fixos (bg-white, shadow) do #report-results para não atrapalhar a lista mobile
     container.innerHTML = `
         <div class="space-y-6">
-             <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                <div><label for="reportStartDate" class="block text-sm font-medium text-gray-700">De</label><input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="mt-1 w-full p-2 border rounded-md"></div>
-                <div><label for="reportEndDate" class="block text-sm font-medium text-gray-700">Até</label><input type="date" id="reportEndDate" value="${today}" class="mt-1 w-full p-2 border rounded-md"></div>
-                <div><label for="productFilterReport" class="block text-sm font-medium text-gray-700">Produto</label><select id="productFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="all">Todos os Produtos</option></select></div>
-                <div><label for="categoryFilterReport" class="block text-sm font-medium text-gray-700">Categoria</label><select id="categoryFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="all">Todas as Categorias</option></select></div>
-                <button data-action="generate-report" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700">Gerar Relatório</button>
+             <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
+                <div class="col-span-1"><label for="reportStartDate" class="block text-xs font-medium text-gray-700">De</label><input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="mt-1 w-full p-2 border rounded-md text-sm"></div>
+                <div class="col-span-1"><label for="reportEndDate" class="block text-xs font-medium text-gray-700">Até</label><input type="date" id="reportEndDate" value="${today}" class="mt-1 w-full p-2 border rounded-md text-sm"></div>
+                <div class="col-span-2 md:col-span-1"><label for="productFilterReport" class="block text-xs font-medium text-gray-700">Produto</label><select id="productFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white text-sm"><option value="all">Todos</option></select></div>
+                <div class="col-span-2 md:col-span-1"><label for="categoryFilterReport" class="block text-xs font-medium text-gray-700">Categoria</label><select id="categoryFilterReport" class="mt-1 w-full p-2 border rounded-md bg-white text-sm"><option value="all">Todas</option></select></div>
+                <button data-action="generate-report" class="col-span-2 md:col-span-1 bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 w-full text-sm">Gerar Relatório</button>
              </div>
-             <div id="report-results" class="bg-white border rounded-lg shadow-sm overflow-x-auto">
-                 <p class="text-center text-gray-500 py-8">Selecione os filtros e clique em "Gerar Relatório".</p>
+             
+             <div id="report-results">
+                 <div class="bg-white border rounded-lg shadow-sm p-8">
+                    <p class="text-center text-gray-500">Selecione os filtros e clique em "Gerar Relatório".</p>
+                 </div>
              </div>
         </div>`;
 
     const productFilter = document.getElementById('productFilterReport');
     const categoryFilter = document.getElementById('categoryFilterReport');
     if (productFilter && state.products) productFilter.innerHTML += state.products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    if (categoryFilter && state.categories) categoryFilter.innerHTML += state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); // Corrigido typo
+    if (categoryFilter && state.categories) categoryFilter.innerHTML += state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 }
 
 async function generateStockReport() {
@@ -568,28 +543,85 @@ async function generateStockReport() {
     try {
         const reportData = await productsApi.getStockReport(filters);
         if (reportData.length === 0) {
-            resultsContainer.innerHTML = '<p class="text-center text-gray-500 py-8">Nenhuma movimentação de stock encontrada.</p>';
+            resultsContainer.innerHTML = `
+                <div class="bg-white border rounded-lg shadow-sm p-8">
+                    <p class="text-center text-gray-500">Nenhuma movimentação encontrada para este período.</p>
+                </div>`;
             return;
         }
-        resultsContainer.innerHTML = `
-            <table class="min-w-full text-sm">
-                <thead class="bg-gray-50"><tr><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produto</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Alteração</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Anterior</th><th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Novo</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th><th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilizador</th></tr></thead>
-                <tbody class="divide-y divide-gray-200">
-                    ${reportData.map(item => `
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 whitespace-nowrap">${new Date(item.date).toLocaleString('pt-BR')}</td>
-                            <td class="px-4 py-3 whitespace-nowrap font-semibold">${item.productName}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-center font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">${item.change > 0 ? '+' : ''}${item.change}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-center">${item.oldStock}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-center">${item.newStock}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.reason}</td>
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.user}</td>
-                        </tr>`).join('')}
-                </tbody>
-            </table>`;
+
+        // 1. Gera HTML da Tabela (Desktop) - hidden on mobile
+        const desktopTableHTML = `
+            <div class="hidden md:block bg-white border rounded-lg shadow-sm overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50"><tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produto</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Alteração</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Anterior</th>
+                        <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Novo</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Utilizador</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-gray-200">
+                        ${reportData.map(item => `
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-4 py-3 whitespace-nowrap text-gray-600">${new Date(item.date).toLocaleString('pt-BR')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-gray-800">${item.productName}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-center font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">
+                                    ${item.change > 0 ? '+' : ''}${item.change}
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap text-center text-gray-500">${item.oldStock}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-center text-gray-800 font-medium">${item.newStock}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-gray-600 truncate max-w-xs" title="${item.reason}">${item.reason}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.user}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+
+        // 2. Gera HTML da Lista de Cards (Mobile) - visible only on mobile
+        const mobileListHTML = `
+            <div class="md:hidden space-y-3 pb-20">
+                ${reportData.map(item => `
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <span class="text-xs text-gray-400 font-medium">${new Date(item.date).toLocaleString('pt-BR')}</span>
+                                <h4 class="font-bold text-gray-800 text-base line-clamp-1">${item.productName}</h4>
+                            </div>
+                            <span class="text-lg font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">
+                                ${item.change > 0 ? '+' : ''}${item.change}
+                            </span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between bg-gray-50 p-2 rounded mb-3 text-sm border border-gray-100">
+                            <span class="text-gray-500">Estoque:</span>
+                            <div class="flex items-center gap-2 font-mono">
+                                <span class="text-gray-400">${item.oldStock}</span>
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                                <span class="text-gray-800 font-bold">${item.newStock}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center text-xs border-t pt-2 border-dashed border-gray-200">
+                            <span class="text-gray-600 truncate max-w-[60%] font-medium" title="${item.reason}">
+                                ${item.reason || 'Sem motivo'}
+                            </span>
+                            <span class="text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                                ${item.user || 'Sistema'}
+                            </span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>`;
+
+        // Junta os dois HTMLs
+        resultsContainer.innerHTML = desktopTableHTML + mobileListHTML;
+
     } catch (error) {
         showNotification('Erro', `Não foi possível gerar o relatório: ${error.message}`, 'error');
-        resultsContainer.innerHTML = `<p class="text-center text-red-500 py-8">${error.message}</p>`;
+        resultsContainer.innerHTML = `<div class="bg-white border border-red-200 rounded-lg p-8 text-center text-red-500">${error.message}</div>`;
     }
 }
 
@@ -599,7 +631,7 @@ function renderStockIndicators() {
     const indicators = { ok: 0, near_min: 0, at_min: 0, empty: 0 };
     if (!state.products) return;
     state.products.forEach(p => {
-        if (!p) return; // Proteção contra dados nulos
+        if (!p) return; 
         const stock = p.currentStock;
         const min = p.minStock;
         if (stock <= 0) indicators.empty++;
@@ -619,7 +651,6 @@ function renderStockIndicators() {
     if (emptyEl) emptyEl.textContent = indicators.empty;
 }
 
-// CORREÇÃO: Aplicando UX Mobile (Lista Responsiva)
 function renderProductsList() {
     const listDiv = document.getElementById('productsList');
     if (!listDiv) return;
@@ -655,7 +686,6 @@ function renderProductsList() {
     listDiv.innerHTML = ''; 
     if (filteredProducts.length > 0) {
         
-        // CORREÇÃO: Layout responsivo (lista/grid)
         listDiv.className = 'space-y-3 sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4 sm:space-y-0';
         
         filteredProducts.forEach(product => {
@@ -689,7 +719,6 @@ function renderProductsList() {
                 stockColor = 'text-green-600 font-semibold';
             }
 
-            // CORREÇÃO: HTML do card responsivo
             card.innerHTML = `
                 <img src="${photoSrc}" alt="Imagem de ${product.name}" class="w-16 h-16 rounded-md object-cover flex-shrink-0 sm:w-full sm:h-24 sm:rounded-b-none">
                 
@@ -697,22 +726,16 @@ function renderProductsList() {
                     <div class="sm:flex-grow">
                         <div class="flex justify-between items-start mb-1 gap-2">
                             <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${product.name}</h3>
-                            <!-- Status de estoque (desktop) -->
                             <div class="hidden sm:block">${stockStatusHtml}</div>
                         </div>
                         
-                        <!-- Preço (Desktop) -->
                         <p class="text-xl font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${product.price.toFixed(2)}</p>
                         
-                        <!-- Categoria (Desktop) -->
                         <p class="text-xs text-gray-500 text-left mb-2 hidden sm:block">Categoria: ${categoryName}</p>
                     </div>
 
-                    <!-- Footer (Mobile e Desktop) -->
                     <div class="flex justify-between items-center mt-2 sm:mt-0">
-                        <!-- Preço (Mobile) -->
                         <p class="text-lg font-bold text-indigo-600 text-left sm:hidden">R$ ${product.price.toFixed(2)}</p>
-                        <!-- Estoque Atual -->
                         <p class="text-xs text-gray-500 text-right sm:text-left">
                             Estoque: <span class="font-bold text-base ${stockColor}">${product.currentStock}</span>
                         </p>
@@ -721,7 +744,7 @@ function renderProductsList() {
             listDiv.appendChild(card);
         });
     } else {
-        listDiv.className = ''; // Limpa classes
+        listDiv.className = ''; 
         listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500 py-10">Nenhum produto encontrado.</p>`;
     }
 }
@@ -778,8 +801,7 @@ function switchTab(targetView) {
 
 export async function loadProductsPage() {
     contentDiv.innerHTML = `
-        <section class="p-4 sm:p-6">
-            <div class="bg-white rounded-lg shadow-md">
+        <section class="p-4 sm:p-6 pb-24"> <div class="bg-white rounded-lg shadow-md">
                 <div id="products-tabs" class="border-b border-gray-200">
                     <nav class="-mb-px flex space-x-6 px-4 sm:px-6 overflow-x-auto" aria-label="Tabs">
                         <button data-view="products" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">Produtos</button>
@@ -793,29 +815,24 @@ export async function loadProductsPage() {
             </div>
         </section>`;
 
-    // CORREÇÃO: Limpador de listener no topo da função
     if (pageEventListener) {
         contentDiv.removeEventListener('click', pageEventListener);
         contentDiv.removeEventListener('input', pageEventListener);
         contentDiv.removeEventListener('change', pageEventListener);
     }
 
-    // CORREÇÃO: pageEventListener definido UMA VEZ
     pageEventListener = async (e) => {
         const target = e.target;
         
-        // Filtros de Tabela
         if (target.id === 'productSearchInput' || target.id === 'productCategoryFilter') {
             renderProductsList(); 
             return;
         }
         
-        // CORREÇÃO: Seletor de clique simplificado e correto
         const targetElement = e.target.closest('button[data-action], button[data-view], .indicator-card[data-action], .product-card[data-action]');
 
         if (!targetElement) return;
 
-        // Previne o clique no card se o clique foi no toggle
         if (e.target.closest('[data-action-stop-propagation="true"]')) {
             return;
         }
@@ -853,7 +870,6 @@ export async function loadProductsPage() {
         }
     };
     
-    // CORREÇÃO: Listeners anexados UMA VEZ
     contentDiv.addEventListener('click', pageEventListener);
     contentDiv.addEventListener('input', pageEventListener);
     contentDiv.addEventListener('change', pageEventListener);

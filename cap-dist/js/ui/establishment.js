@@ -416,7 +416,11 @@ function renderBrandingSection(data, container) {
 }
 
 function renderBookingSection(data, container) {
-    const bookingLink = `${window.location.origin}/agendar?id=${state.establishmentId}`;
+    // ############################################################
+    // ### CORREÇÃO: USA O SLUG (urlId) SE DISPONÍVEL ###
+    // ############################################################
+    const linkId = data.urlId || state.establishmentId;
+    const bookingLink = `${window.location.origin}/agendar?id=${linkId}`;
     
     const isChecked = data.publicBookingEnabled || false;
     const toggleText = isChecked ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
