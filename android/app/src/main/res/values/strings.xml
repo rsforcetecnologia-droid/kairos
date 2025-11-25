@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Kairos System</string>
-    <string name="title_activity_main">Kairos System</string>
-    <string name="package_name">com.kairos.sistema</string>
-    <string name="custom_url_scheme">com.kairos.sistema</string>
+    <string name="app_name">Kairos Pro</string>
+    <string name="title_activity_main">Kairos Pro</string>
+    <string name="package_name">br.com.rsforce.kairos.pro</string>
+    <string name="custom_url_scheme">br.com.rsforce.kairos.pro</string>
 </resources>

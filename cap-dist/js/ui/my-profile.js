@@ -1,7 +1,7 @@
 // js/ui/my-profile.js
 
 import * as professionalsApi from '../api/professionals.js';
-import * as blockagesApi from '../api/blockages.js'; // CORREÇÃO: Usar a API padrão de bloqueios
+import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
@@ -99,14 +99,27 @@ async function renderProfessionalSection() {
                 </div>
 
                 <div class="mt-8 pt-6 border-t border-gray-200">
-                    <h4 class="text-xl font-bold text-gray-800 mb-4">Meus Bloqueios Futuros</h4>
+                    <div class="flex justify-between items-center mb-4">
+                        <h4 class="text-xl font-bold text-gray-800">Meus Bloqueios</h4>
+                        <select id="my-blocks-filter" class="p-2 border rounded-md text-sm bg-white">
+                            <option value="future">Futuros</option>
+                            <option value="history">Histórico (Passados)</option>
+                        </select>
+                    </div>
                     <div id="my-blocks-list" class="space-y-3">
                         <p class="text-gray-500">A carregar bloqueios...</p>
                     </div>
                 </div>
             `;
+            
             setupBlockForm(professional.id);
-            loadMyBlocks(professional.id);
+            
+            // Listener do filtro
+            const filterSelect = document.getElementById('my-blocks-filter');
+            filterSelect.addEventListener('change', (e) => loadMyBlocks(professional.id, e.target.value));
+            
+            // Carregamento inicial (Futuros)
+            loadMyBlocks(professional.id, 'future');
 
         } else {
             professionalAgendaBlock.innerHTML = `
@@ -155,7 +168,6 @@ function setupBlockForm(professionalId) {
         saveButton.textContent = 'A bloquear...';
 
         try {
-            // CORREÇÃO: Usando blockagesApi em vez de schedulesApi
             await blockagesApi.createBlockage({
                 establishmentId: state.establishmentId, 
                 professionalId: professionalId,
@@ -166,7 +178,9 @@ function setupBlockForm(professionalId) {
 
             showNotification('Sucesso', 'Agenda bloqueada com sucesso!', 'success');
             form.reset();
-            loadMyBlocks(professionalId); 
+            // Recarrega a lista respeitando o filtro atual
+            const currentFilter = document.getElementById('my-blocks-filter').value;
+            loadMyBlocks(professionalId, currentFilter); 
         } catch (error) {
             console.error("Erro ao bloquear agenda:", error);
             showNotification('Erro', `Não foi possível bloquear a agenda: ${error.message}`, 'error');
@@ -177,46 +191,67 @@ function setupBlockForm(professionalId) {
     });
 }
 
-async function loadMyBlocks(professionalId) {
+// NOVO: Função atualizada para aceitar o modo de visualização (future/history)
+async function loadMyBlocks(professionalId, mode = 'future') {
     const blocksListContainer = document.getElementById('my-blocks-list');
     blocksListContainer.innerHTML = '<p class="text-gray-500">A carregar bloqueios...</p>';
 
     try {
-        const today = new Date().toISOString();
-        const nextYear = new Date();
-        nextYear.setFullYear(nextYear.getFullYear() + 1);
+        const now = new Date();
+        let startDate, endDate;
 
-        // CORREÇÃO: Usando a mesma busca padronizada de blockages.js
+        if (mode === 'history') {
+            // Histórico: Último 1 ano até hoje
+            endDate = new Date(); // Hoje
+            startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 1); // 1 ano atrás
+        } else {
+            // Futuro: Hoje até 1 ano à frente
+            startDate = new Date();
+            endDate = new Date();
+            endDate.setFullYear(endDate.getFullYear() + 1);
+        }
+
         const blocks = await blockagesApi.getBlockagesByDateRange(
             state.establishmentId,
-            today,
-            nextYear.toISOString(),
+            startDate.toISOString(),
+            endDate.toISOString(),
             professionalId
         );
         
-        const now = new Date();
-        // A API blockages.js já retorna datas em formato ISO String
-        const futureBlocks = blocks
+        // Processamento e Filtragem
+        let filteredBlocks = blocks
             .map(block => ({
                 ...block,
                 startTime: new Date(block.startTime),
                 endTime: new Date(block.endTime)
-            }))
-            .filter(block => block.endTime > now)
-            .sort((a, b) => a.startTime - b.startTime); // Ordena por data
+            }));
 
-        if (futureBlocks.length > 0) {
-            blocksListContainer.innerHTML = futureBlocks.map(block => {
+        if (mode === 'history') {
+            // Filtra o que já acabou e ordena do mais recente para o mais antigo
+            filteredBlocks = filteredBlocks
+                .filter(block => block.endTime < now)
+                .sort((a, b) => b.startTime - a.startTime); // Decrescente
+        } else {
+            // Filtra o que ainda vai acontecer (ou está acontecendo) e ordena crescente
+            filteredBlocks = filteredBlocks
+                .filter(block => block.endTime >= now)
+                .sort((a, b) => a.startTime - b.startTime); // Crescente
+        }
+
+        if (filteredBlocks.length > 0) {
+            blocksListContainer.innerHTML = filteredBlocks.map(block => {
                 const formattedDate = block.startTime.toLocaleDateString('pt-BR');
                 const formattedTime = `${block.startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${block.endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+                const isPast = block.endTime < new Date();
                 
                 return `
-                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-md shadow-sm">
+                    <div class="flex items-center justify-between p-3 ${isPast ? 'bg-gray-100 opacity-75' : 'bg-white border border-gray-200'} rounded-md shadow-sm">
                         <div>
                             <p class="font-semibold text-gray-800">${formattedDate} das ${formattedTime}</p>
                             <p class="text-sm text-gray-600">${block.reason || 'Sem motivo'}</p>
                         </div>
-                        <button data-block-id="${block.id}" class="remove-block-btn text-red-500 hover:text-red-700 text-2xl font-bold leading-none p-1">
+                        <button data-block-id="${block.id}" class="remove-block-btn text-red-500 hover:text-red-700 text-2xl font-bold leading-none p-1" title="Apagar bloqueio">
                             &times;
                         </button>
                     </div>
@@ -228,11 +263,9 @@ async function loadMyBlocks(professionalId) {
                     const blockId = e.currentTarget.dataset.blockId;
                     if (confirm('Tem certeza que deseja remover este bloqueio?')) {
                         try {
-                            // CORREÇÃO: Usando blockagesApi para deletar
                             await blockagesApi.deleteBlockage(blockId);
-                            
                             showNotification('Sucesso', 'Bloqueio removido.', 'success');
-                            loadMyBlocks(professionalId);
+                            loadMyBlocks(professionalId, mode);
                         } catch (error) {
                             console.error("Erro ao remover bloqueio:", error);
                             showNotification('Erro', `Não foi possível remover o bloqueio: ${error.message}`, 'error');
@@ -242,7 +275,7 @@ async function loadMyBlocks(professionalId) {
             });
 
         } else {
-            blocksListContainer.innerHTML = '<p class="text-gray-500">Nenhum bloqueio futuro agendado.</p>';
+            blocksListContainer.innerHTML = `<p class="text-gray-500 py-4 text-center">Nenhum bloqueio ${mode === 'history' ? 'no histórico recente' : 'futuro agendado'}.</p>`;
         }
 
     } catch (error) {

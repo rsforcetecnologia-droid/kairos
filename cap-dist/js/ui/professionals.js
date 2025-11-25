@@ -1,10 +1,11 @@
+// js/ui/professionals.js (Versão Completa e Atualizada)
+
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
 import * as servicesApi from '../api/services.js';
 import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
-import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -16,7 +17,7 @@ let modalEventListener = null;
 
 // --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
 
-// MELHORIA UX: Função para renderizar esqueletos de carregamento
+// Renderiza esqueletos de carregamento (UX)
 function renderSkeletonList(count = 8) {
     let skeletonHTML = '';
     for (let i = 0; i < count; i++) {
@@ -33,7 +34,7 @@ function renderSkeletonList(count = 8) {
     return skeletonHTML;
 }
 
-// MELHORIA UX: Lista de cards responsiva
+// Renderiza a lista de profissionais (Lista no Mobile / Grid no Desktop)
 function renderProfessionalsListHTML(professionals) {
     if (professionals.length === 0) {
         return `<p class="col-span-full text-center text-gray-500 py-10">Nenhum profissional encontrado.</p>`;
@@ -44,7 +45,6 @@ function renderProfessionalsListHTML(professionals) {
         const photoSrc = prof.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
         const profDataString = JSON.stringify(prof).replace(/'/g, "&apos;");
 
-        // Estrutura do card para ser flexível (lista em mobile, card em desktop)
         return `
             <div class="professional-card bg-white rounded-lg shadow-md flex items-center gap-4 p-3 cursor-pointer transition-transform transform hover:shadow-lg hover:bg-gray-50
                         sm:flex-col sm:items-stretch sm:p-0 sm:gap-0 ${isInactive ? 'opacity-50 bg-gray-100' : ''}" 
@@ -78,7 +78,6 @@ function renderProfessionalsListHTML(professionals) {
 function closeProfessionalModal() {
     const modal = document.getElementById('genericModal');
     modal.style.display = 'none';
-    // CORREÇÃO: Remove o listener de clique do modal para evitar duplicação
     if (modalEventListener) {
         modal.removeEventListener('click', modalEventListener);
     }
@@ -93,19 +92,21 @@ async function openProfessionalModal(professional) {
     const professionals = state.professionals || await professionalsApi.getProfessionals(state.establishmentId);
 
     const modalHTML = `
-        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
+        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> 
+            <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
                 <h2 class="text-2xl font-bold text-gray-800">${prof.name}</h2>
                 <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </div>
-            <div class="modal-tabs px-6 border-b flex items-center">
-                <button class="tab-link active" data-tab="cadastro">Cadastro</button>
-                <button class="tab-link" data-tab="jornada">Jornada</button>
-                <button class="tab-link" data-tab="bloqueios">Bloqueios</button>
-                </div>
-            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
+            <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto">
+                <button class="tab-link active whitespace-nowrap" data-tab="cadastro">Cadastro</button>
+                <button class="tab-link whitespace-nowrap" data-tab="jornada">Jornada</button>
+                <button class="tab-link whitespace-nowrap" data-tab="bloqueios">Bloqueios</button>
+            </div>
+            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> 
+                <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
                 <div id="jornada" class="tab-content hidden"></div>
                 <div id="bloqueios" class="tab-content hidden"></div>
-                </div>
+            </div>
             <div class="modal-footer px-6 py-4 bg-gray-100 flex justify-between items-center">
                 
                 <button 
@@ -120,8 +121,8 @@ async function openProfessionalModal(professional) {
                     </svg>
                 </button>
 
-                <div>
-                    <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 mr-2">Cancelar</button>
+                <div class="flex gap-2">
+                    <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400">Cancelar</button>
                     <button type="button" data-action="save-professional" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
                 </div>
             </div>
@@ -191,7 +192,6 @@ function fillCadastroTab(prof, services) {
         <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${s.name}</span></label>`).join('')}</div></div>
         <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${prof.notes || ''}</textarea></div>`;
 
-    // Lógica da Foto (anexada aqui)
     const photoInput = document.getElementById('profPhotoInput');
     const photoButton = document.getElementById('profPhotoButton');
     const photoPreview = document.getElementById('profPhotoPreview');
@@ -209,7 +209,6 @@ function fillCadastroTab(prof, services) {
              if (!file) return;
              photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...';
              try {
-                 // CORREÇÃO: Adicionada a função resizeAndCompressImage que faltava
                  const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 'image/jpeg', 0.8);
                  photoPreview.src = resizedBase64;
                  photoBase64Input.value = resizedBase64;
@@ -223,7 +222,7 @@ function fillCadastroTab(prof, services) {
     }
 }
 
-// CORREÇÃO: Adicionada a função resizeAndCompressImage que estava faltando no seu código
+
 function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 'image/jpeg', quality = 0.8) {
     return new Promise((resolve, reject) => {
         if (!file.type.startsWith('image/')) {
@@ -293,7 +292,13 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 </form>
             </div>
             <div>
-                <h3 class="text-xl font-semibold mb-4">Bloqueios Futuros de ${prof.name}</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold">Bloqueios de ${prof.name}</h3>
+                    <select id="prof-blockages-filter" class="p-1 border rounded text-sm bg-white">
+                        <option value="future">Futuros</option>
+                        <option value="history">Histórico</option>
+                    </select>
+                </div>
                 <div id="blockagesList" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
             </div>
         </div>`;
@@ -332,14 +337,22 @@ async function fillBloqueiosTab(prof, allProfessionals) {
             try {
                 await Promise.all(blockagePromises);
                 showNotification('Sucesso!', `${selectedProfIds.length} bloqueios foram criados.`);
-                fetchAndRenderBlockages(prof.id); // Atualiza a lista
+                
+                // Atualiza a lista respeitando o filtro
+                const currentFilter = document.getElementById('prof-blockages-filter').value;
+                fetchAndRenderBlockages(prof.id, currentFilter);
             } catch (error) {
                 showNotification('Erro', error.message, 'error');
             }
         });
     }
 
-    await fetchAndRenderBlockages(prof.id);
+    // Listener do Filtro da Lista
+    const filterSelect = document.getElementById('prof-blockages-filter');
+    filterSelect.addEventListener('change', (e) => fetchAndRenderBlockages(prof.id, e.target.value));
+
+    // Carregamento Inicial (Futuros)
+    await fetchAndRenderBlockages(prof.id, 'future');
 }
 
 function renderAdvancedScheduleSelector(container, scheduleData) {
@@ -371,16 +384,45 @@ function renderAdvancedScheduleSelector(container, scheduleData) {
     });
 }
 
-async function fetchAndRenderBlockages(professionalId) {
+async function fetchAndRenderBlockages(professionalId, mode = 'future') {
     const listDiv = document.getElementById('blockagesList');
     if (!listDiv) return;
     listDiv.innerHTML = '<div class="loader mx-auto"></div>';
     try {
-        const today = new Date().toISOString();
-        const nextYear = new Date(); nextYear.setFullYear(nextYear.getFullYear() + 1);
-        const blockages = await blockagesApi.getBlockagesByDateRange(state.establishmentId, today, nextYear.toISOString(), professionalId);
+        const now = new Date();
+        let startDate, endDate;
+
+        if (mode === 'history') {
+            // Histórico: 2 anos atrás até hoje
+            endDate = new Date();
+            startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 2); 
+        } else {
+            // Futuro: Hoje até 2 anos à frente
+            startDate = new Date();
+            endDate = new Date();
+            endDate.setFullYear(endDate.getFullYear() + 2);
+        }
+
+        const blockages = await blockagesApi.getBlockagesByDateRange(state.establishmentId, startDate.toISOString(), endDate.toISOString(), professionalId);
         
-        const groupedByReason = blockages.reduce((acc, b) => {
+        let filteredBlockages = blockages.map(b => ({
+             ...b,
+             startTime: new Date(b.startTime),
+             endTime: new Date(b.endTime)
+        }));
+
+        if (mode === 'history') {
+             filteredBlockages = filteredBlockages
+                .filter(b => b.endTime < now)
+                .sort((a, b) => b.startTime - a.startTime); // Decrescente (mais recente primeiro)
+        } else {
+             filteredBlockages = filteredBlockages
+                .filter(b => b.endTime >= now)
+                .sort((a, b) => a.startTime - b.startTime); // Crescente
+        }
+
+        const groupedByReason = filteredBlockages.reduce((acc, b) => {
             const reason = b.reason || 'Sem motivo';
             if (!acc[reason]) acc[reason] = [];
             acc[reason].push(b);
@@ -388,7 +430,7 @@ async function fetchAndRenderBlockages(professionalId) {
         }, {});
 
         if (Object.keys(groupedByReason).length === 0) {
-            listDiv.innerHTML = '<p class="text-center text-gray-500 text-sm py-4">Nenhum bloqueio futuro.</p>';
+            listDiv.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Nenhum bloqueio ${mode === 'history' ? 'no histórico' : 'futuro'}.</p>`;
             return;
         }
 
@@ -396,12 +438,16 @@ async function fetchAndRenderBlockages(professionalId) {
             <div class="bg-gray-100 rounded-lg p-3 my-2 space-y-2">
                 <div class="flex justify-between items-center pb-2 border-b">
                     <h4 class="font-bold text-gray-700">${reason} (${group.length})</h4>
-                    ${group.length > 1 ? `<button data-action="batch-delete-blockage" data-ids='${JSON.stringify(group.map(b => b.id))}' class="text-xs text-red-600 font-semibold">Apagar Lote</button>` : ''}
+                    ${group.length > 1 ? `<button data-action="batch-delete-blockage" data-ids='${JSON.stringify(group.map(b => b.id))}' class="text-xs text-red-600 font-semibold hover:underline">Apagar Todos (${group.length})</button>` : ''}
                 </div>
                 ${group.map(b => `
                     <div class="flex justify-between items-center bg-white p-2 rounded-md text-sm border">
-                        <p class="text-xs text-gray-500">${new Date(b.startTime).toLocaleDateString('pt-BR')} - ${new Date(b.endTime).toLocaleDateString('pt-BR')}</p>
-                        <button data-action="delete-blockage" data-id="${b.id}" class="text-red-500 p-1 rounded-full hover:bg-red-100">&times;</button>
+                        <p class="text-xs text-gray-500">
+                           ${b.startTime.toLocaleDateString('pt-BR')} 
+                           <span class="text-gray-400 mx-1">|</span> 
+                           ${b.startTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${b.endTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                        </p>
+                        <button data-action="delete-blockage" data-id="${b.id}" class="text-red-500 p-1 rounded-full hover:bg-red-100" title="Apagar">&times;</button>
                     </div>
                 `).join('')}
             </div>
@@ -411,11 +457,10 @@ async function fetchAndRenderBlockages(professionalId) {
     }
 }
 
-// CORREÇÃO: Lógica de clique robusta
 function setupModalEventListeners(professional) {
     const modal = document.getElementById('genericModal');
     
-    // Limpa listener antigo se existir (evita duplicação)
+    // Limpa listener antigo se existir
     if (modalEventListener) {
         modal.removeEventListener('click', modalEventListener);
     }
@@ -425,7 +470,6 @@ function setupModalEventListeners(professional) {
         const button = e.target.closest('button[data-action]');
         
         if (!button) {
-            // Verifica cliques nas tabs
             const tab = e.target.closest('.tab-link');
             if (tab) {
                 modal.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
@@ -437,7 +481,7 @@ function setupModalEventListeners(professional) {
         }
 
         const action = button.dataset.action;
-        e.stopPropagation(); // Previne que o clique se propague
+        e.stopPropagation();
 
         switch(action) {
             case 'close-modal':
@@ -461,9 +505,8 @@ function setupModalEventListeners(professional) {
 
             case 'save-professional':
                 const form = document.getElementById('professionalForm');
-                const saveButton = button; // O próprio botão "Salvar"
+                const saveButton = button;
                 
-                // 1. Coleta de Dados
                 const scheduleContainer = document.getElementById('profScheduleContainer');
                 const selectedServices = Array.from(form.querySelectorAll('#profServicesContainer input:checked')).map(cb => cb.value);
                 
@@ -483,7 +526,7 @@ function setupModalEventListeners(professional) {
 
                 const professionalData = {
                     ...professional,
-                    id: form.querySelector('#professionalId').value || undefined, // Garante que é undefined se for novo
+                    id: form.querySelector('#professionalId').value || undefined, 
                     name: form.querySelector('#profName').value,
                     specialty: form.querySelector('#profSpecialty').value,
                     photo: form.querySelector('#profPhotoBase64').value,
@@ -498,24 +541,21 @@ function setupModalEventListeners(professional) {
                     status: form.querySelector('#profStatus').value
                 };
 
-                // 2. Estado do Botão
                 saveButton.disabled = true;
                 saveButton.textContent = 'A salvar...';
 
-                // 3. Chamada da API
                 try {
                     if (professionalData.id) {
                         await professionalsApi.updateProfessional(professionalData.id, professionalData);
                         showNotification('Sucesso!', 'Profissional atualizado.', 'success');
                     } else {
-                        // Se for novo, remove o ID undefined antes de criar
                         delete professionalData.id; 
                         await professionalsApi.createProfessional(professionalData);
                         showNotification('Sucesso!', 'Profissional criado.', 'success');
                     }
                     
                     closeProfessionalModal();
-                    loadProfessionalsPage(); // Recarrega a página principal
+                    loadProfessionalsPage(); 
                 } catch (error) {
                     showNotification('Erro', error.message, 'error');
                     saveButton.disabled = false;
@@ -529,7 +569,9 @@ function setupModalEventListeners(professional) {
                     try {
                         await blockagesApi.deleteBlockage(blockageId);
                         showNotification('Bloqueio removido.', 'success');
-                        fetchAndRenderBlockages(professional.id);
+                        // Atualiza usando o filtro atual
+                        const currentFilter = document.getElementById('prof-blockages-filter') ? document.getElementById('prof-blockages-filter').value : 'future';
+                        fetchAndRenderBlockages(professional.id, currentFilter);
                     } catch (error) {
                         showNotification('Erro', error.message, 'error');
                     }
@@ -542,7 +584,9 @@ function setupModalEventListeners(professional) {
                     try {
                         await blockagesApi.batchDeleteBlockages(ids);
                         showNotification('Bloqueios removidos.', 'success');
-                        fetchAndRenderBlockages(professional.id);
+                        // Atualiza usando o filtro atual
+                        const currentFilter = document.getElementById('prof-blockages-filter') ? document.getElementById('prof-blockages-filter').value : 'future';
+                        fetchAndRenderBlockages(professional.id, currentFilter);
                     } catch (error) {
                         showNotification('Erro', error.message, 'error');
                     }
@@ -551,7 +595,6 @@ function setupModalEventListeners(professional) {
         }
     };
 
-    // Anexa o listener de clique robusto
     modal.addEventListener('click', modalEventListener);
 }
 
@@ -590,7 +633,6 @@ function filterAndRenderProfessionals() {
     const listDiv = document.getElementById('professionalsList');
     if (!listDiv) return;
 
-    // MELHORIA: Mostra skeletons se os dados não estiverem prontos
     if (!state.professionals) {
         listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-20';
         listDiv.innerHTML = renderSkeletonList(); 
@@ -612,7 +654,6 @@ function filterAndRenderProfessionals() {
 
 export async function loadProfessionalsPage() {
     selectedProfessionals.clear();
-    // MELHORIA UX: Aplicando layout com FAB e lista responsiva
     contentDiv.innerHTML = `
         <section id="professional-list-view" class="p-4 sm:p-6">
             <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
@@ -646,14 +687,10 @@ export async function loadProfessionalsPage() {
             </button>
         </section>`;
 
-    // --- SETUP DE EVENTOS ---
-    
-    // CORREÇÃO: Limpa o listener antigo antes de adicionar um novo
     if (pageEventListener) {
         contentDiv.removeEventListener('click', pageEventListener);
     }
 
-    // Define o handler do clique principal
     pageEventListener = e => {
         const cardOrFab = e.target.closest('[data-action="open-professional-modal"]');
         const batchDeleteButton = e.target.closest('[data-action="batch-delete"]');
@@ -688,16 +725,12 @@ export async function loadProfessionalsPage() {
         }
     };
     
-    // Anexa os listeners da página
     contentDiv.addEventListener('click', pageEventListener);
     document.getElementById('profSearchInput').addEventListener('input', filterAndRenderProfessionals);
     document.getElementById('showInactiveProfToggle').addEventListener('change', filterAndRenderProfessionals);
 
-    
     const listDiv = document.getElementById('professionalsList');
     
-    // --- INICIALIZAÇÃO ---
-    // MELHORIA: Mostra skeletons primeiro para UX
     state.professionals = null;
     state.services = null;
     filterAndRenderProfessionals(); 
