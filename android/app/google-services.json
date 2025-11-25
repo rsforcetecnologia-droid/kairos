@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "603994960586",
+    "project_id": "kairos-system",
+    "storage_bucket": "kairos-system.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:603994960586:android:c95a3bbe0ff5e4caccfa33",
+        "android_client_info": {
+          "package_name": "br.com.rsforce.kairos.pro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAd42c-Q_rfrDH8jUoZJqE7bLTTlAGtg70"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
