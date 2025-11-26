@@ -1,0 +1,653 @@
+/* MUDANÇA: Importação da nova fonte (Roboto) */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+/* Dentro de css/landing.css */
+
+/* Estilos Gerais */
+body {
+    /* MUDANÇA: Fonte alterada para Roboto */
+    font-family: 'Roboto', Arial, sans-serif; 
+    margin: 0;
+    color: #333;
+    scroll-behavior: smooth;
+    /* Remove o padding-top, pois o menu é transparente no início */
+    /* padding-top: 80px; */ 
+}
+
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.secao {
+    padding: 60px 0;
+    text-align: center;
+}
+
+.secao h2 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+}
+
+.secao p {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 40px;
+}
+
+
+/* 1. Menu de Navegação (MODERNIZADO) */
+.navbar {
+    background: transparent;
+    /* MUDANÇA: Padding ajustado (exemplo com 10px) */
+    padding: 10px 0; 
+    position: fixed; 
+    top: 0;
+    left: 0;
+    width: 100%; 
+    z-index: 1000;
+    transition: background-color 0.3s ease, border-bottom 0.3s ease, padding 0.3s ease; 
+    border-bottom: none; 
+    box-shadow: none;
+}
+.navbar .container {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+}
+.navbar .logo {
+    /* MUDANÇA: Logo ajustado para um tamanho razoável (ex: 80px) */
+    height: 80px; 
+    transition: height 0.3s ease; 
+}
+
+.navbar nav {
+    /* MUDANÇA: Escondido no mobile, visível no desktop */
+    display: block; 
+}
+
+.navbar nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+}
+.navbar nav li {
+    /* MUDANÇA: Aumenta o espaçamento entre os itens (para 45px) */
+    margin-left: 45px; 
+}
+.navbar nav a {
+    text-decoration: none;
+    color: #fff; 
+    /* MUDANÇA: Aumenta o tamanho da fonte */
+    font-size: 1.1rem; 
+    font-weight: bold;
+    transition: color 0.3s;
+    /* MUDANÇA: Adiciona posição relativa para a animação do sublinhado */
+    position: relative;
+    padding-bottom: 5px; /* Espaço para o sublinhado */
+}
+
+/* MUDANÇA: Animação de sublinhado */
+.navbar nav a::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: 0;
+    left: 0;
+    background-color: #fff; /* Cor do sublinhado (branco no início) */
+    transition: width 0.3s ease-out; /* Animação da largura */
+}
+
+.navbar nav a:hover::after {
+    width: 100%; /* Sublinhado aparece no hover */
+}
+
+/* FIM Animação */
+
+.navbar nav a:hover {
+    color: #ddd; 
+}
+.navbar .botao-login {
+    background-color: transparent;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    text-decoration: none;
+    /* MUDANÇA: Borda Dourada */
+    border: 1px solid #FFD700; 
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+    font-size: 1rem;
+}
+.navbar .botao-login:hover {
+    /* MUDANÇA: Fundo Branco, texto Dourado no hover */
+    background-color: #fff; 
+    color: #FFD700; 
+}
+
+/* Estilo do Navbar QUANDO ROLADO */
+.navbar.scrolled {
+    /* MUDANÇA: Fundo Preto com 40% de transparência (0.6 opacidade) */
+    background: rgba(0, 0, 0, 0.6);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.8);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4); 
+    /* MUDANÇA: Padding ajustado (exemplo com 5px) */
+    padding: 5px 0;
+}
+.navbar.scrolled .logo {
+    /* MUDANÇA: Logo "scrolled" ajustado para um tamanho razoável (ex: 50px) */
+    height: 50px; 
+}
+
+.navbar.scrolled nav a {
+    /* MUDANÇA: Cor dos links para branco para contraste */
+    color: #fff; 
+    font-size: 1.1rem; 
+}
+
+/* MUDANÇA: Cor do sublinhado quando rolado */
+.navbar.scrolled nav a::after {
+    /* MUDANÇA: Sublinhado branco */
+    background-color: #fff; 
+}
+
+.navbar.scrolled nav a:hover {
+    /* MUDANÇA: Hover dos links para um cinza claro */
+    color: #ddd; 
+}
+.navbar.scrolled .botao-login {
+    /* MUDANÇA: Fundo Dourado */
+    background-color: #FFD700; 
+    /* MUDANÇA: Texto Branco */
+    color: #fff; 
+    /* MUDANÇA: Borda Dourada */
+    border-color: #FFD700;
+}
+.navbar.scrolled .botao-login:hover {
+    /* MUDANÇA: Fundo Dourado Mais Escuro (para o hover) */
+    background-color: #CCAF00;
+    /* MUDANÇA: Borda Dourada Mais Escura */
+    border-color: #CCAF00;
+    /* MUDANÇA: Texto Branco */
+    color: #fff;
+}
+/* FIM DO NAVBAR */
+
+/* --- ESTILOS DO MENU MÓVEL --- */
+.menu-toggle {
+    display: none; /* Escondido por padrão (Será mostrado no @media) */
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    z-index: 1010;
+    padding: 10px;
+    align-self: center; /* Centraliza verticalmente com o logo */
+}
+.menu-toggle .icon-bar {
+    display: block;
+    width: 25px;
+    height: 3px;
+    background-color: #fff; /* Cor branca no menu transparente */
+    margin: 5px 0;
+    transition: background-color 0.3s;
+}
+.navbar.scrolled .menu-toggle .icon-bar {
+    /* Cor escura para o hambúrguer quando o navbar é escuro/semitransparente */
+    background-color: #fff; 
+}
+
+/* Menu Lateral */
+.mobile-menu {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 80%; /* Ocupa 80% da tela */
+    max-width: 300px;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95); /* Fundo escuro semi-transparente */
+    box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+    z-index: 1005;
+    transform: translateX(100%); /* Inicialmente escondido fora da tela */
+    transition: transform 0.3s ease-out;
+    padding-top: 60px;
+    display: none; /* Controlado por JS, mas deve ser block no mobile @media */
+}
+.mobile-menu.active {
+    transform: translateX(0);
+}
+.menu-close {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+.mobile-nav-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+}
+.mobile-nav-list li a {
+    display: block;
+    padding: 15px 20px;
+    text-decoration: none;
+    color: #fff;
+    font-size: 1.2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mobile-nav-list li a:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.botao-login-mobile {
+    display: block;
+    text-align: center;
+    margin: 20px;
+    padding: 10px 0;
+    background-color: #FFD700; /* Dourado */
+    color: #333;
+    border-radius: 5px;
+    font-weight: bold;
+}
+/* FIM ESTILOS MENU MÓVEL */
+
+
+/* 2. SEÇÃO "HERO" (Slider - Volta a ser 100vh) */
+.hero {
+    height: 100vh; 
+    text-align: center;
+    color: #fff; 
+    position: relative;
+    overflow: hidden; 
+    display: flex; 
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0; 
+}
+
+/* Estilos do Slider */
+.hero-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+.hero-slider .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out; 
+}
+
+.hero-slider .slide.active {
+    opacity: 1; 
+}
+
+/* Conteúdo do Hero (texto) */
+.hero-content {
+    position: relative;
+    z-index: 2; 
+    color: #fff;
+}
+
+/* Estilos da Navegação do Slider (Bolinhas) */
+.slider-nav {
+    position: absolute;
+    bottom: 30px; 
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3; 
+    display: flex;
+}
+
+.slider-nav-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.5); 
+    margin: 0 8px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.slider-nav-dot:hover {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.slider-nav-dot.active {
+    background: #fff; 
+}
+
+
+/* Estilos do CONTEÚDO do Hero (h1, p) */
+.hero h1 {
+    color: #fff;
+    font-size: 3rem;
+    margin-bottom: 20px;
+}
+.hero p {
+    color: #f0f0f0; 
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+}
+.botao-principal {
+    background: #28a745; 
+    color: #fff;
+    padding: 15px 30px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+}
+.botao-principal:hover {
+    background: #218838;
+}
+
+/* 3. Seção "Sobre" */
+#sobre {
+    padding-top: 80px; 
+}
+
+
+/* 4. Seção "Funções" e MUDANÇA para Cards na Seção "Sobre" */
+.grid-funcionalidades {
+    display: grid;
+    /* MUDANÇA: Força 3 colunas em telas maiores, mínimo 280px */
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+    gap: 30px;
+}
+.funcionalidade-item {
+    background: #fff;
+    /* MUDANÇA: Card Design aplicado a Funções/Sobre */
+    border: none; /* Remove a borda simples */
+    border-radius: 12px; /* Cantos mais arredondados */
+    padding: 25px;
+    /* Sombra inicial sutil para o efeito 'card' */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    transition: transform 0.3s, box-shadow 0.3s;
+    /* MUDANÇA: Centraliza o texto no card */
+    text-align: center; 
+}
+.funcionalidade-item:hover {
+    transform: translateY(-5px); /* Efeito de elevação sutil */
+    /* Sombra mais pronunciada ao passar o mouse */
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15); 
+}
+.funcionalidade-item h3 {
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+}
+
+/* NOVO: Estilo para o placeholder de ícone */
+.funcionalidade-icone {
+    font-size: 3rem; /* Tamanho do ícone */
+    color: #007bff; /* Cor principal (azul) */
+    margin-bottom: 15px;
+    display: block;
+}
+
+/* NOVO: Estilo para o Card Bônus (Expandir para 3 colunas) */
+.card-bonus {
+    grid-column: 1 / -1; /* Faz o item ocupar todas as colunas */
+    background: #f0f8ff; /* Fundo levemente diferente para destaque */
+    border: 1px solid #007bff;
+    padding: 30px;
+}
+
+
+/* --- ESTILOS ADICIONAIS PARA PREVIEW E DEPOIMENTOS --- */
+
+/* Estilos da Seção de Preview */
+.secao-preview {
+    background: #f0f0f0; /* Fundo cinza claro para destacar a seção */
+}
+.preview-item {
+    text-align: center;
+    /* Faz com que os cards de preview usem o estilo de card limpo */
+    padding: 0; /* Remove padding desnecessário do card base */
+    overflow: hidden; /* Garante que a imagem se encaixe */
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    background: #fff;
+}
+.preview-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 12px 12px 0 0; /* Apenas os cantos superiores arredondados */
+    /* ATENÇÃO: Adicionar essas imagens à pasta images/ */
+}
+.preview-caption {
+    font-weight: bold;
+    font-size: 1rem;
+    color: #555;
+    padding: 10px 0 15px;
+    margin: 0;
+}
+
+/* Estilos da Seção de Depoimentos */
+.secao-depoimentos {
+    padding-top: 80px; 
+    padding-bottom: 80px;
+}
+.depoimento-card {
+    background: #fff;
+    border: 1px solid #eee;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    transition: transform 0.3s;
+    text-align: left; /* Alinhamento do texto para leitura de depoimento */
+}
+.depoimento-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+.depoimento-texto {
+    font-style: italic;
+    color: #444;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+    min-height: 100px; /* Para manter os cards do mesmo tamanho se o texto for curto */
+}
+.depoimento-autor {
+    font-size: 0.9rem;
+    color: #007bff;
+    font-weight: bold;
+}
+/* ---------------------------------------------------------------------------------------- */
+
+
+/* 5. Seção "Preços" */
+.secao-precos {
+    background: #f9f9f9; 
+}
+.grid-precos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    max-width: 800px;
+    margin: 0 auto;
+}
+/* MUDANÇA: Card Design para Preços */
+.plano-item {
+    background: #fff;
+    border: none; /* Remove a borda simples */
+    border-radius: 12px; /* Cantos mais arredondados */
+    padding: 30px;
+    text-align: center;
+    /* Sombra inicial sutil para o efeito 'card' */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+.plano-item:hover {
+    transform: translateY(-5px); /* Efeito de elevação sutil */
+    /* Sombra mais pronunciada ao passar o mouse */
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15); 
+}
+.plano-item.plano-destaque {
+    /* Mantém uma leve elevação inicial */
+    transform: translateY(-5px); 
+    /* Borda sutil na cor de destaque */
+    border: 1px solid #007bff; 
+    /* Sombra com um toque da cor de destaque (Azul) */
+    box-shadow: 0 15px 30px rgba(0, 123, 255, 0.25); 
+}
+/* FIM MUDANÇA: Card Design para Preços */
+
+.plano-item h3 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+}
+.plano-item .preco {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #007bff;
+}
+.plano-item .periodo {
+    color: #777;
+    margin-bottom: 20px;
+    display: block;
+}
+.plano-item ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+    text-align: left;
+    min-height: 100px; 
+}
+.plano-item li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.plano-item li::before {
+    content: '✔';
+    color: #28a745;
+    margin-right: 10px;
+}
+
+.botao-assinar {
+    background: #28a745; 
+    color: #fff;
+    padding: 12px 25px;
+    border: none;
+    /* MUDANÇA: Cantos mais arredondados */
+    border-radius: 8px; 
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+}
+.botao-assinar:hover {
+    background: #218838;
+}
+
+/* 6. Rodapé */
+.rodape {
+    background: #333;
+    color: #aaa;
+    padding: 30px 0;
+    text-align: center;
+}
+
+/* --- ESTILOS PARA EFEITO DE DIGITAÇÃO (TYPING EFFECT) --- */
+
+/* Esconde o subtítulo e o botão inicialmente */
+.hero-content .hidden {
+    opacity: 0;
+    transition: opacity 0.5s ease-out; /* Transição suave para aparecer/desaparecer */
+}
+
+/* Estiliza o cursor que pisca */
+#typing-text .cursor,
+#sub-text .cursor {
+    display: inline-block;
+    width: 3px;
+    background-color: #fff;
+    margin-left: 5px;
+    animation: blink 0.7s infinite;
+    /* A altura é ajustada pela altura do texto */
+    height: 1em; 
+    vertical-align: middle;
+}
+
+/* Efeito de piscar do cursor */
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+}
+/* -------------------------------------------------------- */
+
+
+/* --- MEDIA QUERIES PARA RESPONSIVIDADE (MOBILE) --- */
+
+@media (max-width: 992px) {
+    /* 1. Menu de Navegação (Recolher para Hambúrguer) */
+    .navbar nav {
+        display: none; /* Esconde a navegação desktop */
+    }
+    .menu-toggle {
+        display: block; /* Mostra o botão hambúrguer */
+    }
+    /* Permite que o mobile-menu seja ativado pelo JS */
+    .mobile-menu {
+        display: block; 
+    }
+    
+    /* 2. Seção Hero (Ajuste de fonte) */
+    .hero h1 {
+        font-size: 2.5rem;
+    }
+
+    /* 3. Preços e Funções (Empilhamento Vertical) */
+    /* Faz os cartões Funções/Sobre/Depoimentos empilharem em uma ou duas colunas */
+    .grid-funcionalidades {
+        /* Permite que o grid use 2 colunas se houver espaço, ou 1 se o ecrã for muito pequeno */
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+    }
+    .card-bonus {
+         /* O card bônus ocupa 100% da largura */
+        grid-column: 1 / -1;
+    }
+    .preview-item {
+        margin-bottom: 20px;
+    }
+
+    /* Faz os cartões de Preço empilharem em uma única coluna */
+    .grid-precos {
+        grid-template-columns: 1fr; /* Apenas 1 coluna */
+        max-width: 400px; /* Limita a largura para melhor leitura */
+    }
+    /* Remove a transformação que destaca o plano (para evitar zoom no mobile) */
+    .plano-item:hover, .plano-item.plano-destaque {
+        transform: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+    }
+    /* Adiciona margem vertical entre os planos para melhor visualização na vertical */
+    .plano-item {
+        margin-bottom: 20px;
+    }
+    
+    /* 4. Rodapé */
+    .rodape .footer-links a {
+        display: block;
+        padding: 5px 0;
+    }
+}

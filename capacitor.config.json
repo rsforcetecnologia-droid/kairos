@@ -2,10 +2,5 @@
   "appId": "br.com.rsforce.kairos.pro",
   "appName": "Kairos Pro",
   "webDir": "cap-dist",
-  "bundledWebRuntime": false,
-  "plugins": {
-    "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
-    }
-  }
+  "bundledWebRuntime": false
 }

@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "br.com.rsforce.kairos.pro"
+    namespace "com.kairos.sistema"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
     applicationId "br.com.rsforce.kairos.pro" // <--- Este é o CPF do app
