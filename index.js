@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const path = require('path');
-const multer = require('multer'); // <-- NOVO: Importa o multer para upload de arquivos
+const multer = require('multer');
 
 // --- INICIALIZAÇÃO DO FIREBASE (MODIFICADO PARA GOOGLE CLOUD) ---
 try {
@@ -22,7 +22,7 @@ try {
 } catch (error) {
     console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error);
     console.log("VERIFIQUE: Você criou o arquivo 'firebase-credentials.json' e o colocou na mesma pasta que o 'index.js'?");
-    process.exit(1); // Encerra a aplicação se o Firebase não puder ser inicializado
+    process.exit(1);
 }
 
 // --- CONFIGURAÇÃO DO EXPRESS ---
@@ -61,41 +61,36 @@ const clientPortalRoutes = require('./routes/clientPortal');
 const financialRoutes = require('./routes/financial');
 const subscriptionsRoutes = require('./routes/subscriptions');
 const importRoutes = require('./routes/import');
-const dbexplorerRoutes = require('./routes/dbexplorer');
+// const dbexplorerRoutes = require('./routes/dbexplorer'); // REMOVIDO
 const commissionsRoutes = require('./routes/commissions'); 
 const packagesRoutes = require('./routes/packages'); 
 
 const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
 const publicRegisterRoutes = require('./routes/publicRegister'); 
-const stripeWebhookRoutes = require('./routes/stripeWebhook'); // ADICIONADO: Importa a rota do Webhook
+const stripeWebhookRoutes = require('./routes/stripeWebhook');
 
 // --- 0. ROTAS DE WEBHOOK (DEVE VIR ANTES DO PARSER DE JSON) ---
-// Aplica o parser 'raw' e o middleware de instância para o Webhook do Stripe
 app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); 
 
-// --- 1. ROTA DE UPLOAD DE LOGOTIPO (DEVE VIR ANTES DO express.json()) --- // <-- NOVO BLOCO
-// Configura o multer para upload em memória
+// --- 1. ROTA DE UPLOAD DE LOGOTIPO (DEVE VIR ANTES DO express.json()) ---
 const storage = multer.memoryStorage();
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // Limite de 5MB
+    limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// A Rota de Logo DEVE vir ANTES do express.json()
 app.post('/api/admin/config/logo', 
-    addFirebaseInstances, // Adiciona db, auth
-    verifyToken,          // Protege a rota
-    isSuperAdmin,         // Garante que é super-admin
-    upload.single('logoFile'), // Processa o arquivo 'logoFile' do FormData
+    addFirebaseInstances,
+    verifyToken,
+    isSuperAdmin,
+    upload.single('logoFile'),
     async (req, res) => {
         try {
             if (!req.file) {
                 return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
             }
             
-            const { db } = req; // Pega o db do middleware
-            
-            // O nome do bucket vem do seu 'firebaseConfig' no admin.html
+            const { db } = req;
             const bucket = admin.storage().bucket('kairos-system.firebasestorage.app'); 
             const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
             const fileUpload = bucket.file(fileName);
@@ -110,25 +105,19 @@ app.post('/api/admin/config/logo',
             });
 
             blobStream.on('finish', async () => {
-                // Torna o ficheiro público
                 await fileUpload.makePublic();
-                
-                // Obtém a URL pública
                 const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-                // Salva a URL no Firestore (onde a rota de 'establishments' busca)
                 await db.collection('config').doc('plataforma').set({
                     logoUrl: publicUrl
                 }, { merge: true });
 
-                // Responde ao frontend com sucesso
                 res.status(200).json({ 
                     message: 'Logótipo atualizado com sucesso!',
-                    logoUrl: publicUrl // O frontend espera por isso
+                    logoUrl: publicUrl
                 });
             });
 
-            // Inicia o stream
             blobStream.end(req.file.buffer);
 
         } catch (error) {
@@ -137,30 +126,27 @@ app.post('/api/admin/config/logo',
         }
     }
 );
-// --- FIM DO NOVO BLOCO ---
 
-
-// IMPORTANTE: Parser de JSON para rotas comuns (DEPOIS do Webhook e do Upload)
+// IMPORTANTE: Parser de JSON para rotas comuns
 app.use(express.json({ limit: '10mb' })); 
 
-// Aplica o middleware que adiciona instâncias do Firebase a todas as rotas da API
+// Aplica middleware de instâncias
 app.use('/api', addFirebaseInstances);
 
-// Serve arquivos estáticos (CSS, JS, imagens)
-app.use(express.static(path.join(__dirname)));
+// --- [CORREÇÃO CRÍTICA] SERVIR ARQUIVOS DA PASTA BUILD (cap-dist) ---
+app.use(express.static(path.join(__dirname, 'cap-dist')));
 
 
-// 1. Rotas de Super Admin (só acessíveis por super-admin)
+// 1. Rotas de Super Admin
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
 app.use('/api/import', importRoutes);
-app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
+// app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes); // REMOVIDO
 
-
-// 2. Rotas de Dono (só acessíveis pelo dono do estabelecimento)
+// 2. Rotas de Dono
 app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 
-// 3. Rotas de Acesso Geral (acessíveis por dono e funcionários)
+// 3. Rotas de Acesso Geral
 app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
 app.use('/api/blockages', verifyToken, checkSubscription, hasAccess, blockageRoutes);
 app.use('/api/cashier', verifyToken, checkSubscription, hasAccess, cashierRoutes);
@@ -173,51 +159,51 @@ app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRo
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
 
-
-// 4. Rotas com Lógicas de Acesso Mistas (públicas e privadas dentro do mesmo arquivo)
+// 4. Rotas Mistas
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/establishments', establishmentRoutes);
 app.use('/api/professionals', professionalRoutes);
 app.use('/api/services', serviceRoutes);
 
-// 5. Rotas Públicas (acesso totalmente desprotegido)
+// 5. Rotas Públicas
 app.use('/api/availability', availabilityRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
-
 app.use('/api/public/subscriptions', publicSubscriptionsRoutes); 
 app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes); 
 
 
-// --- ROTAS PARA SERVIR AS PÁGINAS HTML ---
+// --- ROTAS PARA SERVIR AS PÁGINAS HTML (Apontando para cap-dist) ---
 
-// ** Rota Principal (/) agora serve o site institucional (home.html) **
-app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'home.html')); }); 
+// Rota Principal (Agora serve o landing.html compilado)
+app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'landing.html')); }); 
 
-// ** Páginas do Site Institucional **
-app.get('/funcionalidades.html', (req, res) => { res.sendFile(path.join(__dirname, 'funcionalidades.html')); });
-app.get('/precos.html', (req, res) => { res.sendFile(path.join(__dirname, 'precos.html')); });
-app.get('/contato_kairos.html', (req, res) => { res.sendFile(path.join(__dirname, 'contato_kairos.html')); });
+// Páginas Institucionais
+app.get('/funcionalidades.html', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'funcionalidades.html')); });
+app.get('/precos.html', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'precos.html')); });
+app.get('/contato_kairos.html', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'contato_kairos.html')); });
 
-// ** Páginas da Aplicação de Gestão **
-// A sua aplicação original (index.html) agora é servida pela rota /painel
-app.get('/painel', (req, res) => { res.sendFile(path.join(__dirname, 'index.html')); });
+// Páginas da Aplicação
+app.get('/painel', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'index.html')); });
+app.get('/agendar', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'cliente.html')); });
+app.get('/admin', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'admin.html')); });
+app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'login.html')); });
+app.get('/admin-login', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'admin-login.html')); });
+app.get('/mobile-app', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'mobile-app.html')); });
+app.get('/import', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'import.html')); });
+app.get('/datadictionary', (req, res) => { res.sendFile(path.join(__dirname, 'cap-dist', 'datadictionary.html')); });
 
-app.get('/agendar', (req, res) => { res.sendFile(path.join(__dirname, 'cliente.html')); });
-app.get('/admin', (req, res) => { res.sendFile(path.join(__dirname, 'admin.html')); });
-app.get('/login', (req, res) => { res.sendFile(path.join(__dirname, 'login.html')); });
-app.get('/admin-login', (req, res) => { res.sendFile(path.join(__dirname, 'admin-login.html')); });
-app.get('/mobile-app', (req, res) => { res.sendFile(path.join(__dirname, 'mobile-app.html')); });
-app.get('/import', (req, res) => { res.sendFile(path.join(__dirname, 'import.html')); });
-app.get('/dbexplorer', (req, res) => { res.sendFile(path.join(__dirname, 'dbexplorer.html')); });
-app.get('/datadictionary', (req, res) => { res.sendFile(path.join(__dirname, 'datadictionary.html')); });
-
+// Tratamento de rotas não encontradas (Redireciona para Landing se não for API)
+app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+         res.sendFile(path.join(__dirname, 'cap-dist', 'landing.html'));
+    }
+});
 
 // --- TRATAMENTO DE ERROS ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Algo deu errado no servidor!');
 });
-
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 const PORT = process.env.PORT || 3001;

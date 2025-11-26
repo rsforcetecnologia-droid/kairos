@@ -13,7 +13,12 @@ RUN npm install
 # Copie o restante dos arquivos da sua aplicação
 COPY . .
 
-# Exponha a porta que sua aplicação usa (conforme index.js)
+# --- PASSO CRUCIAL ADICIONADO ---
+# Executa o build do Vite para gerar a pasta 'cap-dist' dentro do container
+RUN npm run build:web
+# --------------------------------
+
+# Exponha a porta
 EXPOSE 3001
 
 # Comando para iniciar o servidor

@@ -3,14 +3,19 @@
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; // Adicionado getDocs
+// ADICIONADO: updateDoc e arrayUnion para salvar o token de notificação
+import { collection, query, where, onSnapshot, doc, getDoc, orderBy, getDocs, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+
+// ADICIONADO: Importações do Capacitor para Notificações
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
+
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
-import { getProfessionals } from './api/professionals.js'; // Importa a API de profissionais
+import { getProfessionals } from './api/professionals.js'; 
 
-// (MODIFICADO) Importa a nova função da API de relatórios, juntamente com as existentes
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
 
 // Importa as funções que carregam cada página da aplicação
@@ -28,7 +33,7 @@ import { loadSalesReportPage } from './ui/salesReport.js';
 import { loadFinancialPage } from './ui/financial.js';
 import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
-import { loadMyProfilePage } from './ui/my-profile.js'; // <-- 1. IMPORTADO O NOVO MÓDULO
+import { loadMyProfilePage } from './ui/my-profile.js';
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
@@ -44,7 +49,7 @@ const profileName = document.getElementById('profileName');
 const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
 const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
-const myProfileLink = document.getElementById('myProfileLink'); // <-- 3. REFERÊNCIA AO NOVO LINK
+const myProfileLink = document.getElementById('myProfileLink');
 
 const colorThemes = {
     indigo: { main: '#4f46e5', light: '#e0e7ff', text: 'white', hover: '#4338ca' },
@@ -57,7 +62,7 @@ const colorThemes = {
 let unsubscribeNotificationsListener = null;
 let notifications = [];
 
-// --- 3. MAPEAMENTO DE ROTAS (ATUALIZADO) ---
+// --- 3. MAPEAMENTO DE ROTAS ---
 const pageLoader = {
     'agenda-section': loadAgendaPage,
     'comandas-section': loadComandasPage,
@@ -73,10 +78,92 @@ const pageLoader = {
     'financial-section': loadFinancialPage,
     'commissions-section': loadCommissionsPage,
     'packages-section': loadPackagesPage,
-    'my-profile-section': loadMyProfilePage, // <-- 2. ADICIONADO AO PAGE LOADER
+    'my-profile-section': loadMyProfilePage,
 };
 
-// --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
+// --- 4. FUNÇÕES DE TEMA, NOTIFICAÇÕES E CAPACITOR ---
+
+// ####################################################################
+// ### INÍCIO DA NOVA FUNÇÃO (CONFIGURAÇÃO DO PUSH NATIVO) ###
+// ####################################################################
+async function initializePushNotifications(userId) {
+    // Verifica se está rodando no ambiente nativo (Android/iOS)
+    if (!Capacitor.isNativePlatform()) {
+        console.log("Notificações Push nativas desativadas (Ambiente Web).");
+        return;
+    }
+
+    try {
+        console.log("Inicializando Push Notifications...");
+
+        // 1. Verificar e Solicitar Permissões
+        let permStatus = await PushNotifications.checkPermissions();
+        
+        if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive !== 'granted') {
+            console.warn('Permissão para notificações push foi negada.');
+            return;
+        }
+
+        // 2. Registrar o dispositivo no FCM
+        await PushNotifications.register();
+
+        // 3. Listener: Sucesso no registro (Recebimento do Token)
+        PushNotifications.removeAllListeners(); // Limpa listeners antigos para evitar duplicidade
+
+        PushNotifications.addListener('registration', async (token) => {
+            console.log('Push Registration Token:', token.value);
+            
+            // Salvar o token no documento do usuário no Firestore
+            try {
+                const userRef = doc(db, 'users', userId);
+                await updateDoc(userRef, {
+                    fcmTokens: arrayUnion(token.value),
+                    lastLoginDevice: new Date()
+                });
+                console.log("Token FCM salvo com sucesso no perfil do usuário.");
+            } catch (error) {
+                console.error("Erro ao salvar token FCM no Firestore:", error);
+            }
+        });
+
+        // 4. Listener: Erro no registro
+        PushNotifications.addListener('registrationError', (error) => {
+            console.error('Erro no registro do Push:', error);
+        });
+
+        // 5. Listener: Notificação recebida com o app ABERTO (Foreground)
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            console.log('Notificação recebida (Foreground):', notification);
+            // Exibe o alerta visual usando seu componente de modal existente
+            showNotification(notification.title, notification.body, 'info', true);
+            // Atualiza o painel de notificações se necessário
+            renderNotificationPanel();
+        });
+
+        // 6. Listener: Clique na notificação (Background/Closed)
+        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+            console.log('Ação da notificação (Clique):', notification);
+            // Aqui você pode redirecionar o usuário para uma tela específica
+            // Ex: Se a notificação tiver um dado { section: 'agenda-section' }
+            const data = notification.notification.data;
+            if (data && data.section) {
+                navigateTo(data.section);
+            } else {
+                navigateTo('agenda-section');
+            }
+        });
+
+    } catch (error) {
+        console.error("Falha fatal ao inicializar Push Notifications:", error);
+    }
+}
+// ####################################################################
+// ### FIM DA NOVA FUNÇÃO ###
+// ####################################################################
 
 function applyTheme(themeKey) {
     const theme = colorThemes[themeKey] || colorThemes.indigo;
@@ -165,11 +252,9 @@ function setupRealtimeListeners(establishmentId) {
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
 
-    // O 'my-profile' não está nos módulos de permissão, então damos acesso direto
     if (sectionId === 'my-profile-section') {
-         // Apenas carrega a página
+         // Acesso livre
     } else {
-        // Lógica de permissão padrão
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
         
@@ -185,7 +270,6 @@ export function navigateTo(sectionId, params = {}) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
-        // Se for o 'Meu Perfil', remove o 'active' de todos os links da sidebar
         if (sectionId === 'my-profile-section') {
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
         }
@@ -198,29 +282,16 @@ export function navigateTo(sectionId, params = {}) {
     }
 }
 
-// ####################################################################
-// ### INÍCIO DA NOVA FUNÇÃO (CARREGAR KPIs DO HEADER) ###
-// ####################################################################
-
-/**
- * Busca e exibe os KPIs no cabeçalho superior, respeitando as permissões do usuário.
- * @param {object | null} userPermissions - O objeto de permissões do usuário.
- */
+// FUNÇÃO DE CARREGAR KPIs DO HEADER
 async function loadHeaderKPIs(userPermissions) {
-    // Referências aos elementos do HEADER (e não mais da sidebar)
     const kpiAppointmentsWrapper = document.getElementById('kpi-appointments-wrapper');
     const kpiFinancialWrapper = document.getElementById('kpi-financial-wrapper');
     const kpiAppointmentsEl = document.getElementById('kpi-today-appointments');
     const kpiRevenueEl = document.getElementById('kpi-today-revenue');
 
-    // 1. Verificar Permissões
-    // Se for 'owner' (null), tem acesso a tudo.
-    // Usamos a mesma lógica do 'navigation.js'
     const canViewAgenda = userPermissions === null || userPermissions['agenda-section']?.view === true;
     const canViewFinancial = userPermissions === null || userPermissions['financial-section']?.view === true;
 
-    // 2. Controlar visibilidade dos wrappers
-    // Se o elemento não existir (ex: erro de digitação no ID), não faz nada
     if (canViewAgenda && kpiAppointmentsWrapper) {
         kpiAppointmentsWrapper.classList.remove('hidden');
     }
@@ -228,21 +299,17 @@ async function loadHeaderKPIs(userPermissions) {
         kpiFinancialWrapper.classList.remove('hidden');
     }
 
-    // 3. Se não tiver permissão para ver nenhum, não faz a chamada à API
     if (!canViewAgenda && !canViewFinancial) {
         return;
     }
 
-    // 4. Buscar os dados da API
     try {
         const kpis = await getSummaryKPIs();
         
-        // 5. Exibir os dados (apenas se tiver permissão E o elemento existir)
         if (canViewAgenda && kpiAppointmentsEl) {
             kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
         }
         if (canViewFinancial && kpiRevenueEl) {
-            // Formata o valor para R$
             kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
         }
         
@@ -252,9 +319,6 @@ async function loadHeaderKPIs(userPermissions) {
         if (canViewFinancial && kpiRevenueEl) kpiRevenueEl.textContent = "Erro";
     }
 }
-// ####################################################################
-// ### FIM DA NOVA FUNÇÃO ###
-// ####################################################################
 
 
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
@@ -284,17 +348,14 @@ function initialize() {
         }
     });
     
-    // --- 3. ADICIONADO LISTENER DO NOVO LINK ---
     if (myProfileLink) {
         myProfileLink.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo('my-profile-section');
-            // Fecha o dropdown
             profileDropdown.classList.remove('active');
             profileDropdown.classList.add('hidden');
         });
     }
-    // --- FIM DA ADIÇÃO ---
 
     document.addEventListener('click', (e) => {
         if (!notificationPanel.contains(e.target) && e.target !== notificationBell) {
@@ -322,48 +383,40 @@ function initialize() {
 
                     let userPermissions = null;
                     let userName = user.displayName; 
-                    
-                    // ####################################################################
-                    // ### INÍCIO DA CORREÇÃO (ASSOCIAR DONO/FUNCIONÁRIO) ###
-                    // ####################################################################
-                    
                     let userProfessionalId = null; 
 
-                    // Unifica a lógica: Tanto 'owner' quanto 'employee' devem ter um documento na coleção 'users'.
-                    // Esse documento é a fonte da verdade para o professionalId.
                     if (claims.role === 'employee' || claims.role === 'owner') {
                         const userDocRef = doc(db, 'users', user.uid);
                         const userDoc = await getDoc(userDocRef);
                         
                         if (userDoc.exists()) {
                             const userData = userDoc.data();
-                            // Define as permissões (funcionário) ou mantém null (dono)
                             userPermissions = (claims.role === 'employee') ? (userData.permissions || {}) : null;
                             userName = userData.name || userName;
-                            userProfessionalId = userData.professionalId || null; // <-- Pega o ID associado
+                            userProfessionalId = userData.professionalId || null; 
                         } else if (claims.role === 'employee') {
-                            // Se for um funcionário e o documento não existir, é um erro.
                             throw new Error("Dados de permissão do funcionário não encontrados.");
                         }
-                        // Se for um 'owner' e o documento não existir (caso antigo),
-                        // userPermissions continua null e userProfessionalId tbm.
                     }
                     
-                    state.userProfessionalId = userProfessionalId; // <-- ARMAZENA NO STATE
+                    state.userProfessionalId = userProfessionalId;
                     
-                    // ####################################################################
-                    // ### FIM DA CORREÇÃO ###
-                    // ####################################################################
-
                     const finalUserName = userName || user.email;
                     
-                    // Define o estado global (com a correção do state.js aplicada)
                     setGlobalState(claims.establishmentId, establishmentDetails.name, userPermissions);
 
-                    // Preenche o perfil do usuário
                     profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
                     profileName.textContent = finalUserName;
                     profileEmail.textContent = user.email;
+
+                    // ####################################################################
+                    // ### INÍCIO DA INTEGRAÇÃO DO PUSH (CHAMADA DA FUNÇÃO) ###
+                    // ####################################################################
+                    // Inicializa as notificações nativas assim que temos o usuário logado
+                    await initializePushNotifications(user.uid);
+                    // ####################################################################
+                    // ### FIM DA INTEGRAÇÃO ###
+                    // ####################################################################
 
                     const handleLogout = () => {
                         if (unsubscribeNotificationsListener) unsubscribeNotificationsListener();
@@ -375,13 +428,9 @@ function initialize() {
                         handleLogout();
                     });
 
-                    // Inicializa a navegação (que agora esconde os links)
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     
-                    // ####################################################################
-                    // ### (MODIFICADO) Chama a função de carregar KPIs do HEADER ###
-                    // ####################################################################
-                    loadHeaderKPIs(userPermissions); // Passa as permissões
+                    loadHeaderKPIs(userPermissions);
 
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
