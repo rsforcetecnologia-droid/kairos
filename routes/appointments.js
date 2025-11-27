@@ -249,17 +249,19 @@ router.post('/', async (req, res) => {
             // ESCRITA 5: Cria o Agendamento
             transaction.set(newAppointmentRef, newAppointment);
 
-            // ESCRITA 6: Cria a Notificação Interna (Painel)
+            // ESCRITA 6: Cria a Notificação Interna (Painel) e define texto do Push
             const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
             
-            // Define o texto para a notificação
+            // --- (MODIFICADO) FORMATAÇÃO DA DATA E HORA ---
+            const dateString = startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
             const timeString = startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             const serviceNames = servicesDetails.map(s => s.name).join(', ');
             
-            const internalMessage = `${clientName} agendou ${serviceNames} para as ${timeString}`;
+            const internalMessage = `${clientName} agendou ${serviceNames} para dia ${dateString} às ${timeString}`;
             
             notificationTitle = "Novo Agendamento!";
-            notificationBody = `${clientName} - ${timeString} (${serviceNames})`;
+            // Mensagem completa para o Push
+            notificationBody = `${clientName} - ${dateString} às ${timeString} (${serviceNames})`;
 
             transaction.set(notificationRef, {
                 title: notificationTitle,

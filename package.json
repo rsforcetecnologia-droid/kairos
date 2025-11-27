@@ -4,11 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:web": "npx rimraf cap-dist && mkdir cap-dist && npx copyfiles index.html login.html admin.html admin-login.html cliente.html dbexplorer.html import.html landing.html generated-icon.png cap-dist && npx copyfiles -u 1 \"js/**/*\" cap-dist/js && npx copyfiles -u 1 \"css/**/*\" cap-dist/css && npx copyfiles -u 1 \"images/**/*\" cap-dist/images",
-    "cap:android": "npm run build:web && npx cap add android"
-  },
+  "start": "node index.js",
+  "dev": "vite", 
+  "build:web": "vite build",
+  "cap:android": "npm run build:web && npx cap sync android"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -38,6 +38,7 @@
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
     "@react-native-community/cli": "^20.0.2",
-    "copyfiles": "^2.4.1"
+    "copyfiles": "^2.4.1",
+    "vite": "^7.2.4"
   }
 }

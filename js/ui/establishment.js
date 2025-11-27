@@ -408,7 +408,7 @@ function renderBrandingSection(data, container) {
             welcomeMessage: container.querySelector('#establishmentWelcomeMessage').value,
             backgroundImage: container.querySelector('#establishmentBackgroundImageBase64').value,
             primaryColor: container.querySelector('#establishmentPrimaryColorInput').value,
-            textColor: container.querySelector('#establishmentTextColorInput').value, // (NOVO)
+            textColor: container.querySelector('#establishmentTextColorInput').value, 
             themeColor: container.querySelector('#establishmentThemeColor').value 
         };
         handleSave(formData, e);
@@ -416,11 +416,21 @@ function renderBrandingSection(data, container) {
 }
 
 function renderBookingSection(data, container) {
-    // ############################################################
-    // ### CORREÇÃO: USA O SLUG (urlId) SE DISPONÍVEL ###
-    // ############################################################
     const linkId = data.urlId || state.establishmentId;
-    const bookingLink = `${window.location.origin}/agendar?id=${linkId}`;
+    
+    // --- LÓGICA DE URL DE PRODUÇÃO ---
+    // Define a URL de produção oficial (Google Cloud)
+    const productionUrl = 'https://kairos-service-603994960586.southamerica-east1.run.app'; 
+    
+    let baseUrl = window.location.origin;
+    
+    // Se estiver rodando localmente (App Mobile via Capacitor, ou ambiente de dev), usa a URL de produção.
+    // Se estiver rodando na Web (produção), mantém a URL atual (o que permite que seu domínio personalizado funcione automaticamente no futuro).
+    if (baseUrl.includes('localhost') || baseUrl.includes('capacitor://') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168')) {
+        baseUrl = productionUrl;
+    }
+
+    const bookingLink = `${baseUrl}/agendar?id=${linkId}`;
     
     const isChecked = data.publicBookingEnabled || false;
     const toggleText = isChecked ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
