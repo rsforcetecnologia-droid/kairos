@@ -3,11 +3,18 @@
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-// (MODIFICADO) Middlewares de segurança adicionados
 const { verifyToken, hasAccess } = require('../middlewares/auth');
 
+// --- FUNÇÃO AUXILIAR: DATA NO FUSO CORRETO ---
+// Converte um objeto Date (UTC) para um objeto Date que representa o início do dia no fuso local
+// Útil para extrair dia/mês/ano corretos para relatórios
+function getDateInTimezone(dateObj, timezone) {
+    // Cria uma string no fuso desejado: "11/27/2025, 10:00:00 PM"
+    const localString = dateObj.toLocaleString("en-US", { timeZone: timezone });
+    return new Date(localString);
+}
+
 // ROTA ÚNICA E DEFINITIVA PARA RELATÓRIO DE VENDAS
-// (MODIFICADO) Middlewares adicionados à sua rota existente
 router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     const { establishmentId } = req.params;
     const { startDate, endDate, cashierSessionId } = req.query;
@@ -21,14 +28,17 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
         const start = new Date(startDate);
         const end = new Date(endDate + "T23:59:59");
         
-        // NOVO: Obter professionalId do token (adicionado pelo middleware)
         const { professionalId: loggedInProfessionalId } = req.user;
 
-        // Converte as datas para Timestamps do Firestore para as queries
+        // BUSCA TIMEZONE (Para exibir datas corretas no front se necessário, ou lógica futura)
+        // Nesta rota específica, retornamos a lista bruta e o front geralmente converte, 
+        // mas é bom ter consistência se fizermos agrupamentos no futuro.
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+
         const startTimestamp = admin.firestore.Timestamp.fromDate(start);
         const endTimestamp = admin.firestore.Timestamp.fromDate(end);
 
-        // Queries base
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('status', '==', 'completed')
@@ -40,19 +50,13 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
             .where('transaction.paidAt', '>=', startTimestamp)
             .where('transaction.paidAt', '<=', endTimestamp);
 
-        // NOVO: Aplicar filtro se for um profissional logado
         if (loggedInProfessionalId) {
             appointmentsQuery = appointmentsQuery.where('professionalId', '==', loggedInProfessionalId);
             salesQuery = salesQuery.where('professionalId', '==', loggedInProfessionalId);
         }
 
-        // ##################################################
-        // ### CORREÇÃO APLICADA AQUI ###
-        // O nome da coleção foi corrigido para 'cashierSessions' (sem o 's' no final)
         const cashierSessionsQuery = db.collection('cashierSessions') 
             .where('establishmentId', '==', establishmentId);
-        // ##################################################
-
 
         const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
@@ -60,13 +64,11 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
             cashierSessionsQuery.get()
         ]);
 
-        // Cria um mapa de ID da sessão -> Nome do responsável
         const cashierSessionMap = new Map();
         cashierSessionsSnapshot.forEach(doc => {
             const data = doc.data();
             cashierSessionMap.set(doc.id, data.openedByName || data.closedByName || 'N/A');
         });
-
 
         let allTransactions = [];
         let paymentMethodTotals = {};
@@ -77,7 +79,6 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
             const transactionData = data.transaction;
             if (!transactionData) return;
 
-            // Filtro de caixa (aplicado aqui para flexibilidade)
             if (cashierSessionId && cashierSessionId !== 'all' && data.cashierSessionId !== cashierSessionId) {
                 return;
             }
@@ -89,18 +90,17 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
             });
             
             allTransactions.push({
-                date: transactionData.paidAt.toDate(),
+                date: transactionData.paidAt.toDate(), // O front converte isso para local
                 client: data.clientName,
                 items: (data.items || data.services || []).map(i => i.name).join(', '),
                 total: transactionData.totalAmount,
                 type: data.type === 'walk-in' ? 'Venda Avulsa' : 'Agendamento',
                 responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido',
-                payments: transactionData.payments // Adiciona os detalhes do pagamento
+                payments: transactionData.payments
             });
         };
         
         appointmentsSnapshot.forEach(processTransaction);
-        // Filtra as vendas avulsas para não duplicar as que vêm de agendamentos
         salesSnapshot.docs.filter(doc => doc.data().type === 'walk-in').forEach(processTransaction);
         
         allTransactions.sort((a, b) => a.date - b.date);
@@ -124,14 +124,15 @@ router.get('/sales/:establishmentId', verifyToken, hasAccess, async (req, res) =
     }
 });
 
-// Rota de relatório de jornada de trabalho (Mantida, já filtra por professionalId)
-// (MODIFICADO) Middlewares adicionados
+// Rota de relatório de jornada de trabalho
 router.get('/work-journal/:establishmentId', verifyToken, hasAccess, async (req, res) => {
+    // ... (Mantém a lógica original, o front ajusta a exibição das datas)
+    // Se precisar de agrupamento, usar getDateInTimezone
     const { establishmentId } = req.params;
     const { professionalId, startDate, endDate } = req.query;
 
     if (!professionalId || !startDate || !endDate) {
-        return res.status(400).json({ message: 'ID do profissional, data de início e data de fim são obrigatórios.' });
+        return res.status(400).json({ message: 'Dados insuficientes.' });
     }
 
     try {
@@ -166,32 +167,25 @@ router.get('/work-journal/:establishmentId', verifyToken, hasAccess, async (req,
             };
         });
 
-        res.status(200).json({
-            appointments,
-            summary: {
-                totalRevenue,
-                totalServices
-            }
-        });
+        res.status(200).json({ appointments, summary: { totalRevenue, totalServices } });
 
     } catch (error) {
-        console.error("Erro ao gerar relatório de jornada:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao gerar o relatório.' });
+        console.error("Erro no relatório de jornada:", error);
+        res.status(500).json({ message: 'Erro no servidor.' });
     }
 });
 
 // NOVA ROTA: Relatório de Comissões
-// (MODIFICADO) Middlewares adicionados
 router.get('/commissions/:establishmentId', verifyToken, hasAccess, async (req, res) => {
     const { establishmentId } = req.params;
     const { year, month, professionalId } = req.query;
 
-    if (!year || !month) {
-        return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
-    }
+    if (!year || !month) return res.status(400).json({ message: 'Ano e mês são obrigatórios.' });
 
     try {
         const { db } = req;
+        // Comissões já são salvas com mês/ano fixos no banco, então não sofrem tanto com timezone na leitura,
+        // desde que a gravação (trigger) tenha usado a data correta.
         let query = db.collection('commission_reports')
             .where('establishmentId', '==', establishmentId)
             .where('year', '==', year)
@@ -207,74 +201,74 @@ router.get('/commissions/:establishmentId', verifyToken, hasAccess, async (req, 
         res.status(200).json(reports);
 
     } catch(error) {
-        console.error("Erro ao gerar relatório de comissões:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        console.error("Erro comissões:", error);
+        res.status(500).json({ message: 'Erro no servidor.' });
     }
 });
 
-
-// ####################################################################
-// ### INÍCIO DA NOVA ROTA (KPIs do Dia) ###
-// ####################################################################
-
-/**
- * Rota GET para buscar KPIs resumidos do dia (Agendamentos e Faturamento).
- * Protegida por token e permissão de acesso.
- */
+// ROTA KPI DIÁRIO (CORRIGIDA COM TIMEZONE)
 router.get('/summary', verifyToken, hasAccess, async (req, res) => {
     const { db } = req;
-    const { establishmentId } = req.user; // Pega o ID do estabelecimento do token
+    const { establishmentId } = req.user;
 
     try {
-        // Define o 'hoje'
+        // 1. Busca Timezone
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+
+        // 2. Calcula Inicio e Fim do dia no FUSO DO ESTABELECIMENTO
+        // Cria string "YYYY-MM-DD" no fuso correto
         const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        const localDateString = now.toLocaleString("en-US", { timeZone: timezone });
+        const localDate = new Date(localDateString);
 
-        const startTimestamp = admin.firestore.Timestamp.fromDate(startOfDay);
-        const endTimestamp = admin.firestore.Timestamp.fromDate(endOfDay);
+        const startOfDay = new Date(localDate.getFullYear(), localDate.getMonth(), localDate.getDate(), 0, 0, 0, 0);
+        // Precisamos ajustar o offset para que o Firestore entenda o momento absoluto correto
+        // Uma forma robusta é criar a string ISO com o offset, mas para simplificar:
+        // Vamos usar o offset calculado na rota availability se necessário, ou uma aproximação:
+        // O mais seguro para KPIs simples é confiar que o 'paidDate' (string YYYY-MM-DD) salvo no checkout está correto (fizemos isso no appointments.js)
+        
+        // Alternativa via Timestamp (aproximada para "agora"):
+        // Se quisermos ser precisos com Timestamp, teríamos que calcular o offset exato.
+        // Vamos usar a lógica de string YYYY-MM-DD nas queries se possível, mas aqui usamos timestamp.
+        // Ajuste simples: Recriar as datas usando o fuso.
+        
+        // Workaround funcional: Usar as datas geradas acima como se fossem UTC, mas aplicar o shift reverso? Não.
+        // Melhor abordagem para KPI Rápido: Usar a data do servidor e aceitar pequena margem ou usar a lib 'date-fns-tz' se disponível.
+        // Como não temos libs extras, vamos usar o cálculo manual de offset.
+        
+        const tzOffsetStr = now.toLocaleString('en-US', { timeZone: timezone, timeZoneName: 'longOffset' }).match(/GMT([+-]\d{2}:\d{2})/)?.[1] || '-03:00';
+        const todayStr = now.toLocaleDateString('en-CA', { timeZone: timezone }); // YYYY-MM-DD
+        
+        const startTimestamp = admin.firestore.Timestamp.fromDate(new Date(`${todayStr}T00:00:00.000${tzOffsetStr}`));
+        const endTimestamp = admin.firestore.Timestamp.fromDate(new Date(`${todayStr}T23:59:59.999${tzOffsetStr}`));
 
-        // 1. KPI Agendamentos (Apenas confirmados/abertos)
         const appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'confirmed') // Apenas os que estão 'abertos'
+            .where('status', '==', 'confirmed')
             .where('startTime', '>=', startTimestamp)
             .where('startTime', '<=', endTimestamp);
         
-        // 2. KPI Faturado (Vendas 'sales' já finalizadas HOJE)
-        // Nota: Esta query 'sales' inclui agendamentos E vendas avulsas
         const salesQuery = db.collection('sales')
             .where('establishmentId', '==', establishmentId)
             .where('transaction.paidAt', '>=', startTimestamp)
             .where('transaction.paidAt', '<=', endTimestamp);
 
-        // Executa as duas buscas em paralelo
         const [appointmentsSnapshot, salesSnapshot] = await Promise.all([
             appointmentsQuery.get(),
             salesQuery.get()
         ]);
 
-        // Calcular Faturado
         let todayRevenue = 0;
-        salesSnapshot.forEach(doc => {
-            todayRevenue += doc.data().totalAmount || 0;
-        });
-
-        // Contar Agendamentos
+        salesSnapshot.forEach(doc => { todayRevenue += doc.data().totalAmount || 0; });
         const todayAppointments = appointmentsSnapshot.size;
 
-        res.status(200).json({
-            todayAppointments: todayAppointments,
-            todayRevenue: todayRevenue
-        });
+        res.status(200).json({ todayAppointments, todayRevenue });
 
     } catch (error) {
-        console.error("Erro ao buscar KPIs de sumário:", error);
+        console.error("Erro KPIs:", error);
         res.status(500).json({ message: "Erro ao buscar KPIs." });
     }
 });
-// ####################################################################
-// ### FIM DA NOVA ROTA ###
-// ####################################################################
 
 module.exports = router;

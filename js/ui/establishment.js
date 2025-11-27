@@ -5,7 +5,7 @@ import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
-import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
+import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
 import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
@@ -20,6 +20,7 @@ const colorThemes = {
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
 
+// Removida a aba 'regional'
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
@@ -280,6 +281,93 @@ function renderChangeEmailSection(data, container) {
         } finally {
             saveButton.disabled = false;
             saveButton.textContent = 'Salvar Novo E-mail';
+        }
+    });
+}
+
+function renderDeleteAccountSection(data, container) {
+    container.innerHTML = `
+        <div class="bg-red-50 p-4 md:p-6 rounded-lg shadow-md border border-red-200">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-red-700">Excluir Conta</h3>
+                <button type="submit" form="delete-account-form" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Excluir Definitivamente</button>
+            </div>
+            <form id="delete-account-form" class="space-y-6">
+                <div class="bg-white p-4 rounded-md border border-red-100">
+                    <p class="text-red-600 font-medium mb-2">Atenção: Esta ação é irreversível.</p>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        <li>Todos os dados do estabelecimento serão apagados permanentemente.</li>
+                        <li>O histórico de agendamentos, clientes e finanças será perdido.</li>
+                        <li>A sua assinatura será cancelada imediatamente.</li>
+                        <li>Não será possível recuperar o acesso a esta conta.</li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <label for="deletePasswordConfirmation" class="block text-sm font-medium text-gray-700">Confirme sua senha para continuar</label>
+                    <input type="password" id="deletePasswordConfirmation" class="mt-1 w-full p-2 border border-gray-300 rounded-md focus:border-red-500 focus:ring-red-500 outline-none transition-colors" required placeholder="Sua senha atual">
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="confirmDeleteCheckbox" class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500" required>
+                    <label for="confirmDeleteCheckbox" class="text-sm text-gray-700 cursor-pointer select-none">Eu entendo as consequências e quero excluir minha conta.</label>
+                </div>
+            </form>
+        </div>
+    `;
+
+    container.querySelector('#delete-account-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const password = container.querySelector('#deletePasswordConfirmation').value;
+        const confirmCheckbox = container.querySelector('#confirmDeleteCheckbox').checked;
+
+        if (!password || !confirmCheckbox) {
+            showNotification('Erro', 'Por favor, confirme sua senha e marque a caixa de confirmação.', 'error');
+            return;
+        }
+
+        if (!confirm('Tem a certeza absoluta? Todos os dados serão perdidos para sempre.')) {
+            return;
+        }
+
+        const saveButton = container.querySelector('button[type="submit"]');
+        saveButton.disabled = true;
+        saveButton.textContent = 'A excluir...';
+
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Usuário não autenticado.");
+
+            // 1. Reautenticar para garantir segurança (necessário para operações sensíveis)
+            const credential = EmailAuthProvider.credential(user.email, password);
+            await reauthenticateWithCredential(user, credential);
+
+            // 2. Excluir o usuário do Firebase Auth
+            await deleteUser(user);
+
+            showNotification('Conta Excluída', 'Sua conta foi excluída com sucesso. Redirecionando...', 'success');
+            
+            // Redirecionar para a página inicial/login
+            setTimeout(() => {
+                window.location.href = '/index.html';
+            }, 2000);
+
+        } catch (error) {
+            console.error(error);
+            let message = 'Não foi possível excluir a conta.';
+            
+            if (error.code === 'auth/wrong-password') {
+                message = 'A senha informada está incorreta.';
+            } else if (error.code === 'auth/requires-recent-login') {
+                message = 'Por segurança, faça login novamente e tente excluir a conta em seguida.';
+            } else {
+                message = error.message;
+            }
+            
+            showNotification('Erro', message, 'error');
+            saveButton.disabled = false;
+            saveButton.textContent = 'Excluir Definitivamente';
         }
     });
 }
@@ -568,11 +656,54 @@ function renderWorkingHoursSection(data, container) {
                  <h3 class="text-xl font-bold text-gray-800">Horário de Funcionamento</h3>
                  <button type="submit" form="working-hours-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar Horários</button>
              </div>
+             
              <form id="working-hours-form">
+                 <!-- SELEÇÃO DE FUSO HORÁRIO INTEGRADA -->
+                 <div class="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <label for="establishmentTimezone" class="block text-sm font-bold text-gray-700 mb-2">Fuso Horário da Região</label>
+                    <p class="text-sm text-gray-600 mb-3">Defina o fuso horário correto para que os agendamentos e notificações coincidam com a hora local dos seus clientes.</p>
+                    <select id="establishmentTimezone" class="block w-full p-2 border border-gray-300 rounded-md bg-white focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="" disabled>Selecione a região...</option>
+                        <optgroup label="Brasil">
+                            <option value="America/Sao_Paulo">Horário de Brasília (SP, RJ, MG, Sul, NE, GO, DF)</option>
+                            <option value="America/Manaus">Horário do Amazonas (Manaus)</option>
+                            <option value="America/Cuiaba">Horário do Mato Grosso / MS</option>
+                            <option value="America/Rio_Branco">Horário do Acre</option>
+                            <option value="America/Noronha">Fernando de Noronha</option>
+                        </optgroup>
+                        <optgroup label="Internacional">
+                            <option value="Europe/Lisbon">Portugal (Lisboa)</option>
+                            <option value="Europe/London">Reino Unido (Londres)</option>
+                            <option value="America/New_York">Estados Unidos (Nova Iorque)</option>
+                            <option value="UTC">UTC (Universal)</option>
+                        </optgroup>
+                    </select>
+                 </div>
+
                  <div id="establishmentWorkingHoursContainer" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4"></div>
              </form>
          </div>
     `;
+    
+    // Lógica para preencher o fuso horário
+    const timezoneSelect = container.querySelector('#establishmentTimezone');
+    if (data.timezone) {
+        timezoneSelect.value = data.timezone;
+    } else {
+        // Tenta detectar automaticamente se não houver nada salvo
+        try {
+            const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const optionExists = Array.from(timezoneSelect.options).some(opt => opt.value === userTimezone);
+            if (optionExists) {
+                timezoneSelect.value = userTimezone;
+            } else {
+                timezoneSelect.value = "America/Sao_Paulo"; // Fallback padrão
+            }
+        } catch (e) {
+            timezoneSelect.value = "America/Sao_Paulo";
+        }
+    }
+
     const workingHoursContainer = container.querySelector('#establishmentWorkingHoursContainer');
     const scheduleData = data.workingHours || {};
     Object.keys(daysOfWeek).forEach(dayKey => {
@@ -599,6 +730,7 @@ function renderWorkingHoursSection(data, container) {
             </div>`;
         workingHoursContainer.appendChild(dayElement);
     });
+    
     workingHoursContainer.addEventListener('change', e => {
         const toggle = e.target.closest('.day-schedule-card input[type="checkbox"]');
         if (toggle) {
@@ -606,6 +738,7 @@ function renderWorkingHoursSection(data, container) {
             card.classList.toggle('disabled', !toggle.checked);
         }
     });
+    
     container.querySelector('#working-hours-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const workingHours = {};
@@ -618,7 +751,11 @@ function renderWorkingHoursSection(data, container) {
                 breakEnd: container.querySelector(`#est-${dayKey}-breakEnd`).value,
             };
         });
-        handleSave({ workingHours }, e);
+        
+        // Agora salvamos também o fuso horário junto com os horários
+        const timezone = container.querySelector('#establishmentTimezone').value;
+        
+        handleSave({ workingHours, timezone }, e);
     });
 }
 
@@ -818,7 +955,7 @@ function renderSlotIntervalSelector(currentValue, container) {
         const isSelected = interval.value === currentValue;
         return `<button type="button" data-value="${interval.value}" 
                        class="interval-btn py-2 px-4 rounded-full text-sm font-semibold transition-colors 
-                            ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
+                           ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}">
                        ${interval.label}
                    </button>`;
     }).join('');
@@ -870,8 +1007,10 @@ async function showSettingsDetailView(sectionId) {
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
         case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; 
+        case 'delete-account': renderDeleteAccountSection(establishmentData, detailContainer); break;
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
+        // AQUI: A função renderWorkingHoursSection agora contém o campo de fuso
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;

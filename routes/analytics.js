@@ -14,6 +14,14 @@ function handleFirestoreError(res, error) {
     return res.status(500).json({ message: 'Ocorreu um erro no servidor ao gerar os relatórios.' });
 }
 
+// Helper para converter data UTC do banco para o fuso do estabelecimento
+function getDateInTimezone(dateObj, timezone) {
+    if (!dateObj) return new Date();
+    // Converte para string no fuso local e recria o objeto Date
+    const localString = dateObj.toLocaleString("en-US", { timeZone: timezone });
+    return new Date(localString);
+}
+
 // Rota para o dashboard principal de analytics
 router.get('/:establishmentId', async (req, res) => {
     console.log(`[ANALYTICS] Recebida requisição para relatório geral para establishment: ${req.params.establishmentId}`);
@@ -25,6 +33,11 @@ router.get('/:establishmentId', async (req, res) => {
 
     try {
         const { db } = req;
+        
+        // 1. Busca o Timezone do estabelecimento
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+
         const start = admin.firestore.Timestamp.fromDate(new Date(startDate));
         const end = admin.firestore.Timestamp.fromDate(new Date(endDate + "T23:59:59"));
 
@@ -40,17 +53,25 @@ router.get('/:establishmentId', async (req, res) => {
 
         const processTransaction = (doc, type) => {
             const data = doc.data();
-            if (!data.startTime || typeof data.startTime.toDate !== 'function') return;
-            const transactionTime = data.startTime.toDate();
-            const monthKey = `${transactionTime.getFullYear()}-${transactionTime.getMonth()}`;
+            if (!data.startTime) return; // Proteção contra dados antigos sem data
+            
+            // CONVERSÃO DE FUSO AQUI
+            // Garante que a transação caia no mês correto do local (ex: dia 31 às 23h não vire dia 1 do mês seguinte)
+            const transactionTimeUtc = data.startTime.toDate();
+            const transactionTimeLocal = getDateInTimezone(transactionTimeUtc, timezone);
+
+            const monthKey = `${transactionTimeLocal.getFullYear()}-${transactionTimeLocal.getMonth()}`;
+            
             if (!transactionsByMonth[monthKey]) {
-                const monthName = `${monthNames[transactionTime.getMonth()]}/${transactionTime.getFullYear().toString().slice(-2)}`;
-                transactionsByMonth[monthKey] = { month: monthName, year: transactionTime.getFullYear(), monthIndex: transactionTime.getMonth(), count: 0, revenue: 0 };
+                const monthName = `${monthNames[transactionTimeLocal.getMonth()]}/${transactionTimeLocal.getFullYear().toString().slice(-2)}`;
+                transactionsByMonth[monthKey] = { month: monthName, year: transactionTimeLocal.getFullYear(), monthIndex: transactionTimeLocal.getMonth(), count: 0, revenue: 0 };
             }
             transactionsByMonth[monthKey].count++;
+            
             const revenue = data.transaction?.totalAmount || data.totalAmount || 0;
             transactionsByMonth[monthKey].revenue += revenue;
             totalRevenue += revenue;
+            
             const items = type === 'appointment' ? [...(data.services || []), ...(data.comandaItems || [])] : data.items || [];
             items.forEach(item => {
                 if(item.name) itemCount[item.name] = (itemCount[item.name] || 0) + 1;
@@ -92,6 +113,11 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
 
     try {
         const { db } = req;
+        
+        // Busca Timezone
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+
         const startDate = new Date(year, month, 1);
         const endDate = new Date(year, parseInt(month) + 1, 0, 23, 59, 59);
 
@@ -106,17 +132,18 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
         let itemsCount = {};
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, { id: doc.id, name: doc.data().name }]));
         let revenueByTransactionType = { appointment: 0, sales: 0 };
-        let totalSalesRevenue = 0; // Adicionando esta variável para rastrear a receita de vendas avulsas
-
+        
         const processDoc = (doc, type) => {
             const data = doc.data();
-            const date = data.startTime.toDate();
-            const day = date.getDate();
+            
+            // CONVERSÃO DE FUSO AQUI (Essencial para o gráfico diário)
+            const dateLocal = getDateInTimezone(data.startTime.toDate(), timezone);
+            const day = dateLocal.getDate(); // Dia correto no fuso local (ex: dia 10, não dia 11)
+            
             const revenue = data.transaction?.totalAmount || data.totalAmount || 0;
             
             revenueByDay[day] = (revenueByDay[day] || 0) + revenue;
             
-            // Adiciona o valor à contagem por tipo
             if (type === 'appointment') {
                 revenueByTransactionType.appointment += revenue;
             } else {
@@ -158,10 +185,10 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
     }
 });
 
-// ENDPOINT: Detalhes de um dia específico (MODIFICADO)
+// ENDPOINT: Detalhes de um dia específico
 router.get('/:establishmentId/daily-details', async (req, res) => {
     const { establishmentId } = req.params;
-    const { year, month, day, professionalId: filterProfessionalId } = req.query; // Renomeado para evitar conflito
+    const { year, month, day, professionalId: filterProfessionalId } = req.query; 
 
     if (!year || !month || !day) {
         return res.status(400).json({ message: 'Ano, mês e dia são obrigatórios.' });
@@ -188,31 +215,26 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             salesQuery = salesQuery.where('professionalId', '==', filterProfessionalId);
         }
 
-        // 1. Busca os profissionais para mapear o nome
         const professionalsSnapshot = await db.collection('professionals')
             .where('establishmentId', '==', establishmentId).get();
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, doc.data().name]));
 
-        // ##################################################
-        // ### CORREÇÃO APLICADA AQUI ###
-        // O nome da coleção foi corrigido para 'cashierSessions' (sem o 's' no final)
+        // CORREÇÃO: Nome da coleção 'cashierSessions'
         const cashierSessionsQuery = db.collection('cashierSessions')
             .where('establishmentId', '==', establishmentId);
-        // ##################################################
             
         const [appointmentsSnapshot, salesSnapshot, cashierSessionsSnapshot] = await Promise.all([
             appointmentsQuery.get(),
             salesQuery.get(),
-            cashierSessionsQuery.get() // <-- ADICIONADO
+            cashierSessionsQuery.get()
         ]);
 
-        // 3. (NOVO) Cria o mapa de sessões de caixa
+        // Mapa de sessões de caixa
         const cashierSessionMap = new Map();
         cashierSessionsSnapshot.forEach(doc => {
             const data = doc.data();
             cashierSessionMap.set(doc.id, data.openedByName || data.closedByName || 'N/A');
         });
-        // --- FIM DA CORREÇÃO ---
         
         let allTransactions = [];
         let totalRevenue = 0;
@@ -224,7 +246,6 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             
             const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
             
-            // (MODIFICADO) Adiciona o campo 'responsavelCaixa'
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
@@ -232,7 +253,7 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
                 items: [...(data.services || []), ...(data.comandaItems || [])].map(i => i.name).join(', '),
                 value: value,
                 type: 'Agendamento',
-                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido' // <-- ADICIONADO
+                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido'
             });
         });
         
@@ -243,7 +264,6 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             
             const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
 
-            // (MODIFICADO) Adiciona o campo 'responsavelCaixa'
             allTransactions.push({
                 date: data.startTime.toDate(),
                 client: data.clientName,
@@ -251,7 +271,7 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
                 items: data.items.map(i => i.name).join(', '),
                 value: value,
                 type: 'Venda Avulsa',
-                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido' // <-- ADICIONADO
+                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido'
             });
         });
         
@@ -330,6 +350,5 @@ router.get('/:establishmentId/professional-details', async (req, res) => {
         handleFirestoreError(res, error);
     }
 });
-
 
 module.exports = router;

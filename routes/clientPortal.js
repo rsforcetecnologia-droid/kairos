@@ -1,6 +1,39 @@
+// routes/clientPortal.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
+
+// --- FUNÇÃO AUXILIAR: ENVIAR PUSH NOTIFICATION (Copiada para garantir independência) ---
+async function sendPushNotificationToEstablishment(db, establishmentId, title, body) {
+    try {
+        const usersSnapshot = await db.collection('users')
+            .where('establishmentId', '==', establishmentId)
+            .get();
+
+        const tokens = [];
+        usersSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.fcmToken) {
+                tokens.push(data.fcmToken);
+            }
+        });
+
+        if (tokens.length === 0) return;
+
+        const message = {
+            notification: { title, body },
+            tokens: tokens
+        };
+
+        const response = await admin.messaging().sendEachForMulticast(message);
+        if (response.failureCount > 0) {
+            console.warn(`[ClientPortal] Push: ${response.successCount} ok, ${response.failureCount} falhas.`);
+        }
+    } catch (error) {
+        console.error("[ClientPortal] Erro ao enviar Push:", error);
+    }
+}
 
 // ROTA PÚBLICA: Listar agendamentos de um cliente por telemóvel
 router.get('/appointments/:establishmentId', async (req, res) => {
@@ -25,7 +58,6 @@ router.get('/appointments/:establishmentId', async (req, res) => {
 
         const professionalsSnapshot = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
         
-        // Mapeia os profissionais para incluir o nome e a foto
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, {
             name: doc.data().name,
             photo: doc.data().photo || null
@@ -37,16 +69,15 @@ router.get('/appointments/:establishmentId', async (req, res) => {
                 ? data.services.map(s => s.name).join(', ')
                 : 'Serviço não especificado';
             
-            // Busca os dados completos do profissional (nome e foto)
             const professionalInfo = professionalsMap.get(data.professionalId) || { name: 'Indefinido', photo: null };
                 
             return {
                 id: doc.id,
                 startTime: data.startTime.toDate().toISOString(),
                 serviceName: serviceName,
-                clientName: data.clientName, // Mantém o nome do cliente nos dados
+                clientName: data.clientName, 
                 professionalName: professionalInfo.name,
-                professionalPhoto: professionalInfo.photo, // Adiciona a foto do profissional
+                professionalPhoto: professionalInfo.photo,
                 status: data.status
             };
         });
@@ -71,6 +102,14 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
     try {
         const { db } = req;
         const appointmentRef = db.collection('appointments').doc(appointmentId);
+        
+        // 1. Busca o Timezone do Estabelecimento para a notificação correta
+        const establishmentDocGlobal = await db.collection('establishments').doc(establishmentId).get();
+        const establishmentDataGlobal = establishmentDocGlobal.exists ? establishmentDocGlobal.data() : {};
+        const timezone = establishmentDataGlobal.timezone || 'America/Sao_Paulo';
+
+        let notificationTitle = "";
+        let notificationBody = "";
 
         await db.runTransaction(async (transaction) => {
             const appointmentDoc = await transaction.get(appointmentRef);
@@ -90,9 +129,26 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
             transaction.update(appointmentRef, { status: 'cancelled' });
 
             const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
-            const notificationMessage = `${appointmentData.clientName} cancelou o agendamento das ${appointmentData.startTime.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+            
+            // --- FORMATAÇÃO CORRIGIDA COM TIMEZONE ---
+            const timeString = appointmentData.startTime.toDate().toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                timeZone: timezone 
+            });
+            const dateString = appointmentData.startTime.toDate().toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                timeZone: timezone
+            });
+
+            const notificationMessage = `${appointmentData.clientName} cancelou o agendamento de ${dateString} às ${timeString}`;
+            
+            notificationTitle = "Agendamento Cancelado";
+            notificationBody = notificationMessage;
+
             transaction.set(notificationRef, {
-                title: "Agendamento Cancelado",
+                title: notificationTitle,
                 message: notificationMessage,
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),
                 read: false,
@@ -100,6 +156,10 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
                 relatedId: appointmentId
             });
         });
+
+        // --- ENVIA PUSH NOTIFICATION ---
+        sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
+            .catch(err => console.error("Falha silenciosa no push de cancelamento:", err));
 
         res.status(200).json({ message: 'Agendamento cancelado com sucesso.' });
 

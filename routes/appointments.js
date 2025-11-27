@@ -93,7 +93,6 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
         // Log opcional de sucesso/falha
         if (response.failureCount > 0) {
             console.warn(`Push Notifications: ${response.successCount} enviadas, ${response.failureCount} falhas.`);
-            // Aqui poderias implementar lógica para limpar tokens inválidos (ex: "registration-token-not-registered")
         } else {
             console.log(`Push Notifications enviadas com sucesso para ${response.successCount} dispositivos.`);
         }
@@ -111,10 +110,22 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, services, professionalId, clientName, clientPhone, startTime, redeemedReward } = req.body;
+    
     if (!establishmentId || !services || services.length === 0 || !professionalId || !clientName || !clientPhone || !startTime) {
         return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
     }
+
     try {
+        // --- 1. BUSCA DADOS DO ESTABELECIMENTO (Timezone) ---
+        const establishmentDocGlobal = await db.collection('establishments').doc(establishmentId).get();
+        if (!establishmentDocGlobal.exists) {
+            throw new Error('Estabelecimento não encontrado.');
+        }
+        const establishmentDataGlobal = establishmentDocGlobal.data();
+        
+        // Define o fuso horário (usa o do banco ou fallback para SP)
+        const establishmentTimezone = establishmentDataGlobal.timezone || 'America/Sao_Paulo';
+
         const professionalDoc = await db.collection('professionals').doc(professionalId).get();
         if (!professionalDoc.exists) {
             throw new Error('Profissional selecionado é inválido.');
@@ -134,7 +145,11 @@ router.post('/', async (req, res) => {
                 throw new Error(`Serviço inválido (${serviceData.name}) não pertence a este estabelecimento.`);
             }
             totalDuration += (serviceData.duration || 0) + (serviceData.bufferTime || 0);
-            servicesDetails.push({ id: doc.id, name: serviceData.name, price: serviceData.price, duration: serviceData.duration, bufferTime: serviceData.bufferTime || 0, photo: serviceData.photo || null });
+            servicesDetails.push({ 
+                id: doc.id, name: serviceData.name, price: serviceData.price, 
+                duration: serviceData.duration, bufferTime: serviceData.bufferTime || 0, 
+                photo: serviceData.photo || null 
+            });
         }
 
         const startDate = new Date(startTime);
@@ -171,6 +186,8 @@ router.post('/', async (req, res) => {
             const potentialConflicts = await transaction.get(conflictQuery);
 
             // --- LEITURA 3: ESTABELECIMENTO (Para verificar módulo de fidelidade) ---
+            // Nota: Já lemos establishmentDataGlobal fora da transação para o timezone, 
+            // mas dentro da transação precisamos ler de novo se formos usar dados para escrita consistente (pontos).
             let establishmentDoc = null;
             if (redeemedReward && redeemedReward.points > 0) {
                 establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
@@ -252,9 +269,18 @@ router.post('/', async (req, res) => {
             // ESCRITA 6: Cria a Notificação Interna (Painel) e define texto do Push
             const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
             
-            // --- (MODIFICADO) FORMATAÇÃO DA DATA E HORA ---
-            const dateString = startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-            const timeString = startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            // --- (MODIFICADO) FORMATAÇÃO DA DATA E HORA COM TIMEZONE DINÂMICO ---
+            const dateString = startDate.toLocaleDateString('pt-BR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                timeZone: establishmentTimezone // <--- Usa o fuso correto
+            });
+            const timeString = startDate.toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                timeZone: establishmentTimezone // <--- Usa o fuso correto
+            });
+            
             const serviceNames = servicesDetails.map(s => s.name).join(', ');
             
             const internalMessage = `${clientName} agendou ${serviceNames} para dia ${dateString} às ${timeString}`;
@@ -618,19 +644,27 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
         const saleRef = db.collection('sales').doc();
         const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp(); 
 
+        // --- BUSCA DADOS DO ESTABELECIMENTO (Timezone) ---
+        // Precisamos disso para calcular a data do pagamento correta para o financeiro
+        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
+        if (!establishmentDoc.exists) throw new Error("Estabelecimento não encontrado.");
+        
+        const establishmentData = establishmentDoc.data();
+        const timezone = establishmentData.timezone || 'America/Sao_Paulo';
+
+        // Calcula a data "hoje" no fuso horário do estabelecimento
+        const todayInEstablishment = new Date().toLocaleString("en-US", { timeZone: timezone });
+        const paidDateObj = new Date(todayInEstablishment);
+        const paidDate = paidDateObj.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+
         await db.runTransaction(async (transaction) => {
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
 
             const appointmentData = appointmentDoc.data();
-            const establishmentDoc = await transaction.get(db.collection('establishments').doc(establishmentId));
-            if (!establishmentDoc.exists) throw new Error("Estabelecimento não encontrado."); 
-            
-            const establishmentData = establishmentDoc.data(); 
             
             const financialIntegration = establishmentData?.financialIntegration || {};
             const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
-
 
             const originalServiceIDs = new Set( (appointmentData.services || []).map(s => s.id) );
 
@@ -675,8 +709,6 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             transaction.set(saleRef, saleData);
 
             // 3. INTEGRAÇÃO FINANCEIRA
-            const paidDate = new Date().toISOString().split('T')[0];
-            
             payments.forEach(payment => {
                 const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
                 const paymentMethod = payment.method.toLowerCase();
@@ -689,7 +721,7 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
 
                     for (let i = 1; i <= installmentCount; i++) {
                         const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
-                        const dueDate = new Date(); 
+                        const dueDate = new Date(paidDateObj); 
                         dueDate.setMonth(dueDate.getMonth() + (i - 1)); 
                         const dueDateString = dueDate.toISOString().split('T')[0];
                         
@@ -726,8 +758,8 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
                     establishmentId,
                     description: `Venda (Agendamento): ${clientName} (${payment.method})`,
                     amount: payment.value,
-                    dueDate: paidDate, 
-                    paymentDate: paidDate, 
+                    dueDate: paidDate, // <--- DATA CORRIGIDA PELO FUSO
+                    paymentDate: paidDate, // <--- DATA CORRIGIDA PELO FUSO
                     status: 'paid', 
                     transactionId: saleRef.id,
                     createdAt: paidAtTimestamp,
@@ -744,7 +776,7 @@ router.post('/:appointmentId/checkout', verifyToken, hasAccess, async (req, res)
             // 4. Fidelidade
             const loyaltyModuleEnabled = establishmentData.modules?.['loyalty-section'] === true;
 
-            if (loyaltyModuleEnabled && establishmentDoc.exists) { 
+            if (loyaltyModuleEnabled) { 
                 const loyaltyProgram = establishmentData.loyaltyProgram;
                 
                 if (loyaltyProgram && loyaltyProgram.enabled && loyaltyProgram.pointsPerCurrency > 0) {
