@@ -9,7 +9,6 @@ import { state } from '../state.js';
 
 
 // Referência ao modal genérico para confirmações
-// (Removida a referência global, pois será pego e clonado dentro da função)
 let audioContext;
 
 // Prepara o áudio para ser tocado
@@ -226,6 +225,13 @@ export function showGenericModal({ title, contentHTML, maxWidth = 'max-w-4xl', s
     return { modalElement: modal, close: handleClose, setContent };
 }
 
+// --- NOVO: Função exportada para fechar qualquer modal manualmente ---
+export function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
 
 /**
  * Inicializa um listener global para lidar com o fecho de modals e a ativação do áudio.

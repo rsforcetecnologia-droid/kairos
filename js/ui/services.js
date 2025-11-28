@@ -1,16 +1,28 @@
+// js/ui/services.js
+
 // --- 1. IMPORTAÇÕES ---
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import * as categoriesApi from '../api/categories.js'; 
-import { navigateTo } from '../main.js'; // Adicionado para consistência
+import { navigateTo } from '../main.js';
+// --- NOVAS IMPORTAÇÕES PARA AUDITORIA ---
+import { logAction } from '../api/audit.js';
+import { auth } from '../firebase-config.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let pageEventListener = null;
 let currentView = 'services'; // Define a aba inicial
 let activeServiceFilter = 'all'; // 'all', 'active', 'inactive'
+
+// --- FUNÇÃO AUXILIAR PARA OBTER UTILIZADOR ATUAL (Para o Log) ---
+function getCurrentUserForLog() {
+    const user = auth.currentUser;
+    if (!user) return { uid: 'unknown', name: 'Desconhecido' };
+    return { uid: user.uid, name: user.displayName || user.email };
+}
 
 // --- 3. LÓGICA DE CATEGORIAS (MODAL) ---
 async function handleCategoryFormSubmit(e) {
@@ -21,6 +33,11 @@ async function handleCategoryFormSubmit(e) {
     if (!name) return;
     try {
         await categoriesApi.createCategory({ establishmentId: state.establishmentId, name }, 'services');
+        
+        // --- AUDITORIA ---
+        logAction(state.establishmentId, getCurrentUserForLog(), 'Categorias (Serviços)', 'Criou', `Criou categoria: ${name}`);
+        // -----------------
+
         categoryNameInput.value = '';
         showNotification('Sucesso', 'Categoria criada!', 'success');
         await fetchAndDisplayCategoriesInModal();
@@ -35,6 +52,11 @@ async function handleDeleteCategory(categoryId) {
     if (confirmed) {
         try {
             await categoriesApi.deleteCategory(categoryId, 'services');
+            
+            // --- AUDITORIA ---
+            logAction(state.establishmentId, getCurrentUserForLog(), 'Categorias (Serviços)', 'Excluiu', `Excluiu uma categoria (ID: ${categoryId})`);
+            // -----------------
+
             showNotification('Sucesso', 'Categoria apagada.', 'success');
             await fetchAndDisplayCategoriesInModal();
             await fetchBaseData(); 
@@ -143,8 +165,14 @@ async function handleServiceFormSubmit(e) {
     try {
         if (serviceId) {
             await servicesApi.updateService(serviceId, serviceData);
+            // --- AUDITORIA ---
+            logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Editou', `Editou o serviço: ${serviceData.name}`);
+            // -----------------
         } else {
             await servicesApi.createService(serviceData);
+            // --- AUDITORIA ---
+            logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Criou', `Criou novo serviço: ${serviceData.name}`);
+            // -----------------
         }
         document.getElementById('serviceModal').style.display = 'none';
         showNotification('Sucesso', `Serviço ${serviceId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
@@ -222,7 +250,6 @@ function openServiceModal(service = null) {
             </div>
 
             <div id="tab-content-dados" class="tab-content space-y-4">
-                
                 <div class="space-y-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Foto do Serviço</label>
                     <div class="mt-1 flex flex-col items-center">
@@ -306,7 +333,6 @@ function openServiceModal(service = null) {
             </div>
 
             <div class="mt-6 pt-6 border-t flex flex-col-reverse sm:flex-row justify-between items-center gap-3">
-                
                 <button 
                     type="button" 
                     data-action="delete-service" 
@@ -318,7 +344,6 @@ function openServiceModal(service = null) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                     </svg>
                 </button>
-                
                 <div class="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
                     <button type="button" data-action="close-modal" data-target="serviceModal" class="w-full sm:w-auto py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
                     <button type="submit" class="w-full sm:w-auto py-2 px-6 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-700">Salvar</button>
@@ -348,7 +373,15 @@ function openServiceModal(service = null) {
             const confirmed = await showConfirmation('Apagar Serviço', 'Tem a certeza que deseja apagar este serviço?');
             if (confirmed) {
                 try {
+                    // Busca nome para o log antes de apagar
+                    const serviceName = state.services.find(s => s.id === serviceId)?.name || 'Desconhecido';
+                    
                     await servicesApi.deleteService(serviceId);
+                    
+                    // --- AUDITORIA ---
+                    logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Excluiu', `Excluiu o serviço: ${serviceName}`);
+                    // -----------------
+
                     showNotification('Sucesso', 'Serviço apagado com sucesso!', 'success');
                     await fetchBaseData(); 
                 } catch (error) {
@@ -359,6 +392,10 @@ function openServiceModal(service = null) {
             }
         }
     });
+
+    // ... (restante do código igual, apenas a lógica de auditoria foi injetada acima) ...
+    // Para poupar espaço, o restante do código abaixo é o mesmo que já tinhas, apenas colei a parte modificada acima.
+    // Mas para garantir que tens o arquivo COMPLETO, vou incluir tudo.
 
     const tabs = modal.querySelectorAll('.tab-btn');
     const tabContents = modal.querySelectorAll('.tab-content');
@@ -423,8 +460,6 @@ function openServiceModal(service = null) {
     const photoInput = modal.querySelector('#servicePhotoInput');
     const photoPreview = modal.querySelector('#servicePhotoPreview');
     const photoBase64Input = modal.querySelector('#servicePhotoBase64');
-    const originalPhotoSrc = service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto';
-    const originalBase64 = service?.photo || '';
     
     modal.querySelector('#servicePhotoButton').addEventListener('click', () => photoInput.click());
 
@@ -445,8 +480,8 @@ function openServiceModal(service = null) {
         } catch (error) {
             console.error("Erro ao processar imagem:", error);
             showNotification('Erro de Imagem', error.message || 'Não foi possível processar a imagem.', 'error');
-            photoPreview.src = originalPhotoSrc;
-            photoBase64Input.value = originalBase64;
+            photoPreview.src = service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto';
+            photoBase64Input.value = service?.photo || '';
             photoInput.value = '';
         }
     };
@@ -484,7 +519,6 @@ function renderServicesList() {
             const card = document.createElement('div');
             const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
             
-            // ALTERAÇÃO: Classes alteradas para suportar layout flex (lista) em mobile e flex-col (card) em desktop
             card.className = `service-card bg-white rounded-lg shadow-md flex overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:bg-gray-50 ${service.active !== false ? 'opacity-100' : 'opacity-50 bg-gray-100'} sm:flex-col`;
             card.dataset.action = 'edit-service'; 
             card.dataset.service = serviceDataString; 
@@ -492,7 +526,6 @@ function renderServicesList() {
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
             const categoryName = categoryMap.get(service.categoryId) || 'N/A';
 
-            // ALTERAÇÃO: O innerHTML foi reestruturado para ser responsivo (lista em mobile, card em desktop)
             card.innerHTML = `
                 <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
                 
@@ -552,10 +585,6 @@ function renderServiceIndicators() {
     
     if (popularEl) {
         if (state.mostPopularService && state.mostPopularService.name !== 'N/A') {
-            // const serviceName = state.mostPopularService.name.length > 18 ? 
-            //     state.mostPopularService.name.substring(0, 18) + '...' : 
-            //     state.mostPopularService.name;
-            // popularEl.textContent = serviceName;
             popularEl.textContent = state.mostPopularService.name;
             popularEl.closest('.indicator-card').title = `${state.mostPopularService.name} (${state.mostPopularService.count} agendamentos)`;
         } else {
@@ -705,6 +734,11 @@ function setupEventListeners() {
                 await servicesApi.updateServiceStatus(serviceId, newStatus);
                 const serviceIndex = state.services.findIndex(s => s.id === serviceId);
                 if (serviceIndex > -1) state.services[serviceIndex].active = newStatus;
+                
+                // --- AUDITORIA ---
+                logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Atualizou Status', `Alterou status do serviço (ID: ${serviceId}) para ${newStatus ? 'Ativo' : 'Inativo'}`);
+                // -----------------
+
                 renderServicesList();
                 renderServiceIndicators();
             } catch (error) {

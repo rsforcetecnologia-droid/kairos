@@ -1242,3 +1242,37 @@ body {
         background-color: white;
     }
 }
+.multi-select-box {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 150px; /* Define altura fixa */
+    overflow-y: auto;  /* Adiciona barra de rolagem se houver muitos */
+    background: #fff;
+    margin-bottom: 15px;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    padding: 5px;
+    border-bottom: 1px solid #eee;
+}
+
+.checkbox-item input {
+    margin-right: 10px;
+    width: auto; /* Evita que o input ocupe 100% */
+}
+/* --- CSS para Esconder a Barra de Rolagem (mas manter a funcionalidade) --- */
+
+/* Para Chrome, Safari e Opera */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* Para IE, Edge e Firefox */
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE e Edge */
+    scrollbar-width: none;  /* Firefox */
+}

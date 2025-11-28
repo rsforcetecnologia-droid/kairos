@@ -1,8 +1,9 @@
-// js/ui/products.js (Versão Final Mobile Adaptativa)
+// js/ui/products.js (Versão Completa com Preço de Custo Médio e Aba Fornecedores)
 
 // --- 1. IMPORTAÇÕES ---
 import * as productsApi from '../api/products.js';
 import * as categoriesApi from '../api/categories.js';
+import * as suppliersApi from '../api/suppliers.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 
@@ -127,10 +128,18 @@ async function handleProductFormSubmit(form) {
     const minStock = parseInt(form.querySelector('#productMinStock').value);
     const maxStock = parseInt(form.querySelector('#productMaxStock').value);
 
+    // --- LÓGICA DE FORNECEDORES: Captura da lista visual ---
+    const selectedSupplierElements = form.querySelectorAll('#selectedSuppliersList .selected-supplier-item');
+    const selectedSupplierIds = Array.from(selectedSupplierElements).map(el => el.dataset.id);
+
     const productData = {
         establishmentId: state.establishmentId,
         name: form.querySelector('#productName').value,
         price: parseFloat(form.querySelector('#productPrice').value),
+        
+        // --- NOVO: Captura do Preço de Custo Médio ---
+        costPrice: parseFloat(form.querySelector('#productCostPrice').value) || 0,
+        
         commissionRate: parseFloat(form.querySelector('#productCommissionRate').value) || 0,
         
         currentStock: isNaN(currentStock) ? 0 : currentStock, 
@@ -138,7 +147,9 @@ async function handleProductFormSubmit(form) {
         maxStock: isNaN(maxStock) ? 0 : maxStock,
         
         categoryId: form.querySelector('#productCategory').value || null,
-        photo: form.querySelector('#productPhotoBase64').value
+        photo: form.querySelector('#productPhotoBase64').value,
+
+        supplierIds: selectedSupplierIds // Array de IDs dos fornecedores
     };
 
     try {
@@ -197,10 +208,15 @@ function openProductModal(product = null) {
     const modal = document.getElementById('productModal');
     
     const categories = state.categories || []; 
+    // Garante que a lista de fornecedores existe
+    const allSuppliers = state.suppliers || []; 
     
     const categoryOptions = categories.map(c => 
         `<option value="${c.id}" ${product?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
     ).join('');
+
+    // Set temporário para gerir a seleção visual
+    let tempSelectedIds = new Set(product?.supplierIds || []);
 
     modal.innerHTML = `
     <div class="modal-content max-w-3xl overflow-y-auto max-h-[90vh]">
@@ -218,6 +234,7 @@ function openProductModal(product = null) {
                     <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                         <button type="button" data-tab="dados" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">Dados</button>
                         <button type="button" data-tab="stock" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 ${!product ? 'hidden' : ''}">Ajustar Estoque</button>
+                        <button type="button" data-tab="suppliers" class="tab-btn whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">Fornecedores</button>
                     </nav>
                 </div>
 
@@ -228,14 +245,19 @@ function openProductModal(product = null) {
                         </div>
                         <div class="md:col-span-2"><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
                             <div class="form-group sm:col-span-2"><label for="productName">Nome do Produto</label><input type="text" id="productName" value="${product?.name || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                            
                             <div class="form-group sm:col-span-2"><label for="productCategory">Categoria</label><select id="productCategory" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Sem categoria</option>${categoryOptions}</select></div>
-                            <div class="form-group"><label for="productPrice">Preço (R$)</label><input type="number" id="productPrice" step="0.01" value="${product?.price || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                            
+                            <div class="form-group"><label for="productPrice">Preço Venda (R$)</label><input type="number" id="productPrice" step="0.01" value="${product?.price || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                            
+                            <div class="form-group"><label for="productCostPrice">Preço de Custo Médio (R$)</label><input type="number" id="productCostPrice" step="0.01" value="${product?.costPrice || ''}" class="mt-1 w-full p-2 border rounded-md" placeholder="0.00"></div>
+                            
                             <div class="form-group"><label for="productCommissionRate">Comissão (%)</label><input type="number" id="productCommissionRate" placeholder="Ex: 10" value="${product?.commissionRate || ''}" class="mt-1 w-full p-2 border rounded-md"></div>
                         </div></div>
                     </div>
                     <div class="mt-6 pt-6 border-t"><h3 class="text-lg font-semibold text-gray-700 text-left mb-4">Controlo de Stock (Definições)</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
                         <div class="form-group"><label for="productCurrentStock">Atual</label><input type="number" id="productCurrentStock" value="${product?.currentStock || 0}" readonly class="mt-1 w-full p-2 border rounded-md bg-gray-100"></div>
-                        <div class="form-group"><label for="productMinStock">Mínimo</label><input type="number" id="productMinStock" value="${product?.minStock || 0}" class="mt-1 w-full p-2 border rounded-md"></div>
+                        <div class="form-group"><label for="productMinStock">Mínimo (Alerta)</label><input type="number" id="productMinStock" value="${product?.minStock || 0}" class="mt-1 w-full p-2 border rounded-md"></div>
                         <div class="form-group"><label for="productMaxStock">Máximo</label><input type="number" id="productMaxStock" value="${product?.maxStock || 0}" class="mt-1 w-full p-2 border rounded-md"></div>
                     </div></div>
                 </div>
@@ -263,6 +285,28 @@ function openProductModal(product = null) {
                         </button>
                     </div>
                 </div>
+
+                <div id="tab-content-suppliers" class="tab-content hidden space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Pesquisar Fornecedor</label>
+                        <div class="relative">
+                            <input type="text" id="modalSupplierSearch" placeholder="Digite o nome..." class="w-full p-2 border rounded-md pl-10">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            </div>
+                        </div>
+                        
+                        <div id="supplierSearchResults" class="mt-2 border rounded-md max-h-40 overflow-y-auto bg-white hidden shadow-sm"></div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Fornecedores Vinculados:</h4>
+                        <div id="selectedSuppliersList" class="space-y-2 max-h-40 overflow-y-auto border p-2 rounded-md bg-gray-50 min-h-[50px]">
+                            <p class="text-xs text-gray-400 text-center py-2">Nenhum fornecedor selecionado.</p>
+                        </div>
+                    </div>
+                </div>
+
             </div> 
             
             <div class="mt-8 pt-6 border-t flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
@@ -310,20 +354,95 @@ function openProductModal(product = null) {
             if (sizeInBytes > maxSizeInBytes) {
                 throw new Error('A imagem é muito grande mesmo após a compressão.');
             }
-            photoPreview.src = resizedBase64;
-            photoBase64Input.value = resizedBase64;
+            preview.src = resizedBase64;
+            base64Input.value = resizedBase64;
         } catch (error) {
             console.error("Erro ao processar imagem:", error);
             showNotification('Erro de Imagem', error.message || 'Não foi possível processar a imagem.', 'error');
-            photoPreview.src = originalPhotoSrc;
-            photoBase64Input.value = originalBase64;
-            photoInput.value = '';
+            preview.src = originalPhotoSrc;
+            base64Input.value = originalBase64;
+            newPhotoInput.value = '';
         }
     };
 
     const newModal = modal.cloneNode(true);
     modal.parentNode.replaceChild(newModal, modal);
+
+    // --- LÓGICA DE UI DOS FORNECEDORES ---
+    const renderSupplierLists = () => {
+        const searchInput = newModal.querySelector('#modalSupplierSearch');
+        const searchResultsDiv = newModal.querySelector('#supplierSearchResults');
+        const selectedListDiv = newModal.querySelector('#selectedSuppliersList');
+        const term = searchInput.value.toLowerCase();
+
+        // 1. Renderizar Resultados
+        if (term.length > 0) {
+            const results = allSuppliers.filter(s => 
+                s.name.toLowerCase().includes(term) && !tempSelectedIds.has(s.id)
+            );
+
+            if (results.length > 0) {
+                searchResultsDiv.classList.remove('hidden');
+                searchResultsDiv.innerHTML = results.map(s => `
+                    <div class="p-2 hover:bg-indigo-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" data-add-supplier="${s.id}">
+                        <span class="font-medium">${s.name}</span>
+                        <span class="text-indigo-600 text-xs">+ Adicionar</span>
+                    </div>
+                `).join('');
+            } else {
+                searchResultsDiv.classList.remove('hidden');
+                searchResultsDiv.innerHTML = '<div class="p-2 text-xs text-gray-500 text-center">Nenhum resultado disponível.</div>';
+            }
+        } else {
+            searchResultsDiv.classList.add('hidden');
+        }
+
+        // 2. Renderizar Selecionados
+        if (tempSelectedIds.size > 0) {
+            selectedListDiv.innerHTML = '';
+            tempSelectedIds.forEach(id => {
+                const sup = allSuppliers.find(s => s.id === id);
+                if (sup) {
+                    selectedListDiv.innerHTML += `
+                        <div class="selected-supplier-item flex items-center justify-between bg-white border p-2 rounded shadow-sm" data-id="${sup.id}">
+                            <div class="text-sm">
+                                <p class="font-bold text-gray-800">${sup.name}</p>
+                                <p class="text-xs text-gray-500">${sup.contactName || ''} - ${sup.phone || ''}</p>
+                            </div>
+                            <button type="button" class="text-red-500 hover:text-red-700 p-1" data-remove-supplier="${sup.id}" title="Remover">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                    `;
+                }
+            });
+        } else {
+            selectedListDiv.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Nenhum fornecedor selecionado.</p>';
+        }
+    };
+
+    newModal.querySelector('#modalSupplierSearch').addEventListener('input', renderSupplierLists);
     
+    newModal.addEventListener('click', (e) => {
+        const addBtn = e.target.closest('[data-add-supplier]');
+        if (addBtn) {
+            const id = addBtn.dataset.addSupplier;
+            tempSelectedIds.add(id);
+            newModal.querySelector('#modalSupplierSearch').value = ''; 
+            renderSupplierLists();
+        }
+
+        const removeBtn = e.target.closest('[data-remove-supplier]');
+        if (removeBtn) {
+            const id = removeBtn.dataset.removeSupplier;
+            tempSelectedIds.delete(id);
+            renderSupplierLists();
+        }
+    });
+
+    renderSupplierLists();
+    
+    // --- EVENTOS DO MODAL ---
     newModal.addEventListener('click', async (e) => {
         const button = e.target.closest('button[data-action]');
         if (!button) return;
@@ -447,7 +566,7 @@ function openProductModal(product = null) {
     newModal.style.display = 'flex';
 }
 
-// --- FUNÇÕES DE RENDERIZAÇÃO DAS ABAS ---
+// --- FUNÇÕES DE RENDERIZAÇÃO DAS ABAS (MANTIDAS) ---
 
 function renderProductsView() {
     const container = document.getElementById('products-content-container');
@@ -497,7 +616,6 @@ function renderProductsView() {
     renderProductsList();
 }
 
-// CORREÇÃO: "Visualização Híbrida" (Table vs Cards)
 function renderStockReportView() {
     const container = document.getElementById('products-content-container');
     const today = new Date().toISOString().split('T')[0];
@@ -505,7 +623,6 @@ function renderStockReportView() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
 
-    // Removemos estilos fixos (bg-white, shadow) do #report-results para não atrapalhar a lista mobile
     container.innerHTML = `
         <div class="space-y-6">
              <div class="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 items-end bg-white p-4 rounded-lg shadow-sm">
@@ -550,7 +667,6 @@ async function generateStockReport() {
             return;
         }
 
-        // 1. Gera HTML da Tabela (Desktop) - hidden on mobile
         const desktopTableHTML = `
             <div class="hidden md:block bg-white border rounded-lg shadow-sm overflow-x-auto">
                 <table class="min-w-full text-sm">
@@ -580,7 +696,6 @@ async function generateStockReport() {
                 </table>
             </div>`;
 
-        // 2. Gera HTML da Lista de Cards (Mobile) - visible only on mobile
         const mobileListHTML = `
             <div class="md:hidden space-y-3 pb-20">
                 ${reportData.map(item => `
@@ -616,7 +731,6 @@ async function generateStockReport() {
                 `).join('')}
             </div>`;
 
-        // Junta os dois HTMLs
         resultsContainer.innerHTML = desktopTableHTML + mobileListHTML;
 
     } catch (error) {
@@ -624,8 +738,6 @@ async function generateStockReport() {
         resultsContainer.innerHTML = `<div class="bg-white border border-red-200 rounded-lg p-8 text-center text-red-500">${error.message}</div>`;
     }
 }
-
-// --- FUNÇÕES DE CONTROLO ---
 
 function renderStockIndicators() {
     const indicators = { ok: 0, near_min: 0, at_min: 0, empty: 0 };
@@ -757,13 +869,15 @@ async function fetchBaseData() {
     }
    
     try {
-        const [products, categories] = await Promise.all([
+        const [products, categories, suppliers] = await Promise.all([
             productsApi.getProducts(state.establishmentId),
-            categoriesApi.getCategories(state.establishmentId, 'products')
+            categoriesApi.getCategories(state.establishmentId, 'products'),
+            suppliersApi.getAll()
         ]);
         
         state.products = (products || []).filter(Boolean); 
         state.categories = (categories || []).filter(Boolean); 
+        state.suppliers = (suppliers || []).filter(Boolean); // <--- Guarda no estado
         
         switchTab(currentView);
     } catch (error) {

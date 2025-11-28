@@ -21,6 +21,7 @@ import { loadComandasPage } from './ui/comandas.js';
 import { loadReportsPage } from './ui/reports.js';
 import { loadServicesPage } from './ui/services.js';
 import { loadProductsPage } from './ui/products.js';
+import { loadSuppliersPage } from './ui/suppliers.js'; // <--- NOVO: Importação da tela de Fornecedores
 import { loadProfessionalsPage } from './ui/professionals.js';
 import { loadClientsPage } from './ui/clients.js';
 import { loadEstablishmentPage } from './ui/establishment.js';
@@ -66,6 +67,7 @@ const pageLoader = {
     'relatorios-section': loadReportsPage,
     'servicos-section': loadServicesPage,
     'produtos-section': loadProductsPage,
+    'suppliers-section': loadSuppliersPage, // <--- NOVO: Mapeamento da rota
     'profissionais-section': loadProfessionalsPage,
     'clientes-section': loadClientsPage,
     'estabelecimento-section': loadEstablishmentPage,
@@ -441,7 +443,7 @@ function initialize() {
                 `;
                 dashboardContent.style.display = 'flex'; 
                 document.getElementById('errorLogoutButton').addEventListener('click', () => {
-                     signOut(auth).then(() => window.location.href = '/login.html');
+                      signOut(auth).then(() => window.location.href = '/login.html');
                 });
             }
         } else {
