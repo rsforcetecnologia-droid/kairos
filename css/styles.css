@@ -8,8 +8,17 @@ body {
     font-family: 'Inter', sans-serif;
     /* --- MODIFICAÇÃO: Padrão de fonte do corpo --- */
     font-size: 1rem; /* Define o padrão do site para 14px */
-    /* Removido padding-top para compensar o header fixo */
-    /* padding-top: 4rem; */ 
+    
+    /* MODIFICAÇÃO IMPORTANTE: Removemos o padding fixo para Web */
+    /* O padding será aplicado via JS apenas no mobile (.is-app-native) */
+    padding-top: 0 !important; 
+    
+    --theme-main: #4f46e5;
+}
+
+/* VARIÁVEL DE ÁREA SEGURA (GLOBAL) */
+:root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
 }
 
 /* --- NOVO: ESTILOS DA BARRA SUPERIOR (HEADER) --- */
@@ -26,7 +35,7 @@ body {
     display: flex;
     align-items: center;
     padding: 0 1.5rem;
-    transition: left 0.3s ease-in-out; /* Adicionado para acompanhar a sidebar */
+    transition: left 0.3s ease-in-out, height 0.3s ease, padding-top 0.3s ease; 
 }
 /* Ajuste para quando a sidebar estiver colapsada */
 body.sidebar-collapsed .app-header {
@@ -62,7 +71,7 @@ body.sidebar-collapsed .app-header {
 #sidebar {
     /* NOVO: Largura reduzida em 10% (16.56rem) */
     width: 16.56rem; 
-    transition: width 0.3s ease-in-out;
+    transition: width 0.3s ease-in-out, padding-top 0.3s ease;
     /* Propriedades para fixar e permitir rolagem */
     position: fixed; 
     
@@ -77,7 +86,14 @@ body.sidebar-collapsed .app-header {
     /* --- MODIFICAÇÃO 2: Cantos arredondados adicionados --- */
     border-top-right-radius: 1rem;
     border-bottom-right-radius: 1rem;
+
+    /* Esconder Scrollbar */
+    scrollbar-width: none; /* Firefox */
 }
+#sidebar::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+}
+
 #sidebar.collapsed {
     width: 4.5rem;
 }
@@ -754,12 +770,7 @@ body {
 .main-content-shift {
     margin-left: 16.56rem; 
     transition: margin-left 0.3s ease-in-out;
-    
-    /* DOCUMENTAÇÃO (CSS) - CORREÇÃO PRINCIPAL:
-     - A linha 'padding-top: 4rem;' foi REMOVIDA daqui.
-     - O layout do seu HTML (header e main) flui normalmente,
-       pelo que este padding-top não era necessário e quebrava o layout.
-     */
+    padding-top: 4rem; /* Compensa a altura do header fixo na Web */
 }
 
 /* Largura da sidebar colapsada: 4.5rem */
@@ -1097,151 +1108,7 @@ body {
         background-color: transparent;
     }
 }
-/* ============================================================ */
-/* === CORREÇÃO DE ÁREA SEGURA (SAFE AREA / NOTCH MOBILE) === */
-/* ============================================================ */
 
-:root {
-    /* Define uma variável global que pega o valor da área segura do dispositivo.
-       Se não houver notch (desktop), o valor será 0px. */
-    --safe-area-top: env(safe-area-inset-top, 0px);
-}
-
-/* 1. Ajuste do Cabeçalho (Header) Principal */
-/* Aplica-se ao <header> que está dentro do flex container */
-header {
-    /* Adiciona a área segura ao padding superior existente (que era p-4 ou 1rem) */
-    padding-top: calc(1rem + var(--safe-area-top)) !important;
-    
-    /* Garante que a altura do header cresça para acomodar a barra */
-    height: auto;
-}
-
-/* 2. Ajustes Específicos para Mobile (Sidebar e Modais) */
-@media (max-width: 767px) {
-
-    /* Sidebar (Menu Lateral) */
-    /* Como a sidebar é 'fixed', ela precisa de padding extra no topo */
-    #sidebar {
-        padding-top: var(--safe-area-top);
-    }
-
-    /* Modais (Telas Flutuantes) */
-    /* Garante que o fundo escuro do modal comece abaixo da barra de status
-       ou que o conteúdo não cole no topo */
-    .modal {
-        padding-top: var(--safe-area-top);
-    }
-    
-    /* Ajuste fino para o conteúdo do modal não ficar colado no topo se for longo */
-    .modal-content {
-        /* Garante que o modal nunca ultrapasse a altura segura da tela */
-        max-height: calc(100vh - var(--safe-area-top) - 2rem);
-    }
-
-    /* Ajuste para o Bottom Sheet (Filtros Mobile) */
-    /* Se você tiver elementos fixos no topo dentro do sheet */
-    #filter-sheet {
-        padding-top: var(--safe-area-top);
-    }
-    
-    /* Ajuste para Toasts (Notificações) */
-    /* Se as notificações aparecerem no topo (futuramente), elas respeitarão a margem */
-    #toast-container {
-        /* Se decidir mudar para o topo: top: calc(1.25rem + var(--safe-area-top)); */
-    }
-}
-/* ============================================================ */
-/* === CORREÇÃO DE ÁREA SEGURA (SAFE AREA / NOTCH) === */
-/* ============================================================ */
-
-:root {
-    /* Captura a altura da barra de status do celular (Notch) */
-    --safe-area-top: env(safe-area-inset-top, 0px);
-}
-
-/* 1. Empurra todo o site para baixo para não ficar atrás do Header */
-body {
-    /* 4rem (altura do header) + tamanho da barra do celular */
-    padding-top: calc(4rem + var(--safe-area-top)) !important;
-}
-
-/* 2. Aumenta a altura do Header e empurra o conteúdo interno */
-.app-header {
-    height: calc(4rem + var(--safe-area-top)) !important;
-    padding-top: var(--safe-area-top) !important;
-    align-items: center;
-}
-
-/* 3. Empurra o conteúdo da Sidebar (Menu) para não cortar o logo */
-#sidebar {
-    padding-top: var(--safe-area-top) !important;
-}
-
-/* 4. Garante que Modais (janelas flutuantes) não colem no topo */
-.modal {
-    padding-top: var(--safe-area-top) !important;
-}
-
-/* 5. Ajuste específico para quando o menu mobile abre */
-@media (max-width: 767px) {
-    .mobile-only-header {
-        /* O header interno da comanda também respeita o topo */
-        padding-top: var(--safe-area-top) !important;
-        /* Aumenta um pouco a altura para compensar */
-        min-height: calc(3.5rem + var(--safe-area-top)); 
-    }
-}
-/* ============================================================ */
-/* === CORREÇÃO DEFINITIVA DE ESPAÇAMENTO (HEADER STICKY) === */
-/* ============================================================ */
-
-@media (max-width: 767px) {
-    /* 1. Remove o espaçamento forçado do corpo que criava o buraco */
-    body {
-        padding-top: 0 !important;
-        overscroll-behavior-y: none; /* Evita o efeito elástico branco excessivo */
-    }
-
-    /* 2. Cabeçalho "Sticky": Ele ocupa espaço real e empurra o conteúdo */
-    .app-header {
-        position: sticky !important; /* Muda de fixed para sticky */
-        top: 0;
-        left: 0;
-        right: 0;
-        width: 100%;
-        /* Mantém altura correta somando a área segura */
-        height: auto !important; 
-        min-height: calc(4rem + var(--safe-area-top));
-        padding-top: var(--safe-area-top) !important;
-        z-index: 50;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    }
-
-    /* 3. Ajuste do container principal para colar no header corretamente */
-    .main-content-shift {
-        padding-top: 0 !important; /* Remove padding extra */
-        margin-top: 0 !important;
-    }
-
-    /* 4. Ajuste Fino: Se houver um título/filtro logo no início, dá um pequeno respiro */
-    #comandas-list-column .sticky.top-0 {
-        top: 0 !important; /* Garante que o filtro cole no topo relativo */
-    }
-    
-    /* 5. Correção para o Modal de Detalhes (Tela Cheia) */
-    #comandas-layout.detail-view-active #comanda-detail-container {
-        position: fixed !important;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: 100vh;
-        padding-top: var(--safe-area-top);
-        z-index: 100; /* Fica acima do header sticky */
-        background-color: white;
-    }
-}
 .multi-select-box {
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -1264,15 +1131,97 @@ body {
     margin-right: 10px;
     width: auto; /* Evita que o input ocupe 100% */
 }
+
 /* --- CSS para Esconder a Barra de Rolagem (mas manter a funcionalidade) --- */
 
 /* Para Chrome, Safari e Opera */
-.no-scrollbar::-webkit-scrollbar {
+.no-scrollbar::-webkit-scrollbar, ::-webkit-scrollbar {
     display: none;
 }
 
 /* Para IE, Edge e Firefox */
-.no-scrollbar {
+.no-scrollbar, html, body, * {
     -ms-overflow-style: none;  /* IE e Edge */
     scrollbar-width: none;  /* Firefox */
+}
+
+/* ============================================================ */
+/* === CORREÇÃO DE ÁREA SEGURA (APENAS PARA APP NATIVO) === */
+/* ============================================================ */
+/* As regras abaixo só se aplicam quando o JS adiciona a classe .is-app-native ao body */
+
+body.is-app-native .app-header {
+    /* Aumenta a altura para incluir a barra de status */
+    height: calc(4rem + var(--safe-area-top));
+    padding-top: var(--safe-area-top);
+}
+
+body.is-app-native #sidebar {
+    /* Empurra o conteúdo do menu para baixo */
+    padding-top: var(--safe-area-top);
+}
+
+body.is-app-native .main-content-shift {
+    /* Compensa o novo tamanho do header no corpo da página */
+    padding-top: calc(4rem + var(--safe-area-top));
+}
+
+body.is-app-native .modal {
+    /* Garante que modais não fiquem embaixo da barra */
+    padding-top: var(--safe-area-top);
+}
+
+/* ============================================== */
+/* == CSS ESPECIAL PARA MOBILE (OVERLAY MENU) == */
+/* ============================================== */
+@media (max-width: 767px) { 
+    #sidebarToggle { display: none; }
+    .main-content-shift, .main-content-shift.sidebar-collapsed-shift { margin-left: 0 !important; }
+    
+    #sidebar {
+        position: fixed; top: 0; left: 0; height: 100vh; z-index: 40;
+        transform: translateX(-100%); transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        width: 16.56rem !important;
+    }
+    #sidebar.collapsed { width: 16.56rem !important; }
+    #sidebar.collapsed .sidebar-text { display: block; }
+    #sidebar.collapsed .sidebar-link { justify-content: flex-start; }
+    #sidebar.collapsed .sidebar-link svg { margin-right: 0.75rem; }
+    #sidebar.mobile-open { transform: translateX(0); }
+    #mobile-overlay.visible { display: block; z-index: 39; }
+
+    /* Correções específicas do App Mobile no modo responsivo */
+    body.is-app-native #comandas-layout.detail-view-active #comanda-detail-container {
+        padding-top: var(--safe-area-top);
+    }
+    
+    body.is-app-native .mobile-only-header {
+        padding-top: calc(1rem + var(--safe-area-top));
+        min-height: calc(3.5rem + var(--safe-area-top));
+    }
+}
+/* ============================================================ */
+/* === CORREÇÃO DE ÁREA SEGURA (APENAS PARA APP NATIVO) === */
+/* ============================================================ */
+/* As regras abaixo só se aplicam quando o JS adiciona a classe .is-app-native ao body */
+
+body.is-app-native .app-header {
+    /* Aumenta a altura para incluir a barra de status */
+    height: calc(4rem + var(--safe-area-top));
+    padding-top: var(--safe-area-top);
+}
+
+body.is-app-native #sidebar {
+    /* Empurra o conteúdo do menu para baixo */
+    padding-top: var(--safe-area-top);
+}
+
+body.is-app-native .main-content-shift {
+    /* Compensa o novo tamanho do header no corpo da página */
+    padding-top: calc(4rem + var(--safe-area-top));
+}
+
+body.is-app-native .modal {
+    /* Garante que modais não fiquem embaixo da barra */
+    padding-top: var(--safe-area-top);
 }

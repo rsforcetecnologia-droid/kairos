@@ -1,0 +1,24 @@
+{
+  "hosting": {
+    "public": "cap-dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "index.html"
+    ],
+    "rewrites": [
+      {
+        "source": "/",
+        "destination": "/landing.html"
+      },
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "kairos-service",
+          "region": "southamerica-east1"
+        }
+      }
+    ]
+  }
+}
