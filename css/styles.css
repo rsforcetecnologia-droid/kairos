@@ -1,3 +1,5 @@
+/* css/styles.css */
+
 /* --- ESTILO GLOBAL PARA AJUSTAR O TAMANHO DA INTERFACE --- */
 html {
     font-size: 14px;
@@ -17,6 +19,7 @@ body {
 }
 
 /* VARIÁVEL DE ÁREA SEGURA (GLOBAL) */
+/* Esta variável lê o tamanho da barra de status do dispositivo (Notch/Ilha Dinâmica) */
 :root {
     --safe-area-top: env(safe-area-inset-top, 0px);
 }
@@ -141,6 +144,7 @@ body.sidebar-collapsed .app-header {
     background-color: rgba(0,0,0,0.6);
     align-items: center;
     justify-content: center;
+    transition: padding-top 0.3s ease; /* Transição suave se a margem mudar */
 }
 .modal-content {
     background-color: #fefefe;
@@ -1150,12 +1154,16 @@ body {
 /* ============================================================ */
 /* As regras abaixo só se aplicam quando o JS adiciona a classe .is-app-native ao body */
 
-body.is-app-native .app-header {
-    /* Aumenta a altura para incluir a barra de status */
-    height: calc(4rem + var(--safe-area-top));
-    padding-top: var(--safe-area-top);
+/* --- HEADER FIXO --- */
+/* Modificado para encontrar o ID #main-header específico */
+body.is-app-native #main-header {
+    /* Mantém o padding lateral/inferior e soma a área segura ao superior */
+    padding-top: calc(1rem + var(--safe-area-top)) !important; 
+    /* Garante que a altura se ajuste ao novo padding */
+    height: auto;
 }
 
+/* --- SIDEBAR --- */
 body.is-app-native #sidebar {
     /* Empurra o conteúdo do menu para baixo */
     padding-top: var(--safe-area-top);
@@ -1171,57 +1179,12 @@ body.is-app-native .modal {
     padding-top: var(--safe-area-top);
 }
 
-/* ============================================== */
-/* == CSS ESPECIAL PARA MOBILE (OVERLAY MENU) == */
-/* ============================================== */
-@media (max-width: 767px) { 
-    #sidebarToggle { display: none; }
-    .main-content-shift, .main-content-shift.sidebar-collapsed-shift { margin-left: 0 !important; }
-    
-    #sidebar {
-        position: fixed; top: 0; left: 0; height: 100vh; z-index: 40;
-        transform: translateX(-100%); transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
-        width: 16.56rem !important;
-    }
-    #sidebar.collapsed { width: 16.56rem !important; }
-    #sidebar.collapsed .sidebar-text { display: block; }
-    #sidebar.collapsed .sidebar-link { justify-content: flex-start; }
-    #sidebar.collapsed .sidebar-link svg { margin-right: 0.75rem; }
-    #sidebar.mobile-open { transform: translateX(0); }
-    #mobile-overlay.visible { display: block; z-index: 39; }
-
-    /* Correções específicas do App Mobile no modo responsivo */
-    body.is-app-native #comandas-layout.detail-view-active #comanda-detail-container {
-        padding-top: var(--safe-area-top);
-    }
-    
-    body.is-app-native .mobile-only-header {
-        padding-top: calc(1rem + var(--safe-area-top));
-        min-height: calc(3.5rem + var(--safe-area-top));
-    }
-}
-/* ============================================================ */
-/* === CORREÇÃO DE ÁREA SEGURA (APENAS PARA APP NATIVO) === */
-/* ============================================================ */
-/* As regras abaixo só se aplicam quando o JS adiciona a classe .is-app-native ao body */
-
-body.is-app-native .app-header {
-    /* Aumenta a altura para incluir a barra de status */
-    height: calc(4rem + var(--safe-area-top));
+/* Correções específicas do App Mobile no modo responsivo */
+body.is-app-native #comandas-layout.detail-view-active #comanda-detail-container {
     padding-top: var(--safe-area-top);
 }
 
-body.is-app-native #sidebar {
-    /* Empurra o conteúdo do menu para baixo */
-    padding-top: var(--safe-area-top);
-}
-
-body.is-app-native .main-content-shift {
-    /* Compensa o novo tamanho do header no corpo da página */
-    padding-top: calc(4rem + var(--safe-area-top));
-}
-
-body.is-app-native .modal {
-    /* Garante que modais não fiquem embaixo da barra */
-    padding-top: var(--safe-area-top);
+body.is-app-native .mobile-only-header {
+    padding-top: calc(1rem + var(--safe-area-top));
+    min-height: calc(3.5rem + var(--safe-area-top));
 }

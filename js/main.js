@@ -21,7 +21,7 @@ import { loadComandasPage } from './ui/comandas.js';
 import { loadReportsPage } from './ui/reports.js';
 import { loadServicesPage } from './ui/services.js';
 import { loadProductsPage } from './ui/products.js';
-import { loadSuppliersPage } from './ui/suppliers.js'; // <--- NOVO: Importação da tela de Fornecedores
+import { loadSuppliersPage } from './ui/suppliers.js';
 import { loadProfessionalsPage } from './ui/professionals.js';
 import { loadClientsPage } from './ui/clients.js';
 import { loadEstablishmentPage } from './ui/establishment.js';
@@ -67,7 +67,7 @@ const pageLoader = {
     'relatorios-section': loadReportsPage,
     'servicos-section': loadServicesPage,
     'produtos-section': loadProductsPage,
-    'suppliers-section': loadSuppliersPage, // <--- NOVO: Mapeamento da rota
+    'suppliers-section': loadSuppliersPage,
     'profissionais-section': loadProfessionalsPage,
     'clientes-section': loadClientsPage,
     'estabelecimento-section': loadEstablishmentPage,
@@ -319,6 +319,15 @@ async function initializePushNotifications(userUid) {
 
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
 function initialize() {
+    
+    // --- NOVO: Detecção de Plataforma para Ajuste de Layout ---
+    // Verifica se é App Nativa (Android/iOS) e adiciona a classe ao corpo
+    if (Capacitor.isNativePlatform()) {
+        document.body.classList.add('is-app-native');
+        console.log('Modo App Nativo detectado: Layout ajustado para Safe Areas.');
+    }
+    // -----------------------------------------------------------
+    
     initializeModalClosers();
 
     notificationBell.addEventListener('click', (e) => {
