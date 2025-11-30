@@ -1,25 +1,32 @@
 // js/ui/users.js
 
 import * as usersApi from '../api/users.js';
-import * as professionalsApi from '../api/professionals.js'; // <-- Importado
+import * as professionalsApi from '../api/professionals.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 
 const contentDiv = document.getElementById('content');
+
+// --- LISTA DE MÓDULOS ATUALIZADA ---
+// Mapeia o ID da rota (data-target) para um Nome Amigável na tela de permissões
 const modules = {
     'agenda-section': 'Agenda',
     'comandas-section': 'Comandas',
-    'relatorios-section': 'Relatórios',
+    'relatorios-section': 'Relatórios Gerais',
+    'sales-report-section': 'Relatório de Vendas (Caixa)', // ADICIONADO
     'financial-section': 'Financeiro',
     'servicos-section': 'Serviços',
     'produtos-section': 'Produtos',
+    'suppliers-section': 'Fornecedores', // ADICIONADO (Pedido Principal)
     'profissionais-section': 'Profissionais',
+    'ausencias-section': 'Ausências e Bloqueios', // ADICIONADO
     'clientes-section': 'Clientes',
-    'packages-section': 'Pacotes', // ADICIONADO
-    'commissions-section': 'Comissões', // ADICIONADO
-    'estabelecimento-section': 'Configurações do Estabelecimento', // Corrigido/Ajustado rótulo
-    'users-section': 'Usuários e Acessos' // Assumido que era a intenção original
+    'packages-section': 'Pacotes', 
+    'commissions-section': 'Comissões', 
+    'estabelecimento-section': 'Configurações do Estabelecimento', 
+    'users-section': 'Usuários e Acessos' 
 };
+
 const permissions = {
     view: 'Visualizar',
     create: 'Criar',
@@ -30,7 +37,7 @@ const permissions = {
 let usersPageClickListener = null;
 let usersPageChangeListener = null;
 
-// (FUNÇÃO MODIFICADA)
+// Função para renderizar a lista de usuários
 function renderUsersList(users) {
     const listContainer = document.getElementById('usersListContainer');
     if (!listContainer) return;
@@ -51,12 +58,10 @@ function renderUsersList(users) {
         // Adiciona a busca pelo nome do profissional associado
         const professional = state.professionals.find(p => p.id === user.professionalId); 
         const professionalName = professional ? professional.name : 'N/A';
-        // (MODIFICADO) Usa o nome do usuário para o placeholder se não houver profissional
+        
         const photoInitials = professional ? professional.name.charAt(0) : user.name.charAt(0);
         const photoSrc = professional?.photo || `https://placehold.co/64x64/E2E8F0/4A5568?text=${encodeURIComponent(photoInitials)}`;
 
-        // --- (INÍCIO DA MODIFICAÇÃO DO CARD) ---
-        // O card agora é 'flex' (horizontal), imagem 'w-16 h-16', e texto 'p-3'
         return `
         <div class="user-card-clickable bg-white rounded-lg shadow-sm border overflow-hidden flex cursor-pointer ${!isActive ? 'opacity-60' : ''}" 
              data-action="edit-user" 
@@ -87,7 +92,6 @@ function renderUsersList(users) {
             </div>
         </div>
     `
-    // --- (FIM DA MODIFICAÇÃO DO CARD) ---
     }).join('');
 }
 
@@ -104,15 +108,13 @@ function filterAndRenderUsers() {
     renderUsersList(filteredUsers);
 }
 
-// FUNÇÃO ATUALIZADA: Adiciona o controle para a nova permissão "view_all_prof"
+// Renderiza o formulário de permissões com base nos módulos definidos
 function renderPermissionsForm(currentPermissions = {}) {
     return Object.entries(modules).map(([key, title]) => {
         // Verifica se o módulo é Agenda ou Comandas para adicionar a permissão extra
         const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
         const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
         
-        // ################## INÍCIO DA CORREÇÃO ##################
-        // A tag <div class="..."> foi trocada por <label class="...">
         const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
              <label class="flex flex-col items-center space-y-1 cursor-pointer">
                 <div class="relative">
@@ -123,7 +125,6 @@ function renderPermissionsForm(currentPermissions = {}) {
                 <span class="text-xs text-gray-600">${pLabel}</span>
             </label>
         `).join('');
-        // ################### FIM DA CORREÇÃO ###################
 
         const specialPermissionHtml = isAgendaOrComandas ? `
             <div class="col-span-full pt-2 mt-2 border-t border-gray-200">
@@ -154,21 +155,18 @@ async function showUserFormView(user = null) {
     const formView = document.getElementById('user-form-view');
     formView.classList.remove('hidden');
 
-    // NOVO: Busca de profissionais para o dropdown
     let professionals = state.professionals;
     if (!professionals || professionals.length === 0) {
         try {
             professionals = await professionalsApi.getProfessionals(state.establishmentId);
-            state.professionals = professionals; // Cache updated
+            state.professionals = professionals;
         } catch(err) {
              showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
         }
     }
     
-    // Helper para encontrar o profissional
     const getProfessionalById = (id) => professionals.find(p => p.id === id);
     
-    // Helper para determinar o URL da foto e iniciais
     const renderUserPhotoPreview = (profId, userName) => {
         const prof = getProfessionalById(profId);
         const photo = prof?.photo;
@@ -178,17 +176,15 @@ async function showUserFormView(user = null) {
         return { 
             photoSrc: photoSrc, 
             initials: initials,
-            photoUrl: photo || '' // O URL real da foto (pode ser Base64 ou URL)
+            photoUrl: photo || '' 
         };
     };
     
-    // Initial values
     const initialProfId = user?.professionalId;
     const initialUserName = user?.name || 'Novo Usuário'; 
     const initialPhotoData = renderUserPhotoPreview(initialProfId, initialUserName);
     const initialProf = getProfessionalById(initialProfId);
     
-    // Função auxiliar para renderizar opções de profissionais
     const renderProfessionalOptions = (selectedId) => {
         let options = '<option value="">-- Não Associado a um Profissional --</option>';
         options += professionals.map(p => 
@@ -202,7 +198,6 @@ async function showUserFormView(user = null) {
 
     const form = formView.querySelector('#userForm');
     
-    // --- NOVO HTML COM ESTILO COMPACTO E CARDS COLORIDOS ---
     form.innerHTML = `
         <div class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl space-y-4">
             
@@ -279,28 +274,21 @@ async function showUserFormView(user = null) {
         </div>
     `;
 
-    // --- (NOVA LÓGICA DE TELA CHEIA MOBILE) ---
-    // Isto aplica o estilo de tela cheia ao formulário em telemóveis
-    const isMobile = window.innerWidth < 768; // Tailwind 'md' breakpoint
-    const formContainer = form.querySelector('.bg-white'); // Pega o container principal do form
+    const isMobile = window.innerWidth < 768; 
+    const formContainer = form.querySelector('.bg-white');
 
     if (isMobile && formContainer) {
-        // Remove os estilos de "cartão" do desktop
         formContainer.classList.remove('rounded-xl', 'shadow-2xl', 'sm:p-6');
         
-        // Ajusta a <section> pai para não ter espaçamento
         const parentSection = form.closest('section');
         if (parentSection) {
             parentSection.style.padding = '0';
             parentSection.style.margin = '0';
         }
         
-        // Garante que o padding interno do form ainda exista
         formContainer.classList.add('p-4'); 
     }
-    // --- (FIM DA NOVA LÓGICA) ---
     
-    // --- NOVO LISTENER: Atualiza a foto ao mudar o profissional ---
     const professionalSelect = form.querySelector('#userProfessionalId');
     const photoPreviewEl = form.querySelector('#userPhotoPreview');
     const profPhotoNameEl = form.querySelector('#profPhotoName');
@@ -308,23 +296,16 @@ async function showUserFormView(user = null) {
     professionalSelect.addEventListener('change', (e) => {
         const newProfId = e.target.value;
         const prof = getProfessionalById(newProfId);
-        
-        // Use o nome do profissional se ele existir, caso contrário, use o nome do usuário/default
         const nameToDisplay = prof ? prof.name : 'Selecione um profissional';
-
         const photoData = renderUserPhotoPreview(newProfId, initialUserName);
-        
         photoPreviewEl.src = photoData.photoSrc;
         profPhotoNameEl.textContent = nameToDisplay;
         form.querySelector('#professionalPhotoUrl').value = photoData.photoUrl;
     });
-    // --- FIM NOVO LISTENER ---
-
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         
-        // Captura o email ATUAL para verificar a mudança
         const currentEmail = user?.email;
         const newEmail = form.querySelector('#userEmail').value;
         
@@ -336,17 +317,16 @@ async function showUserFormView(user = null) {
             permissions[module][permission] = cb.checked;
         });
         
-        const professionalId = form.querySelector('#userProfessionalId').value || null; // <-- CAPTURA professionalId
+        const professionalId = form.querySelector('#userProfessionalId').value || null;
 
         const userData = {
             name: form.querySelector('#userName').value,
             permissions,
-            professionalId // <-- INCLUI professionalId
+            professionalId
         };
 
         try {
             if (isEditing) {
-                // Se o e-mail mudou, inclua-o no payload da API para que o backend atualize o Firebase Auth
                 if (currentEmail !== newEmail) {
                     userData.email = newEmail;
                 }
@@ -417,14 +397,12 @@ async function fetchAndRenderUsers() {
     const listContainer = document.getElementById('usersListContainer');
     listContainer.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
     try {
-        // NOVO: Busca de usuários e profissionais em paralelo
         const [users, professionals] = await Promise.all([
             usersApi.getUsers(state.establishmentId),
-            // Obtém todos os profissionais para mapeamento no formulário e na lista
             professionalsApi.getProfessionals(state.establishmentId) 
         ]);
         state.users = users;
-        state.professionals = professionals; // Salva a lista de profissionais no estado
+        state.professionals = professionals; 
         filterAndRenderUsers();
     } catch (error) {
         showNotification('Erro ao carregar usuários.', 'error');
@@ -463,7 +441,6 @@ export async function loadUsersPage() {
         </div>
     `;
 
-    // Gestão dos event listeners para evitar duplicação
     if (usersPageClickListener) {
         contentDiv.removeEventListener('click', usersPageClickListener);
     }
@@ -471,11 +448,7 @@ export async function loadUsersPage() {
         contentDiv.removeEventListener('change', usersPageChangeListener);
     }
 
-    // --- (MODIFICADO) O listener principal com a correção de "Ghost Click" ---
     usersPageClickListener = async (e) => {
-        
-        // 1. CHECK DE SEGURANÇA: Se não estamos na página de usuários, ignora e remove o listener.
-        // Verificamos se o elemento container principal desta página existe no DOM.
         if (!document.getElementById('user-list-view')) {
             contentDiv.removeEventListener('click', usersPageClickListener);
             return;
@@ -497,7 +470,7 @@ export async function loadUsersPage() {
                 loadUsersPage();
                 break;
             case 'delete-user': {
-                e.stopPropagation(); // (NOVO) Impede o clique de ir para o card
+                e.stopPropagation(); 
                 const userId = actionElement.dataset.userId;
                 const confirmed = await showConfirmation('Excluir Usuário', 'Tem certeza que deseja excluir este usuário? Esta ação é irreversível.');
                 if (confirmed) {
@@ -515,7 +488,6 @@ export async function loadUsersPage() {
     };
 
     usersPageChangeListener = async (e) => {
-        // CHECK DE SEGURANÇA TAMBÉM AQUI
         if (!document.getElementById('user-list-view')) {
             contentDiv.removeEventListener('change', usersPageChangeListener);
             return;
@@ -525,7 +497,7 @@ export async function loadUsersPage() {
         if (e.target.id === 'showInactiveUsersToggle') {
             filterAndRenderUsers();
         } else if (toggle) {
-            e.stopPropagation(); // (NOVO) Impede o clique de ir para o card
+            e.stopPropagation();
             const userId = toggle.dataset.userId;
             const newStatus = toggle.checked ? 'active' : 'inactive';
             
@@ -540,7 +512,6 @@ export async function loadUsersPage() {
             } catch (error) {
                 showNotification(`Erro ao atualizar status: ${error.message}`, 'error');
                 toggle.checked = !toggle.checked;
-                // Re-renderiza para reverter visualmente
                 filterAndRenderUsers();
             }
         }

@@ -5,7 +5,7 @@ import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
-import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
+import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
 import { navigateTo } from '../main.js';
 
 const contentDiv = document.getElementById('content');
@@ -20,7 +20,8 @@ const colorThemes = {
     amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
 };
 
-// Removida a aba 'regional'
+// MENU DE DEFINIÇÕES
+// (A opção 'Excluir conta' foi removida desta lista para ficar oculta)
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
@@ -30,7 +31,6 @@ const menuItems = [
     { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
     { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
     { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
-    { id: 'delete-account', icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m-7-10V4a1 1 0 00-1-1h-2a1 1 0 00-1 1v3M4 7h16', label: 'Excluir conta' },
 ];
 
 let establishmentData = null; 
@@ -285,94 +285,6 @@ function renderChangeEmailSection(data, container) {
     });
 }
 
-function renderDeleteAccountSection(data, container) {
-    container.innerHTML = `
-        <div class="bg-red-50 p-4 md:p-6 rounded-lg shadow-md border border-red-200">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-red-700">Excluir Conta</h3>
-                <button type="submit" form="delete-account-form" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">Excluir Definitivamente</button>
-            </div>
-            <form id="delete-account-form" class="space-y-6">
-                <div class="bg-white p-4 rounded-md border border-red-100">
-                    <p class="text-red-600 font-medium mb-2">Atenção: Esta ação é irreversível.</p>
-                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
-                        <li>Todos os dados do estabelecimento serão apagados permanentemente.</li>
-                        <li>O histórico de agendamentos, clientes e finanças será perdido.</li>
-                        <li>A sua assinatura será cancelada imediatamente.</li>
-                        <li>Não será possível recuperar o acesso a esta conta.</li>
-                    </ul>
-                </div>
-                
-                <div>
-                    <label for="deletePasswordConfirmation" class="block text-sm font-medium text-gray-700">Confirme sua senha para continuar</label>
-                    <input type="password" id="deletePasswordConfirmation" class="mt-1 w-full p-2 border border-gray-300 rounded-md focus:border-red-500 focus:ring-red-500 outline-none transition-colors" required placeholder="Sua senha atual">
-                </div>
-                
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="confirmDeleteCheckbox" class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500" required>
-                    <label for="confirmDeleteCheckbox" class="text-sm text-gray-700 cursor-pointer select-none">Eu entendo as consequências e quero excluir minha conta.</label>
-                </div>
-            </form>
-        </div>
-    `;
-
-    container.querySelector('#delete-account-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const password = container.querySelector('#deletePasswordConfirmation').value;
-        const confirmCheckbox = container.querySelector('#confirmDeleteCheckbox').checked;
-
-        if (!password || !confirmCheckbox) {
-            showNotification('Erro', 'Por favor, confirme sua senha e marque a caixa de confirmação.', 'error');
-            return;
-        }
-
-        if (!confirm('Tem a certeza absoluta? Todos os dados serão perdidos para sempre.')) {
-            return;
-        }
-
-        const saveButton = container.querySelector('button[type="submit"]');
-        saveButton.disabled = true;
-        saveButton.textContent = 'A excluir...';
-
-        try {
-            const user = auth.currentUser;
-            if (!user) throw new Error("Usuário não autenticado.");
-
-            // 1. Reautenticar para garantir segurança (necessário para operações sensíveis)
-            const credential = EmailAuthProvider.credential(user.email, password);
-            await reauthenticateWithCredential(user, credential);
-
-            // 2. Excluir o usuário do Firebase Auth
-            await deleteUser(user);
-
-            showNotification('Conta Excluída', 'Sua conta foi excluída com sucesso. Redirecionando...', 'success');
-            
-            // Redirecionar para a página inicial/login
-            setTimeout(() => {
-                window.location.href = '/index.html';
-            }, 2000);
-
-        } catch (error) {
-            console.error(error);
-            let message = 'Não foi possível excluir a conta.';
-            
-            if (error.code === 'auth/wrong-password') {
-                message = 'A senha informada está incorreta.';
-            } else if (error.code === 'auth/requires-recent-login') {
-                message = 'Por segurança, faça login novamente e tente excluir a conta em seguida.';
-            } else {
-                message = error.message;
-            }
-            
-            showNotification('Erro', message, 'error');
-            saveButton.disabled = false;
-            saveButton.textContent = 'Excluir Definitivamente';
-        }
-    });
-}
-
-
 function renderBrandingSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
@@ -507,13 +419,10 @@ function renderBookingSection(data, container) {
     const linkId = data.urlId || state.establishmentId;
     
     // --- LÓGICA DE URL DE PRODUÇÃO ---
-    // Define a URL de produção oficial (Google Cloud)
-    const productionUrl = 'https://kairos-service-603994960586.southamerica-east1.run.app'; 
+    const productionUrl = 'https://www.kairosagenda.com.br'; 
     
     let baseUrl = window.location.origin;
     
-    // Se estiver rodando localmente (App Mobile via Capacitor, ou ambiente de dev), usa a URL de produção.
-    // Se estiver rodando na Web (produção), mantém a URL atual (o que permite que seu domínio personalizado funcione automaticamente no futuro).
     if (baseUrl.includes('localhost') || baseUrl.includes('capacitor://') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168')) {
         baseUrl = productionUrl;
     }
@@ -658,7 +567,6 @@ function renderWorkingHoursSection(data, container) {
              </div>
              
              <form id="working-hours-form">
-                 <!-- SELEÇÃO DE FUSO HORÁRIO INTEGRADA -->
                  <div class="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
                     <label for="establishmentTimezone" class="block text-sm font-bold text-gray-700 mb-2">Fuso Horário da Região</label>
                     <p class="text-sm text-gray-600 mb-3">Defina o fuso horário correto para que os agendamentos e notificações coincidam com a hora local dos seus clientes.</p>
@@ -915,7 +823,7 @@ function renderPlaceholderSection(title, container) {
     `;
 }
 
-// Renderizador da Paleta (RESTAURADO E EXPANDIDO)
+// Renderizador da Paleta
 function renderColorPalette(currentThemeKey = 'indigo', container) {
     const paletteContainer = container.querySelector('#color-palette-container');
     const themeInput = container.querySelector('#establishmentThemeColor');
@@ -1007,10 +915,8 @@ async function showSettingsDetailView(sectionId) {
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
         case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; 
-        case 'delete-account': renderDeleteAccountSection(establishmentData, detailContainer); break;
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
-        // AQUI: A função renderWorkingHoursSection agora contém o campo de fuso
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;

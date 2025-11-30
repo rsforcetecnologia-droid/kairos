@@ -2,30 +2,40 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
+// Lista de módulos padrão que podem ser habilitados/desabilitados
+// Deve estar sincronizado com o 'additionalModulesDefinition' do admin.html
 const defaultModules = {
     agenda: true,
     comandas: true,
     relatorios: true,
-    'sales-report': true,
+    'sales-report': true, // Relatório de Vendas
     financial: true,
     servicos: true,
     produtos: true,
+    suppliers: true,      // NOVO: Fornecedores
     profissionais: true,
+    ausencias: true,      // NOVO: Ausências/Bloqueios
     clientes: true,
+    packages: true,       // NOVO: Pacotes
+    commissions: true,    // NOVO: Comissões
     estabelecimento: true,
     users: true,
     mobileApp: true
 };
 
 // Define o objeto de permissões totais para o "Usuário Master" (Dono)
+// Garante que o dono tenha acesso total a TUDO ao criar a conta
 const masterPermissions = {
     'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
     'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
     'relatorios-section': { view: true, create: true, edit: true },
+    'sales-report-section': { view: true, create: true, edit: true }, // NOVO
     'financial-section': { view: true, create: true, edit: true },
     'servicos-section': { view: true, create: true, edit: true },
     'produtos-section': { view: true, create: true, edit: true },
+    'suppliers-section': { view: true, create: true, edit: true },    // NOVO
     'profissionais-section': { view: true, create: true, edit: true },
+    'ausencias-section': { view: true, create: true, edit: true },    // NOVO
     'clientes-section': { view: true, create: true, edit: true },
     'packages-section': { view: true, create: true, edit: true },
     'commissions-section': { view: true, create: true, edit: true },
@@ -238,7 +248,6 @@ router.post('/establishments', async (req, res) => {
 });
 
 // Rota GET para listar estabelecimentos com PAGINAÇÃO, FILTROS e ORDENAÇÃO
-// ATUALIZADA: Retorna { data, pagination } para corrigir o erro no frontend
 router.get('/establishments', async (req, res) => {
     try {
         const { db } = req;
@@ -328,8 +337,7 @@ router.get('/establishments', async (req, res) => {
         const endIndex = page * limit;
         const paginatedData = establishments.slice(startIndex, endIndex);
 
-        // 6. Retorno formatado (OBJETO com DATA e PAGINATION)
-        // Isso corrige o TypeError no frontend
+        // 6. Retorno formatado
         res.status(200).json({
             data: paginatedData,
             pagination: {
@@ -357,9 +365,20 @@ router.delete('/establishments/:id', async (req, res) => {
         }
 
         const establishment = doc.data();
+        
+        // --- CORREÇÃO: Tratamento robusto se o usuário não existir no Auth ---
         if (establishment.ownerUid) {
-            await auth.updateUser(establishment.ownerUid, { disabled: true });
+            try {
+                await auth.updateUser(establishment.ownerUid, { disabled: true });
+            } catch (authError) {
+                if (authError.code === 'auth/user-not-found') {
+                    console.warn(`Aviso: Usuário dono (UID: ${establishment.ownerUid}) não encontrado no Auth. Prosseguindo com a exclusão lógica.`);
+                } else {
+                    throw authError; // Lança se for outro erro (ex: rede)
+                }
+            }
         }
+        // --------------------------------------------------------------------
 
         await establishmentRef.update({
             status: 'deleted',
@@ -383,8 +402,16 @@ router.post('/establishments/:id/restore', async (req, res) => {
         }
 
         const establishment = doc.data();
+        
+        // Tenta reativar o usuário (se existir)
         if (establishment.ownerUid) {
-            await auth.updateUser(establishment.ownerUid, { disabled: false });
+            try {
+                await auth.updateUser(establishment.ownerUid, { disabled: false });
+            } catch (authError) {
+                 if (authError.code === 'auth/user-not-found') {
+                    console.warn(`Aviso: Usuário dono (UID: ${establishment.ownerUid}) não encontrado ao restaurar.`);
+                }
+            }
         }
 
         await establishmentRef.update({
@@ -473,12 +500,18 @@ router.patch('/establishments/:id/status', async (req, res) => {
             allUsersToUpdate.push(employeeDoc.id);
         });
 
-        const userUpdatePromises = allUsersToUpdate.map(uid => auth.updateUser(uid, { disabled: shouldBeDisabled }));
+        const userUpdatePromises = allUsersToUpdate.map(async (uid) => {
+             try {
+                 await auth.updateUser(uid, { disabled: shouldBeDisabled });
+             } catch (e) {
+                 // Ignora se usuário não existir
+             }
+        });
         await Promise.all(userUpdatePromises);
         
         await establishmentRef.update({ status: status });
         
-        res.status(200).json({ message: `Estabelecimento ${id} e todos os seus ${allUsersToUpdate.length} usuários foram ${status === 'active' ? 'ativados' : 'inativados'}.` });
+        res.status(200).json({ message: `Estabelecimento ${id} e seus usuários foram ${status === 'active' ? 'ativados' : 'inativados'}.` });
     } catch (error) {
         console.error("Erro ao atualizar status:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });

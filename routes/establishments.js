@@ -119,7 +119,6 @@ router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
     }
 });
 
-// ... (Mantenha as rotas PATCH de booking-status e owner-email iguais)
 /**
  * Rota PATCH para atualizar SOMENTE o status do agendamento público.
  */
@@ -183,6 +182,60 @@ router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, 
 
     } catch (error) {
         console.error("Erro ao atualizar e-mail do proprietário:", error);
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+    }
+});
+
+/**
+ * Rota DELETE para o DONO cancelar sua própria conta (CHURN).
+ * Inativa o estabelecimento e expira a assinatura imediatamente, sem apagar dados.
+ */
+router.delete('/:establishmentId', verifyToken, isOwner, async (req, res) => {
+    const { establishmentId } = req.params;
+    const { db, auth } = req;
+
+    try {
+        const establishmentRef = db.collection('establishments').doc(establishmentId);
+        const doc = await establishmentRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        }
+
+        // Segurança: Garante que o ID da rota bate com o token do usuário logado
+        if (doc.id !== req.user.establishmentId) {
+             return res.status(403).json({ message: 'Acesso negado.' });
+        }
+
+        const now = new Date();
+
+        // --- LÓGICA DE CHURN / INATIVAÇÃO ---
+        // Não apagamos nada. Apenas alteramos o estado.
+        await establishmentRef.update({
+            status: 'inactive', // Define como inativo para o painel Admin contar como Churn
+            
+            // Registra o fim da assinatura como agora
+            'subscription.expiryDate': admin.firestore.Timestamp.fromDate(now), 
+            'subscription.status': 'canceled',
+            
+            // Metadados de cancelamento para auditoria
+            canceledAt: admin.firestore.Timestamp.fromDate(now),
+            cancellationReason: 'Solicitado pelo próprio usuário (Botão Excluir)'
+        });
+
+        // Desabilitar o acesso do usuário Dono no Auth para bloquear login imediato
+        if (doc.data().ownerUid) {
+            try {
+                await auth.updateUser(doc.data().ownerUid, { disabled: true });
+            } catch (e) {
+                console.warn("Não foi possível desabilitar o usuário Auth (pode já estar deletado):", e.message);
+            }
+        }
+
+        res.status(200).json({ message: 'Conta cancelada e inativada com sucesso.' });
+
+    } catch (error) {
+        console.error("Erro ao processar cancelamento:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
