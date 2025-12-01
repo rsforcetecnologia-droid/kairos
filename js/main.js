@@ -12,7 +12,7 @@ import { getProfessionals } from './api/professionals.js';
 
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Capacitor } from '@capacitor/core'; // Importante para verificar a plataforma
+import { Capacitor } from '@capacitor/core'; 
 
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
 
@@ -49,12 +49,25 @@ const logoutButton = document.getElementById('logoutButton');
 const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
 const myProfileLink = document.getElementById('myProfileLink'); 
 
+// --- PALETA DE CORES EXPANDIDA (Deve coincidir com establishment.js) ---
 const colorThemes = {
-    indigo: { main: '#4f46e5', light: '#e0e7ff', text: 'white', hover: '#4338ca' },
-    rose: { main: '#e11d48', light: '#ffe4e6', text: 'white', hover: '#be123c' },
-    green: { main: '#16a34a', light: '#d1fae5', text: 'white', hover: '#15803d' },
-    sky: { main: '#0284c7', light: '#e0f2fe', text: 'white', hover: '#0369a1' },
-    amber: { main: '#d97706', light: '#fef3c7', text: '#1f2937', hover: '#b45309' },
+    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' }, // Padrão
+    blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
+    sky:    { main: '#0284c7', hover: '#0369a1', light: '#e0f2fe', text: '#ffffff' },
+    teal:   { main: '#0d9488', hover: '#0f766e', light: '#ccfbf1', text: '#ffffff' },
+    emerald:{ main: '#059669', hover: '#047857', light: '#d1fae5', text: '#ffffff' }, // Verde Escuro
+    green:  { main: '#16a34a', hover: '#15803d', light: '#dcfce7', text: '#ffffff' },
+    lime:   { main: '#65a30d', hover: '#4d7c0f', light: '#ecfccb', text: '#ffffff' },
+    amber:  { main: '#d97706', hover: '#b45309', light: '#fef3c7', text: '#1f2937' },
+    orange: { main: '#ea580c', hover: '#c2410c', light: '#ffedd5', text: '#ffffff' },
+    red:    { main: '#dc2626', hover: '#b91c1c', light: '#fee2e2', text: '#ffffff' },
+    rose:   { main: '#e11d48', hover: '#be123c', light: '#ffe4e6', text: '#ffffff' },
+    pink:   { main: '#db2777', hover: '#be185d', light: '#fce7f3', text: '#ffffff' },
+    fuchsia:{ main: '#c026d3', hover: '#a21caf', light: '#fae8ff', text: '#ffffff' },
+    purple: { main: '#7c3aed', hover: '#6d28d9', light: '#ede9fe', text: '#ffffff' },
+    violet: { main: '#8b5cf6', hover: '#7c3aed', light: '#ddd6fe', text: '#ffffff' },
+    gray:   { main: '#4b5563', hover: '#374151', light: '#f3f4f6', text: '#ffffff' },
+    black:  { main: '#111827', hover: '#000000', light: '#e5e7eb', text: '#ffffff' },
 };
 
 let unsubscribeNotificationsListener = null;
@@ -83,22 +96,64 @@ const pageLoader = {
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
 function applyTheme(themeKey) {
+    // Se o tema não existir, usa o índigo como fallback
     const theme = colorThemes[themeKey] || colorThemes.indigo;
-    const styleSheet = document.getElementById('dynamic-theme-styles');
+    
+    // Converte Hex para RGB para usar com opacidade no CSS
     const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
+        return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
     };
+    
     const mainRgb = hexToRgb(theme.main);
-    const activeLinkTextColor = (themeKey === 'amber') ? '#1f2937' : 'white';
+    
+    // Atualiza a variável CSS global para JS
+    document.body.style.setProperty('--theme-main', theme.main);
+
+    const styleSheet = document.getElementById('dynamic-theme-styles');
+    
+    // INJEÇÃO DE CSS DINÂMICO
+    // Isso sobrescreve as classes padrões do Tailwind (indigo) para a cor escolhida
     styleSheet.innerHTML = `
+        :root {
+            --theme-color-main: ${theme.main};
+            --theme-color-hover: ${theme.hover};
+            --theme-color-light: ${theme.light};
+            --theme-rgb: ${mainRgb};
+        }
+
+        /* 1. Sidebar Links Ativos */
         .sidebar-link.active { 
-            background-color: ${theme.main}; 
-            color: ${activeLinkTextColor}; 
+            background-color: var(--theme-color-main) !important; 
+            color: ${theme.text} !important; 
         }
         .sidebar-link:not(.active):hover { 
-            background-color: rgba(${mainRgb}, 0.2);
+            background-color: rgba(var(--theme-rgb), 0.1) !important;
+            color: var(--theme-color-main) !important;
         }
+
+        /* 2. Sobrescrevendo Botões e Textos 'Indigo' Padrão do Tailwind */
+        .bg-indigo-600 { background-color: var(--theme-color-main) !important; }
+        .hover\\:bg-indigo-700:hover { background-color: var(--theme-color-hover) !important; }
+        .hover\\:bg-indigo-50:hover { background-color: rgba(var(--theme-rgb), 0.1) !important; }
+        
+        .text-indigo-600 { color: var(--theme-color-main) !important; }
+        .hover\\:text-indigo-800:hover { color: var(--theme-color-hover) !important; }
+        .hover\\:text-indigo-600:hover { color: var(--theme-color-main) !important; }
+
+        .border-indigo-600 { border-color: var(--theme-color-main) !important; }
+        .focus\\:ring-indigo-500:focus { --tw-ring-color: rgba(var(--theme-rgb), 0.5) !important; }
+        
+        /* 3. Elementos Específicos do Sistema */
+        .loading-bar-fill { background-color: var(--theme-color-main) !important; }
+        .time-slot-card.selected { background-color: var(--theme-color-main) !important; border-color: var(--theme-color-main) !important; }
+        
+        /* Checkboxes e Toggles */
+        input:checked + .toggle-bg { background-color: var(--theme-color-main) !important; }
+        
+        /* Badges e Tags */
+        .bg-indigo-100 { background-color: var(--theme-color-light) !important; }
+        .text-indigo-800 { color: var(--theme-color-hover) !important; }
     `;
 }
 
@@ -238,30 +293,23 @@ async function loadHeaderKPIs(userPermissions) {
 }
 
 // ####################################################################
-// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS (ATUALIZADA) ###
+// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS ###
 // ####################################################################
 
-/**
- * Inicializa, cria canais (Android) e regista o token FCM.
- * @param {string} userUid - ID do utilizador logado.
- */
 async function initializePushNotifications(userUid) {
     try {
-        // --- 1. CRIAÇÃO DO CANAL DE NOTIFICAÇÃO (CRUCIAL PARA ANDROID) ---
-        // Sem isto, as notificações em background podem não aparecer ou não tocar som.
         if (Capacitor.getPlatform() === 'android') {
             await PushNotifications.createChannel({
-                id: 'default', // O Firebase costuma usar 'default' ou 'fcm_fallback_notification_channel' se não especificado
+                id: 'default', 
                 name: 'Notificações Gerais',
                 description: 'Alertas de agendamentos e avisos',
-                importance: 5, // 5 = HIGH (Som + Pop-up na tela)
-                visibility: 1, // 1 = Public (aparece na tela de bloqueio)
+                importance: 5, 
+                visibility: 1, 
                 vibration: true
             });
             console.log('Canal de notificação Android criado com sucesso.');
         }
 
-        // --- 2. PERMISSÕES E REGISTO ---
         let permStatus = await PushNotifications.checkPermissions();
 
         if (permStatus.receive === 'prompt') {
@@ -275,8 +323,6 @@ async function initializePushNotifications(userUid) {
 
         await PushNotifications.register();
 
-        // --- 3. LISTENERS ---
-        
         PushNotifications.addListener('registration', async (token) => {
             console.log('Push Token gerado:', token.value);
             try {
@@ -294,17 +340,13 @@ async function initializePushNotifications(userUid) {
              console.error('Erro no registo de push notifications:', error);
         });
 
-        // Notificação recebida com App Aberto (Foreground)
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
             console.log('Notificação Push recebida:', notification);
-            // Mostra o toast interno
             showNotification(notification.title, notification.body, 'info', true);
         });
 
-        // Clique na notificação (Background/Closed -> App Open)
         PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
             console.log('Ação na notificação push:', notification);
-            // Navega para a agenda
             navigateTo('agenda-section');
         });
 
@@ -312,21 +354,14 @@ async function initializePushNotifications(userUid) {
         console.log('Push Notifications não suportado/inicializado:', e);
     }
 }
-// ####################################################################
-// ### FIM DA FUNÇÃO DE PUSH NOTIFICATIONS ###
-// ####################################################################
-
 
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
 function initialize() {
     
-    // --- NOVO: Detecção de Plataforma para Ajuste de Layout ---
-    // Verifica se é App Nativa (Android/iOS) e adiciona a classe ao corpo
     if (Capacitor.isNativePlatform()) {
         document.body.classList.add('is-app-native');
         console.log('Modo App Nativo detectado: Layout ajustado para Safe Areas.');
     }
-    // -----------------------------------------------------------
     
     initializeModalClosers();
 
@@ -384,7 +419,8 @@ function initialize() {
                     const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
                     state.enabledModules = establishmentDetails.modules;
                     
-                    applyTheme(establishmentDetails.themeColor);
+                    // APLICA O TEMA DEFINIDO NO BANCO DE DADOS
+                    applyTheme(establishmentDetails.themeColor || 'indigo');
 
                     let userPermissions = null;
                     let userName = user.displayName; 
@@ -407,7 +443,6 @@ function initialize() {
                     
                     state.userProfessionalId = userProfessionalId; 
                     
-                    // Inicializa notificações
                     initializePushNotifications(user.uid);
                     
                     const finalUserName = userName || user.email;
@@ -433,15 +468,24 @@ function initialize() {
 
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
-                    loadingScreen.style.display = 'none';
+                    
+                    // Animação de saída do loading
+                    loadingScreen.classList.add('fade-out');
                     dashboardContent.style.display = 'flex';
+                    setTimeout(() => {
+                        loadingScreen.style.display = 'none';
+                    }, 500);
+
                     navigateTo('agenda-section');
                 } else {
                     throw new Error("Utilizador não tem permissão de 'owner' ou 'employee' ou 'establishmentId'.");
                 }
             } catch (error) {
                 console.error("Erro crítico na inicialização do painel:", error);
-                loadingScreen.style.display = 'none';
+                
+                loadingScreen.classList.add('fade-out');
+                setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
+
                 dashboardContent.innerHTML = `
                     <div class="w-full h-full flex flex-col items-center justify-center bg-gray-100 p-4">
                         <h2 class="text-2xl font-bold text-red-600 mb-4">Erro de Acesso</h2>

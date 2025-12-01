@@ -13,13 +13,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style id="dynamic-theme-styles"></style>
-  <script type="module" crossorigin src="/assets/main-CGezOR_V.js"></script>
+  <script type="module" crossorigin src="/assets/main-DrXxC-39.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="stylesheet" crossorigin href="/assets/styles-DPpQQ8Q1.css">
+  <link rel="stylesheet" crossorigin href="/assets/styles-C2rNCo-U.css">
 </head>
 <body class="bg-gray-50">
 
-    <div id="loadingScreen" class="flex items-center justify-center h-screen"><div class="loader"></div></div>
+    <div id="loadingScreen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-white transition-opacity duration-500">
+        <div class="relative flex flex-col items-center">
+            <img src="/assets/logo_kairos-qvW0sW2r.png" 
+                 alt="Kairos System" 
+                 class="w-32 md:w-40 h-auto mb-6 animate-logo-breathing">
+            
+            <div class="w-32 h-1 bg-gray-100 rounded-full overflow-hidden">
+                <div class="loading-bar-fill h-full bg-indigo-600 rounded-full"></div>
+            </div>
+            
+            <p class="mt-4 text-gray-400 text-sm font-medium animate-pulse">Carregando...</p>
+        </div>
+    </div>
 
     <div id="dashboardContent" class="hidden flex h-screen bg-gray-50">
         

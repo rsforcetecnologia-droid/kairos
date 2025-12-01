@@ -11,17 +11,28 @@ import { navigateTo } from '../main.js';
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
 
-// Temas do Painel (Sistema)
+// --- PALETA DE CORES EXPANDIDA (Sincronizada com main.js) ---
 const colorThemes = {
-    indigo: { name: 'Padrão (Índigo)', main: '#4f46e5', light: '#e0e7ff', text: '#ffffff' },
-    rose: { name: 'Rosa', main: '#e11d48', light: '#ffe4e6', text: '#ffffff' },
-    green: { name: 'Verde', main: '#16a34a', light: '#d1fae5', text: '#ffffff' },
-    sky: { name: 'Azul Céu', main: '#0284c7', light: '#e0f2fe', text: '#ffffff' },
-    amber: { name: 'Âmbar', main: '#d97706', light: '#fef3c7', text: '#1f2937' },
+    indigo: { name: 'Padrão (Índigo)', main: '#4f46e5' },
+    blue:   { name: 'Azul', main: '#2563eb' },
+    sky:    { name: 'Céu', main: '#0284c7' },
+    teal:   { name: 'Verde Água', main: '#0d9488' },
+    emerald:{ name: 'Esmeralda', main: '#059669' },
+    green:  { name: 'Verde', main: '#16a34a' },
+    lime:   { name: 'Lima', main: '#65a30d' },
+    amber:  { name: 'Âmbar', main: '#d97706' },
+    orange: { name: 'Laranja', main: '#ea580c' },
+    red:    { name: 'Vermelho', main: '#dc2626' },
+    rose:   { name: 'Rosa', main: '#e11d48' },
+    pink:   { name: 'Pink', main: '#db2777' },
+    fuchsia:{ name: 'Fúcsia', main: '#c026d3' },
+    purple: { name: 'Roxo', main: '#7c3aed' },
+    violet: { name: 'Violeta', main: '#8b5cf6' },
+    gray:   { name: 'Cinza', main: '#4b5563' },
+    black:  { name: 'Preto', main: '#111827' },
 };
 
 // MENU DE DEFINIÇÕES
-// (A opção 'Excluir conta' foi removida desta lista para ficar oculta)
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
@@ -36,6 +47,36 @@ const menuItems = [
 let establishmentData = null; 
 
 // --- 1. FUNÇÕES AUXILIARES ---
+
+function compressImage(file, maxWidth, quality) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const mimeType = file.type === 'image/png' && maxWidth < 500 ? 'image/png' : 'image/jpeg'; 
+                resolve(canvas.toDataURL(mimeType, quality));
+            };
+            img.onerror = error => reject(error);
+        };
+        reader.onerror = error => reject(error);
+    });
+}
 
 function buildHierarchyOptions(items, currentId = null) {
     let optionsHTML = '<option value="">-- Selecione (Opcional) --</option>';
@@ -93,12 +134,17 @@ async function handleSave(formData, event) {
         
         establishmentData = updatedData;
 
-        showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
+        showNotification('Sucesso', 'Definições salvas com sucesso! A página será recarregada para aplicar o novo tema.', 'success');
         
-        const panelEstablishmentName = document.getElementById('panelEstablishmentName');
-        if (firestoreData.name && panelEstablishmentName) {
-            panelEstablishmentName.textContent = firestoreData.name;
-            state.establishmentName = firestoreData.name;
+        // Se houver mudança de tema, recarregamos para garantir a aplicação limpa
+        if (firestoreData.themeColor) {
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            const panelEstablishmentName = document.getElementById('panelEstablishmentName');
+            if (firestoreData.name && panelEstablishmentName) {
+                panelEstablishmentName.textContent = firestoreData.name;
+                state.establishmentName = firestoreData.name;
+            }
         }
         
     } catch (error) {
@@ -305,7 +351,7 @@ function renderBrandingSection(data, container) {
                     <div class="flex-grow">
                         <input type="file" id="establishmentLogoInput" class="hidden" accept="image/*">
                         <button type="button" id="establishmentLogoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Logotipo</button>
-                        <p class="text-xs text-gray-500 mt-2">Recomendado: PNG com fundo transparente.</p>
+                        <p class="text-xs text-gray-500 mt-2">Recomendado: PNG ou JPG.</p>
                     </div>
                 </div>
 
@@ -323,7 +369,7 @@ function renderBrandingSection(data, container) {
                                 <input type="file" id="establishmentBgInput" class="hidden" accept="image/*">
                                 <button type="button" id="establishmentBgButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Carregar Imagem</button>
                                 <button type="button" id="establishmentBgRemoveBtn" class="ml-2 text-red-600 text-sm hover:underline">Remover</button>
-                                <p class="text-xs text-gray-500 mt-2">Aparecerá no fundo do agendamento online.</p>
+                                <p class="text-xs text-gray-500 mt-2">Aparecerá no fundo do agendamento online. Aceita imagens de qualquer tamanho (serão otimizadas automaticamente).</p>
                             </div>
                         </div>
                     </div>
@@ -365,32 +411,47 @@ function renderBrandingSection(data, container) {
 
     renderColorPalette(data.themeColor || 'indigo', container);
 
-    // Listeners de Imagens
+    // Listeners de Imagens com Compressão Automática
     container.querySelector('#establishmentLogoButton').onclick = () => container.querySelector('#establishmentLogoInput').click();
-    container.querySelector('#establishmentLogoInput').onchange = (e) => {
+    container.querySelector('#establishmentLogoInput').onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                container.querySelector('#establishmentLogoPreview').src = ev.target.result;
-                container.querySelector('#establishmentLogoBase64').value = ev.target.result;
-            };
-            reader.readAsDataURL(file);
+            try {
+                // Redimensiona o Logo (max 300px é suficiente para logos)
+                const resizedBase64 = await compressImage(file, 300, 0.9);
+                container.querySelector('#establishmentLogoPreview').src = resizedBase64;
+                container.querySelector('#establishmentLogoBase64').value = resizedBase64;
+            } catch (error) {
+                console.error("Erro ao processar logo:", error);
+                showNotification('Erro', 'Formato de imagem inválido ou corrompido.', 'error');
+            }
         }
     };
 
     container.querySelector('#establishmentBgButton').onclick = () => container.querySelector('#establishmentBgInput').click();
-    container.querySelector('#establishmentBgInput').onchange = (e) => {
+    container.querySelector('#establishmentBgInput').onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                container.querySelector('#establishmentBgPreview').src = ev.target.result;
+            const btn = container.querySelector('#establishmentBgButton');
+            const originalText = btn.textContent;
+            try {
+                btn.textContent = 'A processar...';
+                btn.disabled = true;
+
+                // Redimensiona a Imagem de Fundo (max 1280px e 70% de qualidade para ficar leve)
+                const resizedBase64 = await compressImage(file, 1280, 0.7);
+                
+                container.querySelector('#establishmentBgPreview').src = resizedBase64;
                 container.querySelector('#establishmentBgPreview').classList.remove('hidden');
                 container.querySelector('#establishmentBgPlaceholder').classList.add('hidden');
-                container.querySelector('#establishmentBackgroundImageBase64').value = ev.target.result;
-            };
-            reader.readAsDataURL(file);
+                container.querySelector('#establishmentBackgroundImageBase64').value = resizedBase64;
+            } catch (error) {
+                console.error("Erro ao processar fundo:", error);
+                showNotification('Erro', 'Não foi possível processar esta imagem. Tente outra.', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
         }
     };
     
@@ -833,12 +894,12 @@ function renderColorPalette(currentThemeKey = 'indigo', container) {
     Object.entries(colorThemes).forEach(([key, theme]) => {
         const isSelected = key === currentThemeKey;
         const swatch = document.createElement('div');
-        swatch.className = `w-24 text-center cursor-pointer`;
+        swatch.className = `w-24 text-center cursor-pointer mb-4`;
         swatch.innerHTML = `
-            <div class="w-16 h-16 mx-auto rounded-full border-4 ${isSelected ? 'border-blue-500' : 'border-transparent'} p-1">
+            <div class="w-16 h-16 mx-auto rounded-full border-4 ${isSelected ? 'border-gray-800 scale-110 shadow-lg' : 'border-transparent'} p-1 transition-all">
                 <div class="w-full h-full rounded-full" style="background-color: ${theme.main};"></div>
             </div>
-            <p class="text-xs mt-2 font-medium ${isSelected ? 'text-blue-600' : 'text-gray-600'}">${theme.name}</p>
+            <p class="text-xs mt-2 font-medium ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-500'}">${theme.name}</p>
         `;
         swatch.addEventListener('click', () => {
             themeInput.value = key;
