@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado + Mobile Friendly Force View)
+// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -452,14 +452,36 @@ function navigateModalStep(step) {
     openAppointmentModal(null, true); 
 }
 
+// (MODIFICADO) Função para gerir o clique nos cartões de serviço com lógica de Toggle
 function handleServiceCardClick(serviceId, element) {
+    // 1. Verificar se o modo de múltipla seleção está ativo
+    const multiToggle = document.getElementById('multiServiceToggle');
+    const isMultiSelect = multiToggle && multiToggle.checked;
+
     const isSelected = element.classList.contains('selected');
     const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
 
     if (isSelected) {
+        // Se já estava selecionado, removemos (padrão igual para ambos os modos)
         element.classList.remove('selected', 'border-blue-500');
         if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
     } else {
+        // Se NÃO estava selecionado (vamos adicionar)
+        
+        if (!isMultiSelect) {
+            // MODO ÚNICO: Removemos todas as seleções anteriores primeiro
+            newAppointmentState.data.selectedServiceIds = []; // Limpa o array de IDs
+            
+            // Remove a classe visual de todos os outros cartões
+            const container = document.getElementById('apptServicesContainer');
+            if (container) {
+                container.querySelectorAll('.service-card.selected').forEach(card => {
+                    card.classList.remove('selected', 'border-blue-500');
+                });
+            }
+        }
+
+        // Adiciona a nova seleção (comum para ambos os modos)
         element.classList.add('selected', 'border-blue-500');
         newAppointmentState.data.selectedServiceIds.push(serviceId);
     }
@@ -876,14 +898,28 @@ function renderStep1_Client(appointment, isNavigating) {
     return { title: title, content: formContent };
 }
 
+// (MODIFICADO) Renderização da Etapa 2 com Toggle de Seleção Múltipla
 function renderStep2_Service() {
     const title = 'Selecionar Serviço';
     
+    // Verificamos se já temos mais de um serviço selecionado para manter o toggle ativado
+    const isMultiSelectedInitial = newAppointmentState.data.selectedServiceIds.length > 1;
+
     const formContent = `
         <div class="p-5 space-y-6">
             <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="flex-grow p-3 pl-10 border rounded-lg">
+             
+             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
+                 <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="w-full sm:flex-grow p-3 pl-10 border rounded-lg">
+                 
+                 <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
+                     <div class="relative">
+                         <input type="checkbox" id="multiServiceToggle" class="sr-only" ${isMultiSelectedInitial ? 'checked' : ''}>
+                         <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full transition-colors"></div>
+                         <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform" style="transition: all 0.3s;"></div>
+                     </div>
+                     <span class="text-sm font-medium text-gray-700">Selecionar Vários</span>
+                 </label>
             </div>
             
             <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
@@ -905,6 +941,11 @@ function renderStep2_Service() {
             </div>
         </div>
         
+        <style>
+            #multiServiceToggle:checked + .toggle-bg { background-color: #4f46e5; }
+            #multiServiceToggle:checked + .toggle-bg + .dot { transform: translateX(100%); }
+        </style>
+
         <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
             <button type="button" data-action="prev-step" data-current-step="2" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
             <button type="button" data-action="next-step" data-current-step="2" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
@@ -1410,9 +1451,22 @@ export async function loadAgendaPage(params = {}) {
                             selectedAppointmentId: apptData.id,
                             initialFilter: initialFilter
                         };
+                        
                         if (initialFilter === 'finalizadas') {
-                            params.filterDate = apptData.startTime; 
+                            // --- CORREÇÃO: Usar Data do Pagamento ---
+                            let dateToUse = apptData.startTime;
+                            
+                            if (apptData.transaction && apptData.transaction.paidAt) {
+                                const paidAt = apptData.transaction.paidAt;
+                                if (typeof paidAt === 'object' && paidAt._seconds) {
+                                    dateToUse = new Date(paidAt._seconds * 1000);
+                                } else {
+                                    dateToUse = paidAt;
+                                }
+                            }
+                            params.filterDate = dateToUse;
                         }
+                        
                         navigateTo('comandas-section', params);
                     }
                     break;

@@ -3,39 +3,30 @@
 const express = require('express');
 const router = require('express').Router();
 const admin = require('firebase-admin');
-// --- INÍCIO DA CORREÇÃO ---
 const { verifyToken, hasAccess } = require('../middlewares/auth');
 
-// Adiciona middlewares de segurança que estavam faltando
+// Rota para buscar comandas (Abertas e Finalizadas)
 router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
-// --- FIM DA CORREÇÃO ---
-
     const { establishmentId } = req.params;
-    const { filterDate } = req.query;
+    const { date, filterDate } = req.query;
     const { db } = req;
 
     try {
         const comandas = [];
 
-        // --- INÍCIO DA LÓGICA DE PERMISSÃO ---
+        // --- LÓGICA DE PERMISSÃO ---
         const { role, professionalId: userProfessionalId, permissions } = req.user;
-        // Verifica se o usuário tem a permissão para ver comandas de todos
-        // Se permissions for null (Dono), canViewAll é true.
         const canViewAll = permissions === null || permissions['comandas-section']?.view_all_prof === true;
-        // --- FIM DA LÓGICA DE PERMISSÃO ---
-
 
         // --- 1. BUSCAR COMANDAS ABERTAS (EM ATENDIMENTO) ---
         let openAppointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('status', '==', 'confirmed');
 
-        // --- APLICA FILTRO DE PERMISSÃO ---
         if (role === 'employee' && !canViewAll) {
-            if (!userProfessionalId) return res.status(200).json([]); // Funcionário sem ID não vê nada
+            if (!userProfessionalId) return res.status(200).json([]);
             openAppointmentsQuery = openAppointmentsQuery.where('professionalId', '==', userProfessionalId);
         }
-        // --- FIM FILTRO DE PERMISSÃO ---
 
         const openAppointmentsSnapshot = await openAppointmentsQuery.get();
 
@@ -49,79 +40,84 @@ router.get('/:establishmentId', verifyToken, hasAccess, async (req, res) => {
             });
         });
 
-        // --- 2. BUSCAR COMANDAS FINALIZADAS (PARA A DATA DO FILTRO) ---
-        const targetDate = filterDate ? new Date(filterDate) : new Date();
-        // Ajuste para garantir que a busca inclua o dia inteiro no fuso horário correto
-        const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-        const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1);
+        // --- 2. BUSCAR COMANDAS FINALIZADAS (FILTRO DE DATA) ---
+        
+        const queryDateStr = date || filterDate;
+        let startOfDay, endOfDay;
 
-        // **CORREÇÃO APLICADA AQUI: Filtrar por 'transaction.paidAt'**
+        if (queryDateStr) {
+            // Força o intervalo UTC para cobrir o dia inteiro independente do fuso
+            startOfDay = new Date(`${queryDateStr}T00:00:00.000Z`);
+            endOfDay = new Date(`${queryDateStr}T23:59:59.999Z`);
+        } else {
+            const now = new Date();
+            now.setHours(0,0,0,0);
+            startOfDay = now;
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            endOfDay = tomorrow;
+        }
+
+        // Query em Appointments (Agendamentos Finalizados)
         let completedAppointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('status', '==', 'completed')
             .where('transaction.paidAt', '>=', startOfDay)
-            .where('transaction.paidAt', '<', endOfDay);
+            .where('transaction.paidAt', '<=', endOfDay);
 
-        // **CORREÇÃO APLICADA AQUI: Filtrar por 'transaction.paidAt'**
+        // Query em Sales (APENAS Vendas Avulsas)
+        // CORREÇÃO: Adicionado .where('type', '==', 'walk-in') para não duplicar agendamentos
         let salesQuery = db.collection('sales')
             .where('establishmentId', '==', establishmentId)
+            .where('type', '==', 'walk-in') 
             .where('transaction.paidAt', '>=', startOfDay)
-            .where('transaction.paidAt', '<', endOfDay);
+            .where('transaction.paidAt', '<=', endOfDay);
 
-        // --- APLICA FILTRO DE PERMISSÃO ---
+        // Aplica permissões nas queries finalizadas
         if (role === 'employee' && !canViewAll && userProfessionalId) {
             completedAppointmentsQuery = completedAppointmentsQuery.where('professionalId', '==', userProfessionalId);
             salesQuery = salesQuery.where('professionalId', '==', userProfessionalId);
         }
-        // --- FIM FILTRO DE PERMISSÃO ---
 
         const [completedAppointmentsSnapshot, salesSnapshot] = await Promise.all([
             completedAppointmentsQuery.get(),
             salesQuery.get()
         ]);
 
-        const processCompletedDoc = (doc) => {
+        const processCompletedDoc = (doc, typeDefault) => {
              const data = doc.data();
+             const paidAt = data.transaction && data.transaction.paidAt ? data.transaction.paidAt.toDate().toISOString() : new Date().toISOString();
+             
              comandas.push({
                 id: doc.id,
                 ...data,
-                startTime: data.startTime.toDate().toISOString(),
-                status: 'completed', // Garante o status correto
-                type: data.type || 'appointment',
+                startTime: paidAt, 
+                status: 'completed',
+                type: data.type || typeDefault,
             });
         };
 
-        completedAppointmentsSnapshot.forEach(processCompletedDoc);
-        salesSnapshot.forEach(doc => {
-             if (doc.data().type === 'walk-in') {
-                processCompletedDoc(doc);
-            }
-        });
+        completedAppointmentsSnapshot.forEach(doc => processCompletedDoc(doc, 'appointment'));
+        salesSnapshot.forEach(doc => processCompletedDoc(doc, 'walk-in'));
         
-        // Ordena por data de início, as mais recentes primeiro
+        // Ordena por data (mais recentes primeiro)
         comandas.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
         res.status(200).json(comandas);
 
     } catch (error) {
         console.error("Erro ao buscar comandas:", error);
-        // --- INÍCIO DA CORREÇÃO ---
-        // Se for um erro de índice, envie a MENSAGEM ORIGINAL do Firebase
         if (error.message && error.message.includes('requires an index')) {
-             return res.status(500).json({ message: error.message });
+             return res.status(500).json({ message: error.message, code: 'INDEX_REQUIRED' });
         }
-        // --- FIM DA CORREÇÃO ---
-        res.status(500).json({ message: "Ocorreu um erro no servidor ao buscar as comandas." });
+        res.status(500).json({ message: "Ocorreu um erro no servidor." });
     }
 });
 
-
-// Rota para buscar uma comanda específica por ID (útil para reabrir)
-// (MODIFICADO) Adicionado verifyToken e hasAccess
+// Rota para buscar uma comanda específica por ID
 router.get('/:comandaId', verifyToken, hasAccess, async (req, res) => {
     const { comandaId } = req.params;
     const { db } = req;
-    // (NOVO) Pega dados do usuário
     const { establishmentId, role, professionalId: userProfessionalId, permissions } = req.user;
 
     try {
@@ -139,18 +135,14 @@ router.get('/:comandaId', verifyToken, hasAccess, async (req, res) => {
         
         const data = doc.data();
 
-        // --- INÍCIO DA VERIFICAÇÃO DE PERMISSÃO ---
-        // 1. Verifica se a comanda pertence ao estabelecimento
         if (data.establishmentId !== establishmentId) {
             return res.status(403).json({ message: "Acesso negado." });
         }
 
-        // 2. Verifica se o funcionário pode ver esta comanda específica
         const canViewAll = permissions === null || permissions['comandas-section']?.view_all_prof === true;
         if (role === 'employee' && !canViewAll && data.professionalId !== userProfessionalId) {
             return res.status(403).json({ message: "Acesso negado a esta comanda específica." });
         }
-        // --- FIM DA VERIFICAÇÃO DE PERMISSÃO ---
 
         res.status(200).json({ id: doc.id, type, ...data });
 
@@ -159,6 +151,5 @@ router.get('/:comandaId', verifyToken, hasAccess, async (req, res) => {
         res.status(500).json({ message: "Ocorreu um erro no servidor." });
     }
 });
-
 
 module.exports = router;

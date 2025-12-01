@@ -74,6 +74,17 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
         .hidden { display: none; }
+        
+        /* Loader simples para feedback visual */
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--theme-main);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="antialiased text-gray-800">
@@ -339,6 +350,15 @@
                 
                 const steps = { services: 1, professionals: 2, schedule: 3, confirmation: 4 };
                 updateProgress(steps[sectionName]);
+
+                // --- CORREÇÃO: Atualizar horários automaticamente se já houver data selecionada ---
+                // Isso resolve o problema de voltar para mudar o serviço e os horários não atualizarem.
+                if (sectionName === 'schedule' && booking.date) {
+                    // Coloca um loader visual para indicar que estamos buscando novos horários
+                    morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
+                    afternoonSlotsContainer.innerHTML = '';
+                    loadAvailability(booking.date);
+                }
             };
 
             // 4. Carregar Dados do Estabelecimento
@@ -565,11 +585,17 @@
                     const btn = document.createElement('button');
                     btn.className = 'day-button flex flex-col items-center justify-center p-1 rounded-lg transition hover:bg-gray-100';
                     const isSelected = booking.date === day.toISOString().split('T')[0];
-                    if(isSelected) btn.classList.add('bg-gray-200', 'font-bold');
+                    
+                    if(isSelected) {
+                        btn.classList.add('bg-gray-800', 'text-white', 'shadow-md');
+                    }
+
+                    const dayColorClass = isSelected ? 'text-white' : 'text-gray-500';
+                    const numColorClass = isSelected ? 'text-white' : 'text-gray-800';
 
                     btn.innerHTML = `
-                        <span class="text-[10px] text-gray-500 uppercase">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                        <span class="text-sm font-semibold text-gray-800">${day.getDate()}</span>
+                        <span class="text-[10px] uppercase ${dayColorClass}">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                        <span class="text-sm font-semibold ${numColorClass}">${day.getDate()}</span>
                     `;
 
                     if (day < today) {
@@ -578,10 +604,10 @@
                         btn.onclick = () => {
                             document.querySelectorAll('.day-button').forEach(b => {
                                 b.classList.remove('bg-gray-800', 'text-white', 'shadow-md');
-                                b.querySelectorAll('span').forEach(s => s.classList.remove('text-white'));
+                                b.querySelectorAll('span').forEach(s => s.className = s.className.replace('text-white', '').replace('text-gray-500', 'text-gray-500').replace('text-gray-800', 'text-gray-800'));
                             });
                             btn.classList.add('bg-gray-800', 'text-white', 'shadow-md');
-                            btn.querySelectorAll('span').forEach(s => s.classList.add('text-white'));
+                            btn.querySelectorAll('span').forEach(s => s.className = s.className.replace('text-gray-500', 'text-white').replace('text-gray-800', 'text-white'));
                             
                             const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
                             loadAvailability(dateStr);

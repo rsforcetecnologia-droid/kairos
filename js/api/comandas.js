@@ -5,10 +5,23 @@ import { authenticatedFetch } from './apiService.js';
 /**
  * Busca todas as comandas (agendamentos e vendas avulsas) de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {string|null} date - Data para filtro (YYYY-MM-DD). Se null, busca ativas.
+ * @param {number} page - Número da página.
+ * @param {number} limit - Itens por página.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de comandas.
  */
-export const getComandas = (establishmentId) => {
-    return authenticatedFetch(`/api/comandas/${establishmentId}`);
+export const getComandas = (establishmentId, date = null, page = 1, limit = 12) => {
+    // Constrói a URL base
+    let url = `/api/comandas/${establishmentId}?page=${page}&limit=${limit}`;
+    
+    // Se houver data selecionada (filtro de finalizadas), adiciona à URL
+    if (date) {
+        url += `&date=${date}`;
+        // Opcional: Se o backend precisar explicitar o status para datas passadas
+        // url += `&status=completed`; 
+    }
+
+    return authenticatedFetch(url);
 };
 
 /**

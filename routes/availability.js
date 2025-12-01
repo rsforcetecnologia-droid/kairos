@@ -130,9 +130,12 @@ router.get('/', async (req, res) => {
             breakEnd = new Date(`${date}T${todayConfig.breakEnd}:00${tzOffset}`);
         }
 
-        // Evitar horários passados (comparando com "Agora" no fuso do estabelecimento)
-        const nowString = new Date().toLocaleString("en-US", { timeZone: timezone });
-        const nowInEstablishment = new Date(nowString); 
+        // --- CORREÇÃO DO "AGORA" ---
+        // Usamos o tempo absoluto do servidor (UTC real).
+        // Como 'workStart' e 'currentSlot' foram criados com o offset correto (ex: -03:00),
+        // eles representam o momento absoluto correto no tempo.
+        // Comparar diretamente com new Date() funciona perfeitamente e evita erros de string parsing.
+        const now = new Date();
         
         let currentSlot = new Date(workStart);
 
@@ -141,8 +144,8 @@ router.get('/', async (req, res) => {
             const potentialSlotStart = new Date(currentSlot);
             const potentialSlotEnd = new Date(potentialSlotStart.getTime() + totalDuration * 60000);
             
-            // Passado?
-            if (potentialSlotStart < nowInEstablishment) {
+            // Passado? (Compara o momento absoluto do slot com o momento absoluto de agora)
+            if (potentialSlotStart < now) {
                 currentSlot.setMinutes(currentSlot.getMinutes() + slotInterval);
                 continue;
             }
