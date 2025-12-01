@@ -13,7 +13,7 @@ import { navigateTo } from '../main.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
-const API_BASE_URL = window.location.origin;
+// API_BASE_URL removida pois agora usamos o appointmentsApi que gerencia a URL base
 let currentTimeInterval = null;
 let hasContentDelegationInitialized = false; 
 
@@ -488,6 +488,7 @@ function handleTimeSlotClick(slot, element) {
     newAppointmentState.data.time = slot;
 }
 
+// CORREÇÃO: Função atualizada para usar a API correta em vez de fetch direto
 async function updateTimesAndDuration() {
     const totalDurationSpan = document.getElementById('apptTotalDuration');
     const timeContainer = document.getElementById('availableTimesContainer');
@@ -514,12 +515,13 @@ async function updateTimesAndDuration() {
     timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
     
     try {
-        const serviceIdsParam = selectedServiceIds.join(',');
-        const res = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${state.establishmentId}&professionalId=${professionalId}&serviceIds=${serviceIdsParam}&date=${date}`);
-        
-        if (!res.ok) throw new Error('Falha na resposta da API de disponibilidade');
-        
-        let slots = await res.json();
+        // CORREÇÃO: Usando appointmentsApi.getAvailability em vez de fetch direto
+        let slots = await appointmentsApi.getAvailability({
+            establishmentId: state.establishmentId,
+            professionalId: professionalId,
+            serviceIds: selectedServiceIds,
+            date: date
+        });
         
         const now = new Date();
         const selectedDateObj = new Date(date + 'T00:00:00');
@@ -550,6 +552,7 @@ async function updateTimesAndDuration() {
             timeContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum horário disponível.</p>`;
         }
     } catch (e) {
+        console.error("Erro ao buscar horários:", e);
         timeContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao buscar horários.</p>';
     }
 }
