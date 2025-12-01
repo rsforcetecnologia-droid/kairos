@@ -3,272 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kairos - Seu Sistema de Gestão Inteligente e Automatizado</title>
+    <title>Kairos - Gestão para Barbearias e Salões</title>
     
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
     <link rel="stylesheet" href="css/landing.css">
-    <link rel="stylesheet" href="css/styles.css"> 
-    
-    <meta name="description" content="O sistema de agendamento e gestão definitivo para salões de beleza, barbearias e clínicas de estética. Otimize seu tempo.">
-    <meta name="keywords" content="sistema de gestão, agendamento online, salão de beleza, barbearia, gestão financeira, kairos">
-    <meta property="og:title" content="Kairos - Seu Sistema de Gestão">
-    <meta property="og:description" content="Menos tempo gerenciando, mais tempo atendendo.">
 </head>
 <body>
 
-    <header class="navbar">
-        <div class="container">
-            <img src="images/logo_kairos.png" alt="Logo Kairos" class="logo">
+<nav class="navbar">
+        <div class="container navbar-content">
+            <div class="brand">
+                <img src="images/logo_kairossite.png" alt="Kairos Logo" class="logo-img">
+            </div>
             
-            <nav>
-                <ul>
-                    <li><a href="#hero">Home</a></li>
-                    <li><a href="#sobre">Sobre</a></li>
-                    <li><a href="#funcoes">Funções</a></li>
-                    <li><a href="#precos">Preços</a></li>
-                    <li><a href="#">Blog</a></li>
-                    <li><a href="/login.html" class="botao-login">Acessar</a></li>
-                </ul>
-            </nav>
-            <button class="menu-toggle" aria-label="Abrir Menu">
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-            </button>
+            <div class="mobile-menu-btn">
+                <i class="ph ph-list"></i>
+            </div>
+
+            <div class="nav-links">
+                <a href="#funcionalidades">Funcionalidades</a>
+                <a href="#sobre">Sobre</a>
+                <a href="#planos">Planos</a>
+                <div class="mobile-actions">
+                    <a href="login.html" class="btn-text">Entrar</a>
+                    <a href="publicRegister.html" class="btn-primary">Criar Conta</a>
+                </div>
+            </div>
+            
+            <div class="nav-actions desktop-only">
+                <a href="login.html" class="btn-text">Entrar</a>
+                <a href="publicRegister.html" class="btn-primary">Criar Conta</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        
+        <div class="hero-slideshow">
+            <div class="slide-item" style="background-image: url('images/hero-bg-1.jpg');"></div>
+            <div class="slide-item" style="background-image: url('images/hero-bg-2.jpg');"></div>
+            <div class="slide-item" style="background-image: url('images/hero-bg-3.jpg');"></div>
+            <div class="hero-overlay"></div>
+        </div>
+
+        <div class="container hero-container">
+            <div class="hero-text">
+                <span class="badge">Gestão Premium</span>
+                <h1>O tempo a favor da <br>sua beleza.</h1>
+                <p>Domine a agenda, o financeiro e o estoque do seu estabelecimento com uma plataforma desenhada para a elegância e eficiência.</p>
+                <div class="cta-group">
+                    <a href="publicRegister.html" class="btn-primary">Começar Gratuitamente</a>
+                    <a href="#demo" class="btn-outline"><i class="ph ph-play-circle"></i> Ver Vídeo</a>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-item">
+                        <strong>+200</strong>
+                        <span>Salões</span>
+                    </div>
+                    <div class="stat-item">
+                        <strong>4.9/5</strong>
+                        <span>Avaliação</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="glass-card">
+                    <div class="card-header">
+                        <div class="dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="bar">Kairos Dashboard</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mock-chart"></div>
+                        <div class="mock-lines"></div>
+                        <div class="mock-lines"></div>
+                    </div>
+                    <div class="glow-effect"></div>
+                </div>
+            </div>
         </div>
     </header>
-    <div id="mobile-menu" class="mobile-menu">
-        <button class="menu-close" aria-label="Fechar Menu">X</button>
-        <nav>
-            <ul class="mobile-nav-list">
-                <li><a href="#hero">Home</a></li>
-                <li><a href="#sobre">Sobre</a></li>
-                <li><a href="#funcoes">Funções</a></li>
-                <li><a href="#precos">Preços</a></li>
-                <li><a href="#">Blog</a></li>
-                <li><a href="/login.html" class="botao-login-mobile">Acessar</a></li>
-            </ul>
-        </nav>
-    </div>
-    <section id="hero" class="hero">
-        
-        <div class="hero-slider">
-            <div class="slide active" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero.jpg');"></div>
-            <div class="slide" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero-2.jpg');"></div>
-            <div class="slide" style="background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/background-hero-3.jpg');"></div>
-        </div>
 
-        <div class="hero-content">
-            <h1 id="typing-text"></h1>
-            <p id="sub-text" class="hidden"></p>
-            <a href="#precos" class="botao-principal hidden">Inicie essa Experiência</a>
-        </div>
-        
-        <div class="slider-nav">
-            <span class="slider-nav-dot active" data-slide-index="0"></span>
-            <span class="slider-nav-dot" data-slide-index="1"></span>
-            <span class="slider-nav-dot" data-slide-index="2"></span>
-        </div>
-
-    </section>
-
-
-    <section id="sobre" class="secao">
+    <section id="funcionalidades" class="features section-padding">
         <div class="container">
-            <h2>Valorizando o seu tempo.</h2>
-            
-            <p>No mundo da beleza, <strong>tempo é tudo</strong>. Cada minuto gasto gerenciando agendas, respondendo mensagens ou controlando o caixa, é um minuto a menos focado no seu cliente.</p>
-            
-            <p>O <strong>Kairos System</strong> nasceu exatamente para resolver isso. Em grego, <em>Kairos</em> significa "o momento certo", e nossa missão é devolver esse tempo a você.</p>
-            
-            <p>Entendemos os desafios diários de Barbearias, Salões de Beleza e Profissionais Autônomos. Por isso, criamos uma solução completa:</p>
-
-            <div class="grid-funcionalidades">
-                <div class="funcionalidade-item" style="text-align: center;">
-                    <h3>Kairos Web</h3>
-                    <p>Seu painel de gestão completo na nuvem, com controle financeiro, de estoque, histórico de clientes e relatórios.</p>
-                </div>
-                <div class="funcionalidade-item" style="text-align: center;">
-                    <h3>Kairos Mobile</h3>
-                    <p>O aplicativo que conecta você ao seu cliente, permitindo agendamento online 24/7, lembretes automáticos e consulta de comissões.</p>
-                </div>
+            <div class="section-header">
+                <h2>Tecnologia que <br>simplifica a rotina.</h2>
+                <p>Deixe o papel de lado. O Kairos organiza tudo num só lugar.</p>
             </div>
-            
-            <p style="margin-top: 40px;">Não somos apenas um software de agendamento; somos um parceiro focado em otimizar sua gestão para que você possa se dedicar ao que realmente importa: <strong>seu talento e seus clientes.</strong></p>
-            
-            <h3 style="font-size: 1.8rem; margin-top: 30px; color: #007bff;">Kairos System: A gestão do seu negócio no tempo certo.</h3>
-        </div>
-    </section>
 
-
-    <section id="funcoes" class="secao">
-        <div class="container">
-            <h2>Todas as Funções do Kairos</h2>
-            <p>Veja como cada ferramenta foi pensada para simplificar a gestão e impulsionar suas vendas.</p>
-            
-            <div class="grid-funcionalidades">
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">📅</div>
-                    <h3>Agenda Online Inteligente</h3>
-                    <p>Permita agendamentos 24/7 e envie lembretes automáticos. Tenha controle total sobre os horários e bloqueios de cada profissional.</p>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="icon-box"><i class="ph ph-calendar-check"></i></div>
+                    <h3>Agenda Inteligente</h3>
+                    <p>Evite conflitos de horário e envie lembretes automáticos para os seus clientes via WhatsApp.</p>
                 </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">👤</div>
-                    <h3>Cadastro de Clientes (CRM)</h3>
-                    <p>Tenha um histórico completo de cada cliente. Use a frequência de visitas e preferências para um atendimento personalizado.</p>
-                </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">📦</div>
-                    <h3>Gestão de Estoque</h3>
-                    <p>Dê baixa automática em produtos usados ou vendidos. Saiba exatamente quando é hora de repor seu estoque, sem perdas.</p>
-                </div>
-
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">💰</div>
+                <div class="feature-card">
+                    <div class="icon-box"><i class="ph ph-chart-line-up"></i></div>
                     <h3>Gestão Financeira</h3>
-                    <p>Controle seu fluxo de caixa, contas a pagar, receber e todas as movimentações. Veja a saúde financeira do seu negócio de forma clara e simples.</p>
+                    <p>Controle de caixa, comissões de profissionais e relatórios de lucros em tempo real.</p>
                 </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">📈</div>
-                    <h3>Dashboards e Relatórios</h3>
-                    <p>Tome decisões baseadas em dados. Veja relatórios de vendas, performance de profissionais e saiba quais são seus serviços mais lucrativos.</p>
-                </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">💵</div>
-                    <h3>Controle de Comissões</h3>
-                    <p>Automatize o cálculo de comissões por serviço ou produto. Configure regras personalizadas para cada profissional e acabe com o trabalho manual.</p>
-                </div>
-
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">🎁</div>
-                    <h3>Pacotes de Serviços</h3>
-                    <p>Aumente seu faturamento recorrente. Crie e venda pacotes (ex: "4 cortes pague 3") com controle automático de quantas sessões já foram usadas.</p>
-                </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">🏆</div>
-                    <h3>Programa de Fidelidade</h3>
-                    <p>Crie programas de pontos ou cashback para reter seus melhores clientes. Envie mensagens automáticas para aniversariantes.</p>
-                </div>
-                
-                <div class="funcionalidade-item">
-                    <div class="funcionalidade-icone">🛒</div>
-                    <h3>Comandas e Venda Rápida</h3>
-                    <p>Registre facilmente produtos ou serviços consumidos na hora (como bebidas, cosméticos) e adicione tudo na conta final do cliente.</p>
-                </div>
-                
-                <div class="funcionalidade-item card-bonus">
-                    <div class="funcionalidade-icone" style="color: #28a745;">☁️</div>
-                    <h3>Seu Negócio na Nuvem 24/7</h3>
-                    <p>Acesse sua agenda e toda a gestão do seu negócio de qualquer lugar, a qualquer hora, com total segurança. Seja no computador (Kairos Web) ou no celular (Kairos Mobile).</p>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <section id="preview-sistema" class="secao secao-preview">
-        <div class="container">
-            <h2>Veja o Kairos em Ação</h2>
-            <p>Uma visão rápida das telas que vão otimizar o seu dia a dia.</p>
-            
-            <div class="grid-funcionalidades">
-                <div class="preview-item">
-                    <img src="images/placeholder-agenda.jpg" alt="Preview Agenda Online" class="preview-img">
-                    <p class="preview-caption">Agenda Inteligente</p>
-                </div>
-                <div class="preview-item">
-                    <img src="images/placeholder-dashboard.jpg" alt="Preview Dashboard Financeiro" class="preview-img">
-                    <p class="preview-caption">Dashboard Financeiro</p>
-                </div>
-                <div class="preview-item">
-                    <img src="images/placeholder-mobile.jpg" alt="Preview App Mobile" class="preview-img">
-                    <p class="preview-caption">Controle no Celular</p>
+                <div class="feature-card">
+                    <div class="icon-box"><i class="ph ph-scissors"></i></div>
+                    <h3>Estoque & Serviços</h3>
+                    <p>Gestão completa de produtos utilizados e catálogo de serviços personalizável.</p>
                 </div>
             </div>
         </div>
     </section>
 
-    <section id="depoimentos" class="secao secao-depoimentos">
-        <div class="container">
-            <h2>Quem Usa o Kairos Aprova</h2>
-            <p>Veja o que os profissionais da beleza têm a dizer sobre a transformação em suas gestões.</p>
-
-            <div class="grid-funcionalidades grid-depoimentos">
-                
-                <div class="depoimento-card">
-                    <p class="depoimento-texto">"Consegui reduzir minhas faltas em 40% graças aos lembretes automáticos. O sistema é intuitivo e meu tempo livre aumentou muito!"</p>
-                    <p class="depoimento-autor"><strong>Carolina Mendes</strong>, Proprietária do Salão Elegance</p>
-                </div>
-
-                <div class="depoimento-card">
-                    <p class="depoimento-texto">"O controle de comissões e estoque é perfeito. Pela primeira vez, sei exatamente para onde está indo o dinheiro do meu negócio. Simplesmente essencial!"</p>
-                    <p class="depoimento-autor"><strong>Ricardo Lima</strong>, Barbeiro e Empresário</p>
-                </div>
-
-                <div class="depoimento-card">
-                    <p class="depoimento-texto">"A transição foi super fácil. Meus clientes adoraram a opção de agendamento online, e eu adoro a liberdade de gerenciar tudo pelo celular."</p>
-                    <p class="depoimento-autor"><strong>Patrícia Souza</strong>, Esteticista Autônoma</p>
-                </div>
-
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="footer-brand">
+                <h3>Kairos.</h3>
+                <p>Transformando a gestão de beleza.</p>
             </div>
-        </div>
-    </section>
-
-    <section id="precos" class="secao secao-precos">
-        <div class="container">
-            <h2>Preços</h2>
-            <p>Escolha o plano que melhor se encaixa no seu negócio. Sem fidelidade e com teste grátis!</p>
-
-            <div class="grid-precos">
-                <div class="plano-item">
-                    <h3>Plano Básico</h3>
-                    <span class="preco">R$ 49,90</span>
-                    <span class="periodo">/mês</span>
-                    <ul>
-                        <li>Até 5 usuários</li>
-                        <li>Funcionalidade A</li>
-                        <li>Funcionalidade B</li>
-                        <li>Suporte Padrão</li>
-                    </ul>
-                    <button class="botao-assinar" data-price-id="price_ID_DO_PLANO_BASICO_NO_STRIPE">
-                        Assinar Agora
-                    </button>
-                </div>
-
-                <div class="plano-item plano-destaque">
-                    <h3>Plano Profissional</h3>
-                    <span class="preco">R$ 99,90</span>
-                    <span class="periodo">/mês</span>
-                    <ul>
-                        <li>Usuários Ilimitados</li>
-                        <li>Todas as funcionalidades</li>
-                        <li>Suporte Prioritário</li>
-                        <li>Relatórios Avançados</li>
-                    </ul>
-                    <button class="botao-assinar" data-price-id="price_ID_DO_PLANO_PRO_NO_STRIPE">
-                        Assinar Agora
-                    </button>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="rodape">
-        <div class="container">
-            <p>© 2025 Kairos - Todos os direitos reservados. | CNPJ: 00.000.000/0001-00</p>
             <div class="footer-links">
-                <a href="#">Termos de Uso</a> | 
-                <a href="#">Política de Privacidade</a> |
-                <a href="#">Entre em Contato</a>
+                <a href="#">Termos de Uso</a>
+                <a href="#">Privacidade</a>
+                <a href="#">Suporte</a>
             </div>
+        </div>
+        <div class="copyright">
+            <p>&copy; 2024 Kairos Tecnologia. Todos os direitos reservados.</p>
         </div>
     </footer>
 
-    <script src="https://js.stripe.com/v3/"></script>
+    <footer class="footer">
+        </footer>
+
     <script src="js/landing.js"></script>
 
 </body>
