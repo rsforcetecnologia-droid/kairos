@@ -105,10 +105,13 @@ router.get('/', async (req, res) => {
 
         // Consolidar Horários Ocupados
         const busySlots = [
-            ...appointmentsSnapshot.docs.map(doc => ({ 
-                start: doc.data().startTime.toDate(), 
-                end: doc.data().endTime.toDate() 
-            })),
+            // CORREÇÃO AQUI: Filtramos para ignorar os cancelados
+            ...appointmentsSnapshot.docs
+                .filter(doc => doc.data().status !== 'cancelled') 
+                .map(doc => ({ 
+                    start: doc.data().startTime.toDate(), 
+                    end: doc.data().endTime.toDate() 
+                })),
             ...blockagesSnapshot.docs
                 .filter(doc => doc.data().endTime.toDate() > startOfDay) // Filtragem em memória complementar
                 .map(doc => ({ 

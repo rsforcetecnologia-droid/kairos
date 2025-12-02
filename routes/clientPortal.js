@@ -4,6 +4,12 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
+// --- FUNÇÃO AUXILIAR: LIMPAR TELEFONE (Para comparação segura) ---
+function cleanPhone(phone) {
+    if (!phone) return '';
+    return phone.replace(/\D/g, ''); // Remove tudo o que não for número
+}
+
 // --- FUNÇÃO AUXILIAR: ENVIAR PUSH NOTIFICATION (Copiada para garantir independência) ---
 async function sendPushNotificationToEstablishment(db, establishmentId, title, body) {
     try {
@@ -48,7 +54,7 @@ router.get('/appointments/:establishmentId', async (req, res) => {
         const { db } = req;
         const snapshot = await db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            .where('clientPhone', '==', phone)
+            .where('clientPhone', '==', phone) // Aqui a busca exata é aceitável, mas idealmente o frontend deve enviar formatado
             .orderBy('startTime', 'desc')
             .get();
 
@@ -78,7 +84,9 @@ router.get('/appointments/:establishmentId', async (req, res) => {
                 clientName: data.clientName, 
                 professionalName: professionalInfo.name,
                 professionalPhoto: professionalInfo.photo,
-                status: data.status
+                status: data.status,
+                hasRewards: data.hasRewards || false,
+                redeemedReward: data.redeemedReward || null
             };
         });
 
@@ -119,18 +127,54 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
             
             const appointmentData = appointmentDoc.data();
 
-            if (appointmentData.establishmentId !== establishmentId || appointmentData.clientPhone !== phone) {
+            // --- CORREÇÃO PRINCIPAL: COMPARAÇÃO DE TELEFONE ---
+            // Normalizamos ambos os telefones (removemos espaços, traços, parenteses) para garantir que batem
+            const dbPhoneClean = cleanPhone(appointmentData.clientPhone);
+            const reqPhoneClean = cleanPhone(phone);
+
+            if (appointmentData.establishmentId !== establishmentId || dbPhoneClean !== reqPhoneClean) {
+                // Se falhar aqui, o frontend recebia erro, mas o agendamento não mudava
                 throw new Error("Você não tem permissão para cancelar este agendamento.");
             }
+
             if (appointmentData.status === 'completed' || appointmentData.status === 'cancelled') {
                  throw new Error("Este agendamento já foi finalizado ou cancelado e não pode ser modificado.");
             }
             
+            // --- CORREÇÃO SECUNDÁRIA: DEVOLUÇÃO DE PONTOS ---
+            // Se o agendamento usou pontos de fidelidade, devolvemos ao cliente ao cancelar
+            if (appointmentData.redeemedReward && appointmentData.redeemedReward.points > 0) {
+                const clientQuery = db.collection('clients')
+                    .where('establishmentId', '==', establishmentId)
+                    .where('phone', '==', appointmentData.clientPhone) // Usa o telefone original do agendamento
+                    .limit(1);
+                
+                const clientSnapshot = await transaction.get(clientQuery);
+                
+                if (!clientSnapshot.empty) {
+                    const clientRef = clientSnapshot.docs[0].ref;
+                    transaction.update(clientRef, { 
+                        loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) 
+                    });
+                    
+                    // Opcional: Registar no histórico que houve estorno
+                    const historyRef = clientRef.collection('loyaltyHistory').doc();
+                    transaction.set(historyRef, {
+                        type: 'refund',
+                        points: appointmentData.redeemedReward.points,
+                        reward: appointmentData.redeemedReward.reward,
+                        reason: 'Cancelamento pelo Cliente',
+                        timestamp: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+
+            // --- ATUALIZAÇÃO DO STATUS ---
             transaction.update(appointmentRef, { status: 'cancelled' });
 
+            // Criação da Notificação
             const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
             
-            // --- FORMATAÇÃO CORRIGIDA COM TIMEZONE ---
             const timeString = appointmentData.startTime.toDate().toLocaleTimeString('pt-BR', { 
                 hour: '2-digit', 
                 minute: '2-digit',
@@ -165,7 +209,9 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
 
     } catch (error) {
         console.error("Erro ao cancelar agendamento:", error);
-        res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
+        // Retornamos 400 se for erro de permissão/lógica para o frontend saber
+        const statusCode = error.message.includes('permissão') || error.message.includes('finalizado') ? 400 : 500;
+        res.status(statusCode).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
 

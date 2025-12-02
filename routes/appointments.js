@@ -197,7 +197,12 @@ router.post('/', async (req, res) => {
 
             // --- INÍCIO DAS ESCRITAS ---
 
-            const actualConflicts = potentialConflicts.docs.filter(doc => doc.data().endTime.toDate() > startDate);
+            // CORREÇÃO AQUI: Verificamos se o status é diferente de cancelado
+            const actualConflicts = potentialConflicts.docs.filter(doc => 
+                doc.data().endTime.toDate() > startDate && 
+                doc.data().status !== 'cancelled'
+            );
+            
             if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível. Por favor, escolha outro.');
 
             // ESCRITA 1: Cliente
@@ -522,7 +527,13 @@ router.put('/:appointmentId', verifyToken, hasAccess, async (req, res) => {
             
             let hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
 
-            const actualConflicts = potentialConflicts.docs.filter(doc => doc.id !== appointmentId && doc.data().endTime.toDate() > startDate);
+            // CORREÇÃO AQUI: Verificamos se o status é diferente de cancelado
+            const actualConflicts = potentialConflicts.docs.filter(doc => 
+                doc.id !== appointmentId && 
+                doc.data().endTime.toDate() > startDate && 
+                doc.data().status !== 'cancelled'
+            );
+            
             if (actualConflicts.length > 0) throw new Error('O horário selecionado já não está mais disponível.');
             
             // --- INÍCIO DAS ESCRITAS ---

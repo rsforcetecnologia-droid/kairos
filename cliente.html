@@ -739,14 +739,26 @@
                                 const photoUrl = a.professionalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(a.professionalName || 'P')}&background=random&color=fff`;
                                 const dateFormatted = new Date(a.startTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
                                 
+                                // CORREÇÃO DE LÓGICA DE STATUS AQUI
+                                let statusLabel = 'Confirmado';
+                                let statusClass = 'bg-green-50 text-green-600';
+                                
+                                if (a.status === 'completed') {
+                                    statusLabel = 'Finalizado';
+                                    statusClass = 'bg-gray-100 text-gray-500';
+                                } else if (a.status === 'cancelled') {
+                                    statusLabel = 'Cancelado';
+                                    statusClass = 'bg-red-50 text-red-600';
+                                }
+
                                 return `
                                 <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-start gap-3">
                                     <img src="${photoUrl}" alt="Profissional" class="w-12 h-12 rounded-full object-cover border border-gray-100 flex-shrink-0">
                                     <div class="flex-grow min-w-0">
                                         <div class="flex justify-between items-start">
                                             <p class="font-bold text-sm text-gray-800 truncate">${a.professionalName || 'Profissional'}</p>
-                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${a.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-600'}">
-                                                ${a.status === 'completed' ? 'Finalizado' : 'Confirmado'}
+                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusClass}">
+                                                ${statusLabel}
                                             </span>
                                         </div>
                                         <p class="text-xs text-gray-600 mt-0.5 font-medium">${a.serviceName}</p>
