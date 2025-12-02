@@ -22,6 +22,31 @@
             background-attachment: fixed;
             background-repeat: no-repeat;
             min-height: 100vh;
+            
+            /* Necessário para posicionar o overlay corretamente */
+            position: relative;
+        }
+
+        /* --- AJUSTE VISUAL: Camada Translúcida (Overlay) --- */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Cor de fundo base com 85% de opacidade para suavizar a imagem */
+            background-color: rgba(0, 0, 0, 0.40); 
+            /* Desfoque suave para melhorar a leitura */
+            backdrop-filter: blur(3px); 
+            z-index: 0; /* Fica atrás do conteúdo */
+            pointer-events: none; /* Permite clicar através da camada */
+        }
+
+        /* Garante que o painel de agendamento fique ACIMA da camada translúcida */
+        #booking-view {
+            position: relative;
+            z-index: 1;
         }
 
         /* Classes Utilitárias de Tema */

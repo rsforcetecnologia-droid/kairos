@@ -1,55 +1,334 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Painel de Gestão</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Login Estabelecimento | Kairos</title>
+    
+
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
+        /* --- Estilos Gerais --- */
+        body.login-page {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-image: url('/assets/hero-bg-1-ywweQIUE.jpg');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .login-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.5) 100%);
+            z-index: 1;
+        }
+
+        .login-card {
+            position: relative;
+            z-index: 2;
+            background: rgba(255, 255, 255, 0.95);
+            width: 100%;
+            max-width: 400px;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            animation: fadeIn Up 0.5s ease-out;
+        }
+
+        .login-logo {
+            max-width: 180px;
+            height: auto;
+            margin-bottom: 1.5rem;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .login-title {
+            color: #333;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-group {
+            margin-bottom: 1.25rem;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #444;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.85rem 1rem;
+            font-size: 1rem;
+            border: 1px solid #e1e1e1;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+        }
+
+        .form-control:focus {
+            background-color: #fff;
+            border-color: #4a90e2;
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+            outline: none;
+        }
+
+        .btn-primary-login {
+            width: 100%;
+            padding: 0.9rem;
+            background: linear-gradient(to right, #4a90e2, #357abd);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 1rem;
+        }
+
+        .btn-primary-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .btn-primary-login:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .auth-links {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .auth-links a {
+            color: #4a90e2;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .auth-links a:hover {
+            text-decoration: underline;
+        }
+
+        .back-home {
+            display: inline-block;
+            margin-top: 2rem;
+            color: #888;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        
+        .back-home:hover {
+            color: #333;
+        }
+
+        .error-message {
+            color: #dc2626;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            display: none;
+            background-color: #fee2e2;
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+        
+        .success-message {
+            color: #166534;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            display: none;
+            background-color: #dcfce7;
+            padding: 0.5rem;
+            border-radius: 6px;
+        }
+
+        /* --- Estilos do Modal --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.8); /* Fundo mais escuro */
+            z-index: 2147483647; /* Z-index máximo permitido pelo navegador */
+            display: none; 
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-card {
+            background: #fff;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 350px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            text-align: center;
+            position: relative;
+            z-index: 2147483648; /* Acima do overlay */
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+        
+        .modal-text {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+            margin-top: 0.5rem;
+        }
+        
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
-  <script type="module" crossorigin src="/assets/login-DVOTEAtg.js"></script>
+  <script type="module" crossorigin src="/assets/login-DUHkkhqH.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
+  <link rel="modulepreload" crossorigin href="/assets/firebase-config-5GGiRrrP.js">
+  <link rel="stylesheet" crossorigin href="/assets/styles-C2rNCo-U.css">
+  <link rel="stylesheet" crossorigin href="/assets/landing-3MwCvcx4.css">
 </head>
-<body class="bg-gray-100 flex items-center justify-center h-screen">
+<body class="login-page">
 
-    <div class="w-full max-w-md bg-white rounded-lg shadow-md p-8">
-        <header class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-800">Acesso ao Painel</h1>
-            <p class="text-gray-500 mt-2">Use as suas credenciais para entrar.</p>
-        </header>
+    <div class="login-overlay"></div>
+
+    <div class="login-card">
+        <img src="/assets/logo_login_estab-2eqVtqnT.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
+        
+        <h1 class="login-title">Bem-vindo</h1>
+        <p class="login-subtitle">Faça login para gerenciar seu negócio</p>
 
         <form id="loginForm">
-            <div class="mb-4">
-                <label for="email" class="block mb-2 text-sm font-medium text-gray-900">E-mail</label>
-                <input type="email" id="email" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="seu@email.com" required>
-            </div>
-            <div class="mb-4">
-                <label for="password" class="block mb-2 text-sm font-medium text-gray-900">Senha</label>
-                <input type="password" id="password" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="••••••••" required>
-            </div>
-            
-            <!-- Link para Esqueci a Senha -->
-            <div class="text-right mb-6">
-                <a href="#" id="forgotPasswordLink" class="text-sm font-medium text-blue-600 hover:underline">Esqueceu sua senha?</a>
+            <div class="input-group">
+                <label for="email">E-mail</label>
+                <input type="email" id="email" class="form-control" placeholder="admin@empresa.com" required autocomplete="email">
             </div>
 
-            <!-- Mensagem de erro -->
-            <div id="errorMessage" class="hidden text-center text-red-500 text-sm mb-4"></div>
+            <div class="input-group">
+                <label for="password">Senha</label>
+                <input type="password" id="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+            </div>
 
-            <button type="submit" id="loginButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300">Entrar</button>
+            <div id="errorMessage" class="error-message"></div>
+
+            <button type="submit" id="btn-login" class="btn-primary-login">
+                ENTRAR
+            </button>
         </form>
+
+        <div class="auth-links">
+            <a href="#" id="triggerReset">Esqueci minha senha</a>
+        </div>
+
+        <a href="landing.html" class="back-home">← Voltar ao site</a>
     </div>
 
-    <!-- Modal para Redefinição de Senha -->
-    <div id="resetPasswordModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div id="resetPasswordModalContent" class="bg-white rounded-lg shadow-xl p-8 max-w-sm w-full">
-            <!-- Conteúdo do modal será injetado pelo JavaScript -->
+    <div id="resetModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3 class="modal-title">Redefinir Senha</h3>
+            <p class="modal-text">Digite seu e-mail para receber um link de redefinição.</p>
+            
+            <form id="resetForm">
+                <div class="input-group" style="text-align: left;">
+                    <label for="resetEmail">E-mail</label>
+                    <input type="email" id="resetEmail" class="form-control" placeholder="admin@empresa.com" required>
+                </div>
+
+                <div id="resetMessage" class="success-message"></div>
+                <div id="resetError" class="error-message"></div>
+
+                <button type="submit" id="btn-send-reset" class="btn-primary-login">Enviar Link</button>
+                <button type="button" id="btn-close-modal" class="btn-primary-login btn-secondary">Cancelar</button>
+            </form>
         </div>
     </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const trigger = document.getElementById('triggerReset');
+            const modal = document.getElementById('resetModal');
+            const closeBtn = document.getElementById('btn-close-modal');
+            const emailLogin = document.getElementById('email');
+            const emailReset = document.getElementById('resetEmail');
+
+            // Função para abrir o modal FORÇANDO o estilo
+            if (trigger && modal) {
+                trigger.onclick = function(e) {
+                    e.preventDefault();
+                    console.log("--> Tentando abrir modal (Modo Forçado) <--");
+                    
+                    // Copia o email
+                    if(emailLogin && emailReset) emailReset.value = emailLogin.value;
+
+                    // AQUI ESTÁ O TRUQUE: Injeta o estilo direto no HTML, ignorando classes
+                    modal.style.cssText = "display: flex !important; opacity: 1 !important; visibility: visible !important;";
+                };
+            }
+
+            // Função para fechar
+            if (closeBtn && modal) {
+                closeBtn.onclick = function() {
+                    modal.style.display = 'none';
+                };
+            }
+
+            // Fechar ao clicar fora
+            if (modal) {
+                modal.onclick = function(e) {
+                    if (e.target === modal) {
+                        modal.style.display = 'none';
+                    }
+                };
+            }
+        });
+    </script>
 
 
 </body>
