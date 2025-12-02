@@ -31,7 +31,8 @@ export const getAll = async () => {
     }
 };
 
-export const create = async (data) => {
+// CORREÇÃO AQUI: Mudámos de "create" para "createSupplier"
+export const createSupplier = async (data) => {
     try {
         const docRef = await addDoc(collection(db, COLLECTION_NAME), data);
         return { id: docRef.id, ...data };
@@ -41,7 +42,8 @@ export const create = async (data) => {
     }
 };
 
-export const update = async (id, data) => {
+// CORREÇÃO AQUI: Mudámos de "update" para "updateSupplier"
+export const updateSupplier = async (id, data) => {
     try {
         const docRef = doc(db, COLLECTION_NAME, id);
         await updateDoc(docRef, data);
@@ -101,5 +103,5 @@ export const getPurchaseHistory = async (establishmentId) => {
     }
 };
 
-// Alias
+// Alias (Mantém compatibilidade se algum outro ficheiro usar 'delete')
 export { deleteSupplier as delete };

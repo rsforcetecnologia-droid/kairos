@@ -760,3 +760,111 @@ ul {
         display: none; 
     }
 }
+/* =========================================
+   8. LISTAS DE FUNCIONALIDADES (NOVO)
+   ========================================= */
+
+.feature-list {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.feature-list li {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start; /* Alinha o ícone com o topo do texto se quebrar linha */
+    gap: 10px;
+    line-height: 1.4;
+}
+
+.feature-list li i {
+    color: var(--primary-color);
+    font-size: 1rem;
+    margin-top: 2px; /* Pequeno ajuste ótico */
+}
+
+/* Ajuste na altura dos cartões para ficarem uniformes */
+.feature-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Garante que todos estiquem igualmente se usares Grid */
+}
+
+/* =========================================
+   9. ANIMAÇÃO DE SLIDESHOW (SHOWCASE)
+   ========================================= */
+
+/* --- Configuração do Monitor (Web) --- */
+.monitor-wrapper {
+    width: 100%;
+    max-width: 550px; /* Tamanho do Monitor */
+    aspect-ratio: 16/9; /* Formato Widescreen padrão */
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: var(--surface-color);
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5);
+    overflow: hidden; /* Esconde as imagens que estão fora da moldura */
+    position: relative;
+    z-index: 2;
+}
+
+/* --- Configuração do Telemóvel (Mobile) --- */
+.mobile-wrapper {
+    width: 280px; /* Largura de um telemóvel */
+    height: 580px; /* Altura aproximada */
+    border-radius: 30px; /* Bordas bem arredondadas */
+    border: 8px solid #1E293B; /* Moldura grossa simulando o aparelho */
+    background-color: #000;
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5);
+    overflow: hidden; /* Esconde o resto */
+    position: relative;
+    z-index: 2;
+}
+
+/* --- O Trilho que move as imagens --- */
+.sliding-track {
+    display: flex;
+    width: 500%; /* 5 imagens x 100% largura = 500% */
+    height: 100%;
+    
+    /* Configuração da animação:
+       Nome: slideShow
+       Tempo total: 20s (4s por imagem)
+       Repetição: infinita 
+    */
+    animation: slideShow 20s infinite cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.sliding-track img {
+    width: 20%; /* Cada imagem ocupa 1/5 do trilho (que é o tamanho da moldura) */
+    height: 100%;
+    object-fit: cover; /* Garante que preenche sem esticar */
+}
+
+/* --- Keyframes (A Lógica do Movimento) --- */
+/*
+   A ideia é: Fica parado um tempo, desliza para a esquerda.
+   0% a 15% -> Imagem 1
+   20% a 35% -> Imagem 2
+   40% a 55% -> Imagem 3
+   60% a 75% -> Imagem 4
+   80% a 95% -> Imagem 5
+*/
+@keyframes slideShow {
+    0%, 15%  { transform: translateX(0); }
+    20%, 35% { transform: translateX(-20%); } /* Move 1/5 */
+    40%, 55% { transform: translateX(-40%); } /* Move 2/5 */
+    60%, 75% { transform: translateX(-60%); } /* Move 3/5 */
+    80%, 95% { transform: translateX(-80%); } /* Move 4/5 */
+    100%     { transform: translateX(0); }    /* Volta ao início */
+}
+
+/* Responsividade para o Monitor em telas pequenas */
+@media (max-width: 768px) {
+    .monitor-wrapper {
+        max-width: 100%; /* Ocupa a largura disponível */
+    }
+}

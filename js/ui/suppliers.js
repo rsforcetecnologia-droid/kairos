@@ -11,12 +11,12 @@ const contentDiv = document.getElementById('content');
 let pageEventListener = null;
 let currentTab = 'list'; // 'list', 'purchases', 'history'
 
-// Estado local para o fluxo de compras
+// Estado local para o fluxo de compras e cotações
 let purchaseFlowState = {
-    step: 1, // 1: Seleção/Cotação, 2: Pedidos Finais
+    step: 1, // 1: Seleção, 2: Revisão/Envio
     productsToBuy: [], 
     allSuppliers: [],
-    finalOrders: {},
+    finalOrders: {}, // Armazena dados reais: { supId: { info: {...}, items: [...] } }
     isQuoteMode: false 
 };
 
@@ -354,7 +354,7 @@ async function renderPurchaseTab() {
                     </div>
                 `;
 
-                // --- DESKTOP ROW (COM DISPLAY DE ESTOQUE CLARO) ---
+                // --- DESKTOP ROW ---
                 desktopRowsHtml += `
                     <tr class="hover:bg-gray-50 border-b border-gray-100 product-row" data-product-id="${prod.id}" data-cost="${costPrice}">
                         <td class="p-3 pl-4 text-center w-10">
@@ -383,7 +383,12 @@ async function renderPurchaseTab() {
             });
             mobileCardsHtml += '</div>';
 
-            const quoteBtnClass = purchaseFlowState.isQuoteMode ? 'flex' : 'hidden';
+            // CONFIGURAÇÃO DO BOTÃO PRINCIPAL (COTAÇÃO vs PEDIDO)
+            const mainButtonText = purchaseFlowState.isQuoteMode ? 'REVISAR COTAÇÕES' : 'GERAR PEDIDOS DE COMPRA';
+            const mainButtonColor = purchaseFlowState.isQuoteMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700';
+            const mainButtonIcon = purchaseFlowState.isQuoteMode ? 
+                '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>' : 
+                '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>';
 
             container.innerHTML = `
                 <div class="space-y-4 animate-fade-in pb-20">
@@ -392,7 +397,7 @@ async function renderPurchaseTab() {
                             <div class="flex items-center gap-3 w-full md:w-auto">
                                 <input type="checkbox" id="toggle-quote-mode" class="w-5 h-5 text-indigo-600 rounded" ${purchaseFlowState.isQuoteMode ? 'checked' : ''}>
                                 <label for="toggle-quote-mode" class="text-sm font-medium text-gray-700 cursor-pointer select-none">
-                                    Modo Cotação (Gerar PDF)
+                                    Modo Cotação (Gerar PDF e Enviar)
                                 </label>
                             </div>
                             <div class="bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100 text-center w-full md:w-auto flex justify-between md:block items-center">
@@ -403,14 +408,9 @@ async function renderPurchaseTab() {
                     </div>
 
                     <div class="flex flex-col gap-3 sticky bottom-4 z-20">
-                        <button id="btn-generate-quotes" class="${quoteBtnClass} w-full items-center justify-center gap-2 bg-white border-2 border-indigo-600 text-indigo-600 px-4 py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                            BAIXAR PDFs DE COTAÇÃO
-                        </button>
-
-                        <button id="btn-go-to-orders" class="w-full bg-green-600 text-white px-4 py-3 rounded-xl font-bold text-base shadow-lg hover:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2">
-                            GERAR PEDIDOS DE COMPRA
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                        <button id="btn-go-to-orders" class="w-full ${mainButtonColor} text-white px-4 py-3 rounded-xl font-bold text-base shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+                            ${mainButtonText}
+                            ${mainButtonIcon}
                         </button>
                     </div>
 
@@ -447,6 +447,7 @@ async function renderPurchaseTab() {
     }
 }
 
+// --- RENDERIZAÇÃO DO PASSO 2 (PEDIDOS FINAIS OU COTAÇÕES) ---
 function renderFinalOrders(container) {
     if (!purchaseFlowState.finalOrders || Object.keys(purchaseFlowState.finalOrders).length === 0) {
         purchaseFlowState.step = 1;
@@ -454,9 +455,20 @@ function renderFinalOrders(container) {
         return;
     }
 
+    const isQuote = purchaseFlowState.isQuoteMode;
     let cardsHtml = '';
     let grandTotal = 0;
     
+    // Define cores e textos baseados no modo (Cotação vs Pedido)
+    const cardBorderColor = isQuote ? 'border-indigo-100' : 'border-gray-200';
+    const cardHeaderColor = isQuote ? 'bg-indigo-50 border-indigo-100' : 'bg-gray-50 border-gray-200';
+    const tagColor = isQuote ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700';
+    const saveButtonClass = isQuote ? 'hidden' : 'flex'; // Esconde botão de salvar se for cotação
+    const pageTitle = isQuote ? 'Cotações Prontas' : 'Pedidos Prontos';
+    const pageSubtitleClass = isQuote ? 'text-indigo-600' : 'text-green-600';
+    const pageBgClass = isQuote ? 'bg-indigo-50 border-indigo-100' : 'bg-green-50 border-green-100';
+    const pageTitleColor = isQuote ? 'text-indigo-800' : 'text-green-800';
+
     for (const [supId, data] of Object.entries(purchaseFlowState.finalOrders)) {
         let orderTotal = 0;
         let itemsHtml = data.items.map(item => {
@@ -488,9 +500,10 @@ function renderFinalOrders(container) {
         }));
         const orderItemsStr = encodeURIComponent(JSON.stringify(data.items));
 
+        // ADICIONADO: data-supplier-id para recuperar os dados reais sem raspar o HTML
         cardsHtml += `
-            <div class="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm supplier-order-card mb-4" data-supplier-name="${data.info.name}">
-                <div class="bg-gray-50 p-3 border-b border-gray-200 flex justify-between items-center">
+            <div class="bg-white border ${cardBorderColor} rounded-xl overflow-hidden shadow-sm supplier-order-card mb-4" data-supplier-id="${supId}">
+                <div class="${cardHeaderColor} p-3 border-b flex justify-between items-center">
                     <div>
                         <h4 class="font-bold text-gray-800 text-base">${data.info.name}</h4>
                         <div class="text-[10px] text-gray-500 flex flex-col">
@@ -498,7 +511,7 @@ function renderFinalOrders(container) {
                         </div>
                     </div>
                     <div class="text-right">
-                        <span class="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded">R$ ${orderTotal.toFixed(2)}</span>
+                        <span class="${tagColor} text-xs font-bold px-2 py-1 rounded">R$ ${orderTotal.toFixed(2)}</span>
                     </div>
                 </div>
                 <div class="p-3">
@@ -513,10 +526,10 @@ function renderFinalOrders(container) {
                         data-supplier-info="${supplierInfoStr}"
                         data-order-items="${orderItemsStr}"
                         data-total="${orderTotal}">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.897.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.463 1.065 2.876 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                         Enviar
                     </button>
-                    <button class="btn-register-order bg-blue-600 text-white px-2 py-2.5 rounded-lg hover:bg-blue-700 text-xs font-bold flex items-center justify-center gap-1 shadow-sm" data-order="${orderDataStr}">
+                    <button class="btn-register-order bg-blue-600 text-white px-2 py-2.5 rounded-lg hover:bg-blue-700 text-xs font-bold items-center justify-center gap-1 shadow-sm ${saveButtonClass}" data-order="${orderDataStr}">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                         Salvar
                     </button>
@@ -527,10 +540,10 @@ function renderFinalOrders(container) {
 
     container.innerHTML = `
         <div class="space-y-4 animate-fade-in pb-24">
-            <div class="flex flex-col justify-between items-center gap-3 bg-green-50 p-4 rounded-lg border border-green-100 text-center">
+            <div class="flex flex-col justify-between items-center gap-3 ${pageBgClass} p-4 rounded-lg border text-center">
                 <div>
-                    <h3 class="font-bold text-green-800 text-lg">Pedidos Prontos</h3>
-                    <p class="text-sm text-green-600">Valor Total: <strong class="text-lg">R$ ${grandTotal.toFixed(2)}</strong></p>
+                    <h3 class="font-bold ${pageTitleColor} text-lg">${pageTitle}</h3>
+                    <p class="text-sm ${pageSubtitleClass}">Valor Estimado: <strong class="text-lg">R$ ${grandTotal.toFixed(2)}</strong></p>
                 </div>
                 <button id="btn-back-step1" class="text-gray-600 hover:text-gray-900 text-sm font-medium underline py-2">
                     ← Voltar e Corrigir
@@ -706,8 +719,8 @@ function updatePurchaseTotal() {
     if(totalEl) totalEl.textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
 }
 
-// --- FUNÇÃO DE GERAÇÃO DE PDF ---
-async function generatePDF(title, supplierName, items, isQuote = false) {
+// --- FUNÇÃO DE GERAÇÃO DE PDF (PROFISSIONAL) ---
+async function generatePDF(dataObj, isQuote = false) {
     if (!window.jspdf) {
         alert("Erro: Biblioteca PDF não carregada.");
         return;
@@ -715,36 +728,107 @@ async function generatePDF(title, supplierName, items, isQuote = false) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     const today = new Date().toLocaleDateString('pt-BR');
-
-    doc.setFontSize(18);
-    doc.text(title, 14, 20);
     
+    // Configurações de cores
+    const primaryColor = isQuote ? [100, 116, 139] : [22, 163, 74]; // Azul acinzentado (Quote) ou Verde (Pedido)
+    
+    // --- CABEÇALHO ---
+    // Título Principal
+    doc.setFontSize(22);
+    doc.setTextColor(...primaryColor);
+    doc.setFont("helvetica", "bold");
+    const title = isQuote ? "SOLICITAÇÃO DE COTAÇÃO" : "PEDIDO DE COMPRA";
+    doc.text(title, 14, 20);
+
+    // Linha divisória
+    doc.setDrawColor(...primaryColor);
+    doc.setLineWidth(0.5);
+    doc.line(14, 25, 196, 25);
+
+    // --- BLOCO DE INFORMAÇÕES (DE -> PARA) ---
     doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Data: ${today}`, 14, 28);
     doc.setTextColor(0);
-    doc.setFontSize(12);
-    doc.text(`Destinatário: ${supplierName}`, 14, 38);
+    
+    // Lado Esquerdo: "De" (Estabelecimento)
+    doc.setFont("helvetica", "bold");
+    doc.text("DE:", 14, 35);
+    doc.setFont("helvetica", "normal");
+    doc.text(state.establishmentName || "Nossa Empresa", 14, 40);
+    doc.text(`Data: ${today}`, 14, 45);
 
-    if (isQuote) {
-        doc.setFontSize(10);
-        doc.text("Por favor, enviem a vossa melhor cotação para os itens abaixo.", 14, 45);
-    }
+    // Lado Direito: "Para" (Fornecedor)
+    doc.setFont("helvetica", "bold");
+    doc.text("PARA:", 110, 35);
+    doc.setFont("helvetica", "normal");
+    doc.text(dataObj.info.name || "Fornecedor", 110, 40);
+    if(dataObj.info.email) doc.text(`Email: ${dataObj.info.email}`, 110, 45);
+    if(dataObj.info.phone) doc.text(`Tel: ${dataObj.info.phone}`, 110, 50);
 
-    const tableBody = items.map(item => [item.name, item.qty.toString()]);
+    // --- TEXTO INTRODUTÓRIO ---
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "italic");
+    const introText = isQuote 
+        ? "Por favor, enviem os vossos melhores preços e condições para os itens listados abaixo." 
+        : "Confirmação de pedido de compra conforme os itens e quantidades abaixo.";
+    doc.text(introText, 14, 65);
 
-    doc.autoTable({
-        startY: isQuote ? 50 : 45,
-        head: [['Produto', 'Quantidade Solicitada']],
-        body: tableBody,
-        theme: 'striped',
-        headStyles: { fillColor: isQuote ? [100, 116, 139] : [22, 163, 74] },
-        styles: { fontSize: 10, cellPadding: 3 }
+    // --- TABELA DE ITENS ---
+    const tableColumns = isQuote 
+        ? ['Produto', 'Quantidade Solicitada'] 
+        : ['Produto', 'Qtd.', 'V. Unitário', 'V. Total'];
+
+    const tableBody = dataObj.items.map(item => {
+        if(isQuote) {
+            return [item.name, item.qty.toString()];
+        } else {
+            return [
+                item.name, 
+                item.qty.toString(), 
+                `R$ ${item.cost.toFixed(2)}`, 
+                `R$ ${(item.qty * item.cost).toFixed(2)}`
+            ];
+        }
     });
 
-    const fileName = `${isQuote ? 'Cotacao' : 'Pedido'}_${supplierName.replace(/\s+/g, '_')}_${today.replace(/\//g, '-')}.pdf`;
+    doc.autoTable({
+        startY: 75,
+        head: [tableColumns],
+        body: tableBody,
+        theme: 'striped',
+        headStyles: { 
+            fillColor: primaryColor, 
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            halign: 'left'
+        },
+        styles: { 
+            fontSize: 10, 
+            cellPadding: 3,
+            valign: 'middle'
+        },
+        columnStyles: isQuote ? {} : {
+            1: { halign: 'center' },
+            2: { halign: 'right' },
+            3: { halign: 'right', fontStyle: 'bold' }
+        },
+        foot: !isQuote ? [
+            ['', '', 'TOTAL DO PEDIDO:', { content: `R$ ${tableBody.reduce((acc, row) => acc + parseFloat(row[3].replace('R$ ','')), 0).toFixed(2)}`, styles: { halign: 'right', fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0,0,0] } }]
+        ] : null
+    });
+
+    // --- RODAPÉ ---
+    const pageCount = doc.internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Gerado por Kairos - Página ${i} de ${pageCount}`, 196, 290, { align: 'right' });
+    }
+
+    const cleanName = dataObj.info.name.replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `${isQuote ? 'Cotacao' : 'Pedido'}_${cleanName}_${today.replace(/\//g, '-')}.pdf`;
     doc.save(fileName);
-    showNotification("Sucesso", "PDF gerado!", "success");
+    showNotification("Sucesso", "PDF gerado com sucesso!", "success");
 }
 
 // --- 6. MODAL DE FORNECEDORES (Moderno e Responsivo) ---
@@ -896,48 +980,7 @@ export function loadSuppliersPage() {
             updatePurchaseTotal();
         }
 
-        // --- FLUXO DE COMPRAS ---
-        if (e.target.closest('#btn-generate-quotes')) {
-            const rows = document.querySelectorAll('.product-row');
-            const quotesMap = {}; 
-            
-            rows.forEach(row => {
-                if (row.offsetParent === null) return; // Ignora linhas ocultas
-
-                const checkbox = row.querySelector('.row-select');
-                if (!checkbox.checked) return;
-
-                // Tenta pegar o nome do produto tanto na estrutura mobile quanto desktop
-                let productName = "Produto";
-                const desktopName = row.querySelector('td:nth-child(2)');
-                const mobileName = row.querySelector('.font-bold'); // Classe específica do mobile
-
-                if (desktopName) productName = desktopName.innerText;
-                else if (mobileName) productName = mobileName.innerText;
-
-                const qty = row.querySelector('.qty-input').value;
-                const select = row.querySelector('.supplier-select');
-                const supId = select.value;
-                
-                if(supId) {
-                    if (!quotesMap[supId]) {
-                        const sup = purchaseFlowState.allSuppliers.find(s => s.id === supId);
-                        quotesMap[supId] = { name: sup.name, items: [] };
-                    }
-                    quotesMap[supId].items.push({ name: productName, qty });
-                }
-            });
-
-            if (Object.keys(quotesMap).length === 0) {
-                showNotification("Erro", "Nenhum item com fornecedor selecionado.", "error");
-                return;
-            }
-
-            Object.values(quotesMap).forEach(quote => {
-                generatePDF("Solicitação de Cotação", quote.name, quote.items, true);
-            });
-        }
-
+        // --- FLUXO DE COMPRAS E COTAÇÕES ---
         if (e.target.closest('#btn-go-to-orders')) {
             const rows = document.querySelectorAll('.product-row');
             const finalOrders = {};
@@ -986,37 +1029,63 @@ export function loadSuppliersPage() {
             renderPurchaseTab();
         }
 
-        // --- ENVIAR PEDIDO ---
+        // --- ENVIAR PEDIDO/COTAÇÃO ---
         if (e.target.closest('.btn-send-order')) {
             const btn = e.target.closest('.btn-send-order');
             const supplierInfo = JSON.parse(decodeURIComponent(btn.dataset.supplierInfo));
             const items = JSON.parse(decodeURIComponent(btn.dataset.orderItems));
             const total = parseFloat(btn.dataset.total);
+            const isQuote = purchaseFlowState.isQuoteMode;
 
             // 1. Tentar WhatsApp (Prioridade Mobile)
             if (supplierInfo.phone) {
                 const phone = supplierInfo.phone.replace(/\D/g, ''); 
-                let message = `Olá *${supplierInfo.name}*, gostaria de realizar o seguinte pedido:\n\n`;
-                message += `*ITENS:*\n`;
-                items.forEach(item => {
-                    message += `- ${item.qty}x ${item.name}\n`;
-                });
-              ///  message += `\n*Valor Total Estimado:* R$ ${total.toFixed(2)}\n\n`;
-                message += `Aguardo confirmação.`;
+                let message = "";
+                
+                if (isQuote) {
+                    message = `Olá *${supplierInfo.name}*, tudo bem?\n\nGostaria de solicitar uma *cotação* para os seguintes itens:\n\n`;
+                    items.forEach(item => {
+                        message += `- ${item.qty}x ${item.name}\n`;
+                    });
+                    message += `\nAguardo o retorno. Obrigado!`;
+                } else {
+                    message = `Olá *${supplierInfo.name}*, gostaria de realizar o seguinte *pedido*:\n\n`;
+                    message += `*ITENS:*\n`;
+                    items.forEach(item => {
+                        message += `- ${item.qty}x ${item.name}\n`;
+                    });
+                    // message += `\n*Valor Total Estimado:* R$ ${total.toFixed(2)}\n\n`; // Opcional no pedido
+                    message += `\nAguardo confirmação.`;
+                }
 
                 const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
                 window.open(url, '_blank');
                 
-                showNotification("Aberto", "WhatsApp aberto com o pedido.", "success");
+                showNotification("Aberto", "WhatsApp aberto.", "success");
             } 
             // 2. Fallback para Email
             else if (supplierInfo.email) {
-                const subject = `Pedido de Compra - ${state.establishmentName || 'Empresa'}`;
-                let body = `Olá ${supplierInfo.name},\n\nGostaria de realizar o seguinte pedido:\n\n`;
+                const subject = isQuote 
+                    ? `Solicitação de Cotação - ${state.establishmentName || 'Empresa'}`
+                    : `Pedido de Compra - ${state.establishmentName || 'Empresa'}`;
+                
+                let body = `Olá ${supplierInfo.name},\n\n`;
+                
+                if (isQuote) {
+                    body += `Gostaria de solicitar uma cotação para os itens abaixo:\n\n`;
+                } else {
+                    body += `Gostaria de realizar o seguinte pedido:\n\n`;
+                }
+
                 items.forEach(item => {
                     body += `- ${item.qty}x ${item.name}\n`;
                 });
-                body += `\nValor Total Estimado: R$ ${total.toFixed(2)}\n\nAguardo confirmação.`;
+                
+                if (!isQuote) {
+                    body += `\nValor Total Estimado: R$ ${total.toFixed(2)}`;
+                }
+                
+                body += `\n\nAguardo retorno.`;
 
                 const url = `mailto:${supplierInfo.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                 window.location.href = url;
@@ -1043,31 +1112,17 @@ export function loadSuppliersPage() {
             });
         }
 
-        // Imprimir Pedido Final
+        // Imprimir Pedido/Cotação Final (CORRIGIDO PARA USAR DADOS REAIS)
         if (e.target.closest('.btn-print-order')) {
             const card = e.target.closest('.supplier-order-card');
-            const supName = card.dataset.supplierName;
-            
-            const items = [];
-            
-            const itemRows = card.querySelectorAll('.border-b'); 
-            
-            itemRows.forEach(row => {
-               // Ajustado para pegar da nova estrutura de DIVs do mobile card
-               const nameEl = row.querySelector('.text-gray-800');
-               const qtyEl = row.querySelector('.text-gray-600'); // Corrigido para pegar o seletor correto
+            const supId = card.dataset.supplierId;
+            const orderData = purchaseFlowState.finalOrders[supId];
 
-               if (nameEl && qtyEl) {
-                   const name = nameEl.innerText;
-                   const qtyText = qtyEl.innerText.split(' x ')[0];
-                   items.push({
-                       name: name,
-                       qty: qtyText
-                   });
-               }
-            });
-
-            generatePDF("Pedido de Compra", supName, items, false);
+            if (orderData) {
+                generatePDF(orderData, purchaseFlowState.isQuoteMode);
+            } else {
+                showNotification("Erro", "Dados do pedido não encontrados.", "error");
+            }
         }
 
         // --- AÇÕES DO HISTÓRICO ---
