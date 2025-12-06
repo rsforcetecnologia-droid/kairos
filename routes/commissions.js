@@ -4,11 +4,31 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess } = require('../middlewares/auth');
+const { AggregateField } = require('firebase-admin/firestore'); // Importação necessária para otimização
 
 // Aplica segurança em todas as rotas
 router.use(verifyToken, hasAccess);
 
-// --- ROTA DE ESTATÍSTICAS (Dashboard: Faturamento vs Comissões) ---
+// --- FUNÇÃO AUXILIAR DE ERRO ---
+function handleFirestoreError(res, error, context) {
+    console.error(`Erro em ${context}:`, error);
+    const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
+    const indexLink = linkMatch ? linkMatch[0] : null;
+
+    if (error.message && error.message.includes('requires an index')) {
+        return res.status(500).json({ 
+            message: `O Firestore precisa de um índice para ${context}.`,
+            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs."
+        });
+    }
+    res.status(500).json({ message: `Erro ao processar ${context}.` });
+}
+
+// =======================================================================
+// 🚀 ROTAS
+// =======================================================================
+
+// 1. ESTATÍSTICAS (OTIMIZADA COM AGGREGATION)
 router.get('/stats', async (req, res) => {
     const { establishmentId } = req.user;
     const { startDate, endDate } = req.query;
@@ -21,46 +41,32 @@ router.get('/stats', async (req, res) => {
         const { db } = req;
         const start = new Date(startDate);
         const end = new Date(endDate + "T23:59:59");
-        const startTs = start.getTime();
-        const endTs = end.getTime();
 
-        // 1. Total Faturado (Vendas)
-        // Usamos filtragem em memória para evitar o erro 500 por falta de índice composto
-        const salesQuery = db.collection('sales').where('establishmentId', '==', establishmentId);
-        const salesSnap = await salesQuery.get();
-        let totalRevenue = 0;
+        // A) Total Faturado (Vendas) - Soma direta no servidor (Custo: 1 leitura)
+        // Requer índice: establishmentId + transaction.paidAt (Já criado para o reports.js)
+        const salesAgg = await db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('transaction.paidAt', '>=', start)
+            .where('transaction.paidAt', '<=', end)
+            .aggregate({ total: AggregateField.sum('transaction.totalAmount') })
+            .get();
 
-        salesSnap.forEach(doc => {
-            const data = doc.data();
-            if (data.transaction && data.transaction.paidAt) {
-                const saleDate = data.transaction.paidAt.toDate().getTime();
-                if (saleDate >= startTs && saleDate <= endTs) {
-                    // Tenta pegar o total pronto, senão soma itens
-                    if (typeof data.total === 'number') {
-                        totalRevenue += data.total;
-                    } else if (data.items && Array.isArray(data.items)) {
-                        const sumItems = data.items.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
-                        totalRevenue += sumItems;
-                    }
-                }
-            }
-        });
+        const totalRevenue = salesAgg.data().total || 0;
 
-        // 2. Total Pago em Comissões (Relatórios Gerados)
-        const reportsQuery = db.collection('commission_reports').where('establishmentId', '==', establishmentId);
-        const reportsSnap = await reportsQuery.get();
+        // B) Total Pago em Comissões (Relatórios Gerados)
+        // Busca apenas os relatórios DO PERÍODO (Economia massiva de leitura)
+        const reportsQuery = await db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId)
+            .where('createdAt', '>=', start)
+            .where('createdAt', '<=', end)
+            .get();
+            
         let totalCommissionsPaid = 0;
-        
-        reportsSnap.forEach(doc => {
+        reportsQuery.forEach(doc => {
             const data = doc.data();
-            if (data.createdAt) {
-                const reportDate = data.createdAt.toDate().getTime();
-                if (reportDate >= startTs && reportDate <= endTs) {
-                    // Usa o valor final (ajustado) ou o original calculado
-                    const val = data.summary.finalValue !== undefined ? data.summary.finalValue : data.summary.totalCommission;
-                    totalCommissionsPaid += Number(val);
-                }
-            }
+            // Usa o valor final (ajustado) ou o original calculado
+            const val = data.summary.finalValue !== undefined ? data.summary.finalValue : data.summary.totalCommission;
+            totalCommissionsPaid += Number(val || 0);
         });
 
         res.status(200).json({
@@ -69,12 +75,11 @@ router.get('/stats', async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro stats:", error);
-        res.status(500).json({ message: 'Erro ao calcular estatísticas.' });
+        handleFirestoreError(res, error, 'estatísticas de comissão');
     }
 });
 
-// --- ROTA DE CÁLCULO (Otimizada: Varredura Total) ---
+// 2. CÁLCULO DE PREVISÃO (OTIMIZADA: FILTRO DE DATA NA QUERY)
 router.post('/calculate', async (req, res) => {
     const { establishmentId } = req.user;
     const { professionalIds, startDate, endDate, calculationTypes } = req.body;
@@ -86,14 +91,13 @@ router.post('/calculate', async (req, res) => {
         const start = new Date(startDate);
         const end = new Date(endDate + "T23:59:59");
 
-        // 1. Carregar Profissionais (Mapa para acesso rápido e checagem de elegibilidade)
+        // 1. Carregar Profissionais
         const profsSnapshot = await db.collection('professionals')
             .where('establishmentId', '==', establishmentId).get();
         
         const professionalsMap = new Map();
         profsSnapshot.forEach(doc => {
             const data = doc.data();
-            // Verifica se o profissional recebe comissão
             if (data.receivesCommission === true || data.commissionActive === true) {
                 professionalsMap.set(doc.id, { id: doc.id, ...data });
             }
@@ -101,7 +105,7 @@ router.post('/calculate', async (req, res) => {
 
         if (professionalsMap.size === 0) return res.status(200).json([]);
 
-        // 2. Carregar Catálogo (Serviços/Produtos/Pacotes) para evitar queries em loop
+        // 2. Carregar Catálogo (Otimizado: Busca única)
         const [servicesSnap, productsSnap, packagesSnap] = await Promise.all([
             calculationTypes.services ? db.collection('services').where('establishmentId', '==', establishmentId).get() : Promise.resolve({ docs: [] }),
             calculationTypes.products ? db.collection('products').where('establishmentId', '==', establishmentId).get() : Promise.resolve({ docs: [] }),
@@ -114,36 +118,33 @@ router.post('/calculate', async (req, res) => {
             package: new Map(packagesSnap.docs.map(d => [d.id, d.data()]))
         };
 
-        // 3. Carregar Vendas (Filtragem em Memória para segurança contra erros de índice)
-        const salesQuery = db.collection('sales').where('establishmentId', '==', establishmentId);
+        // 3. Carregar Vendas (CRÍTICO: Filtro de data direto no banco)
+        // Antes baixava tudo. Agora só baixa o mês relevante.
+        const salesQuery = db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('transaction.paidAt', '>=', start)
+            .where('transaction.paidAt', '<=', end);
+            
         const salesSnapshot = await salesQuery.get();
         
         if (salesSnapshot.empty) return res.status(200).json([]);
 
         const resultsMap = new Map();
-        const startTs = start.getTime();
-        const endTs = end.getTime();
 
         salesSnapshot.forEach(saleDoc => {
             const saleData = saleDoc.data();
-            
-            // Filtro de Data da Venda
-            if (!saleData.transaction || !saleData.transaction.paidAt) return;
-            const saleDate = saleData.transaction.paidAt.toDate().getTime();
-            if (saleDate < startTs || saleDate > endTs) return;
-
             const items = saleData.items || [];
 
             items.forEach(item => {
                 if (!item.id) return;
                 
-                // Identifica dono do item (prioridade para o item, fallback para a venda)
+                // Identifica dono do item
                 const ownerId = item.professionalId || saleData.professionalId;
                 const profData = professionalsMap.get(ownerId);
                 
                 if (!profData) return;
                 
-                // Filtro de seleção do usuário
+                // Filtro de seleção do usuário (frontend)
                 if (professionalIds && !professionalIds.includes('all') && !professionalIds.includes(ownerId)) return;
 
                 let commissionRate = 0;
@@ -151,7 +152,7 @@ router.post('/calculate', async (req, res) => {
                 const price = parseFloat(item.price || 0);
                 const type = item.type || 'service';
 
-                // Lógica de Taxas (Hierarquia: Personalizada > Geral)
+                // Lógica de Taxas
                 if (type === 'service' && calculationTypes.services) {
                     const serviceData = catalogMap.service.get(item.id);
                     if (serviceData) {
@@ -192,8 +193,12 @@ router.post('/calculate', async (req, res) => {
                     profResult.summary.totalCommissionableValue += price;
                     profResult.summary.totalCommission += itemCommission;
                     profResult.summary.totalItems += 1;
+                    
+                    // Nota: transaction.paidAt é timestamp, convertemos para Date
+                    const saleDate = saleData.transaction && saleData.transaction.paidAt ? saleData.transaction.paidAt.toDate() : new Date();
+                    
                     profResult.items.push({
-                        date: saleData.transaction.paidAt.toDate(),
+                        date: saleDate,
                         client: saleData.clientName || 'Cliente Balcão',
                         item: item.name || 'Item',
                         value: price,
@@ -213,12 +218,11 @@ router.post('/calculate', async (req, res) => {
         res.status(200).json(finalResults);
 
     } catch (error) {
-        console.error("Erro cálculo:", error);
-        res.status(500).json({ message: 'Erro interno ao processar comissões.' });
+        handleFirestoreError(res, error, 'cálculo de comissões');
     }
 });
 
-// --- ROTA DE SALVAR (ATUALIZADA COM INTEGRAÇÃO PADRÃO) ---
+// 3. SALVAR E INTEGRAR (Mantida, com logs melhorados)
 router.post('/save', async (req, res) => {
     const { establishmentId } = req.user;
     const { professionalId, professionalName, period, reportData } = req.body;
@@ -229,12 +233,9 @@ router.post('/save', async (req, res) => {
         const { db } = req;
         const finalValue = reportData.summary.finalValue !== undefined ? reportData.summary.finalValue : reportData.summary.totalCommission;
 
-        // 1. Prepara e Salva o Relatório de Comissão
+        // A) Salvar Relatório
         const report = {
-            establishmentId, 
-            professionalId, 
-            professionalName, 
-            period,
+            establishmentId, professionalId, professionalName, period,
             summary: {
                 ...reportData.summary,
                 finalValue: finalValue,
@@ -251,25 +252,21 @@ router.post('/save', async (req, res) => {
 
         const docRef = await db.collection('commission_reports').add(report);
 
-        // 2. INTEGRAÇÃO FINANCEIRA INTELIGENTE (Contas a Pagar)
+        // B) Integração Financeira
         if (finalValue > 0) {
-            // A) Busca configurações do estabelecimento (Natureza e C.Custo padrão)
             const estabDoc = await db.collection('establishments').doc(establishmentId).get();
-            // Previne erro se o documento ou o campo não existirem
             const config = estabDoc.exists ? (estabDoc.data().commissionConfig || {}) : {};
+            const today = new Date().toISOString().split('T')[0];
             
-            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-            
-            // B) Cria o lançamento financeiro usando os padrões
             const payableEntry = {
                 establishmentId,
                 description: `Comissão - ${professionalName} - Ref: ${period}`,
                 amount: Number(finalValue.toFixed(2)),
-                dueDate: today, // Vence hoje (pode ser alterado depois no financeiro)
-                naturezaId: config.defaultNatureId || null, // Usa o padrão ou null
-                centroDeCustoId: config.defaultCostCenterId || null, // Usa o padrão ou null
+                dueDate: today,
+                naturezaId: config.defaultNatureId || null,
+                centroDeCustoId: config.defaultCostCenterId || null,
                 notes: `Gerado automaticamente via Módulo de Comissões. Relatório ID: ${docRef.id}`,
-                status: 'pending', // Pendente de pagamento
+                status: 'pending',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
 
@@ -278,61 +275,56 @@ router.post('/save', async (req, res) => {
 
         res.status(201).json({ message: 'Salvo com sucesso e integrado ao financeiro!', id: docRef.id });
     } catch (error) {
-        console.error("Erro salvar:", error);
-        res.status(500).json({ message: 'Erro ao salvar relatório.' });
+        handleFirestoreError(res, error, 'salvar relatório');
     }
 });
 
-// --- ROTA DE HISTÓRICO (Filtragem em Memória) ---
+// 4. HISTÓRICO (OTIMIZADA: FILTRO DE DATA NA QUERY)
 router.get('/history', async (req, res) => {
     const { establishmentId } = req.user;
     const { professionalId, startDate, endDate } = req.query;
 
     try {
         const { db } = req;
-        let query = db.collection('commission_reports').where('establishmentId', '==', establishmentId);
+        let query = db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId);
         
+        // Filtro Profissional
         if (professionalId && professionalId !== 'all') {
             query = query.where('professionalId', '==', professionalId);
         }
-
-        const snapshot = await query.get();
-        let history = [];
         
-        let startTs = null, endTs = null;
+        // Filtro Data Direto no Banco (Economia de Leituras)
         if (startDate && endDate) {
-            startTs = new Date(startDate).getTime();
-            endTs = new Date(endDate + "T23:59:59").getTime();
+            const start = new Date(startDate);
+            const end = new Date(endDate + "T23:59:59");
+            query = query.where('createdAt', '>=', start).where('createdAt', '<=', end);
         }
 
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            // Filtro de Data em memória
-            if (startTs && endTs) {
-                if (!data.createdAt) return;
-                const reportDate = data.createdAt.toDate().getTime();
-                if (reportDate < startTs || reportDate > endTs) return;
-            }
+        // Ordenação
+        query = query.orderBy('createdAt', 'desc');
 
-            history.push({
+        const snapshot = await query.get();
+        
+        const history = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
                 id: doc.id,
                 ...data,
                 createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' 
                     ? data.createdAt.toDate().toISOString() 
                     : new Date().toISOString()
-            });
+            };
         });
 
-        history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         res.status(200).json(history);
 
     } catch (error) {
-        console.error("Erro histórico:", error);
-        res.status(500).json({ message: 'Erro ao buscar histórico.' });
+        handleFirestoreError(res, error, 'histórico de relatórios');
     }
 });
 
-// --- ROTA DE EXCLUSÃO (JSON 200) ---
+// 5. EXCLUSÃO
 router.delete('/report/:reportId', async (req, res) => {
     const { establishmentId } = req.user;
     const { reportId } = req.params;
@@ -348,12 +340,10 @@ router.delete('/report/:reportId', async (req, res) => {
         if (String(reportDoc.data().establishmentId) !== String(establishmentId)) return res.status(403).json({ message: 'Acesso negado.' });
 
         await reportRef.delete();
-        // Retorna JSON 200 para evitar erro de parse no frontend
         res.status(200).json({ message: 'Relatório excluído com sucesso.' });
 
     } catch (error) {
-        console.error("Erro excluir:", error);
-        res.status(500).json({ message: 'Erro interno ao excluir.' });
+        handleFirestoreError(res, error, 'excluir relatório');
     }
 });
 

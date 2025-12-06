@@ -7,14 +7,28 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 
 router.use(verifyToken, hasAccess);
 
-// --- FUNÇÃO AUXILIAR ---
-function getDateInTimezone(dateObj, timezone) {
-    const localString = dateObj.toLocaleString("en-US", { timeZone: timezone });
-    return new Date(localString);
+// --- FUNÇÃO AUXILIAR MELHORADA (EXTRAI O LINK DO ÍNDICE) ---
+function handleFirestoreError(res, error, context) {
+    console.error(`Erro em ${context}:`, error);
+
+    // Tenta encontrar o link mágico do Google dentro do texto do erro
+    // O erro geralmente vem: "The query requires an index. You can create it here: https://..."
+    const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
+    const indexLink = linkMatch ? linkMatch[0] : null;
+
+    if (error.code === 9 || (error.message && error.message.includes('requires an index'))) {
+        return res.status(500).json({ 
+            message: `O Firestore precisa de um índice para ${context}.`,
+            // AQUI ESTÁ A SOLUÇÃO: Enviamos o link direto para o navegador
+            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs.",
+            technicalError: error.message // Envia o erro original para facilitar
+        });
+    }
+    res.status(500).json({ message: `Erro ao processar ${context}.` });
 }
 
 // =======================================================================
-// 🚀 NOVAS ROTAS (DASHBOARD DE GESTÃO / DRE)
+// 🚀 NOVAS ROTAS (DASHBOARD DE GESTÃO / DRE) - OTIMIZADAS
 // =======================================================================
 
 // 1. ROTA MESTRA DE INDICADORES
@@ -26,67 +40,105 @@ router.get('/indicators', async (req, res) => {
 
     try {
         const { db } = req;
-        // Configura datas para comparação de timestamp (UTC/Local)
-        const start = new Date(startDate); start.setHours(0,0,0,0);
-        const end = new Date(endDate); end.setHours(23,59,59,999);
         
-        const startTs = start.getTime();
-        const endTs = end.getTime();
+        // --- PREPARAÇÃO DE DATAS ---
+        const start = new Date(startDate); 
+        start.setHours(0,0,0,0);
+        
+        const end = new Date(endDate); 
+        end.setHours(23,59,59,999);
 
-        // Busca TUDO para evitar erros de índice composto e permitir filtragem flexível
-        const [salesSnap, expensesSnap, receivablesSnap, naturesSnap, commissionsSnap, appointmentsSnap] = await Promise.all([
-            db.collection('sales').where('establishmentId', '==', establishmentId).get(),
-            db.collection('financial_payables').where('establishmentId', '==', establishmentId).get(),
-            db.collection('financial_receivables').where('establishmentId', '==', establishmentId).get(),
-            db.collection('financial_natures').where('establishmentId', '==', establishmentId).get(),
-            db.collection('commission_reports').where('establishmentId', '==', establishmentId).get(),
-            db.collection('appointments').where('establishmentId', '==', establishmentId).get()
+        // --- QUERIES FILTRADAS POR DATA ---
+        
+        // A) VENDAS
+        let salesQuery = db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('transaction.paidAt', '>=', start)
+            .where('transaction.paidAt', '<=', end);
+            
+        // B) FINANCEIRO PAGAR
+        let expensesQuery = db.collection('financial_payables')
+            .where('establishmentId', '==', establishmentId)
+            .where('dueDate', '>=', startDate)
+            .where('dueDate', '<=', endDate);
+
+        // C) FINANCEIRO RECEBER
+        let receivablesQuery = db.collection('financial_receivables')
+            .where('establishmentId', '==', establishmentId)
+            .where('dueDate', '>=', startDate)
+            .where('dueDate', '<=', endDate);
+
+        // D) COMISSÕES
+        let commissionsQuery = db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId)
+            .where('createdAt', '>=', start)
+            .where('createdAt', '<=', end);
+
+        // E) AGENDAMENTOS
+        let appointmentsQuery = db.collection('appointments')
+            .where('establishmentId', '==', establishmentId)
+            .where('date', '>=', startDate)
+            .where('date', '<=', endDate);
+
+        // F) NATUREZAS
+        let naturesQuery = db.collection('financial_natures')
+            .where('establishmentId', '==', establishmentId);
+
+        // --- EXECUÇÃO PARALELA ---
+        const [salesSnap, expensesSnap, receivablesSnap, commissionsSnap, appointmentsSnap, naturesSnap] = await Promise.all([
+            salesQuery.get(),
+            expensesQuery.get(),
+            receivablesQuery.get(),
+            commissionsQuery.get(),
+            appointmentsQuery.get(),
+            naturesQuery.get()
         ]);
 
         // Mapear Naturezas (ID -> Nome)
         const naturesMap = {};
         naturesSnap.forEach(doc => { naturesMap[doc.id] = doc.data().name; });
 
-        // --- PROCESSAMENTO ---
-
-        // Estruturas de Agregação
+        // --- PROCESSAMENTO EM MEMÓRIA ---
         const salesByDay = {}, salesByMonth = {}, salesByProduct = {}, salesByProfessional = {};
         const apptByDay = {}, apptByMonth = {}, apptStatus = { scheduled: 0, completed: 0, canceled: 0, missed: 0 };
         const expensesByCategory = {};
         
-        // DRE Financeiro (Baseado em Contas a Pagar/Receber - Aba DRE)
         const dreFinancial = { revenues: {}, expenses: {}, totalRevenues: 0, totalExpenses: 0 };
 
-        // Totais para KPIs
         let totalRevenue = 0;
         let totalCommissions = 0;
-        let totalCompletedAppointments = 0; // Apenas atendidos
-        let totalAppointmentsVolume = 0;    // Volume geral (para gráfico)
+        let totalCompletedAppointments = 0; 
+        let totalAppointmentsVolume = 0;    
 
-        // A) VENDAS (Faturamento)
+        // A) PROCESSAR VENDAS
         salesSnap.forEach(doc => {
             const data = doc.data();
             if (!data.transaction || !data.transaction.paidAt) return;
-            const d = data.transaction.paidAt.toDate();
-            if (d.getTime() < startTs || d.getTime() > endTs) return;
-
+            
             let docValue = 0;
-            // Soma itens (se detalhado e houver filtro de profissional) ou total
+
             if (data.items && Array.isArray(data.items)) {
                 data.items.forEach(item => {
                     const itemOwner = item.professionalId || data.professionalId;
                     if (professionalId && professionalId !== 'all' && itemOwner !== professionalId) return;
+                    
                     const val = Number(item.price) || 0;
                     docValue += val;
-                    salesByProduct[item.name || 'Outros'] = (salesByProduct[item.name || 'Outros'] || 0) + val;
-                    salesByProfessional[item.professionalName || 'Geral'] = (salesByProfessional[item.professionalName || 'Geral'] || 0) + val;
+                    
+                    const prodName = item.name || 'Outros';
+                    salesByProduct[prodName] = (salesByProduct[prodName] || 0) + val;
+                    
+                    const profName = item.professionalName || 'Geral';
+                    salesByProfessional[profName] = (salesByProfessional[profName] || 0) + val;
                 });
-            } else if (!professionalId || professionalId === 'all' || data.professionalId === professionalId) {
+            } else {
+                if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
                 docValue = Number(data.total || data.transaction.totalAmount) || 0;
             }
 
             if (docValue > 0) {
                 totalRevenue += docValue;
+                const d = data.transaction.paidAt.toDate();
                 const dKey = d.toLocaleDateString('pt-BR');
                 const mKey = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
                 salesByDay[dKey] = (salesByDay[dKey] || 0) + docValue;
@@ -94,90 +146,80 @@ router.get('/indicators', async (req, res) => {
             }
         });
 
-        // B) FINANCEIRO (Para DRE Gerencial na Aba DRE)
-        const filterFinancial = (doc) => {
-            const data = doc.data();
-            const dateStr = data.dueDate; 
-            if(!dateStr || dateStr < startDate || dateStr > endDate) return false;
-            if (costCenterId && costCenterId !== 'all' && data.centroDeCustoId !== costCenterId) return false;
+        // B) PROCESSAR FINANCEIRO (DRE)
+        const filterCostCenter = (docData) => {
+            if (costCenterId && costCenterId !== 'all' && docData.centroDeCustoId !== costCenterId) return false;
             return true;
         };
 
         receivablesSnap.forEach(doc => {
-            if (!filterFinancial(doc)) return;
-            const val = Number(doc.data().amount) || 0;
-            const nature = naturesMap[doc.data().naturezaId] || 'Receitas Diversas';
+            const data = doc.data();
+            if (!filterCostCenter(data)) return;
+
+            const val = Number(data.amount) || 0;
+            const nature = naturesMap[data.naturezaId] || 'Receitas Diversas';
             dreFinancial.revenues[nature] = (dreFinancial.revenues[nature] || 0) + val;
             dreFinancial.totalRevenues += val;
         });
 
         expensesSnap.forEach(doc => {
-            if (!filterFinancial(doc)) return;
-            const val = Number(doc.data().amount) || 0;
-            const nature = naturesMap[doc.data().naturezaId] || 'Despesas Gerais';
+            const data = doc.data();
+            if (!filterCostCenter(data)) return;
+
+            const val = Number(data.amount) || 0;
+            const nature = naturesMap[data.naturezaId] || 'Despesas Gerais';
             dreFinancial.expenses[nature] = (dreFinancial.expenses[nature] || 0) + val;
             dreFinancial.totalExpenses += val;
             
-            // Categoria para DRE Simples (se necessário)
-            const cat = doc.data().category || 'Geral';
+            const cat = data.category || 'Geral';
             expensesByCategory[cat] = (expensesByCategory[cat] || 0) + val;
         });
 
-        // C) COMISSÕES (Para dedução do Lucro Estimado)
+        // C) PROCESSAR COMISSÕES
         commissionsSnap.forEach(doc => {
             const data = doc.data();
-            if (!data.createdAt) return;
-            const cDate = data.createdAt.toDate().getTime();
-            if (cDate < startTs || cDate > endTs) return;
             if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
-            
-            // Soma o valor pago
-            totalCommissions += Number(data.summary.finalValue !== undefined ? data.summary.finalValue : data.summary.totalCommission);
+            const val = Number(data.summary?.finalValue ?? data.summary?.totalCommission ?? 0);
+            totalCommissions += val;
         });
 
-        // D) AGENDAMENTOS (Contagem)
+        // D) PROCESSAR AGENDAMENTOS
         appointmentsSnap.forEach(doc => {
             const data = doc.data();
-            let aDate;
-            if (typeof data.date === 'string') { const [y, m, d] = data.date.split('-'); aDate = new Date(y, m-1, d); }
-            else if (data.date?.toDate) { aDate = data.date.toDate(); }
-            
-            if (!aDate) return;
-            if (aDate.getTime() < startTs || aDate.getTime() > endTs) return;
             if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
 
             totalAppointmentsVolume++;
-            
             const status = data.status || 'scheduled';
             if (apptStatus[status] !== undefined) apptStatus[status]++;
-            
-            // Para KPI de "Agendamentos Atendidos" e Ticket Médio
-            if (status === 'completed') {
-                totalCompletedAppointments++;
+            if (status === 'completed') totalCompletedAppointments++;
+
+            let aDate;
+            if (typeof data.date === 'string') {
+                const parts = data.date.split('-'); 
+                aDate = new Date(parts[0], parts[1]-1, parts[2]);
+            } else if (data.date && data.date.toDate) {
+                aDate = data.date.toDate();
             }
 
-            const dKey = aDate.toLocaleDateString('pt-BR');
-            const mKey = aDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-            apptByDay[dKey] = (apptByDay[dKey] || 0) + 1;
-            apptByMonth[mKey] = (apptByMonth[mKey] || 0) + 1;
+            if (aDate) {
+                const dKey = aDate.toLocaleDateString('pt-BR');
+                const mKey = aDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+                apptByDay[dKey] = (apptByDay[dKey] || 0) + 1;
+                apptByMonth[mKey] = (apptByMonth[mKey] || 0) + 1;
+            }
         });
 
-        // 3. RETORNO
+        // RETORNO
         res.json({
-            // DRE Completo (Aba DRE)
             dreFinancial: { 
                 ...dreFinancial, 
                 netResult: dreFinancial.totalRevenues - dreFinancial.totalExpenses 
             },
-            
-            // KPIs (Aba Financeiro) - Ajustado conforme pedido
             dreSimple: { 
                 grossRevenue: totalRevenue, 
-                variableCosts: totalCommissions, // Apenas Comissões
-                // Lucro Estimado = Faturamento - Comissões (ignora despesas fixas aqui)
+                variableCosts: totalCommissions, 
                 netProfit: totalRevenue - totalCommissions 
             },
-            
             charts: {
                 salesDaily: { labels: Object.keys(salesByDay), data: Object.values(salesByDay) },
                 salesMonthly: { labels: Object.keys(salesByMonth), data: Object.values(salesByMonth) },
@@ -187,15 +229,13 @@ router.get('/indicators', async (req, res) => {
                 appointmentsMonthly: { labels: Object.keys(apptByMonth), data: Object.values(apptByMonth) },
                 appointmentsStatus: apptStatus
             },
-            
             expensesByCategory,
-            totalAppointments: totalCompletedAppointments, // KPI Principal: Apenas Atendidos
-            totalAppointmentsVolume // KPI Secundário: Volume total (para gráficos de barra)
+            totalAppointments: totalCompletedAppointments,
+            totalAppointmentsVolume
         });
 
     } catch (error) {
-        console.error("Erro Indicators:", error);
-        res.status(500).json({ message: 'Erro ao processar indicadores.' });
+        handleFirestoreError(res, error, 'indicadores');
     }
 });
 
@@ -203,18 +243,31 @@ router.get('/indicators', async (req, res) => {
 router.get('/appointments/list', async (req, res) => {
     const { establishmentId } = req.user;
     const { date, professionalId } = req.query; 
+    
+    if (!date) return res.status(400).json({ message: 'Data obrigatória.' });
+
     try {
-        let query = req.db.collection('appointments').where('establishmentId', '==', establishmentId).where('date', '==', date);
-        if (professionalId && professionalId !== 'all') query = query.where('professionalId', '==', professionalId);
+        let query = req.db.collection('appointments')
+            .where('establishmentId', '==', establishmentId)
+            .where('date', '==', date);
+
+        if (professionalId && professionalId !== 'all') {
+            query = query.where('professionalId', '==', professionalId);
+        }
+
         const snap = await query.get();
-        // Mapeia e ordena por horário
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+        const list = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+            
         res.json(list);
-    } catch(e) { res.status(500).json({ message: 'Erro lista.' }); }
+    } catch(error) { 
+        handleFirestoreError(res, error, 'lista de agendamentos');
+    }
 });
 
 // =======================================================================
-// 📦 ROTAS LEGADO (RESTAURADAS DO CÓDIGO ORIGINAL)
+// 📦 ROTAS LEGADO
 // =======================================================================
 
 router.get('/sales/:establishmentId', async (req, res) => {
@@ -225,19 +278,21 @@ router.get('/sales/:establishmentId', async (req, res) => {
 
     try {
         const { db } = req;
-        const start = admin.firestore.Timestamp.fromDate(new Date(startDate));
-        const end = admin.firestore.Timestamp.fromDate(new Date(endDate + "T23:59:59"));
-        const { professionalId: loggedInProfessionalId } = req.user;
+        const start = new Date(startDate); start.setHours(0,0,0,0);
+        const end = new Date(endDate); end.setHours(23,59,59,999);
         
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('status', '==', 'completed')
-            .where('transaction.paidAt', '>=', start).where('transaction.paidAt', '<=', end);
+            .where('transaction.paidAt', '>=', start)
+            .where('transaction.paidAt', '<=', end);
         
         let salesQuery = db.collection('sales')
             .where('establishmentId', '==', establishmentId)
-            .where('transaction.paidAt', '>=', start).where('transaction.paidAt', '<=', end);
+            .where('transaction.paidAt', '>=', start)
+            .where('transaction.paidAt', '<=', end);
 
+        const { professionalId: loggedInProfessionalId } = req.user;
         if (loggedInProfessionalId) {
             appointmentsQuery = appointmentsQuery.where('professionalId', '==', loggedInProfessionalId);
             salesQuery = salesQuery.where('professionalId', '==', loggedInProfessionalId);
@@ -262,7 +317,6 @@ router.get('/sales/:establishmentId', async (req, res) => {
             const d = doc.data();
             if(!d.transaction) return;
             if(cashierSessionId && cashierSessionId !== 'all' && d.cashierSessionId !== cashierSessionId) return;
-            
             totalRevenue += d.transaction.totalAmount;
             (d.transaction.payments||[]).forEach(p => methods[p.method] = (methods[p.method]||0)+p.value);
             transactions.push({
@@ -280,7 +334,9 @@ router.get('/sales/:establishmentId', async (req, res) => {
         transactions.sort((a,b)=>a.date-b.date);
 
         res.json({ summary: { totalRevenue, totalTransactions: transactions.length, averageTicket: transactions.length?totalRevenue/transactions.length:0, paymentMethodTotals: methods }, transactions });
-    } catch(e) { res.status(500).json({ message: 'Erro vendas.' }); }
+    } catch(error) { 
+        handleFirestoreError(res, error, 'relatório de vendas');
+    }
 });
 
 router.get('/work-journal/:establishmentId', async (req, res) => {
@@ -289,12 +345,13 @@ router.get('/work-journal/:establishmentId', async (req, res) => {
     if (!professionalId || !startDate || !endDate) return res.status(400).json({ message: 'Dados insuficientes.' });
 
     try {
-        const start = new Date(`${startDate}T00:00:00`);
-        const end = new Date(`${endDate}T23:59:59`);
+        const start = new Date(startDate); start.setHours(0,0,0,0);
+        const end = new Date(endDate); end.setHours(23,59,59,999);
         const snap = await req.db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('professionalId', '==', professionalId)
-            .where('startTime', '>=', start).where('startTime', '<=', end)
+            .where('startTime', '>=', start)
+            .where('startTime', '<=', end)
             .orderBy('startTime', 'asc').get();
 
         let totalRevenue = 0, totalServices = 0;
@@ -307,7 +364,9 @@ router.get('/work-journal/:establishmentId', async (req, res) => {
             return { date: d.startTime.toDate(), client: d.clientName, services: d.services ? d.services.map(s => s.name).join(', ') : 'N/A', value: val };
         });
         res.json({ appointments, summary: { totalRevenue, totalServices } });
-    } catch(e){ res.status(500).json({ message: 'Erro work-journal.' }); }
+    } catch(error){ 
+        handleFirestoreError(res, error, 'work-journal');
+    }
 });
 
 router.get('/commissions/:establishmentId', async (req, res) => {
@@ -315,21 +374,24 @@ router.get('/commissions/:establishmentId', async (req, res) => {
     const { year, month, professionalId } = req.query;
     if (!year || !month) return res.status(400).json({ message: 'Ano/Mês obrigatórios.' });
     try {
-        let q = req.db.collection('commission_reports').where('establishmentId', '==', establishmentId).where('year', '==', year).where('month', '==', month);
+        let q = req.db.collection('commission_reports')
+            .where('establishmentId', '==', establishmentId)
+            .where('year', '==', Number(year))
+            .where('month', '==', Number(month));
         if(professionalId && professionalId!=='all') q=q.where('professionalId','==',professionalId);
         const s = await q.get(); res.json(s.docs.map(d=>d.data()));
-    } catch(e){ res.status(500).json({ message: 'Erro comissões.' }); }
+    } catch(error){ 
+        handleFirestoreError(res, error, 'comissões');
+    }
 });
 
 router.get('/summary', async (req, res) => {
     const { establishmentId } = req.user;
     try {
         const now = new Date();
-        // Ajuste simples para evitar timezone complexo no resumo rápido
-        const start = new Date(now.setHours(0,0,0,0));
-        const end = new Date(now.setHours(23,59,59,999));
+        const start = new Date(now); start.setHours(0,0,0,0);
+        const end = new Date(now); end.setHours(23,59,59,999);
         
-        // Tenta buscar pelo índice, se falhar pelo catch retorna zero
         const [apptSnap, salesSnap] = await Promise.all([
             req.db.collection('appointments').where('establishmentId', '==', establishmentId).where('status', '==', 'confirmed')
                 .where('startTime', '>=', start).where('startTime', '<=', end).get(),

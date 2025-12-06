@@ -1,22 +1,32 @@
+// routes/financial.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess } = require('../middlewares/auth');
+const { AggregateField } = require('firebase-admin/firestore'); // Importante para a otimização
 
 // Middleware para garantir que apenas utilizadores autorizados tenham acesso
 router.use(verifyToken, hasAccess);
 
-// --- FUNÇÃO AUXILIAR PARA TRATAR ERROS DE ÍNDICE ---
+// --- FUNÇÃO AUXILIAR PARA TRATAR ERROS E ÍNDICES ---
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
+    
+    // Tenta capturar o link de índice no erro do Google
+    const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
+    const indexLink = linkMatch ? linkMatch[0] : null;
+
     if (error.message && error.message.includes('requires an index')) {
-        const detailedMessage = `O Firestore precisa de um índice para a busca de ${context}. Verifique o log do seu servidor (consola do Replit) para encontrar um link para criar o índice automaticamente. A mensagem de erro no log irá guiá-lo.`;
-        return res.status(500).json({ message: detailedMessage });
+        return res.status(500).json({ 
+            message: `O Firestore precisa de um índice para ${context}.`,
+            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs."
+        });
     }
     res.status(500).json({ message: `Ocorreu um erro no servidor ao processar ${context}.` });
 }
 
-// --- ROTAS GENÉRICAS PARA ESTRUTURAS HIERÁRQUICAS (NATUREZAS E CENTROS DE CUSTO) ---
+// --- ROTAS GENÉRICAS PARA ESTRUTURAS HIERÁRQUICAS (MANTIDAS) ---
 
 const createHierarchicalEntry = (collectionName) => async (req, res) => {
     const { establishmentId } = req.user;
@@ -62,7 +72,7 @@ const deleteHierarchicalEntry = (collectionName) => async (req, res) => {
 };
 
 
-// --- ROTAS ESPECÍFICAS ---
+// --- ROTAS ESPECÍFICAS (MANTIDAS) ---
 router.post('/natures', createHierarchicalEntry('financial_natures'));
 router.get('/natures', getHierarchicalEntries('financial_natures'));
 router.delete('/natures/:id', deleteHierarchicalEntry('financial_natures'));
@@ -136,10 +146,9 @@ const createEntry = (collectionName) => async (req, res) => {
     }
 };
 
-// ATUALIZADO: Lógica de filtro que busca todos os lançamentos do período e filtra em memória (para Natureza/C.Custo)
+// OTIMIZADO: Saldo anterior calculado no servidor (Aggregation) em vez de baixar tudo
 const getEntries = (collectionName) => async (req, res) => {
     const { establishmentId } = req.user;
-    // Captura os filtros de data, natureza e centro de custo
     const { startDate, endDate, natureId, costCenterId } = req.query; 
     const db = req.db;
     
@@ -147,29 +156,28 @@ const getEntries = (collectionName) => async (req, res) => {
     let previousBalance = 0; 
 
     try {
-        // --- 1. Calcular Saldo Anterior (Apenas Lançamentos PAGOS/REALIZADOS antes do startDate) ---
+        // --- 1. Calcular Saldo Anterior (OTIMIZADO) ---
         if (startDate) {
-            // Filtra pela data de pagamento anterior ao início do período
+            // Usa Aggregation Query para somar no servidor
             const paidQuery = db.collection(collectionName)
                 .where('establishmentId', '==', establishmentId)
                 .where('status', '==', 'paid')
                 .where('paymentDate', '<', startDate); 
 
-            const paidSnapshot = await paidQuery.get();
+            const aggregateSnapshot = await paidQuery.aggregate({
+                totalAmount: AggregateField.sum('amount')
+            }).get();
             
-            paidSnapshot.docs.forEach(doc => {
-                const amount = doc.data().amount || 0;
-                previousBalance += amount;
-            });
+            // Pega o resultado direto
+            previousBalance = aggregateSnapshot.data().totalAmount || 0;
         }
 
-        // --- 2. Buscar Lançamentos DENTRO do Período Filtrado (Previstos e Realizados) ---
-        // A consulta do Firestore é feita APENAS por data para evitar erros de índice/documentos nulos
+        // --- 2. Buscar Lançamentos DENTRO do Período Filtrado ---
         let query = db.collection(collectionName)
             .where('establishmentId', '==', establishmentId)
             .orderBy('dueDate', 'asc'); 
 
-        // Filtro Principal de Data (Vencimento)
+        // Filtro Principal de Data
         if (startDate && endDate) {
             query = query
                 .where('dueDate', '>=', startDate)
@@ -179,27 +187,22 @@ const getEntries = (collectionName) => async (req, res) => {
         const snapshot = await query.get();
         let fetchedEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // --- 3. Filtrar em Memória por Natureza e Centro de Custo (para lidar com valores null/ausentes) ---
+        // --- 3. Filtrar em Memória (Natureza e Centro de Custo) ---
         entries = fetchedEntries.filter(entry => {
             let passNature = true;
             let passCostCenter = true;
 
-            // Aplica filtro de Natureza se um ID específico foi selecionado
             if (natureId && natureId !== 'all') {
-                // Passa se a natureza for exatamente a selecionada
                 passNature = entry.naturezaId === natureId;
             }
 
-            // Aplica filtro de Centro de Custo se um ID específico foi selecionado
             if (costCenterId && costCenterId !== 'all') {
-                // Passa se o centro de custo for exatamente o selecionado
                 passCostCenter = entry.centroDeCustoId === costCenterId;
             }
 
             return passNature && passCostCenter;
         });
         
-        // Retorna a lista de lançamentos filtrados e o saldo anterior
         res.status(200).json({ entries, previousBalance });
     } catch (error) {
         handleFirestoreError(res, error, 'lançamentos com filtro de data');
@@ -273,7 +276,7 @@ router.put('/payables/:id', updateEntry('financial_payables'));
 router.delete('/payables/:id', deleteEntry('financial_payables'));
 router.patch('/payables/:id/status', markAsPaid('financial_payables'));
 
-// --- Rota para Fluxo de Caixa (Dashboard) ---
+// --- Rota para Fluxo de Caixa (Dashboard) - OTIMIZADA ---
 router.get('/cash-flow', async (req, res) => {
     const { establishmentId } = req.user;
     const { startDate, endDate } = req.query;
@@ -287,7 +290,7 @@ router.get('/cash-flow', async (req, res) => {
         const start = new Date(startDate);
         const end = new Date(endDate + 'T23:59:59.999Z');
 
-        // AQUI ESTÁ O BUG DE ÍNDICE MENCIONADO NOS COMENTÁRIOS, QUE O FIREBASE PRECISA.
+        // Busca lançamentos do período (mantido igual pois é necessário para o gráfico)
         const [payablesSnapshot, receivablesSnapshot] = await Promise.all([
             db.collection('financial_payables')
                 .where('establishmentId', '==', establishmentId)
@@ -315,25 +318,28 @@ router.get('/cash-flow', async (req, res) => {
 
         financialData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // --- CALCULAR SALDO INICIAL ANTES DO PERÍODO ---
+        // --- CALCULAR SALDO INICIAL (OTIMIZADO COM AGGREGATION) ---
         let initialBalance = 0;
 
-        // Query para pagamentos realizados ANTES da data de início do gráfico
-        const previousPayablesSnapshot = await db.collection('financial_payables')
-            .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'paid')
-            .where('paymentDate', '<', startDate)
-            .get();
+        // Usa Aggregation Query para somar pagamentos antigos sem baixar os docs
+        const [payablesAgg, receivablesAgg] = await Promise.all([
+            db.collection('financial_payables')
+                .where('establishmentId', '==', establishmentId)
+                .where('status', '==', 'paid')
+                .where('paymentDate', '<', startDate)
+                .aggregate({ total: AggregateField.sum('amount') }).get(),
             
-        // Query para recebíveis realizados ANTES da data de início do gráfico
-        const previousReceivablesSnapshot = await db.collection('financial_receivables')
-            .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'paid')
-            .where('paymentDate', '<', startDate)
-            .get();
+            db.collection('financial_receivables')
+                .where('establishmentId', '==', establishmentId)
+                .where('status', '==', 'paid')
+                .where('paymentDate', '<', startDate)
+                .aggregate({ total: AggregateField.sum('amount') }).get()
+        ]);
+
+        const totalPaidBefore = payablesAgg.data().total || 0;
+        const totalReceivedBefore = receivablesAgg.data().total || 0;
         
-        previousPayablesSnapshot.docs.forEach(doc => { initialBalance -= doc.data().amount; });
-        previousReceivablesSnapshot.docs.forEach(doc => { initialBalance += doc.data().amount; });
+        initialBalance = totalReceivedBefore - totalPaidBefore;
         // --- FIM CALCULAR SALDO INICIAL ---
 
         const dailySummary = {};
@@ -348,7 +354,6 @@ router.get('/cash-flow', async (req, res) => {
             currentDate.setDate(currentDate.getDate() + 1);
         }
 
-        // Distribui os lançamentos pela data de vencimento (ou pagamento se pago)
         financialData.forEach(entry => {
             const dateKey = entry.status === 'paid' && entry.paymentDate ? entry.paymentDate : entry.date; 
             if (dailySummary[dateKey]) {
@@ -394,7 +399,6 @@ router.get('/today-summary', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
 
     try {
-        // CORREÇÃO: Busca todos com vencimento hoje e filtra o status na aplicação
         const payablesQuery = await db.collection('financial_payables')
             .where('establishmentId', '==', establishmentId)
             .where('dueDate', '==', today)
