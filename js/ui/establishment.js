@@ -36,7 +36,7 @@ const colorThemes = {
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
-    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
+    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
     { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
     { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
     { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
@@ -829,23 +829,55 @@ async function renderFinancialIntegrationSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Integração Financeira Padrão</h3>
+                <h3 class="text-xl font-bold text-gray-800">Integração Financeira</h3>
                 <button type="submit" form="financial-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
             </div>
-            <form id="financial-form" class="space-y-4">
-                <p class="text-sm text-gray-600">Selecione as Naturezas e Centros de Custo padrões para serem aplicados automaticamente em todas as vendas (Contas a Receber).</p>
-                <div>
-                    <label for="financialNatureId" class="block text-sm font-medium text-gray-700">Natureza Padrão (Receita)</label>
-                    <select id="financialNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
-                        <option value="">A carregar...</option>
-                    </select>
+            <form id="financial-form" class="space-y-8">
+                
+                <div class="bg-green-50 p-4 rounded-lg border border-green-100">
+                    <h4 class="text-lg font-semibold text-green-800 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path></svg>
+                        Vendas (Contas a Receber)
+                    </h4>
+                    <p class="text-sm text-green-700 mb-4">Defina a classificação automática para vendas realizadas.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="financialNatureId" class="block text-sm font-bold text-gray-700">Natureza Padrão</label>
+                            <select id="financialNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="financialCostCenterId" class="block text-sm font-bold text-gray-700">Centro de Custo</label>
+                            <select id="financialCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label for="financialCostCenterId" class="block text-sm font-medium text-gray-700">Centro de Custo Padrão</label>
-                    <select id="financialCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
-                        <option value="">A carregar...</option>
-                    </select>
+
+                <div class="bg-red-50 p-4 rounded-lg border border-red-100">
+                    <h4 class="text-lg font-semibold text-red-800 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path></svg>
+                        Comissões (Contas a Pagar)
+                    </h4>
+                    <p class="text-sm text-red-700 mb-4">Defina a classificação automática para comissões geradas.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="commissionNatureId" class="block text-sm font-bold text-gray-700">Natureza Padrão</label>
+                            <select id="commissionNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="commissionCostCenterId" class="block text-sm font-bold text-gray-700">Centro de Custo</label>
+                            <select id="commissionCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
+
             </form>
         </div>
     `;
@@ -855,9 +887,18 @@ async function renderFinancialIntegrationSection(data, container) {
             financialApi.getNatures(),
             financialApi.getCostCenters()
         ]);
+        
         const financialIntegration = data.financialIntegration || {};
+        const commissionConfig = data.commissionConfig || {};
+
+        // Populate Receivables (Vendas)
         container.querySelector('#financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
         container.querySelector('#financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
+
+        // Populate Payables (Comissões)
+        container.querySelector('#commissionNatureId').innerHTML = buildHierarchyOptions(natures, commissionConfig.defaultNatureId);
+        container.querySelector('#commissionCostCenterId').innerHTML = buildHierarchyOptions(costCenters, commissionConfig.defaultCostCenterId);
+
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar os dados para a integração financeira.', 'error');
     }
@@ -868,6 +909,10 @@ async function renderFinancialIntegrationSection(data, container) {
             financialIntegration: {
                 defaultNaturezaId: container.querySelector('#financialNatureId').value || null,
                 defaultCentroDeCustoId: container.querySelector('#financialCostCenterId').value || null,
+            },
+            commissionConfig: {
+                defaultNatureId: container.querySelector('#commissionNatureId').value || null,
+                defaultCostCenterId: container.querySelector('#commissionCostCenterId').value || null,
             }
         };
         handleSave(formData, e);

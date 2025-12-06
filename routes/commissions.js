@@ -5,370 +5,356 @@ const router = express.Router();
 const admin = require('firebase-admin');
 const { verifyToken, hasAccess } = require('../middlewares/auth');
 
-// Aplica o middleware de autenticação em todas as rotas deste arquivo
+// Aplica segurança em todas as rotas
 router.use(verifyToken, hasAccess);
 
-// --- ROTAS DE CÁLCULO E RELATÓRIO DE COMISSÃO (SEU CÓDIGO EXISTENTE) ---
+// --- ROTA DE ESTATÍSTICAS (Dashboard: Faturamento vs Comissões) ---
+router.get('/stats', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { startDate, endDate } = req.query;
 
-// Rota para CALCULAR a comissão (sem salvar)
-router.post('/calculate', async (req, res) => {
-    const { establishmentId } = req.user;
-    const { professionalIds, startDate, endDate, calculationTypes } = req.body;
+    if (!startDate || !endDate) {
+        return res.status(400).json({ message: 'Datas obrigatórias.' });
+    }
 
-    if (!professionalIds || professionalIds.length === 0 || !startDate || !endDate || !calculationTypes) {
-        return res.status(400).json({ message: 'Profissionais, período e tipos de cálculo são obrigatórios.' });
-    }
-
-    try {
-        const { db } = req;
-        const start = new Date(startDate);
-        const end = new Date(endDate + "T23:59:59");
-        let professionalsToProcess = [];
-        const allProfessionals = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
-        const allProfessionalsMap = new Map(allProfessionals.docs.map(doc => [doc.id, doc.data()]));
-
-        if (professionalIds.includes('all')) {
-            professionalsToProcess = allProfessionals.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } else {
-            professionalsToProcess = professionalIds.map(id => ({ id, ...allProfessionalsMap.get(id) }));
-        }
-
-        const results = [];
-
-        for (const prof of professionalsToProcess) {
-            const salesQuery = db.collection('sales')
-                .where('establishmentId', '==', establishmentId)
-                .where('professionalId', '==', prof.id)
-                .where('transaction.paidAt', '>=', start)
-                .where('transaction.paidAt', '<=', end);
-
-            const salesSnapshot = await salesQuery.get();
-            if (salesSnapshot.empty) {
-                continue; // Pula para o próximo profissional se não houver vendas
-            }
-
-            let totalCommissionableValue = 0;
-            let totalCommission = 0;
-            const commissionableItems = [];
-
-            for (const saleDoc of salesSnapshot.docs) {
-                const saleData = saleDoc.data();
-                const items = saleData.items || [];
-
-                for (const item of items) {
-                    let commissionRate = 0;
-                    const price = item.price || 0;
-                    let isCommissionable = false;
-
-                    // CORREÇÃO DE SEGURANÇA: Verifica se o item.id é válido antes de tentar consultar o Firestore
-                    if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
-                        console.warn(`[COMMISSION_CALC] Item sem ID encontrado na venda ${saleDoc.id}. Pulando item: ${item.name}`);
-                        continue; 
-                    }
-
-                    if (item.type === 'service' && calculationTypes.services) {
-                        const serviceDoc = await db.collection('services').doc(item.id).get();
-                        if (serviceDoc.exists) {
-                            const serviceData = serviceDoc.data();
-                            commissionRate = serviceData.commissionType === 'custom' && serviceData.professionalCommissions?.[prof.id] !== undefined
-                                ? serviceData.professionalCommissions[prof.id]
-                                : serviceData.commissionRate || 0;
-                            isCommissionable = true;
-                        }
-                    } else if (item.type === 'product' && calculationTypes.products) {
-                        const productDoc = await db.collection('products').doc(item.id).get();
-                        if (productDoc.exists) {
-                            commissionRate = productDoc.data().commissionRate || 0;
-                            isCommissionable = true;
-                        }
-                    } else if (item.type === 'package' && calculationTypes.packages) {
-                        const packageDoc = await db.collection('servicePackages').doc(item.id).get();
-                        if (packageDoc.exists) {
-                            commissionRate = packageDoc.data().commissionRate || 0;
-                            isCommissionable = true;
-                        }
-                    }
-
-                    if (isCommissionable) {
-                        const itemCommission = price * (commissionRate / 100);
-                        totalCommissionableValue += price;
-                        totalCommission += itemCommission;
-
-                        commissionableItems.push({
-                            date: saleData.transaction.paidAt.toDate(),
-                            client: saleData.clientName,
-                            item: item.name,
-                            value: price,
-                            commissionRate: commissionRate,
-                            commissionValue: itemCommission,
-                            type: item.type
-                        });
-                    }
-                }
-            }
-            
-            if (commissionableItems.length > 0) {
-                 results.push({
-                    professionalId: prof.id,
-                    professionalName: prof.name,
-                    summary: { totalCommissionableValue, totalCommission, totalItems: commissionableItems.length },
-                    items: commissionableItems.sort((a, b) => new Date(a.date) - new Date(b.date))
-                });
-            }
-        }
-
-        res.status(200).json(results);
-
-    } catch (error) {
-        console.error("Erro ao calcular comissão:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao calcular a comissão.' });
-    }
-});
-
-
-router.post('/save', async (req, res) => {
-    const { establishmentId } = req.user;
-    const { professionalId, professionalName, period, reportData } = req.body;
-
-    if (!professionalId || !period || !reportData) {
-        return res.status(400).json({ message: 'Dados insuficientes para salvar o relatório.' });
-    }
-
-    try {
-        const { db } = req;
-        const report = {
-            establishmentId, professionalId, professionalName,
-            period,
-            summary: reportData.summary,
-            // Armazena os itens detalhados para permitir a regeneração do recibo
-            items: reportData.items.map(item => ({
-                ...item,
-                // Garantir que datas que são objetos Date sejam salvas corretamente
-                date: item.date instanceof Date ? admin.firestore.Timestamp.fromDate(item.date) : item.date,
-            })),
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-
-        const docRef = await db.collection('commission_reports').add(report);
-        res.status(201).json({ message: 'Relatório de comissão salvo com sucesso!', id: docRef.id });
-    } catch (error) {
-        console.error("Erro ao salvar relatório de comissão:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-// ROTA ATUALIZADA: Obter histórico de todos os relatórios, com filtros
-router.get('/history', async (req, res) => {
-    const { establishmentId } = req.user;
-    const { professionalId, period } = req.query; // Pega os filtros da query string
-
-    try {
-        const { db } = req;
-        let query = db.collection('commission_reports')
-            .where('establishmentId', '==', establishmentId);
-        
-        // Aplica filtro por profissional, se fornecido
-        if (professionalId) {
-            query = query.where('professionalId', '==', professionalId);
-        }
-
-        const snapshot = await query.get();
-
-        if (snapshot.empty) {
-            return res.status(200).json([]);
-      _   }
-
-        let history = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return { 
-                id: doc.id, 
-                ...data,
-                // Inclui items no relatório para o recibo (corrigido para o caso de salvar)
-                items: data.items, 
-                // Converte data de criação com segurança
-                createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate().toISOString() : data.createdAt 
-            };
-        });
-        
-        // Filtro em memória pelo mês/período
-        if (period) {
-            // Esperamos `period` como 'YYYY-MM' do cliente
-            const [year, month] = period.split('-');
-            const periodMonthYear = `${month}/${year}`; 
-            
-            // Filtra se a string de período do relatório contém o mês/ano
-            history = history.filter(report => report.period.includes(periodMonthYear)); 
-        }
-
-        // Ordena os resultados no servidor antes de enviar (mais recente primeiro)
-        history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-        res.status(200).json(history);
-    } catch (error) {
-        console.error("Erro ao buscar histórico de comissões:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-// NOVA ROTA: Excluir um relatório
-router.delete('/report/:reportId', async (req, res) => {
-    const { establishmentId } = req.user;
-    const { reportId } = req.params;
-
-    if (!reportId) {
-        return res.status(400).json({ message: 'ID do relatório é obrigatório para exclusão.' });
-    }
-
-    try {
-        const { db } = req;
-        const reportRef = db.collection('commission_reports').doc(reportId);
-        const reportDoc = await reportRef.get();
-
-        if (!reportDoc.exists) {
-            return res.status(404).json({ message: 'Relatório não encontrado.' });
-        }
-        
-        // Verifica se o relatório pertence ao estabelecimento do utilizador autenticado (segurança)
-        if (reportDoc.data().establishmentId !== establishmentId) {
-            return res.status(403).json({ message: 'Acesso negado. Este relatório não pertence ao seu estabelecimento.' });
-        }
-
-        await reportRef.delete();
-        res.status(204).send(); // 204 No Content indica sucesso na exclusão
-
-    } catch (error) {
-        console.error("Erro ao excluir relatório de comissão:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao excluir o relatório.' });
-    }
-});
-
-
-// --- INÍCIO DAS NOVAS ROTAS CRUD PARA REGRAS DE COMISSÃO ---
-// (Estas rotas são chamadas por js/ui/commissions.js)
-
-// Rota para buscar todas as REGRAS de comissão
-router.get('/', async (req, res) => {
     try {
-        const { establishmentId } = req.user;
         const { db } = req;
-        // A coleção 'commissions' dentro do documento do estabelecimento guarda as REGRAS
-        const commissionsRef = db.collection('establishments').doc(establishmentId).collection('commissions');
-        const snapshot = await commissionsRef.get();
+        const start = new Date(startDate);
+        const end = new Date(endDate + "T23:59:59");
+        const startTs = start.getTime();
+        const endTs = end.getTime();
 
-        if (snapshot.empty) {
-            return res.status(200).send([]);
-        }
+        // 1. Total Faturado (Vendas)
+        // Usamos filtragem em memória para evitar o erro 500 por falta de índice composto
+        const salesQuery = db.collection('sales').where('establishmentId', '==', establishmentId);
+        const salesSnap = await salesQuery.get();
+        let totalRevenue = 0;
 
-        let commissions = [];
-        snapshot.forEach(doc => {
-            commissions.push({ id: doc.id, ...doc.data() });
+        salesSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.transaction && data.transaction.paidAt) {
+                const saleDate = data.transaction.paidAt.toDate().getTime();
+                if (saleDate >= startTs && saleDate <= endTs) {
+                    // Tenta pegar o total pronto, senão soma itens
+                    if (typeof data.total === 'number') {
+                        totalRevenue += data.total;
+                    } else if (data.items && Array.isArray(data.items)) {
+                        const sumItems = data.items.reduce((acc, item) => acc + (Number(item.price) || 0), 0);
+                        totalRevenue += sumItems;
+                    }
+                }
+            }
         });
 
-        res.status(200).json(commissions);
-    } catch (error) {
-        console.error('Erro ao buscar regras de comissão:', error);
-        res.status(500).send('Erro interno do servidor ao buscar regras.');
-    }
-});
-
-// Rota para criar uma nova REGRA de comissão
-router.post('/', async (req, res) => {
-    try {
-        const { establishmentId } = req.user;
-        const { db } = req;
-        const newCommissionRule = req.body;
-
-        const commissionRef = await db.collection('establishments').doc(establishmentId)
-                                  .collection('commissions').add(newCommissionRule);
-
-        res.status(201).send({ id: commissionRef.id, ...newCommissionRule });
-    } catch (error) {
-        console.error('Erro ao criar regra de comissão:', error);
-        res.status(500).send('Erro interno do servidor ao criar regra.');
-    }
-});
-
-// Rota para buscar uma REGRA de comissão específica (por ID)
-router.get('/:id', async (req, res) => {
-    try {
-        const { establishmentId } = req.user;
-        const { id } = req.params;
-        const { db } = req;
+        // 2. Total Pago em Comissões (Relatórios Gerados)
+        const reportsQuery = db.collection('commission_reports').where('establishmentId', '==', establishmentId);
+        const reportsSnap = await reportsQuery.get();
+        let totalCommissionsPaid = 0;
         
-        const commissionRef = db.collection('establishments').doc(establishmentId)
-                              .collection('commissions').doc(id);
-        const doc = await commissionRef.get();
+        reportsSnap.forEach(doc => {
+            const data = doc.data();
+            if (data.createdAt) {
+                const reportDate = data.createdAt.toDate().getTime();
+                if (reportDate >= startTs && reportDate <= endTs) {
+                    // Usa o valor final (ajustado) ou o original calculado
+                    const val = data.summary.finalValue !== undefined ? data.summary.finalValue : data.summary.totalCommission;
+                    totalCommissionsPaid += Number(val);
+                }
+            }
+        });
 
-        if (!doc.exists) {
-            return res.status(404).send('Regra de comissão não encontrada');
-        }
+        res.status(200).json({
+            totalRevenue,
+            totalCommissionsPaid
+        });
 
-        res.status(200).json({ id: doc.id, ...doc.data() });
     } catch (error) {
-        console.error('Erro ao buscar regra de comissão:', error);
-        res.status(500).send('Erro interno do servidor ao buscar regra.');
+        console.error("Erro stats:", error);
+        res.status(500).json({ message: 'Erro ao calcular estatísticas.' });
     }
 });
 
-// Rota para atualizar uma REGRA de comissão
-router.put('/:id', async (req, res) => {
-    try {
-        const { establishmentId } = req.user;
-        const { id } = req.params;
-        const { db } = req;
-        const updatedData = req.body;
+// --- ROTA DE CÁLCULO (Otimizada: Varredura Total) ---
+router.post('/calculate', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { professionalIds, startDate, endDate, calculationTypes } = req.body;
 
-        const commissionRef = db.collection('establishments').doc(establishmentId)
-                              .collection('commissions').doc(id);
+    if (!startDate || !endDate || !calculationTypes) return res.status(400).json({ message: 'Dados incompletos.' });
+
+    try {
+        const { db } = req;
+        const start = new Date(startDate);
+        const end = new Date(endDate + "T23:59:59");
+
+        // 1. Carregar Profissionais (Mapa para acesso rápido e checagem de elegibilidade)
+        const profsSnapshot = await db.collection('professionals')
+            .where('establishmentId', '==', establishmentId).get();
         
-        // Verifica se o documento existe antes de atualizar
-        const doc = await commissionRef.get();
-        if (!doc.exists) {
-            return res.status(404).send('Regra de comissão não encontrada para atualização');
-        }
+        const professionalsMap = new Map();
+        profsSnapshot.forEach(doc => {
+            const data = doc.data();
+            // Verifica se o profissional recebe comissão
+            if (data.receivesCommission === true || data.commissionActive === true) {
+                professionalsMap.set(doc.id, { id: doc.id, ...data });
+            }
+        });
 
-        await commissionRef.update(updatedData);
+        if (professionalsMap.size === 0) return res.status(200).json([]);
 
-        res.status(200).send({ id: id, ...updatedData });
+        // 2. Carregar Catálogo (Serviços/Produtos/Pacotes) para evitar queries em loop
+        const [servicesSnap, productsSnap, packagesSnap] = await Promise.all([
+            calculationTypes.services ? db.collection('services').where('establishmentId', '==', establishmentId).get() : Promise.resolve({ docs: [] }),
+            calculationTypes.products ? db.collection('products').where('establishmentId', '==', establishmentId).get() : Promise.resolve({ docs: [] }),
+            calculationTypes.packages ? db.collection('servicePackages').where('establishmentId', '==', establishmentId).get() : Promise.resolve({ docs: [] })
+        ]);
+
+        const catalogMap = {
+            service: new Map(servicesSnap.docs.map(d => [d.id, d.data()])),
+            product: new Map(productsSnap.docs.map(d => [d.id, d.data()])),
+            package: new Map(packagesSnap.docs.map(d => [d.id, d.data()]))
+        };
+
+        // 3. Carregar Vendas (Filtragem em Memória para segurança contra erros de índice)
+        const salesQuery = db.collection('sales').where('establishmentId', '==', establishmentId);
+        const salesSnapshot = await salesQuery.get();
+        
+        if (salesSnapshot.empty) return res.status(200).json([]);
+
+        const resultsMap = new Map();
+        const startTs = start.getTime();
+        const endTs = end.getTime();
+
+        salesSnapshot.forEach(saleDoc => {
+            const saleData = saleDoc.data();
+            
+            // Filtro de Data da Venda
+            if (!saleData.transaction || !saleData.transaction.paidAt) return;
+            const saleDate = saleData.transaction.paidAt.toDate().getTime();
+            if (saleDate < startTs || saleDate > endTs) return;
+
+            const items = saleData.items || [];
+
+            items.forEach(item => {
+                if (!item.id) return;
+                
+                // Identifica dono do item (prioridade para o item, fallback para a venda)
+                const ownerId = item.professionalId || saleData.professionalId;
+                const profData = professionalsMap.get(ownerId);
+                
+                if (!profData) return;
+                
+                // Filtro de seleção do usuário
+                if (professionalIds && !professionalIds.includes('all') && !professionalIds.includes(ownerId)) return;
+
+                let commissionRate = 0;
+                let isCommissionable = false;
+                const price = parseFloat(item.price || 0);
+                const type = item.type || 'service';
+
+                // Lógica de Taxas (Hierarquia: Personalizada > Geral)
+                if (type === 'service' && calculationTypes.services) {
+                    const serviceData = catalogMap.service.get(item.id);
+                    if (serviceData) {
+                        if (serviceData.commissionType === 'custom' && serviceData.professionalCommissions?.[ownerId] !== undefined) {
+                            commissionRate = parseFloat(serviceData.professionalCommissions[ownerId]);
+                        } else {
+                            commissionRate = parseFloat(serviceData.commissionRate || 0);
+                        }
+                        isCommissionable = true;
+                    }
+                } else if (type === 'product' && calculationTypes.products) {
+                    const productData = catalogMap.product.get(item.id);
+                    if (productData) {
+                        commissionRate = parseFloat(productData.commissionRate || 0);
+                        isCommissionable = true;
+                    }
+                } else if (type === 'package' && calculationTypes.packages) {
+                    const packageData = catalogMap.package.get(item.id);
+                    if (packageData) {
+                        commissionRate = parseFloat(packageData.commissionRate || 0);
+                        isCommissionable = true;
+                    }
+                }
+
+                if (isCommissionable && commissionRate > 0) {
+                    const itemCommission = price * (commissionRate / 100);
+                    
+                    if (!resultsMap.has(ownerId)) {
+                        resultsMap.set(ownerId, {
+                            professionalId: ownerId,
+                            professionalName: profData.name,
+                            summary: { totalCommissionableValue: 0, totalCommission: 0, totalItems: 0 },
+                            items: []
+                        });
+                    }
+                    
+                    const profResult = resultsMap.get(ownerId);
+                    profResult.summary.totalCommissionableValue += price;
+                    profResult.summary.totalCommission += itemCommission;
+                    profResult.summary.totalItems += 1;
+                    profResult.items.push({
+                        date: saleData.transaction.paidAt.toDate(),
+                        client: saleData.clientName || 'Cliente Balcão',
+                        item: item.name || 'Item',
+                        value: price,
+                        commissionRate: commissionRate,
+                        commissionValue: itemCommission,
+                        type: type
+                    });
+                }
+            });
+        });
+
+        const finalResults = Array.from(resultsMap.values()).map(res => {
+            res.items.sort((a, b) => new Date(a.date) - new Date(b.date));
+            return res;
+        });
+
+        res.status(200).json(finalResults);
+
     } catch (error) {
-        console.error('Erro ao atualizar regra de comissão:', error);
-        res.status(500).send('Erro interno do servidor ao atualizar regra.');
+        console.error("Erro cálculo:", error);
+        res.status(500).json({ message: 'Erro interno ao processar comissões.' });
     }
 });
 
-// Rota para excluir uma REGRA de comissão
-// (Esta é a rota que o js/ui/commissions.js chama e que estava faltando)
-router.delete('/:id', async (req, res) => {
+// --- ROTA DE SALVAR (ATUALIZADA COM INTEGRAÇÃO PADRÃO) ---
+router.post('/save', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { professionalId, professionalName, period, reportData } = req.body;
+
+    if (!professionalId || !period || !reportData) return res.status(400).json({ message: 'Dados insuficientes.' });
+
     try {
-        const { establishmentId } = req.user;
-        // --- CORREÇÃO AQUI ---
-        // O parâmetro da rota é 'id', que vem da URL
-        const { id } = req.params; 
         const { db } = req;
+        const finalValue = reportData.summary.finalValue !== undefined ? reportData.summary.finalValue : reportData.summary.totalCommission;
 
-        if (!id) {
-            return res.status(400).send('ID da regra de comissão não fornecido');
+        // 1. Prepara e Salva o Relatório de Comissão
+        const report = {
+            establishmentId, 
+            professionalId, 
+            professionalName, 
+            period,
+            summary: {
+                ...reportData.summary,
+                finalValue: finalValue,
+                extraDebit: reportData.summary.extraDebit || 0,
+                extraCredit: reportData.summary.extraCredit || 0,
+                notes: reportData.summary.notes || ''
+            },
+            items: reportData.items.map(i => ({
+                ...i,
+                date: i.date instanceof Date ? admin.firestore.Timestamp.fromDate(i.date) : (i.date ? new Date(i.date) : new Date())
+            })),
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await db.collection('commission_reports').add(report);
+
+        // 2. INTEGRAÇÃO FINANCEIRA INTELIGENTE (Contas a Pagar)
+        if (finalValue > 0) {
+            // A) Busca configurações do estabelecimento (Natureza e C.Custo padrão)
+            const estabDoc = await db.collection('establishments').doc(establishmentId).get();
+            // Previne erro se o documento ou o campo não existirem
+            const config = estabDoc.exists ? (estabDoc.data().commissionConfig || {}) : {};
+            
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            
+            // B) Cria o lançamento financeiro usando os padrões
+            const payableEntry = {
+                establishmentId,
+                description: `Comissão - ${professionalName} - Ref: ${period}`,
+                amount: Number(finalValue.toFixed(2)),
+                dueDate: today, // Vence hoje (pode ser alterado depois no financeiro)
+                naturezaId: config.defaultNatureId || null, // Usa o padrão ou null
+                centroDeCustoId: config.defaultCostCenterId || null, // Usa o padrão ou null
+                notes: `Gerado automaticamente via Módulo de Comissões. Relatório ID: ${docRef.id}`,
+                status: 'pending', // Pendente de pagamento
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            await db.collection('financial_payables').add(payableEntry);
         }
 
-        const commissionRef = db.collection('establishments').doc(establishmentId)
-                              .collection('commissions').doc(id);
-
-        const commissionDoc = await commissionRef.get();
-
-        if (!commissionDoc.exists) {
-            return res.status(404).send('Regra de comissão não encontrada');
-        }
-
-        await commissionRef.delete();
-        res.status(200).send({ id: id, message: 'Regra de comissão excluída com sucesso' });
+        res.status(201).json({ message: 'Salvo com sucesso e integrado ao financeiro!', id: docRef.id });
     } catch (error) {
-        console.error('Erro ao excluir regra de comissão:', error);
-        res.status(500).send('Erro interno do servidor ao excluir regra.');
+        console.error("Erro salvar:", error);
+        res.status(500).json({ message: 'Erro ao salvar relatório.' });
     }
 });
 
-// --- FIM DAS NOVAS ROTAS CRUD ---
+// --- ROTA DE HISTÓRICO (Filtragem em Memória) ---
+router.get('/history', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { professionalId, startDate, endDate } = req.query;
 
+    try {
+        const { db } = req;
+        let query = db.collection('commission_reports').where('establishmentId', '==', establishmentId);
+        
+        if (professionalId && professionalId !== 'all') {
+            query = query.where('professionalId', '==', professionalId);
+        }
+
+        const snapshot = await query.get();
+        let history = [];
+        
+        let startTs = null, endTs = null;
+        if (startDate && endDate) {
+            startTs = new Date(startDate).getTime();
+            endTs = new Date(endDate + "T23:59:59").getTime();
+        }
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            // Filtro de Data em memória
+            if (startTs && endTs) {
+                if (!data.createdAt) return;
+                const reportDate = data.createdAt.toDate().getTime();
+                if (reportDate < startTs || reportDate > endTs) return;
+            }
+
+            history.push({
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt && typeof data.createdAt.toDate === 'function' 
+                    ? data.createdAt.toDate().toISOString() 
+                    : new Date().toISOString()
+            });
+        });
+
+        history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        res.status(200).json(history);
+
+    } catch (error) {
+        console.error("Erro histórico:", error);
+        res.status(500).json({ message: 'Erro ao buscar histórico.' });
+    }
+});
+
+// --- ROTA DE EXCLUSÃO (JSON 200) ---
+router.delete('/report/:reportId', async (req, res) => {
+    const { establishmentId } = req.user;
+    const { reportId } = req.params;
+
+    if (!reportId) return res.status(400).json({ message: 'ID obrigatório.' });
+
+    try {
+        const { db } = req;
+        const reportRef = db.collection('commission_reports').doc(reportId);
+        const reportDoc = await reportRef.get();
+
+        if (!reportDoc.exists) return res.status(404).json({ message: 'Relatório não encontrado.' });
+        if (String(reportDoc.data().establishmentId) !== String(establishmentId)) return res.status(403).json({ message: 'Acesso negado.' });
+
+        await reportRef.delete();
+        // Retorna JSON 200 para evitar erro de parse no frontend
+        res.status(200).json({ message: 'Relatório excluído com sucesso.' });
+
+    } catch (error) {
+        console.error("Erro excluir:", error);
+        res.status(500).json({ message: 'Erro interno ao excluir.' });
+    }
+});
 
 module.exports = router;
-
