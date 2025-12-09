@@ -6,22 +6,17 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 /**
- * Este arquivo é responsável por inicializar e configurar a conexão com o Firebase.
- * Ele exporta as instâncias de autenticação (auth) e do Firestore (db) 
- * para que outros módulos possam usá-las.
- * Manter a configuração isolada aqui facilita a atualização das chaves da API sem
- * ter que procurar por elas em todo o código.
+ * Este arquivo conecta o frontend ao NOVO projeto nos EUA (kairos-system-us).
  */
 
-// Suas chaves de configuração do Firebase
+// Suas NOVAS chaves de configuração do Firebase
 const firebaseConfig = {
-    apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
-    authDomain: "kairos-system.firebaseapp.com",
-    projectId: "kairos-system",
-    storageBucket: "kairos-system.appspot.com",
-    messagingSenderId: "603994960586",
-    appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
-    measurementId: "G-SVHFXKV5EC"
+  apiKey: "AIzaSyBGhRWUVgogrZFKdh0R5-FYm__pDHOdCY4",
+  authDomain: "kairos-system-us.firebaseapp.com",
+  projectId: "kairos-system-us",
+  storageBucket: "kairos-system-us.firebasestorage.app",
+  messagingSenderId: "311673440078",
+  appId: "1:311673440078:web:75eb47faa87f20462bc01f"
 };
 
 // Inicializa o aplicativo Firebase

@@ -1,4 +1,8 @@
 {
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "hosting": {
     "public": "cap-dist",
     "ignore": [
@@ -15,7 +19,7 @@
       {
         "source": "**",
         "run": {
-          "serviceId": "kairos-service",
+          "serviceId": "kairos-backend",
           "region": "us-central1"
         }
       }

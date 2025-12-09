@@ -8,11 +8,11 @@ import { auth } from '../firebase-config.js';
 // --- CONFIGURAÇÃO DA URL DA API (AJUSTADO PARA PRODUÇÃO) ---
 // Definimos diretamente a URL de produção para garantir que o Android 
 // se conecte ao servidor na nuvem e não tente buscar localhost internamente.
-const API_BASE_URL = 'https://kairos-service-603994960586.southamerica-east1.run.app';
+const API_BASE_URL = 'https://kairos-backend-311673440078.us-central1.run.app/';
 
 ///const API_BASE_URL = 'https://www.kairosagenda.com.br';
 
-console.log('🚀 API configurada para Produção:', API_BASE_URL);
+console.log('🚀 API configurada para Produção (US):', API_BASE_URL);
 // --- FIM DA CONFIGURAÇÃO ---
 
 
