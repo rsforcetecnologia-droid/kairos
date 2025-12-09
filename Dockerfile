@@ -14,7 +14,7 @@ RUN npm install
 COPY . .
 
 # Exponha a porta que sua aplicação usa (conforme index.js)
-EXPOSE 3001
+EXPOSE 8080
 
 # Comando para iniciar o servidor
 CMD [ "node", "index.js" ]

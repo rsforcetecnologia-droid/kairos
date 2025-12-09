@@ -5,23 +5,34 @@ const admin = require('firebase-admin');
 const path = require('path');
 const multer = require('multer'); 
 
-// --- INICIALIZAÇÃO DO FIREBASE ---
+// --- INICIALIZAÇÃO DO FIREBASE (CRÍTICO: Robustez) ---
 try {
     let serviceAccount;
-    // Verifica se estamos no Google Cloud (Secret) ou local
+    // 1. Tenta carregar do Secret (ambiente Cloud Run)
     if (process.env.FIREBASE_CONFIG_SECRET) {
         serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_SECRET);
-    } else {
+    } 
+    // 2. Tenta carregar do arquivo local (Desenvolvimento local)
+    else {
+        // Assume que o arquivo existe localmente. Se não, o try/catch pega.
+        // É crucial que este arquivo NÃO seja enviado para o Cloud Run.
         serviceAccount = require('./firebase-credentials.json');
     }
 
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    console.log("Firebase Admin SDK inicializado com sucesso!");
+    // Inicializa o Admin SDK APENAS se as credenciais foram encontradas e se não foi inicializado
+    if (serviceAccount && Object.keys(serviceAccount).length > 0 && !admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("Firebase Admin SDK inicializado com sucesso!");
+    } else if (admin.apps.length) {
+        console.log("Firebase Admin SDK já estava inicializado.");
+    } else {
+        console.warn("Nenhuma credencial de serviço válida encontrada. Firebase Admin NÃO inicializado.");
+    }
 } catch (error) {
-    console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error);
-    // Não encerramos o processo para não derrubar o servidor se for apenas erro de config local
+    // Esse erro será gravado no log do Cloud Run e pode ser o motivo do crash
+    console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error.message);
 }
 
 // --- CONFIGURAÇÃO DO EXPRESS ---
@@ -38,7 +49,7 @@ const {
     checkSubscription
 } = require('./middlewares/auth');
 
-// --- IMPORTAÇÃO DAS ROTAS ---
+// --- IMPORTAÇÃO DAS ROTAS (Lista completa para referência) ---
 const adminRoutes = require('./routes/admin');
 const analyticsRoutes = require('./routes/analytics');
 const appointmentRoutes = require('./routes/appointments');
@@ -61,7 +72,6 @@ const importRoutes = require('./routes/import');
 const dbexplorerRoutes = require('./routes/dbexplorer');
 const commissionsRoutes = require('./routes/commissions'); 
 const packagesRoutes = require('./routes/packages'); 
-
 const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
 const publicRegisterRoutes = require('./routes/publicRegister'); 
 const stripeWebhookRoutes = require('./routes/stripeWebhook');
@@ -71,10 +81,7 @@ app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes);
 
 // --- 1. ROTA DE UPLOAD DE LOGOTIPO ---
 const storage = multer.memoryStorage();
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } 
-});
+const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 app.post('/api/admin/config/logo', 
     addFirebaseInstances, 
@@ -90,10 +97,7 @@ app.post('/api/admin/config/logo',
             const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
             const fileUpload = bucket.file(fileName);
 
-            const blobStream = fileUpload.createWriteStream({
-                metadata: { contentType: req.file.mimetype }
-            });
-
+            const blobStream = fileUpload.createWriteStream({ metadata: { contentType: req.file.mimetype } });
             blobStream.on('error', (error) => {
                 console.error("Erro no stream de upload:", error);
                 res.status(500).json({ message: 'Erro ao fazer upload.' });
@@ -116,19 +120,19 @@ app.post('/api/admin/config/logo',
 
 // --- PARSER JSON E API ---
 app.use(express.json({ limit: '10mb' })); 
-app.use('/api', addFirebaseInstances);
+app.use('/api', addFirebaseInstances); // Adiciona db e auth a todas as rotas API
 
 // ======================================================================
-// CORREÇÃO PRINCIPAL: Servir a pasta do BUILD (cap-dist)
+// SERVIR a pasta do BUILD
 // ======================================================================
-// Isto garante que o navegador recebe o código "traduzido" pelo Vite
-// e não o código fonte original que causa erro.
+// Isto garante que o frontend (cap-dist) seja servido corretamente
 app.use(express.static(path.join(__dirname, 'cap-dist')));
 
 // --- ROTAS DA API (Backend) ---
+// Rotas privadas que exigem verificação de token
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
-app.use('/api/import', importRoutes);
+app.use('/api/import', importRoutes); // Esta rota pode ter seu próprio middleware de segurança se for pública
 app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
@@ -142,19 +146,21 @@ app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRout
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
+app.use('/api/establishments', verifyToken, hasAccess, establishmentRoutes);
+app.use('/api/professionals', verifyToken, hasAccess, professionalRoutes);
+app.use('/api/services', verifyToken, hasAccess, serviceRoutes);
+app.use('/api/availability', verifyToken, hasAccess, availabilityRoutes);
+app.use('/api/client-portal', clientPortalRoutes); // Esta rota é pública (portal do cliente)
+app.use('/api/public/subscriptions', publicSubscriptionsRoutes); // Pública
+app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes); // Pública
+
+// ROTA PÚBLICA DE AGENDAMENTO (Liberada no appointments.js)
 app.use('/api/appointments', appointmentRoutes);
-app.use('/api/establishments', establishmentRoutes);
-app.use('/api/professionals', professionalRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/availability', availabilityRoutes);
-app.use('/api/client-portal', clientPortalRoutes);
-app.use('/api/public/subscriptions', publicSubscriptionsRoutes); 
-app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes); 
+
 
 // ======================================================================
 // ROTAS PARA PÁGINAS HTML (Redirecionam para cap-dist)
 // ======================================================================
-// Função auxiliar para enviar ficheiros da pasta de build
 const sendBuildFile = (res, filename) => {
     res.sendFile(path.join(__dirname, 'cap-dist', filename));
 };
@@ -174,14 +180,14 @@ app.get('/import', (req, res) => sendBuildFile(res, 'import.html'));
 app.get('/dbexplorer', (req, res) => sendBuildFile(res, 'dbexplorer.html'));
 app.get('/datadictionary', (req, res) => sendBuildFile(res, 'datadictionary.html'));
 
-// --- TRATAMENTO DE ERROS ---
+// --- TRATAMENTO DE ERROS FINAL ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Algo deu errado no servidor!');
 });
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080; // <--- CORREÇÃO: Usa a porta injetada pelo Cloud Run (ou 8080)
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
