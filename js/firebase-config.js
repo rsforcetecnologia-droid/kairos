@@ -9,7 +9,7 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase
  * Este arquivo conecta o frontend ao NOVO projeto nos EUA (kairos-system-us).
  */
 
-// Suas NOVAS chaves de configuração do Firebase
+// --- CHAVES CORRETAS DO NOVO PROJETO (US) ---
 const firebaseConfig = {
   apiKey: "AIzaSyBGhRWUVgogrZFKdh0R5-FYm__pDHOdCY4",
   authDomain: "kairos-system-us.firebaseapp.com",
@@ -22,8 +22,8 @@ const firebaseConfig = {
 // Inicializa o aplicativo Firebase
 const app = initializeApp(firebaseConfig);
 
-// Exporta a instância de autenticação para ser usada em toda a aplicação
+// Exporta a instância de autenticação
 export const auth = getAuth(app);
 
-// Exporta a instância do Firestore para ser usada em toda a aplicação
+// Exporta a instância do Firestore
 export const db = getFirestore(app);
