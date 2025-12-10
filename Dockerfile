@@ -1,20 +1,25 @@
-# Use uma imagem oficial do Node.js
+# 1. Imagem base
 FROM node:20-slim
 
-# Crie o diretório da aplicação
+# 2. Pasta de trabalho
 WORKDIR /usr/src/app
 
-# Copie os arquivos de dependências
+# 3. Copiar dependências
 COPY package*.json ./
 
-# Instale as dependências do projeto
-RUN npm install
+# 4. Instalar TUDO (incluindo dependências de desenvolvimento como o Vite)
+# O flag --include=dev é OBRIGATÓRIO para o build funcionar
+RUN npm install --include=dev
 
-# Copie o restante dos arquivos da sua aplicação
+# 5. Copiar o código fonte
 COPY . .
 
-# Exponha a porta que sua aplicação usa (conforme index.js)
+# 6. CONSTRUIR O SITE (Gera a pasta cap-dist)
+# Sem isto, o servidor dá erro 500 ou 404
+RUN npm run build:web
+
+# 7. Expor a porta
 EXPOSE 8080
 
-# Comando para iniciar o servidor
+# 8. Iniciar
 CMD [ "node", "index.js" ]

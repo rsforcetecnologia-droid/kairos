@@ -8,31 +8,44 @@ const multer = require('multer');
 // --- INICIALIZAÇÃO DO FIREBASE (CRÍTICO: Robustez) ---
 try {
     let serviceAccount;
+    
     // 1. Tenta carregar do Secret (ambiente Cloud Run)
     if (process.env.FIREBASE_CONFIG_SECRET) {
+        console.log("Tentando carregar credenciais via Variável de Ambiente...");
         serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_SECRET);
     } 
     // 2. Tenta carregar do arquivo local (Desenvolvimento local)
     else {
-        // Assume que o arquivo existe localmente. Se não, o try/catch pega.
-        // É crucial que este arquivo NÃO seja enviado para o Cloud Run.
-        serviceAccount = require('./firebase-credentials.json');
+        console.log("Variável FIREBASE_CONFIG_SECRET não encontrada. Tentando arquivo local...");
+        try {
+            serviceAccount = require('./firebase-credentials.json');
+        } catch (e) {
+            console.warn("Arquivo local firebase-credentials.json não encontrado.");
+        }
     }
 
-    // Inicializa o Admin SDK APENAS se as credenciais foram encontradas e se não foi inicializado
-    if (serviceAccount && Object.keys(serviceAccount).length > 0 && !admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-        console.log("Firebase Admin SDK inicializado com sucesso!");
-    } else if (admin.apps.length) {
-        console.log("Firebase Admin SDK já estava inicializado.");
-    } else {
-        console.warn("Nenhuma credencial de serviço válida encontrada. Firebase Admin NÃO inicializado.");
+    // Validação Rigorosa
+    if (!serviceAccount || Object.keys(serviceAccount).length === 0) {
+        throw new Error("NENHUMA credencial do Firebase encontrada. O servidor não pode funcionar sem DB.");
     }
+
+    // Inicializa o Admin SDK
+    if (!admin.apps.length) {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            // ATUALIZADO: Nome do bucket correto para a região US
+            storageBucket: 'kairos-system-us.firebasestorage.app' 
+        });
+        console.log("✅ Firebase Admin SDK inicializado com sucesso!");
+    } else {
+        console.log("ℹ️ Firebase Admin SDK já estava inicializado.");
+    }
+
 } catch (error) {
-    // Esse erro será gravado no log do Cloud Run e pode ser o motivo do crash
-    console.error("Erro Crítico ao inicializar o Firebase Admin SDK:", error.message);
+    // ERRO CRÍTICO: Mata o processo para o erro aparecer no log do Cloud Run
+    console.error("🚨 ERRO FATAL NA INICIALIZAÇÃO DO FIREBASE 🚨");
+    console.error(error.message);
+    process.exit(1); 
 }
 
 // --- CONFIGURAÇÃO DO EXPRESS ---
@@ -49,7 +62,7 @@ const {
     checkSubscription
 } = require('./middlewares/auth');
 
-// --- IMPORTAÇÃO DAS ROTAS (Lista completa para referência) ---
+// --- IMPORTAÇÃO DAS ROTAS ---
 const adminRoutes = require('./routes/admin');
 const analyticsRoutes = require('./routes/analytics');
 const appointmentRoutes = require('./routes/appointments');
@@ -93,7 +106,8 @@ app.post('/api/admin/config/logo',
             if (!req.file) return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
             
             const { db } = req; 
-            const bucket = admin.storage().bucket('kairos-system.firebasestorage.app'); 
+            // CORREÇÃO: Bucket US
+            const bucket = admin.storage().bucket('kairos-system-us.firebasestorage.app'); 
             const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
             const fileUpload = bucket.file(fileName);
 
@@ -120,19 +134,17 @@ app.post('/api/admin/config/logo',
 
 // --- PARSER JSON E API ---
 app.use(express.json({ limit: '10mb' })); 
-app.use('/api', addFirebaseInstances); // Adiciona db e auth a todas as rotas API
+app.use('/api', addFirebaseInstances); 
 
 // ======================================================================
 // SERVIR a pasta do BUILD
 // ======================================================================
-// Isto garante que o frontend (cap-dist) seja servido corretamente
 app.use(express.static(path.join(__dirname, 'cap-dist')));
 
-// --- ROTAS DA API (Backend) ---
-// Rotas privadas que exigem verificação de token
+// --- ROTAS DA API ---
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
-app.use('/api/import', importRoutes); // Esta rota pode ter seu próprio middleware de segurança se for pública
+app.use('/api/import', importRoutes);
 app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
@@ -150,13 +162,10 @@ app.use('/api/establishments', verifyToken, hasAccess, establishmentRoutes);
 app.use('/api/professionals', verifyToken, hasAccess, professionalRoutes);
 app.use('/api/services', verifyToken, hasAccess, serviceRoutes);
 app.use('/api/availability', verifyToken, hasAccess, availabilityRoutes);
-app.use('/api/client-portal', clientPortalRoutes); // Esta rota é pública (portal do cliente)
-app.use('/api/public/subscriptions', publicSubscriptionsRoutes); // Pública
-app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes); // Pública
-
-// ROTA PÚBLICA DE AGENDAMENTO (Liberada no appointments.js)
+app.use('/api/client-portal', clientPortalRoutes);
+app.use('/api/public/subscriptions', publicSubscriptionsRoutes);
+app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes);
 app.use('/api/appointments', appointmentRoutes);
-
 
 // ======================================================================
 // ROTAS PARA PÁGINAS HTML (Redirecionam para cap-dist)
@@ -187,7 +196,7 @@ app.use((err, req, res, next) => {
 });
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
-const PORT = process.env.PORT || 8080; // <--- CORREÇÃO: Usa a porta injetada pelo Cloud Run (ou 8080)
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
