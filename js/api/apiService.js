@@ -10,7 +10,7 @@ import { auth } from '../firebase-config.js';
 // Definimos diretamente a URL de produção para garantir que o Android 
 // se conecte ao servidor na nuvem e não tente buscar localhost internamente.
 // SUBSTITUA PELA SUA URL REAL DO CLOUD RUN SE MUDAR
-const API_BASE_URL = 'http://localhost:8080'; 
+const API_BASE_URL = 'https://kairos-app-407358446276.us-central1.run.app'; 
 
 console.log('🚀 API configurada para Produção (US):', API_BASE_URL);
 // --- FIM DA CONFIGURAÇÃO ---
@@ -41,9 +41,16 @@ export async function authenticatedFetch(endpoint, options = {}) {
         throw new Error("Utilizador não autenticado. A requisição foi cancelada.");
     }
 
-    // Garante que o endpoint comece com / se não tiver
-    const safeEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    const fullUrl = `${API_BASE_URL}${safeEndpoint}`;
+    // --- CORREÇÃO DE URL: REMOÇÃO DE BARRA DUPLA ---
+    // Remove a barra final da URL base, se existir (prevenindo http://host//api)
+    const cleanBaseUrl = API_BASE_URL.replace(/\/$/, '');
+    
+    // Garante que o endpoint comece com uma barra
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    
+    // Concatena de forma segura: Base (sem barra final) + Endpoint (com barra inicial)
+    const fullUrl = `${cleanBaseUrl}${cleanEndpoint}`;
+    // ----------------------------------------------
     
     console.log(`AuthenticatedFetch: ${options.method || 'GET'} ${fullUrl}`); // Log para debug
 

@@ -1,25 +1,24 @@
 {
-  "firestore": {
-    "database": "(default)",
-    "location": "us-central1",
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
   "hosting": {
-    "public": "public",
+    "public": "cap-dist",
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "index.html"
     ],
     "rewrites": [
       {
+        "source": "/",
+        "destination": "/landing.html"
+      },
+      {
         "source": "**",
-        "destination": "/index.html"
+        "run": {
+          "serviceId": "kairos-agenda-us",
+          "region": "us-central1"
+        }
       }
     ]
-  },
-  "storage": {
-    "rules": "n"
   }
 }

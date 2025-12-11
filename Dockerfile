@@ -1,25 +1,35 @@
-# 1. Imagem base
-FROM node:20-slim
+# Dockerfile
 
-# 2. Pasta de trabalho
-WORKDIR /usr/src/app
+# Fase 1: Construção
+# Usar uma imagem oficial do Node.js
+FROM node:18-slim as builder
 
-# 3. Copiar dependências
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar ficheiros de dependências
 COPY package*.json ./
 
-# 4. Instalar TUDO (incluindo dependências de desenvolvimento como o Vite)
-# O flag --include=dev é OBRIGATÓRIO para o build funcionar
-RUN npm install --include=dev
+# Instalar dependências. O seu projeto não deve precisar do firebase-credentials.json aqui
+RUN npm install --only=production
 
-# 5. Copiar o código fonte
+# Fase 2: Imagem Final (Mais leve)
+FROM node:18-slim
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar a pasta de dependências da fase de construção
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copiar o resto do código do servidor
+# ATENÇÃO: Se houver um .dockerignore, garante que ele não bloqueia ficheiros essenciais!
 COPY . .
 
-# 6. CONSTRUIR O SITE (Gera a pasta cap-dist)
-# Sem isto, o servidor dá erro 500 ou 404
-RUN npm run build:web
-
-# 7. Expor a porta
+# Variável de ambiente necessária para o servidor (index.js) saber que está na nuvem
+# E para o Cloud Run saber a porta.
+ENV PORT=8080
 EXPOSE 8080
 
-# 8. Iniciar
-CMD [ "node", "index.js" ]
+# Comando para iniciar
+CMD ["node", "index.js"]

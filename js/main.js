@@ -1,19 +1,14 @@
 // js/main.js
 
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
-// Mantemos a importação da config (que já usa 'firebase/app' e 'firebase/firestore')
 import { auth, db } from './firebase-config.js';
-
-// CORREÇÃO AQUI: Trocamos os links https://www.gstatic... pelos pacotes instalados
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs } from "firebase/firestore";
-
-// O resto das importações continua igual...
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
-import { getProfessionals } from './api/professionals.js';
+import { getProfessionals } from './api/professionals.js'; 
 
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';

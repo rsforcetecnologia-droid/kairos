@@ -1,9 +1,12 @@
+# .dockerignore
+# Ignorar pastas de Node
 node_modules
 npm-debug.log
-Dockerfile
+.npm
+
+# Ignorar pastas de build local e credenciais (para segurança)
+dist/
+firebase-credentials.json
+.gcloudignore
 .git
 .gitignore
-.firebaserc
-firebase.json
-android
-ios

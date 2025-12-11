@@ -1,3 +1,5 @@
+// index.js (Raiz do projeto)
+
 // --- CONFIGURAÇÃO INICIAL ---
 const express = require('express');
 const cors = require('cors');
@@ -142,9 +144,10 @@ app.use('/api', addFirebaseInstances);
 app.use(express.static(path.join(__dirname, 'cap-dist')));
 
 // --- ROTAS DA API ---
+
+// Rotas Administrativas (Protegidas)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
-app.use('/api/import', importRoutes);
 app.use('/api/dbexplorer', verifyToken, isSuperAdmin, dbexplorerRoutes);
 app.use('/api/users', verifyToken, checkSubscription, isOwner, userRoutes);
 app.use('/api/analytics', verifyToken, checkSubscription, hasAccess, analyticsRoutes);
@@ -158,10 +161,17 @@ app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRout
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
-app.use('/api/establishments', verifyToken, hasAccess, establishmentRoutes);
-app.use('/api/professionals', verifyToken, hasAccess, professionalRoutes);
-app.use('/api/services', verifyToken, hasAccess, serviceRoutes);
-app.use('/api/availability', verifyToken, hasAccess, availabilityRoutes);
+
+// --- CORREÇÃO AQUI: ROTAS PÚBLICAS/HÍBRIDAS (Sem verifyToken global) ---
+// Estas rotas precisam ser acessíveis sem login para o agendamento online funcionar.
+// A segurança (quem pode editar/apagar) é tratada DENTRO de cada arquivo de rota.
+app.use('/api/establishments', establishmentRoutes); 
+app.use('/api/professionals', professionalRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/availability', availabilityRoutes);
+// ---------------------------------------------------------------------
+
+app.use('/api/import', importRoutes); // Importação pode ter lógica própria
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/public/subscriptions', publicSubscriptionsRoutes);
 app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes);

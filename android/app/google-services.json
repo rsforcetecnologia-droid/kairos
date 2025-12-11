@@ -1,15 +1,15 @@
 {
   "project_info": {
     "project_number": "603994960586",
-    "project_id": "kairos-agenda-us",
-    "storage_bucket": "kairos-agenda-us.firebasestorage.app"
+    "project_id": "kairos-system",
+    "storage_bucket": "kairos-system.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
         "mobilesdk_app_id": "1:603994960586:android:c95a3bbe0ff5e4caccfa33",
         "android_client_info": {
-          "package_name": "com.kairosagenda.us"
+          "package_name": "br.com.rsforce.kairos.pro"
         }
       },
       "oauth_client": [],

@@ -1,13 +1,27 @@
+
+//src\screens\login.Screen.js
 import React, { useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-
-// --- IMPORTAÇÃO CORRETA: Traz o 'auth' configurado do arquivo central ---
-import { auth } from '../../firebase-config.js'; 
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 // Registar os componentes do Chart.js que vamos usar
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
+// --- CONFIGURAÇÃO DO FIREBASE ---
+const firebaseConfig = {
+    apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
+    authDomain: "kairos-system.firebaseapp.com",
+    projectId: "kairos-system",
+    storageBucket: "kairos-system.appspot.com",
+    messagingSenderId: "603994960586",
+    appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
+    measurementId: "G-SVHFXKV5EC"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
 // --- Ícones para a Barra de Navegação e UI (SVG) ---
 const icons = {
