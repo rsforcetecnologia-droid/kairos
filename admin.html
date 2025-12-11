@@ -248,7 +248,7 @@
                             </div>
                         </div>
                     </div>
-                     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
                         <div class="flex items-center justify-between">
                             <div>
                                 <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Atenção</p>
@@ -340,19 +340,19 @@
                         </table>
                     </div>
                     <div id="paginationControls" class="bg-white px-4 py-3 border-t border-slate-200 flex items-center justify-between sm:px-6">
-                         <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                             <p class="text-sm text-slate-700">Exibindo <span id="pageStart" class="font-bold">0</span> a <span id="pageEnd" class="font-bold">0</span> de <span id="totalItems" class="font-bold">0</span></p>
-                             <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                                 <button id="prevPageBtn" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                     <span class="sr-only">Anterior</span>
-                                     <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
-                                 </button>
-                                 <button id="nextPageBtn" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
-                                     <span class="sr-only">Próxima</span>
-                                     <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
-                                 </button>
-                             </nav>
-                         </div>
+                        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                            <p class="text-sm text-slate-700">Exibindo <span id="pageStart" class="font-bold">0</span> a <span id="pageEnd" class="font-bold">0</span> de <span id="totalItems" class="font-bold">0</span></p>
+                            <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                <button id="prevPageBtn" class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                    <span class="sr-only">Anterior</span>
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" /></svg>
+                                </button>
+                                <button id="nextPageBtn" class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                                    <span class="sr-only">Próxima</span>
+                                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" /></svg>
+                                </button>
+                            </nav>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -360,7 +360,7 @@
             <section id="trash-section" class="hidden animate-fade-in-up">
                  <h2 class="text-2xl font-bold text-slate-800 mb-6">Lixeira</h2>
                  <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                     <div class="overflow-x-auto">
+                    <div class="overflow-x-auto">
                          <table class="min-w-full divide-y divide-slate-200">
                              <thead class="bg-slate-50">
                                  <tr>
@@ -401,7 +401,7 @@
                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
-      
+    
                 <div class="flex-1 overflow-y-auto px-6 py-8 bg-slate-50">
                   <form id="establishmentForm" class="space-y-8">
                     <input type="hidden" id="editEstablishmentId">
@@ -478,10 +478,10 @@
                     </div>
                   </form>
                 </div>
-      
+    
                 <div class="border-t border-slate-200 px-6 py-4 bg-white shrink-0 flex justify-end gap-3">
-                   <button type="button" data-action="close-modal" class="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Cancelar</button>
-                   <button type="submit" form="establishmentForm" class="px-6 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors">Salvar</button>
+                    <button type="button" data-action="close-modal" class="px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Cancelar</button>
+                    <button type="submit" form="establishmentForm" class="px-6 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm transition-colors">Salvar</button>
                 </div>
               </div>
             </div>
@@ -527,17 +527,18 @@
     <div id="toast-container" class="fixed bottom-5 right-5 z-[100] space-y-2"></div>
 
     <script type="module">
+        // --- CONFIGURAÇÃO CORRIGIDA: Apontando para o novo projeto kairos-agenda-us ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, signOut, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         const firebaseConfig = {
-            apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
-            authDomain: "kairos-system-us.firebaseapp.com",
-            projectId: "kairos-system-us",
-            storageBucket: "kairos-system-us.firebasestorage.app",
-            messagingSenderId: "603994960586",
-            appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
-            measurementId: "G-SVHFXKV5EC"
+            apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+            authDomain: "kairos-agenda-us.firebaseapp.com",
+            projectId: "kairos-agenda-us",
+            storageBucket: "kairos-agenda-us.firebasestorage.app",
+            messagingSenderId: "407358446276",
+            appId: "1:407358446276:web:c6229ea999b56701558791"
+            // measurementId foi removido, não é essencial para auth.
         };
 
         const GRACE_PERIOD_DAYS = 5;

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "kairos-agenda-us"
-  }
+    "default": "kairos-agenda-us",
+    "y": "kairos-agenda-us"
+  },
+  "targets": {},
+  "etags": {}
 }

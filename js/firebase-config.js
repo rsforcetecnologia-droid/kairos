@@ -1,15 +1,9 @@
 // js/firebase-config.js
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Importa apenas as funções necessárias do Firebase SDK
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-/**
- * Este arquivo conecta o frontend ao NOVO projeto nos EUA (kairos-system-us).
- */
-
-// --- CHAVES CORRETAS DO NOVO PROJETO (US) ---
+// --- CONFIGURAÇÃO PARA O KAIROS AGENDA US ---
 const firebaseConfig = {
   apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
   authDomain: "kairos-agenda-us.firebaseapp.com",
@@ -19,11 +13,12 @@ const firebaseConfig = {
   appId: "1:407358446276:web:c6229ea999b56701558791"
 };
 
-// Inicializa o aplicativo Firebase
+// Inicializa a Aplicação Firebase
 const app = initializeApp(firebaseConfig);
 
-// Exporta a instância de autenticação
-export const auth = getAuth(app);
+// Inicializa os Serviços
+const auth = getAuth(app);
+const db = getFirestore(app); // <--- AQUI ESTÁ O DB
 
-// Exporta a instância do Firestore
-export const db = getFirestore(app);
+// Exporta as Instâncias
+export { auth, db }; // <--- DEVE SER EXPORTADO ASSIM

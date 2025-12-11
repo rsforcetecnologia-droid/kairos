@@ -1,3 +1,4 @@
+// js/api/apiService.js
 import { auth } from '../firebase-config.js';
 
 /**
@@ -8,9 +9,8 @@ import { auth } from '../firebase-config.js';
 // --- CONFIGURAÇÃO DA URL DA API (AJUSTADO PARA PRODUÇÃO) ---
 // Definimos diretamente a URL de produção para garantir que o Android 
 // se conecte ao servidor na nuvem e não tente buscar localhost internamente.
-const API_BASE_URL = 'https://kairos-backend-311673440078.us-central1.run.app/';
-
-///const API_BASE_URL = 'https://www.kairosagenda.com.br';
+// SUBSTITUA PELA SUA URL REAL DO CLOUD RUN SE MUDAR
+const API_BASE_URL = 'http://localhost:8080'; 
 
 console.log('🚀 API configurada para Produção (US):', API_BASE_URL);
 // --- FIM DA CONFIGURAÇÃO ---
@@ -41,7 +41,10 @@ export async function authenticatedFetch(endpoint, options = {}) {
         throw new Error("Utilizador não autenticado. A requisição foi cancelada.");
     }
 
-    const fullUrl = `${API_BASE_URL}${endpoint}`;
+    // Garante que o endpoint comece com / se não tiver
+    const safeEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const fullUrl = `${API_BASE_URL}${safeEndpoint}`;
+    
     console.log(`AuthenticatedFetch: ${options.method || 'GET'} ${fullUrl}`); // Log para debug
 
     try {
@@ -59,6 +62,7 @@ export async function authenticatedFetch(endpoint, options = {}) {
             
             const errorMessage = errorData.message || `Erro na API: ${response.status}`;
             
+            // --- DETECTOR DE FALTA DE ÍNDICE (FEATURE NOVA) ---
             // Verifica se é o erro específico de "Índice Faltando" do Firestore
             if (errorMessage.includes('FAILED_PRECONDITION') && errorMessage.includes('requires an index')) {
                 
@@ -83,6 +87,7 @@ Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índi
                     "color: #663300; font-size: 12px;"
                 );
             }
+            // ----------------------------------------------------
 
             console.error(`Erro na API (${response.status}) em ${fullUrl}:`, errorMessage);
             throw new Error(errorMessage);
