@@ -1,28 +1,25 @@
 {
   "firestore": {
+    "database": "(default)",
+    "location": "us-central1",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "cap-dist",
+    "public": "public",
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "index.html"
+      "**/node_modules/**"
     ],
     "rewrites": [
       {
-        "source": "/",
-        "destination": "/landing.html"
-      },
-      {
         "source": "**",
-        "run": {
-          "serviceId": "kairos-backend",
-          "region": "us-central1"
-        }
+        "destination": "/index.html"
       }
     ]
+  },
+  "storage": {
+    "rules": "n"
   }
 }

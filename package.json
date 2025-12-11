@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "vite",
+    "copy:assets": "copyfiles images/**/* cap-dist && copyfiles js/landing.js cap-dist/js",
     "build:web": "vite build",
     "cap:android": "npm run build:web && npx cap sync android"
   },
@@ -27,7 +28,7 @@
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "faker-br": "^0.5.0",
-    "firebase": "^12.5.0",
+    "firebase": "^12.6.0",
     "firebase-admin": "^13.4.0",
     "mercadopago": "^2.0.0",
     "multer": "^2.0.2",

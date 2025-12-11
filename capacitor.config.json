@@ -1,6 +1,6 @@
 {
-  "appId": "br.com.rsforce.kairos.pro",
-  "appName": "Kairos",
+  "appId": "com.kairosagenda.us",
+  "appName": "Kairos Agenda US",
   "webDir": "cap-dist",
   "server": {
     "androidScheme": "https"

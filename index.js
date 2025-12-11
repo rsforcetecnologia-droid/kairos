@@ -34,7 +34,7 @@ try {
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
             // ATUALIZADO: Nome do bucket correto para a região US
-            storageBucket: 'kairos-system-us.firebasestorage.app' 
+            storageBucket: 'kairos-agenda-us.firebasestorage.app' 
         });
         console.log("✅ Firebase Admin SDK inicializado com sucesso!");
     } else {
@@ -107,7 +107,7 @@ app.post('/api/admin/config/logo',
             
             const { db } = req; 
             // CORREÇÃO: Bucket US
-            const bucket = admin.storage().bucket('kairos-system-us.firebasestorage.app'); 
+            const bucket = admin.storage().bucket('kairos-agenda-us.firebasestorage.app'); 
             const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
             const fileUpload = bucket.file(fileName);
 

@@ -1,105 +1,18 @@
-rules_version = '2';
+rules_version='2'
+
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // --- REGRAS GERAIS ---
-    // Função para verificar se um utilizador está autenticado
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
-    // Função para verificar se o utilizador (owner ou employee) pertence a um estabelecimento
-    function isMemberOf(establishmentId) {
-      return isSignedIn() && request.auth.token.establishmentId == establishmentId;
-    }
-    
-    // --- COLEÇÕES PÚBLICAS (Lidas pelo cliente no agendamento) ---
-    match /establishments/{establishmentId} {
-      allow get: if true; // Permite que qualquer um leia os dados públicos de um estabelecimento
-      allow update: if isMemberOf(establishmentId) && request.auth.token.role == 'owner'; // Apenas o dono pode editar
-      
-      // Regra para a sub-coleção de notificações
-      match /notifications/{notificationId} {
-        allow get, list: if isMemberOf(establishmentId);
-        allow create, update, delete: if false; 
-      }
-    }
-    
-    match /services/{serviceId} {
-      allow get: if true; // Qualquer um pode ver os serviços para agendar
-    }
-    
-    match /professionals/{professionalId} {
-      allow get: if true; // Qualquer um pode ver os profissionais para agendar
-    }
-
-    // --- COLEÇÕES PRIVADAS (Acessadas apenas pelo painel de gestão) ---
-    
-    // Agendamentos
-    match /appointments/{appointmentId} {
-      allow create: if true; 
-      allow read, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-
-    // Produtos e Estoque
-    match /products/{productId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      match /stockHistory/{historyId} {
-        allow read, create: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
-      }
-    }
-    
-    match /productCategories/{categoryId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-
-    // --- NOVA REGRA: FORNECEDORES ---
-    // Permite leitura e escrita se o utilizador estiver logado.
-    // (Futuramente, podes restringir por establishmentId se adicionares esse campo ao fornecedor)
-    match /suppliers/{supplierId} {
-      allow read, write: if isSignedIn();
-    }
-    // --------------------------------
-    
-    match /clients/{clientId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-       match /loyaltyHistory/{historyId} {
-        allow read, create: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
-      }
-    }
-
-    match /sales/{saleId} {
-       allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    
-    match /blockages/{blockageId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    
-    match /cashierSessions/{sessionId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    // --- AUDITORIA ---
-    match /audit_logs/{logId} {
-      // Qualquer utilizador logado pode CRIAR um registo (para que as suas ações fiquem gravadas)
-      allow create: if isSignedIn();
-      
-      // Apenas o DONO (owner) pode LER o histórico completo
-      allow read: if isSignedIn() && request.auth.token.role == 'owner';
-      
-      // Ninguém pode apagar ou editar logs (para garantir segurança e verdade)
-      allow update, delete: if false;
-    }
-    
-    // Regra para Histórico de Compras
-    match /purchases/{purchaseId} {
-      allow read, write: if isSignedIn();
-    }
-
-    // Coleção de utilizadores (funcionários)
-    match /users/{userId} {
-      allow read, update: if isSignedIn() && (request.auth.uid == userId || request.auth.token.role == 'owner');
-      allow create, delete: if isSignedIn() && request.auth.token.role == 'owner';
+    match /{document=**} {
+      // This rule allows anyone with your database reference to view, edit,
+      // and delete all data in your database. It is useful for getting
+      // started, but it is configured to expire after 30 days because it
+      // leaves your app open to attackers. At that time, all client
+      // requests to your database will be denied.
+      //
+      // Make sure to write security rules for your app before that time, or
+      // else all client requests to your database will be denied until you
+      // update your rules.
+      allow read, write: if request.time < timestamp.date(2026, 1, 9);
     }
   }
 }

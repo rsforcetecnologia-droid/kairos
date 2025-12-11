@@ -11,12 +11,12 @@ import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase
 
 // --- CHAVES CORRETAS DO NOVO PROJETO (US) ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBGhRWUVgogrZFKdh0R5-FYm__pDHOdCY4",
-  authDomain: "kairos-system-us.firebaseapp.com",
-  projectId: "kairos-system-us",
-  storageBucket: "kairos-system-us.firebasestorage.app",
-  messagingSenderId: "311673440078",
-  appId: "1:311673440078:web:75eb47faa87f20462bc01f"
+  apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+  authDomain: "kairos-agenda-us.firebaseapp.com",
+  projectId: "kairos-agenda-us",
+  storageBucket: "kairos-agenda-us.firebasestorage.app",
+  messagingSenderId: "407358446276",
+  appId: "1:407358446276:web:c6229ea999b56701558791"
 };
 
 // Inicializa o aplicativo Firebase
