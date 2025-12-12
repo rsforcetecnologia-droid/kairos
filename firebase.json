@@ -4,18 +4,13 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "index.html"
+      "**/node_modules/**"
     ],
     "rewrites": [
       {
-        "source": "/",
-        "destination": "/landing.html"
-      },
-      {
         "source": "**",
         "run": {
-          "serviceId": "kairos-agenda-us",
+          "serviceId": "kairos-app",
           "region": "us-central1"
         }
       }
