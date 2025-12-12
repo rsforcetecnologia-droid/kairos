@@ -1,3 +1,7 @@
+# Arquivos de Credenciais e Segredos
+key.json
+*.json
+firebase-credentials.json
 # Logs
 logs
 *.log
