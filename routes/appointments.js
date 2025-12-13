@@ -412,7 +412,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT (CORRIGIDO: Leitura antes da Escrita + Sanitização de Duplicados)
+// 7. CHECKOUT (CRÍTICO: Inclui a atualização de lastServiceDate)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -431,60 +431,22 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
 
-        // --- SANITIZAÇÃO DE ITENS (CORREÇÃO DE DUPLICIDADE) ---
-        // Filtra os itens para garantir que serviços não sejam duplicados acidentalmente pelo frontend
-        const uniqueItems = [];
-        const seenServiceIds = new Set();
-
-        for (const item of items) {
-            // Se for produto, aceitamos sempre (o cliente pode ter comprado 2 shampoos iguais)
-            if (item.type === 'product') {
-                uniqueItems.push(item);
-                continue;
-            }
-            
-            // Se for serviço, verificamos se já foi adicionado
-            const id = item.id || item.serviceId;
-            if (id) {
-                if (seenServiceIds.has(id)) {
-                    continue; // Ignora este item pois é um serviço duplicado
-                }
-                seenServiceIds.add(id);
-            }
-            uniqueItems.push(item);
-        }
-        // -----------------------------------------------------
-
         await db.runTransaction(async (transaction) => {
-            // ----------------------------------------------------
-            // 1. LEITURAS (Tudo aqui primeiro!)
-            // ----------------------------------------------------
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const apptData = appointmentDoc.data();
 
-            // Ler cliente AGORA, antes de escrever qualquer coisa
-            const clientQuery = db.collection('clients')
-                .where('establishmentId', '==', establishmentId)
-                .where('phone', '==', apptData.clientPhone).limit(1);
-            const clientSnap = await transaction.get(clientQuery);
-
-            // ----------------------------------------------------
-            // 2. ESCRITAS (Só updates e sets daqui para baixo)
-            // ----------------------------------------------------
-
-            // A) Atualizar Agendamento (Usando uniqueItems)
+            // A) Atualizar Agendamento
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
-                comandaItems: uniqueItems, // <--- Lista limpa
+                comandaItems: items,
                 transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
             });
 
-            // B) Criar Venda (Usando uniqueItems)
+            // B) Criar Venda
             transaction.set(saleRef, {
-                type: 'appointment', appointmentId, establishmentId, 
-                items: uniqueItems, // <--- Lista limpa
+                type: 'appointment', appointmentId, establishmentId, items,
                 totalAmount: Number(totalAmount),
                 clientName: apptData.clientName, clientPhone: apptData.clientPhone,
                 professionalId: apptData.professionalId, professionalName: apptData.professionalName,
@@ -492,9 +454,15 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            // C) Atualizar Cliente
+            // C) ATUALIZAR CLIENTE (lastServiceDate)
+            const clientQuery = db.collection('clients')
+                .where('establishmentId', '==', establishmentId)
+                .where('phone', '==', apptData.clientPhone).limit(1);
+            
+            const clientSnap = await transaction.get(clientQuery);
             if (!clientSnap.empty) {
                 const clientRef = clientSnap.docs[0].ref;
+                
                 transaction.update(clientRef, { lastServiceDate: paidAtTimestamp });
                 
                 if (establishmentData.modules?.['loyalty-section'] && establishmentData.loyaltyProgram?.enabled) {
@@ -528,35 +496,22 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA (CORRIGIDO: Leitura antes da Escrita)
+// 8. REABRIR COMANDA
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
     try {
         await db.runTransaction(async (t) => {
-            // ----------------------------------------------------
-            // 1. LEITURAS
-            // ----------------------------------------------------
             const ref = db.collection('appointments').doc(appointmentId);
             const doc = await t.get(ref);
             if(!doc.exists) throw new Error("Não encontrado.");
-            
             const data = doc.data();
             const saleId = data.transaction?.saleId;
-            let financialDocs = [];
 
-            // Se tem venda, busca os financeiros ANTES de começar a apagar
-            if (saleId) {
-                const finsQuery = await t.get(db.collection('financial_receivables').where('transactionId', '==', saleId));
-                financialDocs = finsQuery.docs;
-            }
-
-            // ----------------------------------------------------
-            // 2. ESCRITAS
-            // ----------------------------------------------------
             if (saleId) {
                 t.delete(db.collection('sales').doc(saleId));
-                financialDocs.forEach(f => t.delete(f.ref));
+                const fins = await t.get(db.collection('financial_receivables').where('transactionId', '==', saleId));
+                fins.docs.forEach(f => t.delete(f.ref));
             }
             
             t.update(ref, { 
