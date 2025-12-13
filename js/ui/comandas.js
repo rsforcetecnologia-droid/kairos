@@ -32,22 +32,63 @@ let localState = {
 let pageEventListener = null;
 let contentDiv = null;
 
-// --- 3. FUNÇÕES AUXILIARES (MOBILE & UI) ---
+// --- 3. FUNÇÕES AUXILIARES (MOBILE & UI & LÓGICA) ---
 
-/** * Ativa o modo de detalhes no mobile (Esconde Lista, Mostra Detalhe)
+/** * Função BLINDADA para obter itens sem duplicar serviços.
+ * Garante que cada Serviço (pelo ID) apareça apenas uma vez.
  */
+function getSafeAllItems(comanda) {
+    // 1. Se finalizada, usa apenas o snapshot final salvo no banco
+    if (comanda.status === 'completed') {
+        const finalItems = comanda.comandaItems || comanda.items || [];
+        if (finalItems.length > 0) return finalItems;
+        // Se vazio (erro legado), tenta usar os serviços originais
+        return comanda.services || [];
+    }
+
+    // 2. Se aberta, faz a fusão inteligente
+    const baseServices = comanda.services || [];
+    const extras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
+
+    // Cria uma lista inicial com os serviços base
+    let combined = [...baseServices];
+
+    // Adiciona os extras, MAS FILTRA duplicatas de serviços
+    extras.forEach(extra => {
+        // Produtos sempre entram
+        if (extra.type === 'product') {
+            combined.push(extra);
+            return;
+        }
+
+        // Se for serviço, verifica se JÁ existe na lista 'combined'
+        // (Verifica por ID ou Nome para ser seguro)
+        const exists = combined.some(existing => {
+            const sameId = existing.id && extra.id && existing.id === extra.id;
+            const sameName = existing.name && extra.name && existing.name === extra.name;
+            return sameId || sameName;
+        });
+
+        // Só adiciona se NÃO existir
+        if (!exists) {
+            combined.push(extra);
+        }
+    });
+
+    return combined;
+}
+
+/** Ativa o modo de detalhes no mobile */
 function showMobileDetail() {
     const layout = document.getElementById('comandas-layout');
     if (layout) {
         layout.classList.add('detail-view-active');
-        // Rolar o container de detalhes para o topo
         const detailContainer = document.getElementById('comanda-detail-container');
         if(detailContainer) detailContainer.scrollTop = 0;
     }
 }
 
-/** * Volta para a lista no mobile (Esconde Detalhe, Mostra Lista)
- */
+/** Volta para a lista no mobile */
 function hideMobileDetail() {
     const layout = document.getElementById('comandas-layout');
     if (layout) {
@@ -57,7 +98,6 @@ function hideMobileDetail() {
 
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
-/** Renderiza o layout base da página de comandas */
 function renderPageLayout() {
     const todayStr = new Date().toISOString().split('T')[0];
     
@@ -82,7 +122,6 @@ function renderPageLayout() {
             ` : ''}
 
             <div id="comandas-layout">
-                
                 <div id="comandas-list-column">
                     <div class="p-4 pb-2 sticky top-0 bg-white z-10 border-b border-gray-100">
                         <button 
@@ -114,13 +153,11 @@ function renderPageLayout() {
                         <p>Selecione uma venda para ver os detalhes</p>
                     </div>
                 </div>
-
             </div>
         </section>
     `;
 }
 
-/** Renderiza os botões de controle do caixa */
 function renderCashierControls() {
     const container = document.getElementById('cashier-controls');
     if (!container) return;
@@ -139,12 +176,10 @@ function renderCashierControls() {
     }
 }
 
-/** Renderiza a lista de comandas na coluna da esquerda */
 function renderComandaList() {
     const listContainer = document.getElementById('comandas-list');
     if (!listContainer) return;
     
-    // Se o caixa estiver fechado, mostra apenas mensagem
     if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
         listContainer.innerHTML = `
             <div class="text-center py-10 opacity-60">
@@ -170,7 +205,8 @@ function renderComandaList() {
     }
 
     listContainer.innerHTML = filteredComandas.map(comanda => {
-        const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
+        // CORREÇÃO: Usando getSafeAllItems para garantir total correto na lista
+        const allItems = getSafeAllItems(comanda);
         const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
         
         const isSelected = comanda.id === localState.selectedComandaId;
@@ -205,7 +241,6 @@ function renderComandaList() {
     renderPaginationControls(listContainer);
 }
 
-/** Renderiza os controles de paginação */
 function renderPaginationControls(container) {
     const { page, total, limit } = localState.paging;
     const totalPages = Math.ceil((total || 0) / limit);
@@ -235,19 +270,17 @@ function renderPaginationControls(container) {
 
     container.querySelectorAll('button[data-page]').forEach(btn => {
         btn.onclick = (e) => {
-            e.stopPropagation(); // Evita selecionar comanda ao clicar na paginação
+            e.stopPropagation(); 
             localState.paging.page = parseInt(btn.dataset.page, 10);
             fetchAndDisplayData();
         };
     });
 }
 
-/** Renderiza os detalhes da comanda selecionada na coluna da direita */
 function renderComandaDetail() {
     const detailContainer = document.getElementById('comanda-detail-container');
     if (!detailContainer) return;
     
-    // --- HEADER MOBILE (HTML específico para o CSS Mobile) ---
     const mobileHeaderHTML = `
         <div class="mobile-only-header">
             <button data-action="back-to-list" class="btn-back-mobile">
@@ -257,7 +290,6 @@ function renderComandaDetail() {
         </div>
     `;
 
-    // Se caixa fechado
     if (!localState.isCashierOpen) {
         detailContainer.innerHTML = `
             ${mobileHeaderHTML}
@@ -273,7 +305,6 @@ function renderComandaDetail() {
     
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
-    // Se nenhuma comanda selecionada
     if (!comanda) {
         detailContainer.innerHTML = `
             <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
@@ -285,13 +316,12 @@ function renderComandaDetail() {
         return;
     }
 
-    // --- RENDERIZAÇÃO DA COMANDA REAL ---
+    // CORREÇÃO: Usando getSafeAllItems aqui também
+    const allItems = getSafeAllItems(comanda);
     
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
     const isCompleted = comanda.status === 'completed';
     const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
     
-    // Link para agendamento (se não for avulso)
     const goToAppointmentBtn = !isWalkIn
         ? `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" 
                 class="text-indigo-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-1">
@@ -303,8 +333,7 @@ function renderComandaDetail() {
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
         if (!acc[key]) {
-            const isOriginal = (comanda.services || []).some(s => s.id === item.id && s.name === item.name);
-            acc[key] = { ...item, quantity: 0, isOriginalService: isOriginal && item.type === 'service' };
+            acc[key] = { ...item, quantity: 0 };
         }
         acc[key].quantity += 1;
         return acc;
@@ -325,7 +354,7 @@ function renderComandaDetail() {
                 </div>
                 <div class="flex gap-2">
                     ${isCompleted ? 
-                        `<button data-action="reopen-${comanda.type}" data-id="${comanda.id}" class="p-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200" title="Reabrir"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>` 
+                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="p-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200" title="Reabrir"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>` 
                         : ''}
                     ${isWalkIn && !isCompleted ? 
                         `<button data-action="delete-walk-in" data-id="${comanda.id}" class="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Excluir"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` 
@@ -383,8 +412,6 @@ function renderComandaDetail() {
         </footer>
     `;
 }
-
-// --- 5. FUNÇÕES DE MODAIS (Mantidas iguais) ---
 
 function _comandas_renderClientRegistrationModal() {
     const modalContent = `
@@ -670,8 +697,22 @@ function openCheckoutModal() {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
-    const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
+    // --- CORREÇÃO EXTRA: DEDUPLICAÇÃO FORÇADA NO CHECKOUT ---
+    // Usamos o getSafeAllItems, mas fazemos uma verificação final
+    const rawItems = getSafeAllItems(comanda);
+    const seenIds = new Set();
+    const finalItems = [];
+    
+    // Filtro final rigoroso: Se for serviço e já vimos o ID, ignora.
+    for (const item of rawItems) {
+        if (item.type === 'service' && item.id) {
+            if (seenIds.has(item.id)) continue; 
+            seenIds.add(item.id);
+        }
+        finalItems.push(item);
+    }
+
+    const total = finalItems.reduce((acc, item) => acc + (item.price || 0), 0);
 
     let payments = [];
     let modalInternalState = {
@@ -963,7 +1004,6 @@ async function handleFilterClick(filter) {
     
     document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
     
-    // Esconde o detalhe no mobile ao trocar o filtro
     hideMobileDetail();
 
     await fetchAndDisplayData();
@@ -974,12 +1014,8 @@ async function handleFilterClick(filter) {
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
-    renderComandaList(); // Atualiza para mostrar o item selecionado visualmente
-
-    // Ativa a view de detalhe no mobile (CSS cuidará de esconder a lista)
+    renderComandaList(); 
     showMobileDetail();
-
-    // Renderiza o detalhe
     renderComandaDetail();
 }
 
@@ -1063,11 +1099,25 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
 async function handleFinalizeCheckout(comanda, totalAmount, payments) {
     const isAppointment = comanda.type === 'appointment';
-    const allItems = [...(comanda.services || []), ...(comanda.comandaItems || []), ...(comanda.items || [])];
+    
+    // --- CORREÇÃO FINAL: Limpeza agressiva no envio ---
+    // Mesmo que a UI já esteja limpa, limpamos novamente antes de enviar
+    const rawItems = getSafeAllItems(comanda);
+    const seenIds = new Set();
+    const finalItems = [];
+    
+    for (const item of rawItems) {
+        if (item.type === 'service' && item.id) {
+            if (seenIds.has(item.id)) continue; // Impede envio de duplicata para o backend
+            seenIds.add(item.id);
+        }
+        finalItems.push(item);
+    }
+    
     const data = {
         payments,
         totalAmount,
-        items: allItems,
+        items: finalItems, // Enviamos a lista limpa
         cashierSessionId: localState.activeCashierSessionId,
     };
 
@@ -1083,7 +1133,6 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         showNotification('Sucesso!', 'Venda finalizada com sucesso!', 'success');
         document.getElementById('genericModal').style.display = 'none';
 
-        // Esconde o detalhe no mobile (volta para a lista)
         hideMobileDetail();
         
         localState.selectedComandaId = null;
@@ -1123,7 +1172,6 @@ async function handleCreateNewSale(e) {
     
     document.getElementById('genericModal').style.display = 'none';
     
-    // Chama o handler que já cuida da animação e renderização
     handleComandaClick(newComanda.id);
 }
 
@@ -1175,12 +1223,10 @@ async function fetchAndDisplayData() {
         
         renderComandaList();
         
-        // Se estiver no desktop e houver seleção, mostra. 
-        // No mobile, só mostra se o usuário clicar explicitamente (tratado no click handler)
         if (localState.selectedComandaId) {
              renderComandaDetail();
         } else {
-             renderComandaDetail(); // Mostra o placeholder
+             renderComandaDetail(); 
         }
 
     } catch (error) {
@@ -1235,12 +1281,10 @@ export async function loadComandasPage(params = {}) {
             
             switch (action) {
                 case 'back-to-list': {
-                    // Retorna para a lista no Mobile
                     hideMobileDetail();
                     localState.selectedComandaId = null;
-                    // Remove seleção visual
                     document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected'));
-                    renderComandaDetail(); // Volta ao placeholder
+                    renderComandaDetail(); 
                     break;
                 }
                 case 'new-sale': 
@@ -1323,13 +1367,13 @@ export async function loadComandasPage(params = {}) {
                             renderComandaList();
                             renderComandaDetail(); 
                             showNotification('Sucesso', 'Venda avulsa removida.', 'success');
-                            hideMobileDetail(); // Esconde o detalhe no mobile
+                            hideMobileDetail();
                         } else {
                             try {
                                 await salesApi.deleteSale(comandaId);
                                 showNotification('Sucesso', 'Venda avulsa excluída com sucesso.', 'success');
                                 localState.selectedComandaId = null;
-                                hideMobileDetail(); // Esconde o detalhe no mobile
+                                hideMobileDetail();
                                 await fetchAndDisplayData();
                             } catch (error) {
                                 showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');

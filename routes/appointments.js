@@ -412,7 +412,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT (CRÍTICO: Inclui a atualização de lastServiceDate)
+// 7. CHECKOUT (CORRIGIDO: Leituras antes das Escritas)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -424,7 +424,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     try {
         const appointmentRef = db.collection('appointments').doc(appointmentId);
         const saleRef = db.collection('sales').doc();
-        const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp(); 
+        const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const establishmentData = establishmentDoc.data() || {};
@@ -432,9 +432,21 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
 
         await db.runTransaction(async (transaction) => {
+            // --- FASE 1: LEITURAS (Tudo deve ser lido aqui) ---
+            
+            // 1. Ler Agendamento
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const apptData = appointmentDoc.data();
+
+            // 2. Ler Cliente (Movido para cima para evitar o erro)
+            const clientQuery = db.collection('clients')
+                .where('establishmentId', '==', establishmentId)
+                .where('phone', '==', apptData.clientPhone).limit(1);
+            
+            const clientSnap = await transaction.get(clientQuery);
+
+            // --- FASE 2: ESCRITAS (Apenas gravações daqui para baixo) ---
 
             // A) Atualizar Agendamento
             transaction.update(appointmentRef, {
@@ -454,26 +466,26 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            // C) ATUALIZAR CLIENTE (lastServiceDate)
-            const clientQuery = db.collection('clients')
-                .where('establishmentId', '==', establishmentId)
-                .where('phone', '==', apptData.clientPhone).limit(1);
-            
-            const clientSnap = await transaction.get(clientQuery);
+            // C) Atualizar Cliente (Se existir)
             if (!clientSnap.empty) {
                 const clientRef = clientSnap.docs[0].ref;
                 
-                transaction.update(clientRef, { lastServiceDate: paidAtTimestamp });
+                // Prepara update básico
+                let clientUpdate = { lastServiceDate: paidAtTimestamp };
                 
+                // Lógica de Fidelidade
                 if (establishmentData.modules?.['loyalty-section'] && establishmentData.loyaltyProgram?.enabled) {
                     const points = Math.floor(Number(totalAmount) / establishmentData.loyaltyProgram.pointsPerCurrency);
                     if (points > 0) {
-                        transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(points) });
+                        clientUpdate.loyaltyPoints = admin.firestore.FieldValue.increment(points);
+                        // Registrar histórico de pontos
                         transaction.set(clientRef.collection('loyaltyHistory').doc(), {
                             type: 'earn', points, appointmentId, amountSpent: Number(totalAmount), timestamp: paidAtTimestamp
                         });
                     }
                 }
+                
+                transaction.update(clientRef, clientUpdate);
             }
 
             // D) Lançamentos Financeiros
@@ -496,33 +508,43 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA
+// 8. REABRIR COMANDA (CORRIGIDO)
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
     try {
         await db.runTransaction(async (t) => {
+            // --- FASE 1: LEITURAS (Tudo deve ser lido aqui) ---
             const ref = db.collection('appointments').doc(appointmentId);
             const doc = await t.get(ref);
+            
             if(!doc.exists) throw new Error("Não encontrado.");
             const data = doc.data();
             const saleId = data.transaction?.saleId;
 
+            // Busca os financeiros ANTES de apagar qualquer coisa
+            let financialDocs = [];
             if (saleId) {
-                t.delete(db.collection('sales').doc(saleId));
-                const fins = await t.get(db.collection('financial_receivables').where('transactionId', '==', saleId));
-                fins.docs.forEach(f => t.delete(f.ref));
+                const finsSnapshot = await t.get(db.collection('financial_receivables').where('transactionId', '==', saleId));
+                financialDocs = finsSnapshot.docs;
+            }
+
+            // --- FASE 2: ESCRITAS (Apenas gravações daqui para baixo) ---
+            if (saleId) {
+                t.delete(db.collection('sales').doc(saleId)); // Apaga Venda
+                financialDocs.forEach(f => t.delete(f.ref));  // Apaga Financeiros encontrados na Fase 1
             }
             
+            // Atualiza Agendamento
             t.update(ref, { 
-                status: 'confirmed', transaction: admin.firestore.FieldValue.delete(), 
+                status: 'confirmed', 
+                transaction: admin.firestore.FieldValue.delete(), 
                 cashierSessionId: admin.firestore.FieldValue.delete() 
             });
         });
         res.status(200).json({ message: 'Reaberto.' });
     } catch (error) { handleFirestoreError(res, error, 'reabrir'); }
 });
-
 // 9. OUTROS
 router.post('/:appointmentId/awaiting-payment', async (req, res) => {
     try { await req.db.collection('appointments').doc(req.params.appointmentId).update({ status: 'awaiting_payment' }); res.status(200).json({message:'ok'}); }
