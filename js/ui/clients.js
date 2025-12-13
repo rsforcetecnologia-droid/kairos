@@ -78,13 +78,43 @@ function getInactiveDaysOptionsHTML() {
     }).join('');
 }
 
-// --- NOVA FUNÇÃO AUXILIAR PARA OBTER VALOR DO HISTÓRICO ---
+// --- FUNÇÃO DE CÁLCULO DE VALOR (DEFINITIVA) ---
 function getItemTotalValue(item) {
-    // Tenta pegar o totalAmount, se for 0 ou nulo, tenta price, se não, 0.
-    // Isso corrige o problema de "valor zerado" se o backend retornar o preço em campo diferente
-    if (item.totalAmount && item.totalAmount > 0) return item.totalAmount;
-    if (item.price && item.price > 0) return item.price;
-    return 0;
+    if (!item) return 0;
+
+    let total = 0;
+
+    // 1. Tenta pegar totais explícitos
+    if (item.totalAmount !== undefined && item.totalAmount !== null) total = parseFloat(item.totalAmount);
+    else if (item.value !== undefined && item.value !== null) total = parseFloat(item.value);
+    else if (item.price !== undefined && item.price !== null && !Array.isArray(item.price)) total = parseFloat(item.price);
+
+    // 2. Se o total for zero ou inválido, SOMAR OS ITENS DA COMANDA
+    if (!total || total === 0) {
+        let calculatedSum = 0;
+
+        // Soma Serviços (verifica array 'services')
+        if (item.services && Array.isArray(item.services)) {
+            calculatedSum += item.services.reduce((acc, s) => {
+                const price = parseFloat(s.price) || parseFloat(s.servicePrice) || 0;
+                return acc + price;
+            }, 0);
+        }
+
+        // Soma Itens/Produtos (verifica array 'comandaItems' ou 'items')
+        const itemsArr = item.comandaItems || item.items;
+        if (itemsArr && Array.isArray(itemsArr)) {
+            calculatedSum += itemsArr.reduce((acc, i) => {
+                const price = parseFloat(i.price) || 0;
+                const qty = parseInt(i.quantity) || 1;
+                return acc + (price * qty);
+            }, 0);
+        }
+
+        if (calculatedSum > 0) total = calculatedSum;
+    }
+
+    return isNaN(total) ? 0 : total;
 }
 
 // --- FUNÇÕES AUXILIARES (ÍCONES PARA ABAS) ---
@@ -174,7 +204,6 @@ async function renderDetailContent(tabId) {
                     try {
                         loyaltyHistory = await clientsApi.getClientLoyaltyHistory(state.establishmentId, currentClient.name, currentClient.phone);
                     } catch (e) {
-                        // Ignora erro 403 (fidelidade inativa ou sem permissão) para não quebrar a tela
                         console.warn("Aviso: Histórico de fidelidade indisponível.", e);
                     }
                 }
@@ -245,14 +274,15 @@ function renderHistoryTab(history, type) {
         const isFuture = itemDateZero > today;
         const isPast = itemDateZero < today;
         
-        const isCompleted = item.status === 'completed' || item.status === 'finalized' || item.status === 'finished';
+        // Verifica status "Finalizado" (incluindo variações comuns)
+        const isCompleted = ['completed', 'finalized', 'finished', 'paid'].includes((item.status || '').toLowerCase());
 
         if (isAgendamentos) {
-            // Agendamentos: Futuros OU Hoje que NÃO foram finalizados
-            return isFuture || (isToday && !isCompleted);
+            // Se está finalizado, NÃO é agendamento futuro (mesmo que seja hoje)
+            return !isCompleted && (isFuture || isToday);
         } else {
-            // Histórico: Passados OU Hoje que JÁ foram finalizados
-            return isPast || (isToday && isCompleted);
+            // Histórico: Passado OU Finalizado
+            return isPast || isCompleted;
         }
     });
     
@@ -272,7 +302,7 @@ function renderHistoryTab(history, type) {
             <h4 class="font-semibold text-lg mb-2 pl-2">${title}</h4>
             ${filteredHistory.map(item => {
                 const isHistoric = type === 'historico';
-                const totalValue = getItemTotalValue(item); // Usa a função auxiliar para garantir que não venha zero
+                const totalValue = getItemTotalValue(item); // Valor calculado corretamente
 
                 return `
                     <div class="bg-white border p-3 rounded-lg flex justify-between items-center shadow-sm cursor-pointer hover:bg-gray-50"
@@ -295,24 +325,26 @@ function renderHistoryTab(history, type) {
     `;
 }
 
-// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE (CORRIGIDO) ---
+// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE ---
 
 function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
     // 1. Calcula Pontos Ganhos
-    // Filtra apenas vendas finalizadas e usa getItemTotalValue para garantir o valor correto
-    const validSales = (salesHistory || []).filter(s => s.status === 'completed' || s.status === 'finished');
+    const validSales = (salesHistory || []).filter(s => {
+        const st = (s.status || '').toLowerCase();
+        return st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized';
+    });
     
     let totalSpent = 0;
     validSales.forEach(sale => {
+        // Usa a mesma função robusta para garantir que o valor seja somado
         totalSpent += getItemTotalValue(sale);
     });
 
-    // Pega a taxa de conversão das configurações (Regra da aba Estabelecimento)
     const conversionRate = (loyaltySettings && loyaltySettings.conversionRate) ? parseFloat(loyaltySettings.conversionRate) : DEFAULT_CONVERSION_RATE;
     
     const totalPointsEarned = Math.floor(totalSpent * conversionRate);
 
-    // 2. Calcula Pontos Gastos (Resgatados)
+    // 2. Calcula Pontos Gastos
     let totalPointsRedeemed = 0;
     (loyaltyHistory || []).forEach(log => {
         if (log.type === 'redeem') {
@@ -336,11 +368,10 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
 
     const stats = calculateLoyaltyStats(salesHistory, loyaltyHistory);
     
-    // Atualiza o objeto cliente localmente
+    // Atualiza o objeto cliente localmente para sincronia com o card
     client.loyaltyPoints = stats.currentBalance;
     client.totalSpent = stats.totalSpent;
 
-    // Renderiza Recompensas
     const rewardsHTML = (loyaltySettings.tiers || []).map(tier => {
         const canRedeem = stats.currentBalance >= tier.points;
         return `
@@ -356,13 +387,13 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
             </div>`;
     }).join('') || '<p class="text-sm text-gray-400 italic">Nenhum prêmio configurado.</p>';
 
-    // Cria entradas de histórico unificadas
     const historyEntries = [];
     const conversionRate = (loyaltySettings.conversionRate || DEFAULT_CONVERSION_RATE);
     
     // Adiciona entradas de vendas (Ganhos)
     (salesHistory || []).forEach(sale => {
-        if (sale.status === 'completed' || sale.status === 'finished') {
+        const st = (sale.status || '').toLowerCase();
+        if (st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized') {
             const saleValue = getItemTotalValue(sale);
             const pts = Math.floor(saleValue * conversionRate);
             if (pts > 0) {
@@ -376,7 +407,6 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
         }
     });
 
-    // Adiciona entradas de resgate (Gastos)
     (loyaltyHistory || []).forEach(log => {
         historyEntries.push({
             type: 'redeem',
@@ -386,7 +416,6 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
         });
     });
 
-    // Ordena por data
     historyEntries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const historyHTML = historyEntries.length > 0 ? historyEntries.map(item => `
