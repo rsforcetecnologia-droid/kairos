@@ -27,14 +27,11 @@ function handleFirestoreError(res, error, context) {
 // =======================================================================
 
 // 1. LISTAR CLIENTES (OTIMIZADA)
-// Removemos a busca de 'lastService' em tempo real. Agora lemos do cadastro.
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     try {
         const { db } = req;
         
-        // Busca simples e direta (1 leitura = 1 pacote de dados)
-        // Sem 'orderBy' no banco para economizar índices compostos. Ordenamos na memória.
         const snapshot = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .get();
@@ -46,21 +43,18 @@ router.get('/:establishmentId', async (req, res) => {
         const clientsList = snapshot.docs.map(doc => {
             const data = doc.data();
             
-            // Tratamento da data do último serviço (gravada pelo appointments.js)
             let lastService = null;
             if (data.lastServiceDate) {
-                // Suporta tanto Timestamp do Firestore quanto String ISO
                 lastService = data.lastServiceDate.toDate ? data.lastServiceDate.toDate() : new Date(data.lastServiceDate);
             }
 
             return {
                 id: doc.id,
                 ...data,
-                lastService: lastService // Campo pronto para o Frontend
+                lastService: lastService 
             };
         });
         
-        // Ordenação Alfabética em Memória (Custo Zero de Processamento na Nuvem)
         clientsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         res.status(200).json(clientsList);
@@ -80,7 +74,6 @@ router.post('/', async (req, res) => {
     try {
         const { db } = req;
         
-        // Verifica duplicidade de telefone (Limit 1 = Leitura mínima)
         const existingClientQuery = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .where('phone', '==', phone)
@@ -99,7 +92,7 @@ router.post('/', async (req, res) => {
             dob: dob || null,
             notes: notes || null,
             loyaltyPoints: 0,
-            lastServiceDate: null, // Inicializa o campo para a otimização futura
+            lastServiceDate: null,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
@@ -111,19 +104,16 @@ router.post('/', async (req, res) => {
     }
 });
 
-// 3. ATUALIZAR CLIENTE (COM PROTEÇÃO DE DADOS)
+// 3. ATUALIZAR CLIENTE
 router.put('/:clientId', async (req, res) => {
     const { clientId } = req.params;
     const clientData = req.body; 
     
     try {
-        // --- SEGURANÇA ---
-        // Removemos campos que não podem ser editados manualmente nesta rota
-        delete clientData.loyaltyPoints;  // Pontos só via checkout/resgate
+        delete clientData.loyaltyPoints; 
         delete clientData.id;
-        delete clientData.lastServiceDate; // Data de serviço só via checkout
+        delete clientData.lastServiceDate;
         delete clientData.createdAt;
-        // -----------------
 
         await req.db.collection('clients').doc(clientId).update(clientData); 
         res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
@@ -139,8 +129,6 @@ router.delete('/:clientId', async (req, res) => {
         const { db } = req;
         const clientRef = db.collection('clients').doc(clientId);
         
-        // Opcional: Limpar subcoleção de histórico de fidelidade para não deixar lixo
-        // (Isso é uma operação em lote "batch", eficiente)
         const subcollectionRef = clientRef.collection('loyaltyHistory');
         const subcollectionSnapshot = await subcollectionRef.get();
         
@@ -159,7 +147,7 @@ router.delete('/:clientId', async (req, res) => {
     }
 });
 
-// 5. HISTÓRICO DE AGENDAMENTOS (OTIMIZADO)
+// 5. HISTÓRICO COMPLETO (AGENDAMENTOS + VENDAS/COMANDAS) - CORRIGIDO
 router.get('/history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -169,8 +157,10 @@ router.get('/history/:establishmentId', async (req, res) => {
     }
 
     try {
-        // Limitamos a 20 itens para não carregar histórico infinito e travar o app
-        const snapshot = await req.db.collection('appointments')
+        const { db } = req;
+
+        // 1. Buscar Agendamentos (Appointments)
+        const appointmentsPromise = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
@@ -178,18 +168,65 @@ router.get('/history/:establishmentId', async (req, res) => {
             .limit(20) 
             .get();
 
-        const history = snapshot.docs.map(doc => {
+        // 2. Buscar Vendas/Comandas (Sales) - ESSENCIAL para cálculo de gastos
+        const salesPromise = db.collection('sales')
+            .where('establishmentId', '==', establishmentId)
+            .where('clientName', '==', clientName)
+            .where('clientPhone', '==', clientPhone)
+            .orderBy('startTime', 'desc')
+            .limit(20)
+            .get();
+
+        const [apptSnapshot, salesSnapshot] = await Promise.all([appointmentsPromise, salesPromise]);
+
+        const history = [];
+
+        // Mapear Agendamentos
+        apptSnapshot.docs.forEach(doc => {
             const data = doc.data();
-            return {
+            history.push({
                 id: doc.id,
-                date: data.startTime.toDate().toISOString(), 
-                serviceName: (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'Serviço',
+                type: 'appointment',
+                date: data.startTime ? data.startTime.toDate().toISOString() : new Date().toISOString(),
+                // Tenta pegar o nome dos serviços ou usa um genérico
+                serviceName: (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'Serviço Agendado',
                 status: data.status || 'pendente',
-                professionalName: data.professionalName || 'N/A'
-            };
+                professionalName: data.professionalName || 'N/A',
+                // IMPORTANTE: Envia o valor para o cálculo de fidelidade
+                totalAmount: data.totalAmount || data.price || 0,
+                // Envia items se existirem, para fallback no frontend
+                items: data.services || [] 
+            });
         });
-        
-        res.status(200).json(history);
+
+        // Mapear Vendas (Comandas)
+        salesSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            // Identifica se é uma venda
+            const isSale = true; 
+            
+            // Tenta montar uma descrição amigável dos itens
+            const itemsSummary = (data.items || []).map(i => `${i.quantity || 1}x ${i.name}`).join(', ');
+
+            history.push({
+                id: doc.id,
+                type: 'sale',
+                date: data.startTime ? data.startTime.toDate().toISOString() : (data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
+                serviceName: itemsSummary || 'Comanda / Venda Avulsa',
+                status: data.status || 'completed', // Vendas geralmente já nascem completas/pagas
+                professionalName: data.professionalName || 'Balcão',
+                // IMPORTANTE: Envia o valor para o cálculo de fidelidade
+                totalAmount: Number(data.totalAmount || 0),
+                items: data.items || []
+            });
+        });
+
+        // Ordenar tudo por data (do mais recente para o mais antigo)
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        // Retorna os 50 registros mais recentes combinados
+        res.status(200).json(history.slice(0, 50));
+
     } catch (error) {
         handleFirestoreError(res, error, 'histórico do cliente');
     }
@@ -202,7 +239,7 @@ router.get('/history/:establishmentId', async (req, res) => {
 // 6. HISTÓRICO DE PONTOS
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { clientName, clientPhone } = req.query; // Usamos nome/telefone como chave secundária se não tiver ID
+    const { clientName, clientPhone } = req.query;
 
     if (!clientName || !clientPhone) {
         return res.status(400).json({ message: 'Dados do cliente obrigatórios.' });
@@ -211,13 +248,11 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     try {
         const { db } = req;
         
-        // Validação Rápida de Módulo (Opcional, pode remover se quiser economizar 1 leitura)
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         if (!establishmentDoc.exists || establishmentDoc.data().modules?.['loyalty-section'] !== true) {
             return res.status(403).json({ message: "Fidelidade inativa." });
         }
 
-        // Busca o ID do cliente pelo telefone
         const clientQuery = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .where('phone', '==', clientPhone)
@@ -227,11 +262,10 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
 
         const clientId = clientQuery.docs[0].id;
         
-        // Busca o histórico na subcoleção
         const historySnapshot = await db.collection('clients').doc(clientId)
             .collection('loyaltyHistory')
             .orderBy('timestamp', 'desc')
-            .limit(50) // Limite de segurança
+            .limit(50)
             .get();
 
         const history = historySnapshot.docs.map(doc => {
@@ -259,7 +293,6 @@ router.post('/redeem', async (req, res) => {
     try {
         const { db } = req;
 
-        // Validação de Módulo
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         if (!establishmentDoc.exists || establishmentDoc.data().modules?.['loyalty-section'] !== true) {
             return res.status(403).json({ message: "Fidelidade inativa." });
@@ -281,10 +314,8 @@ router.post('/redeem', async (req, res) => {
             const currentPoints = clientDoc.data().loyaltyPoints || 0;
             if (currentPoints < rewardData.points) throw new Error("Pontos insuficientes.");
             
-            // Deduz pontos
             transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-rewardData.points) });
             
-            // Grava histórico
             const historyRef = clientRef.collection('loyaltyHistory').doc();
             transaction.set(historyRef, {
                 type: 'redeem',

@@ -235,7 +235,7 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">WhatsApp</label>
-                        <input type="tel" id="clientPhone" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="(00) 00000-0000" required>
+                        <input type="tel" id="clientPhone" maxlength="15" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="(00) 00000-0000" required>
                     </div>
                     <button type="submit" id="btn-confirm" class="w-full theme-bg text-white font-bold py-3 rounded-lg shadow-md hover:opacity-90 transition mt-2">
                         Confirmar Agendamento
@@ -272,6 +272,35 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
+            // --- NOVO: Função de Máscara de Telefone ---
+            function setupPhoneMask(inputId) {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+
+                input.addEventListener('input', (e) => {
+                    let value = e.target.value.replace(/\D/g, ""); // Remove tudo que não é dígito
+                    
+                    // Limita a 11 dígitos
+                    if (value.length > 11) value = value.substring(0, 11);
+
+                    // Aplica a formatação (XX) XXXXX-XXXX
+                    if (value.length > 10) {
+                        value = value.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+                    } else if (value.length > 6) {
+                        value = value.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
+                    } else if (value.length > 2) {
+                        value = value.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
+                    } else if (value.length > 0) {
+                        value = value.replace(/^(\d*)/, "($1");
+                    }
+                    
+                    e.target.value = value;
+                });
+            }
+
+            // Inicializa a máscara no campo de cadastro
+            setupPhoneMask('clientPhone');
+
             // 1. Função para Aplicar Personalizações (Cores e Fundo)
             function applyCustomization(data) {
                 const root = document.documentElement;
@@ -712,11 +741,14 @@
                         <h3 class="font-bold text-gray-700 mb-2">Consultar Agendamentos</h3>
                         <p class="text-xs text-gray-500 mb-4">Digite seu WhatsApp para buscar</p>
                         <form id="lookupForm" class="max-w-xs mx-auto">
-                            <input type="tel" id="lookupPhone" class="w-full p-3 border rounded-lg text-center mb-3" placeholder="(00) 00000-0000" required>
+                            <input type="tel" id="lookupPhone" maxlength="15" class="w-full p-3 border rounded-lg text-center mb-3" placeholder="(00) 00000-0000" required>
                             <button type="submit" class="w-full theme-bg text-white py-3 rounded-lg font-bold">Buscar</button>
                         </form>
                     </div>
                 `;
+                
+                // Aplica a máscara no campo recém-criado
+                setupPhoneMask('lookupPhone');
                 
                 document.getElementById('lookupForm').onsubmit = async (e) => {
                     e.preventDefault();

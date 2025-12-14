@@ -1,3 +1,4 @@
+// vite.config.mjs
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
@@ -13,7 +14,6 @@ export default defineConfig({
         admin: resolve(__dirname, 'admin.html'),
         adminLogin: resolve(__dirname, 'admin-login.html'),
         cliente: resolve(__dirname, 'cliente.html'),
-        // dbexplorer: resolve(__dirname, 'dbexplorer.html'), // <--- REMOVA ESTA LINHA
         import: resolve(__dirname, 'import.html'),
         landing: resolve(__dirname, 'landing.html'),
       }

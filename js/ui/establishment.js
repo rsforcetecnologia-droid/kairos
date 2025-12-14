@@ -1052,6 +1052,15 @@ export async function loadEstablishmentPage() {
         }
     }
 
+    // ====================================================================
+    // CORREÇÃO: Sincroniza o state.userName com o Firebase Auth
+    // ====================================================================
+    const user = auth.currentUser;
+    if (user && user.displayName) {
+        state.userName = user.displayName;
+    }
+    // ====================================================================
+
     const displayName = state.userName || auth.currentUser.email;
     const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
 

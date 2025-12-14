@@ -156,15 +156,12 @@ async function updateHistoryList() {
 }
 
 
-// --- LÓGICA DA CALCULADORA (Mantida igual ao anterior, resumida aqui) ---
+// --- LÓGICA DA CALCULADORA ---
 function toggleAllProfs() {
     const checkboxes = document.querySelectorAll('.prof-checkbox');
     const allChecked = Array.from(checkboxes).every(c => c.checked);
     checkboxes.forEach(c => c.checked = !allChecked);
 }
-
-// ... (Funções openPreviewItemsModal, recalculateSingleRow, etc. mantêm-se iguais) ...
-// Vou incluir apenas as principais mudanças no renderLayout e renders das abas
 
 async function handleCalculateSubmit() {
     const profIds = Array.from(document.querySelectorAll('.prof-checkbox:checked')).map(c => c.value);
@@ -200,8 +197,213 @@ async function handleCalculateSubmit() {
     }
 }
 
-// ... (handleSaveReports, handlePrintReceipt, handleDeleteReport, generateReceiptPDF mantidos) ...
-// Para brevidade, vou focar na renderização nova abaixo.
+// === CORREÇÃO AQUI: ENVIO DOS IDs DAS VENDAS ===
+async function handleSaveReports() {
+    const count = localState.calculationResult.length;
+    const confirmed = await showConfirmation('Confirmar', `Gerar ${count} relatórios? Isso marcará as vendas como pagas.`);
+    if (!confirmed) return;
+    
+    try {
+        const savePromises = localState.calculationResult.map(result => {
+            // Extrai os IDs das vendas originais para enviar ao backend
+            const salesIds = result.items
+                .map(item => item.originalSaleId)
+                .filter(id => id !== undefined && id !== null);
+
+            return commissionsApi.saveCommissionReport({
+                professionalId: result.professionalId,
+                professionalName: result.professionalName,
+                period: localState.periodString,
+                processedSalesIds: salesIds, // CAMPO NOVO ESSENCIAL
+                reportData: {
+                    ...result,
+                    summary: {
+                        ...result.summary,
+                        finalValue: result.finalValue,
+                        extraDebit: result.extraDebit || 0,
+                        extraCredit: result.extraCredit || 0,
+                        notes: result.notes || ''
+                    }
+                }
+            });
+        });
+
+        await Promise.all(savePromises);
+        showNotification('Sucesso', 'Pagamentos registrados!', 'success');
+        localState.calculationResult = null;
+        updateDashboardStats(); 
+        navigateToTab('history');
+    } catch (error) { 
+        showNotification('Erro', error.message, 'error'); 
+    }
+}
+
+function handlePrintReceipt(reportId) {
+    const report = localState.historyData.find(r => r.id === reportId);
+    if (report) generateReceiptPDF(report);
+}
+
+async function handleDeleteReport(reportId) {
+    const confirmed = await showConfirmation('Excluir', 'Deseja remover este registro? As vendas voltarão a ficar disponíveis para cálculo.');
+    if (!confirmed) return;
+    try {
+        await commissionsApi.deleteCommissionReport(reportId);
+        showNotification('Sucesso', 'Registro removido.', 'success');
+        updateHistoryList();
+        updateDashboardStats();
+    } catch (error) { showNotification('Erro', error.message, 'error'); }
+}
+
+function generateReceiptPDF(report) {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) return showNotification('Erro', 'PDF lib não carregada.', 'error');
+    const doc = new jsPDF();
+    const centerX = doc.internal.pageSize.getWidth() / 2;
+    doc.setFontSize(18); doc.setFont(undefined, 'bold');
+    doc.text('RECIBO DE PAGAMENTO DE COMISSÃO', centerX, 20, { align: 'center' });
+    doc.setFontSize(12); doc.setFont(undefined, 'normal');
+    doc.text(`Profissional: ${report.professionalName}`, 15, 40);
+    doc.text(`Período: ${report.period}`, 15, 48);
+    
+    const rows = [['Comissão Bruta', `R$ ${report.summary.totalCommission.toFixed(2)}`]];
+    if (report.summary.extraCredit > 0) rows.push(['(+) Bônus', `R$ ${report.summary.extraCredit.toFixed(2)}`]);
+    if (report.summary.extraDebit > 0) rows.push(['(-) Descontos', `R$ ${report.summary.extraDebit.toFixed(2)}`]);
+    
+    doc.autoTable({ startY: 60, head: [['Descrição', 'Valor']], body: rows, theme: 'grid' });
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(14); doc.setFont(undefined, 'bold');
+    doc.text(`Total Líquido: R$ ${(report.summary.finalValue || report.summary.totalCommission).toFixed(2)}`, 190, finalY, { align: 'right' });
+    doc.save(`Recibo_${report.professionalName}.pdf`);
+}
+
+function recalculateSingleRow(idx) {
+    const debitInputs = document.querySelectorAll(`.input-debit[data-idx="${idx}"]`);
+    const creditInputs = document.querySelectorAll(`.input-credit[data-idx="${idx}"]`);
+    
+    let debit = 0, credit = 0;
+    debitInputs.forEach(inp => { if(inp.value) debit = parseFloat(inp.value); });
+    creditInputs.forEach(inp => { if(inp.value) credit = parseFloat(inp.value); });
+
+    // Atualiza estado e UI (sincronizando Mobile/Desktop)
+    if(localState.calculationResult && localState.calculationResult[idx]) {
+        const r = localState.calculationResult[idx];
+        r.extraDebit = debit;
+        r.extraCredit = credit;
+        r.finalValue = r.summary.totalCommission - debit + credit;
+
+        debitInputs.forEach(inp => { if(inp !== document.activeElement) inp.value = debit || ''; });
+        creditInputs.forEach(inp => { if(inp !== document.activeElement) inp.value = credit || ''; });
+
+        const finalSpans = document.querySelectorAll(`.final-value-display[data-idx="${idx}"]`);
+        finalSpans.forEach(span => span.innerText = `R$ ${r.finalValue.toFixed(2)}`);
+        
+        recalculateGrandTotal();
+    }
+}
+
+function recalculateGrandTotal() {
+    const total = localState.calculationResult.reduce((acc, r) => acc + r.finalValue, 0);
+    const displays = document.querySelectorAll('#grand-total-display');
+    displays.forEach(el => el.innerText = `R$ ${total.toFixed(2)}`);
+}
+
+function openPreviewItemsModal(idx) {
+    const data = localState.calculationResult[idx];
+    if (!data) return;
+    
+    const itemsHtml = data.items.map(item => `
+        <div class="flex justify-between items-center p-3 border-b border-gray-100 last:border-0 hover:bg-gray-50">
+            <div class="flex-1">
+                <p class="text-sm font-bold text-gray-800">${item.item}</p>
+                <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('pt-BR')} • ${item.client}</p>
+            </div>
+            <div class="text-right">
+                <p class="text-sm font-bold text-green-600">R$ ${item.commissionValue.toFixed(2)}</p>
+                <p class="text-xs text-gray-400">${item.commissionRate}% de R$ ${item.value.toFixed(2)}</p>
+            </div>
+        </div>
+    `).join('');
+    
+    showGenericModal({
+        title: `Detalhes da Comissão`,
+        contentHTML: `<div class="bg-gray-50 p-3 rounded-lg mb-4 flex justify-between items-center"><div><p class="text-xs text-gray-500">Profissional</p><p class="font-bold text-gray-800">${data.professionalName}</p></div><div class="text-right"><p class="text-xs text-gray-500">Total Itens</p><p class="font-bold text-gray-800">${data.items.length}</p></div></div><div class="border rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto">${itemsHtml}</div>`,
+        maxWidth: 'max-w-md'
+    });
+}
+
+function renderCalculator(container) {
+    if(!localState.calculationResult) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const firstDayStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+        const profsHtml = localState.professionals.map(p => `
+            <label class="flex items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm active:bg-indigo-50 transition cursor-pointer">
+                <input type="checkbox" value="${p.id}" class="prof-checkbox w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500">
+                <span class="ml-3 font-medium text-gray-700">${p.name}</span>
+            </label>`).join('');
+            
+        container.innerHTML = `
+            <form id="calc-form" class="space-y-6 max-w-3xl mx-auto animate-fade-in">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <h3 class="font-bold text-gray-800 mb-4">Novo Cálculo</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="text-xs font-bold text-gray-500 uppercase">Início</label><input type="date" id="start-date" value="${firstDayStr}" class="w-full mt-1 rounded-lg border-gray-300"></div>
+                        <div><label class="text-xs font-bold text-gray-500 uppercase">Fim</label><input type="date" id="end-date" value="${todayStr}" class="w-full mt-1 rounded-lg border-gray-300"></div>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">Profissionais</h3><button type="button" data-action="toggle-all-profs" class="text-sm text-indigo-600 font-medium">Selecionar Todos</button></div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">${profsHtml}</div>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <h3 class="font-bold text-gray-800 mb-3">Tipos</h3>
+                    <div class="flex flex-col md:flex-row gap-3">
+                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-services" checked class="text-indigo-600 rounded mr-2"> Serviços</label>
+                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-products" checked class="text-indigo-600 rounded mr-2"> Produtos</label>
+                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-packages" class="text-indigo-600 rounded mr-2"> Pacotes</label>
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition">Calcular Prévia</button>
+            </form>`;
+    } else {
+        const results = localState.calculationResult;
+        const totalGeral = results.reduce((acc, r) => acc + r.finalValue, 0);
+
+        const mobileCards = results.map((r, idx) => `
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-4">
+                <div class="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+                    <div><h4 class="font-bold text-gray-900 text-lg">${r.professionalName}</h4><p class="text-xs text-gray-500">${r.summary.totalItems} itens</p></div>
+                    <div class="text-right"><p class="text-xs text-gray-500">Bruto</p><p class="font-bold text-gray-700">R$ ${r.summary.totalCommission.toFixed(2)}</p></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div><label class="text-xs font-bold text-red-500 uppercase">Desc.</label><input type="number" step="0.01" data-idx="${idx}" class="input-debit w-full mt-1 p-2 border border-red-200 rounded-lg bg-red-50 font-bold text-red-700" value="${r.extraDebit||''}"></div>
+                    <div><label class="text-xs font-bold text-green-500 uppercase">Bônus</label><input type="number" step="0.01" data-idx="${idx}" class="input-credit w-full mt-1 p-2 border border-green-200 rounded-lg bg-green-50 font-bold text-green-700" value="${r.extraCredit||''}"></div>
+                </div>
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg"><span class="text-sm font-medium">Líquido</span><span class="text-xl font-bold text-indigo-700 final-value-display" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</span></div>
+                <button data-action="view-preview-items" data-idx="${idx}" class="w-full mt-3 py-2 text-indigo-600 font-medium text-sm border border-indigo-100 rounded-lg">Ver Detalhes</button>
+            </div>`).join('');
+
+        const desktopRows = results.map((r, idx) => `
+            <tr class="hover:bg-gray-50"><td class="px-6 py-4 font-bold text-gray-900">${r.professionalName}</td><td class="px-6 py-4 text-right">R$ ${r.summary.totalCommission.toFixed(2)}</td>
+            <td class="px-6 py-4 text-right"><input type="number" step="0.01" data-idx="${idx}" class="input-debit w-24 text-right border-gray-300 rounded bg-red-50 text-red-700" value="${r.extraDebit||''}"></td>
+            <td class="px-6 py-4 text-right"><input type="number" step="0.01" data-idx="${idx}" class="input-credit w-24 text-right border-gray-300 rounded bg-green-50 text-green-700" value="${r.extraCredit||''}"></td>
+            <td class="px-6 py-4 text-right font-bold text-indigo-700 final-value-display" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</td>
+            <td class="px-6 py-4 text-center"><button data-action="view-preview-items" data-idx="${idx}" class="text-indigo-600 hover:underline text-sm">Ver Itens</button></td></tr>`).join('');
+
+        container.innerHTML = `
+            <div class="space-y-4 animate-fade-in pb-20">
+                <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 sticky top-0 z-10 flex justify-between items-center">
+                    <div><button data-action="back-to-filters" class="text-sm text-gray-500 hover:text-indigo-600">← Voltar</button><h2 class="text-lg md:text-2xl font-bold text-gray-800">Prévia</h2></div>
+                    <div class="text-right"><p class="text-xs uppercase font-bold text-gray-500">Total a Pagar</p><p id="grand-total-display" class="text-2xl md:text-3xl font-extrabold text-green-600">R$ ${totalGeral.toFixed(2)}</p></div>
+                </div>
+                <div class="block md:hidden space-y-4">${mobileCards}</div>
+                <div class="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-bold uppercase">Profissional</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">Bruto</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">(-) Desc.</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">(+) Bônus</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">Líquido</th><th class="px-6 py-3 text-center text-xs font-bold uppercase">Ações</th></tr></thead><tbody>${desktopRows}</tbody></table></div>
+                <div class="fixed bottom-0 left-0 w-full bg-white p-4 border-t border-gray-200 shadow-lg md:static md:bg-transparent md:border-0 md:shadow-none z-30 flex justify-end gap-3">
+                    <button data-action="back-to-filters" class="hidden md:block px-6 py-3 border border-gray-300 rounded-xl text-gray-700 font-bold">Cancelar</button>
+                    <button data-action="save-final-report" class="w-full md:w-auto px-6 py-4 md:py-3 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition">Finalizar Apuração</button>
+                </div>
+            </div>`;
+    }
+}
 
 // --- RENDERIZAÇÃO ---
 
@@ -426,213 +628,4 @@ function renderHistoryList(container, history) {
             </table>
         </div>
     `;
-}
-
-// --- Funções Auxiliares Reutilizadas (recalculateSingleRow, etc) ---
-// ... Mantenha as funções recalculateSingleRow, recalculateGrandTotal, openPreviewItemsModal, 
-// handleSaveReports, handlePrintReceipt, handleDeleteReport, generateReceiptPDF como estavam 
-// no arquivo anterior. Elas funcionam perfeitamente com este novo layout.
-
-// Se precisar que eu repita essas funções aqui, me avise, mas elas são idênticas ao código anterior.
-// Certifique-se apenas de que 'recalculateSingleRow' e outras estão presentes no arquivo final.
-
-function recalculateSingleRow(idx) {
-    const debitInputs = document.querySelectorAll(`.input-debit[data-idx="${idx}"]`);
-    const creditInputs = document.querySelectorAll(`.input-credit[data-idx="${idx}"]`);
-    
-    let debit = 0, credit = 0;
-    debitInputs.forEach(inp => { if(inp.value) debit = parseFloat(inp.value); });
-    creditInputs.forEach(inp => { if(inp.value) credit = parseFloat(inp.value); });
-
-    // Atualiza estado e UI (sincronizando Mobile/Desktop)
-    if(localState.calculationResult && localState.calculationResult[idx]) {
-        const r = localState.calculationResult[idx];
-        r.extraDebit = debit;
-        r.extraCredit = credit;
-        r.finalValue = r.summary.totalCommission - debit + credit;
-
-        debitInputs.forEach(inp => { if(inp !== document.activeElement) inp.value = debit || ''; });
-        creditInputs.forEach(inp => { if(inp !== document.activeElement) inp.value = credit || ''; });
-
-        const finalSpans = document.querySelectorAll(`.final-value-display[data-idx="${idx}"]`);
-        finalSpans.forEach(span => span.innerText = `R$ ${r.finalValue.toFixed(2)}`);
-        
-        recalculateGrandTotal();
-    }
-}
-
-function recalculateGrandTotal() {
-    const total = localState.calculationResult.reduce((acc, r) => acc + r.finalValue, 0);
-    const displays = document.querySelectorAll('#grand-total-display');
-    displays.forEach(el => el.innerText = `R$ ${total.toFixed(2)}`);
-}
-
-function openPreviewItemsModal(idx) {
-    const data = localState.calculationResult[idx];
-    if (!data) return;
-    // ... (use o mesmo código de modal responsivo que fizemos antes) ...
-    const itemsHtml = data.items.map(item => `
-        <div class="flex justify-between items-center p-3 border-b border-gray-100 last:border-0 hover:bg-gray-50">
-            <div class="flex-1">
-                <p class="text-sm font-bold text-gray-800">${item.item}</p>
-                <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('pt-BR')} • ${item.client}</p>
-            </div>
-            <div class="text-right">
-                <p class="text-sm font-bold text-green-600">R$ ${item.commissionValue.toFixed(2)}</p>
-                <p class="text-xs text-gray-400">${item.commissionRate}% de R$ ${item.value.toFixed(2)}</p>
-            </div>
-        </div>
-    `).join('');
-    
-    showGenericModal({
-        title: `Detalhes da Comissão`,
-        contentHTML: `<div class="bg-gray-50 p-3 rounded-lg mb-4 flex justify-between items-center"><div><p class="text-xs text-gray-500">Profissional</p><p class="font-bold text-gray-800">${data.professionalName}</p></div><div class="text-right"><p class="text-xs text-gray-500">Total Itens</p><p class="font-bold text-gray-800">${data.items.length}</p></div></div><div class="border rounded-lg overflow-hidden max-h-[60vh] overflow-y-auto">${itemsHtml}</div>`,
-        maxWidth: 'max-w-md'
-    });
-}
-
-// Para garantir que o código funcione completo, estou incluindo as funções de suporte restantes
-// ...
-async function handleSaveReports() {
-    const count = localState.calculationResult.length;
-    const confirmed = await showConfirmation('Confirmar', `Gerar ${count} relatórios?`);
-    if (!confirmed) return;
-    try {
-        const savePromises = localState.calculationResult.map(result => 
-            commissionsApi.saveCommissionReport({
-                professionalId: result.professionalId,
-                professionalName: result.professionalName,
-                period: localState.periodString,
-                reportData: {
-                    ...result,
-                    summary: {
-                        ...result.summary,
-                        finalValue: result.finalValue,
-                        extraDebit: result.extraDebit || 0,
-                        extraCredit: result.extraCredit || 0,
-                        notes: result.notes || ''
-                    }
-                }
-            })
-        );
-        await Promise.all(savePromises);
-        showNotification('Sucesso', 'Pagamentos registrados!', 'success');
-        localState.calculationResult = null;
-        updateDashboardStats(); // Atualiza dashboard com novos dados
-        navigateToTab('history');
-    } catch (error) { showNotification('Erro', error.message, 'error'); }
-}
-
-function handlePrintReceipt(reportId) {
-    const report = localState.historyData.find(r => r.id === reportId);
-    if (report) generateReceiptPDF(report);
-}
-
-async function handleDeleteReport(reportId) {
-    const confirmed = await showConfirmation('Excluir', 'Deseja remover este registro?');
-    if (!confirmed) return;
-    try {
-        await commissionsApi.deleteCommissionReport(reportId);
-        showNotification('Sucesso', 'Registro removido.', 'success');
-        updateHistoryList();
-        updateDashboardStats();
-    } catch (error) { showNotification('Erro', error.message, 'error'); }
-}
-
-function generateReceiptPDF(report) {
-    const { jsPDF } = window.jspdf;
-    if (!jsPDF) return showNotification('Erro', 'PDF lib não carregada.', 'error');
-    const doc = new jsPDF();
-    const centerX = doc.internal.pageSize.getWidth() / 2;
-    doc.setFontSize(18); doc.setFont(undefined, 'bold');
-    doc.text('RECIBO DE PAGAMENTO DE COMISSÃO', centerX, 20, { align: 'center' });
-    doc.setFontSize(12); doc.setFont(undefined, 'normal');
-    doc.text(`Profissional: ${report.professionalName}`, 15, 40);
-    doc.text(`Período: ${report.period}`, 15, 48);
-    
-    const rows = [['Comissão Bruta', `R$ ${report.summary.totalCommission.toFixed(2)}`]];
-    if (report.summary.extraCredit > 0) rows.push(['(+) Bônus', `R$ ${report.summary.extraCredit.toFixed(2)}`]);
-    if (report.summary.extraDebit > 0) rows.push(['(-) Descontos', `R$ ${report.summary.extraDebit.toFixed(2)}`]);
-    
-    doc.autoTable({ startY: 60, head: [['Descrição', 'Valor']], body: rows, theme: 'grid' });
-    const finalY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(14); doc.setFont(undefined, 'bold');
-    doc.text(`Total Líquido: R$ ${(report.summary.finalValue || report.summary.totalCommission).toFixed(2)}`, 190, finalY, { align: 'right' });
-    doc.save(`Recibo_${report.professionalName}.pdf`);
-}
-
-function renderCalculator(container) {
-    if(!localState.calculationResult) {
-        // Renderiza Formulário de Novo Cálculo (Igual ao anterior)
-        const todayStr = new Date().toISOString().split('T')[0];
-        const firstDayStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-        const profsHtml = localState.professionals.map(p => `
-            <label class="flex items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm active:bg-indigo-50 transition cursor-pointer">
-                <input type="checkbox" value="${p.id}" class="prof-checkbox w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500">
-                <span class="ml-3 font-medium text-gray-700">${p.name}</span>
-            </label>`).join('');
-            
-        container.innerHTML = `
-            <form id="calc-form" class="space-y-6 max-w-3xl mx-auto animate-fade-in">
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                    <h3 class="font-bold text-gray-800 mb-4">Novo Cálculo</h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><label class="text-xs font-bold text-gray-500 uppercase">Início</label><input type="date" id="start-date" value="${firstDayStr}" class="w-full mt-1 rounded-lg border-gray-300"></div>
-                        <div><label class="text-xs font-bold text-gray-500 uppercase">Fim</label><input type="date" id="end-date" value="${todayStr}" class="w-full mt-1 rounded-lg border-gray-300"></div>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                    <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-gray-800">Profissionais</h3><button type="button" data-action="toggle-all-profs" class="text-sm text-indigo-600 font-medium">Selecionar Todos</button></div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-60 overflow-y-auto">${profsHtml}</div>
-                </div>
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
-                    <h3 class="font-bold text-gray-800 mb-3">Tipos</h3>
-                    <div class="flex flex-col md:flex-row gap-3">
-                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-services" checked class="text-indigo-600 rounded mr-2"> Serviços</label>
-                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-products" checked class="text-indigo-600 rounded mr-2"> Produtos</label>
-                        <label class="flex items-center p-3 border rounded-lg bg-gray-50"><input type="checkbox" id="type-packages" class="text-indigo-600 rounded mr-2"> Pacotes</label>
-                    </div>
-                </div>
-                <button type="submit" class="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-700 transition">Calcular Prévia</button>
-            </form>`;
-    } else {
-        // Renderiza Tabela de Prévia (Desktop/Mobile Híbrido - Igual ao anterior)
-        const results = localState.calculationResult;
-        const totalGeral = results.reduce((acc, r) => acc + r.finalValue, 0);
-
-        const mobileCards = results.map((r, idx) => `
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-4">
-                <div class="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
-                    <div><h4 class="font-bold text-gray-900 text-lg">${r.professionalName}</h4><p class="text-xs text-gray-500">${r.summary.totalItems} itens</p></div>
-                    <div class="text-right"><p class="text-xs text-gray-500">Bruto</p><p class="font-bold text-gray-700">R$ ${r.summary.totalCommission.toFixed(2)}</p></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                    <div><label class="text-xs font-bold text-red-500 uppercase">Desc.</label><input type="number" step="0.01" data-idx="${idx}" class="input-debit w-full mt-1 p-2 border border-red-200 rounded-lg bg-red-50 font-bold text-red-700" value="${r.extraDebit||''}"></div>
-                    <div><label class="text-xs font-bold text-green-500 uppercase">Bônus</label><input type="number" step="0.01" data-idx="${idx}" class="input-credit w-full mt-1 p-2 border border-green-200 rounded-lg bg-green-50 font-bold text-green-700" value="${r.extraCredit||''}"></div>
-                </div>
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg"><span class="text-sm font-medium">Líquido</span><span class="text-xl font-bold text-indigo-700 final-value-display" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</span></div>
-                <button data-action="view-preview-items" data-idx="${idx}" class="w-full mt-3 py-2 text-indigo-600 font-medium text-sm border border-indigo-100 rounded-lg">Ver Detalhes</button>
-            </div>`).join('');
-
-        const desktopRows = results.map((r, idx) => `
-            <tr class="hover:bg-gray-50"><td class="px-6 py-4 font-bold text-gray-900">${r.professionalName}</td><td class="px-6 py-4 text-right">R$ ${r.summary.totalCommission.toFixed(2)}</td>
-            <td class="px-6 py-4 text-right"><input type="number" step="0.01" data-idx="${idx}" class="input-debit w-24 text-right border-gray-300 rounded bg-red-50 text-red-700" value="${r.extraDebit||''}"></td>
-            <td class="px-6 py-4 text-right"><input type="number" step="0.01" data-idx="${idx}" class="input-credit w-24 text-right border-gray-300 rounded bg-green-50 text-green-700" value="${r.extraCredit||''}"></td>
-            <td class="px-6 py-4 text-right font-bold text-indigo-700 final-value-display" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</td>
-            <td class="px-6 py-4 text-center"><button data-action="view-preview-items" data-idx="${idx}" class="text-indigo-600 hover:underline text-sm">Ver Itens</button></td></tr>`).join('');
-
-        container.innerHTML = `
-            <div class="space-y-4 animate-fade-in pb-20">
-                <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 sticky top-0 z-10 flex justify-between items-center">
-                    <div><button data-action="back-to-filters" class="text-sm text-gray-500 hover:text-indigo-600">← Voltar</button><h2 class="text-lg md:text-2xl font-bold text-gray-800">Prévia</h2></div>
-                    <div class="text-right"><p class="text-xs uppercase font-bold text-gray-500">Total a Pagar</p><p id="grand-total-display" class="text-2xl md:text-3xl font-extrabold text-green-600">R$ ${totalGeral.toFixed(2)}</p></div>
-                </div>
-                <div class="block md:hidden space-y-4">${mobileCards}</div>
-                <div class="hidden md:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"><table class="min-w-full divide-y divide-gray-200"><thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-bold uppercase">Profissional</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">Bruto</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">(-) Desc.</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">(+) Bônus</th><th class="px-6 py-3 text-right text-xs font-bold uppercase">Líquido</th><th class="px-6 py-3 text-center text-xs font-bold uppercase">Ações</th></tr></thead><tbody>${desktopRows}</tbody></table></div>
-                <div class="fixed bottom-0 left-0 w-full bg-white p-4 border-t border-gray-200 shadow-lg md:static md:bg-transparent md:border-0 md:shadow-none z-30 flex justify-end gap-3">
-                    <button data-action="back-to-filters" class="hidden md:block px-6 py-3 border border-gray-300 rounded-xl text-gray-700 font-bold">Cancelar</button>
-                    <button data-action="save-final-report" class="w-full md:w-auto px-6 py-4 md:py-3 bg-green-600 text-white rounded-xl font-bold shadow-md hover:bg-green-700 transition">Finalizar Apuração</button>
-                </div>
-            </div>`;
-    }
 }

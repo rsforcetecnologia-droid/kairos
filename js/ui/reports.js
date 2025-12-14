@@ -198,14 +198,13 @@ function renderCurrentView() {
     }
 }
 
-// --- 7. ABA FINANCEIRO (ATUALIZADA) ---
+// --- 7. ABA FINANCEIRO ---
 
 function renderFinancialDashboards(container) {
     const { dreSimple, charts } = localState.data;
     const dre = dreSimple || { grossRevenue: 0, netProfit: 0, variableCosts: 0 }; 
     
-    // Cálculos Corrigidos
-    const completedAppointments = localState.data.totalAppointments || 0; // Agora vem correto do backend
+    const completedAppointments = localState.data.totalAppointments || 0; 
     const ticketMedio = completedAppointments > 0 ? (dre.grossRevenue / completedAppointments) : 0;
 
     container.innerHTML = `
@@ -268,7 +267,7 @@ function renderFinancialDashboards(container) {
     renderChart('chart-products', 'bar', 'Total Vendido', charts.products.labels, charts.products.data, chartColors[1]);
 }
 
-// --- 8. ABA AGENDAMENTOS (Drill-Down Completo) ---
+// --- 8. ABA AGENDAMENTOS (CORRIGIDA) ---
 
 function renderAppointmentsDashboard(container) {
     const { charts } = localState.data;
@@ -315,9 +314,8 @@ function renderAppointmentsDashboard(container) {
             </div>
         </div>
     `;
-
-    renderInteractiveApptChart();
-
+    
+    // Configura o botão de voltar ANTES de renderizar o gráfico
     const backBtn = document.getElementById('btn-back-year');
     if (backBtn) {
         backBtn.onclick = () => {
@@ -325,6 +323,13 @@ function renderAppointmentsDashboard(container) {
             localState.apptSelectedMonth = null;
             renderAppointmentsDashboard(container);
         };
+    }
+
+    // Tenta renderizar o gráfico com proteção contra erros
+    try {
+        renderInteractiveApptChart();
+    } catch (e) {
+        console.error("Erro ao renderizar gráfico de agendamentos:", e);
     }
 }
 
@@ -340,15 +345,34 @@ function renderInteractiveApptChart() {
         labels = charts.appointmentsMonthly.labels;
         dataValues = charts.appointmentsMonthly.data;
     } else {
-        // Visão Detalhada (Dias do Mês Selecionado)
-        const monthMap = { 'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06', 'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12' };
-        const [mStr, yStr] = localState.apptSelectedMonth.split('/'); 
-        const mNum = monthMap[mStr.toLowerCase()] || mStr; 
+        // CORREÇÃO ROBUSTA: Extração de mês e ano usando Regex
+        // Captura: (letras ou pontos para o mês) + (separador qualquer) + (2 ou 4 dígitos para o ano)
+        const parts = localState.apptSelectedMonth.match(/([a-zç\.]+)(?:[\/\s\-]*)(\d{2,4})/i);
+        
+        if (!parts) {
+            console.error("Formato de mês não reconhecido:", localState.apptSelectedMonth);
+            return;
+        }
+
+        // Limpa o mês (remove pontos)
+        const cleanMStr = parts[1].toLowerCase().replace(/\./g, '').trim();
+        const yStr = parts[2];
         const fullYear = yStr.length === 2 ? '20' + yStr : yStr;
+
+        const monthMap = { 
+            'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06', 
+            'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
+            'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
+            'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
+        };
+        
+        const mNum = monthMap[cleanMStr] || '01'; // Fallback seguro
+        const targetSuffix = `/${mNum}/${fullYear}`;
 
         const filteredEntries = Object.entries(charts.appointmentsDaily.data).map(([k, v], i) => {
             const dateKey = charts.appointmentsDaily.labels[i];
-            if (dateKey.includes(`/${mNum}/${fullYear}`)) return { label: dateKey, value: v };
+            // Verifica se a data (ex: 05/10/2023) contém o sufixo (ex: /10/2023)
+            if (dateKey.includes(targetSuffix)) return { label: dateKey, value: v };
             return null;
         }).filter(Boolean);
 
@@ -403,13 +427,14 @@ function handleApptChartClick(label) {
 }
 
 async function openDayDetailsModal(dateStr) {
+    // Parser seguro da data DD/MM/YYYY
     const [d, m, y] = dateStr.split('/');
     const apiDate = `${y}-${m}-${d}`;
 
     showGenericModal({
         title: `Carregando...`,
         contentHTML: `<div class="p-8 text-center"><div class="loader mx-auto"></div></div>`,
-        maxWidth: 'max-w-md'
+        maxWidth: 'max-w-2xl'
     });
 
     try {
@@ -419,12 +444,14 @@ async function openDayDetailsModal(dateStr) {
         if (list.length === 0) {
             html = '<div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">Nenhum agendamento encontrado para este dia.</div>';
         } else {
+            // CORREÇÃO: Tabela com coluna Profissional
             html = `
                 <div class="overflow-hidden border rounded-lg max-h-[60vh] overflow-y-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50 sticky top-0 z-10">
                             <tr>
                                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Hora</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Profissional</th>
                                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cliente</th>
                                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Serviço</th>
                                 <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
@@ -434,6 +461,7 @@ async function openDayDetailsModal(dateStr) {
                             ${list.map(appt => `
                                 <tr class="hover:bg-gray-50 transition-colors">
                                     <td class="px-4 py-3 font-bold text-gray-900">${appt.time || '--:--'}</td>
+                                    <td class="px-4 py-3 text-indigo-700 font-medium">${appt.professionalName || 'N/A'}</td>
                                     <td class="px-4 py-3 text-gray-700">${appt.clientName || 'Cliente'}</td>
                                     <td class="px-4 py-3 text-gray-500">${appt.serviceName || 'Serviço'}</td>
                                     <td class="px-4 py-3">
@@ -461,7 +489,7 @@ async function openDayDetailsModal(dateStr) {
              showGenericModal({
                 title: `Agendamentos de ${dateStr}`,
                 contentHTML: html,
-                maxWidth: 'max-w-2xl'
+                maxWidth: 'max-w-4xl'
             });
         }
 

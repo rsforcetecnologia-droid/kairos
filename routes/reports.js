@@ -7,31 +7,27 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 
 router.use(verifyToken, hasAccess);
 
-// --- FUNÇÃO AUXILIAR MELHORADA (EXTRAI O LINK DO ÍNDICE) ---
+// --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
 
-    // Tenta encontrar o link mágico do Google dentro do texto do erro
-    // O erro geralmente vem: "The query requires an index. You can create it here: https://..."
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
     const indexLink = linkMatch ? linkMatch[0] : null;
 
     if (error.code === 9 || (error.message && error.message.includes('requires an index'))) {
         return res.status(500).json({ 
             message: `O Firestore precisa de um índice para ${context}.`,
-            // AQUI ESTÁ A SOLUÇÃO: Enviamos o link direto para o navegador
             createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs.",
-            technicalError: error.message // Envia o erro original para facilitar
+            technicalError: error.message 
         });
     }
     res.status(500).json({ message: `Erro ao processar ${context}.` });
 }
 
 // =======================================================================
-// 🚀 NOVAS ROTAS (DASHBOARD DE GESTÃO / DRE) - OTIMIZADAS
+// 🚀 ROTAS DE INDICADORES (CORRIGIDAS)
 // =======================================================================
 
-// 1. ROTA MESTRA DE INDICADORES
 router.get('/indicators', async (req, res) => {
     const { establishmentId } = req.user;
     const { startDate, endDate, professionalId, costCenterId } = req.query;
@@ -48,7 +44,7 @@ router.get('/indicators', async (req, res) => {
         const end = new Date(endDate); 
         end.setHours(23,59,59,999);
 
-        // --- QUERIES FILTRADAS POR DATA ---
+        // --- QUERIES ---
         
         // A) VENDAS
         let salesQuery = db.collection('sales')
@@ -74,11 +70,11 @@ router.get('/indicators', async (req, res) => {
             .where('createdAt', '>=', start)
             .where('createdAt', '<=', end);
 
-        // E) AGENDAMENTOS
+        // E) AGENDAMENTOS (Busca por startTime)
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            .where('date', '>=', startDate)
-            .where('date', '<=', endDate);
+            .where('startTime', '>=', start)
+            .where('startTime', '<=', end);
 
         // F) NATUREZAS
         let naturesQuery = db.collection('financial_natures')
@@ -94,11 +90,10 @@ router.get('/indicators', async (req, res) => {
             naturesQuery.get()
         ]);
 
-        // Mapear Naturezas (ID -> Nome)
         const naturesMap = {};
         naturesSnap.forEach(doc => { naturesMap[doc.id] = doc.data().name; });
 
-        // --- PROCESSAMENTO EM MEMÓRIA ---
+        // --- PROCESSAMENTO ---
         const salesByDay = {}, salesByMonth = {}, salesByProduct = {}, salesByProfessional = {};
         const apptByDay = {}, apptByMonth = {}, apptStatus = { scheduled: 0, completed: 0, canceled: 0, missed: 0 };
         const expensesByCategory = {};
@@ -110,32 +105,45 @@ router.get('/indicators', async (req, res) => {
         let totalCompletedAppointments = 0; 
         let totalAppointmentsVolume = 0;    
 
-        // A) PROCESSAR VENDAS
+        // A) PROCESSAR VENDAS (Lógica Aprimorada)
         salesSnap.forEach(doc => {
             const data = doc.data();
             if (!data.transaction || !data.transaction.paidAt) return;
             
             let docValue = 0;
 
-            if (data.items && Array.isArray(data.items)) {
+            // 1. Processamento Detalhado por Item
+            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
                 data.items.forEach(item => {
                     const itemOwner = item.professionalId || data.professionalId;
+                    
+                    // Filtro de Profissional (Backend)
                     if (professionalId && professionalId !== 'all' && itemOwner !== professionalId) return;
                     
                     const val = Number(item.price) || 0;
                     docValue += val;
                     
+                    // Agrupamento por Produto
                     const prodName = item.name || 'Outros';
                     salesByProduct[prodName] = (salesByProduct[prodName] || 0) + val;
                     
-                    const profName = item.professionalName || 'Geral';
+                    // Agrupamento por Profissional (CORREÇÃO AQUI)
+                    // Tenta nome do item -> Tenta nome da venda -> Fallback
+                    const profName = item.professionalName || data.professionalName || 'Não Identificado';
                     salesByProfessional[profName] = (salesByProfessional[profName] || 0) + val;
                 });
             } else {
+                // 2. Processamento de Venda Simples (Sem itens ou legado)
                 if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
+                
                 docValue = Number(data.total || data.transaction.totalAmount) || 0;
+                
+                // CORREÇÃO: Agora contabiliza vendas simples no gráfico de profissionais
+                const profName = data.professionalName || 'Não Identificado';
+                salesByProfessional[profName] = (salesByProfessional[profName] || 0) + docValue;
             }
 
+            // Totais Gerais e Temporais
             if (docValue > 0) {
                 totalRevenue += docValue;
                 const d = data.transaction.paidAt.toDate();
@@ -194,11 +202,11 @@ router.get('/indicators', async (req, res) => {
             if (status === 'completed') totalCompletedAppointments++;
 
             let aDate;
-            if (typeof data.date === 'string') {
+            if (data.startTime && typeof data.startTime.toDate === 'function') {
+                aDate = data.startTime.toDate();
+            } else if (typeof data.date === 'string') {
                 const parts = data.date.split('-'); 
                 aDate = new Date(parts[0], parts[1]-1, parts[2]);
-            } else if (data.date && data.date.toDate) {
-                aDate = data.date.toDate();
             }
 
             if (aDate) {
@@ -256,9 +264,28 @@ router.get('/appointments/list', async (req, res) => {
         }
 
         const snap = await query.get();
-        const list = snap.docs
-            .map(d => ({ id: d.id, ...d.data() }))
-            .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+        
+        // Fallback robusto se a busca por string falhar
+        let list = [];
+        if (!snap.empty) {
+             list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } else {
+             const startOfDay = new Date(date + 'T00:00:00');
+             const endOfDay = new Date(date + 'T23:59:59');
+             
+             let tsQuery = req.db.collection('appointments')
+                .where('establishmentId', '==', establishmentId)
+                .where('startTime', '>=', startOfDay)
+                .where('startTime', '<=', endOfDay);
+             
+             if (professionalId && professionalId !== 'all') {
+                tsQuery = tsQuery.where('professionalId', '==', professionalId);
+             }
+             const tsSnap = await tsQuery.get();
+             list = tsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+
+        list.sort((a,b)=>(a.time||'').localeCompare(b.time||''));
             
         res.json(list);
     } catch(error) { 
@@ -267,7 +294,7 @@ router.get('/appointments/list', async (req, res) => {
 });
 
 // =======================================================================
-// 📦 ROTAS LEGADO
+// 📦 ROTAS LEGADO (Mantidas para compatibilidade)
 // =======================================================================
 
 router.get('/sales/:establishmentId', async (req, res) => {

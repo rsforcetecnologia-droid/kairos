@@ -1,8 +1,8 @@
 # Dockerfile
 
-# Fase 1: Construção
-# Usar uma imagem oficial do Node.js
-FROM node:18-slim as builder
+# Fase 1: Construção (Build)
+# 1. MUDANÇA CRÍTICA: Atualizado de node:18-slim para node:22-slim
+FROM node:22-slim as builder
 
 # Definir diretório de trabalho
 WORKDIR /app
@@ -10,26 +10,34 @@ WORKDIR /app
 # Copiar ficheiros de dependências
 COPY package*.json ./
 
-# Instalar dependências. O seu projeto não deve precisar do firebase-credentials.json aqui
-RUN npm install --only=production
+# Instalar TODAS as dependências (incluindo devDependencies como o Vite)
+RUN npm install
 
-# Fase 2: Imagem Final (Mais leve)
-FROM node:18-slim
-
-# Definir diretório de trabalho
-WORKDIR /app
-
-# Copiar a pasta de dependências da fase de construção
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copiar o resto do código do servidor
-# ATENÇÃO: Se houver um .dockerignore, garante que ele não bloqueia ficheiros essenciais!
+# Copiar todo o código fonte
 COPY . .
 
-# Variável de ambiente necessária para o servidor (index.js) saber que está na nuvem
-# E para o Cloud Run saber a porta.
+# Executar o build do Vite (Gera a pasta cap-dist)
+RUN npm run build:web
+
+# Fase 2: Imagem Final (Execução)
+# 2. MUDANÇA CRÍTICA: Atualizado para node:22-slim para manter compatibilidade
+FROM node:22-slim
+
+WORKDIR /app
+
+# Copiar apenas o package.json novamente
+COPY package*.json ./
+
+# Instalar apenas dependências de produção para a imagem final
+RUN npm install --only=production
+
+# Copiar o restante do código do servidor
+COPY . .
+
+# Copiar a pasta 'cap-dist' gerada na Fase 1
+COPY --from=builder /app/cap-dist ./cap-dist
+
 ENV PORT=8080
 EXPOSE 8080
 
-# Comando para iniciar
 CMD ["node", "index.js"]

@@ -213,6 +213,23 @@
       ]
     },
     {
+      "collectionGroup": "commission_reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "establishmentId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "commission_reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "establishmentId", "order": "ASCENDING" },
+        { "fieldPath": "professionalId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "establishments",
       "queryScope": "COLLECTION",
       "fields": [
@@ -428,6 +445,15 @@
       ]
     },
     {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "establishmentId", "order": "ASCENDING" },
+        { "fieldPath": "transaction.paidAt", "order": "ASCENDING" },
+        { "fieldPath": "commissionReported", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "serviceCategories",
       "queryScope": "COLLECTION",
       "fields": [
@@ -449,6 +475,16 @@
       "fields": [
         { "fieldPath": "establishmentId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "establishmentId", "order": "ASCENDING" },
+        { "fieldPath": "clientName", "order": "ASCENDING" },
+        { "fieldPath": "clientPhone", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "DESCENDING" }
       ]
     }
   ]
