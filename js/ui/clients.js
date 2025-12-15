@@ -5,6 +5,7 @@ import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // IMPORTAÇÃO DA SEGURANÇA
 
 const contentDiv = document.getElementById('content');
 let allClientsData = [];
@@ -216,27 +217,33 @@ async function renderDetailContent(tabId) {
         }
     } catch (error) {
         console.error("Erro crítico ao carregar aba:", error);
-        contentContainer.innerHTML = `<div class="p-6 text-center text-red-500"><p>Erro ao carregar dados.</p><p class="text-xs mt-2">${error.message}</p></div>`;
+        contentContainer.innerHTML = `<div class="p-6 text-center text-red-500"><p>Erro ao carregar dados.</p><p class="text-xs mt-2">${escapeHTML(error.message)}</p></div>`;
     }
 }
 
 function renderCadastroTab(client) {
     const dob = client?.dob ? client.dob.split('/') : ['',''];
+    // BLINDAGEM DE XSS NOS VALORES DOS INPUTS
+    const safeName = escapeHTML(client?.name || '');
+    const safeEmail = escapeHTML(client?.email || '');
+    const safePhone = escapeHTML(client?.phone || '');
+    const safeNotes = escapeHTML(client?.notes || '');
+
     return `
         <form id="client-form" class="p-6 space-y-4">
             <input type="hidden" id="clientId" value="${client?.id || ''}">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="clientName" class="block text-sm font-medium text-gray-700">Nome</label>
-                    <input type="text" id="clientName" value="${client?.name || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    <input type="text" id="clientName" value="${safeName}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
                 </div>
                 <div>
                     <label for="clientEmail" class="block text-sm font-medium text-gray-700">E-mail</label>
-                    <input type="email" id="clientEmail" value="${client?.email || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
+                    <input type="email" id="clientEmail" value="${safeEmail}" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
                     <label for="clientPhone" class="block text-sm font-medium text-gray-700">Telefone</label>
-                    <input type="tel" id="clientPhone" value="${client?.phone || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    <input type="tel" id="clientPhone" value="${safePhone}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -251,7 +258,7 @@ function renderCadastroTab(client) {
             </div>
             <div>
                 <label for="clientNotes" class="block text-sm font-medium text-gray-700">Observações</label>
-                <textarea id="clientNotes" rows="4" class="mt-1 w-full p-2 border border-gray-300 rounded-md">${client?.notes || ''}</textarea>
+                <textarea id="clientNotes" rows="4" class="mt-1 w-full p-2 border border-gray-300 rounded-md">${safeNotes}</textarea>
             </div>
         </form>
     `;
@@ -303,6 +310,9 @@ function renderHistoryTab(history, type) {
             ${filteredHistory.map(item => {
                 const isHistoric = type === 'historico';
                 const totalValue = getItemTotalValue(item); // Valor calculado corretamente
+                // BLINDAGEM DE XSS NO HISTÓRICO
+                const safeServiceName = escapeHTML(item.serviceName || 'Serviço');
+                const safeProfName = escapeHTML(item.professionalName || '');
 
                 return `
                     <div class="bg-white border p-3 rounded-lg flex justify-between items-center shadow-sm cursor-pointer hover:bg-gray-50"
@@ -311,8 +321,8 @@ function renderHistoryTab(history, type) {
                         data-appointment-date="${item.date}"> 
                         
                         <div>
-                            <p class="font-bold text-gray-800 text-sm">${item.serviceName || 'Serviço'}</p>
-                            <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('pt-BR')} - ${item.professionalName || ''}</p>
+                            <p class="font-bold text-gray-800 text-sm">${safeServiceName}</p>
+                            <p class="text-xs text-gray-500">${new Date(item.date).toLocaleDateString('pt-BR')} - ${safeProfName}</p>
                         </div>
 
                         <span class="text-xs font-bold ${isHistoric ? 'text-indigo-600 bg-indigo-50 px-2 py-1 rounded' : 'text-green-600 bg-green-50 px-2 py-1 rounded'}">
@@ -374,13 +384,15 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
 
     const rewardsHTML = (loyaltySettings.tiers || []).map(tier => {
         const canRedeem = stats.currentBalance >= tier.points;
+        // BLINDAGEM XSS
+        const safeReward = escapeHTML(tier.reward);
         return `
             <div class="flex justify-between items-center p-3 rounded-lg border ${canRedeem ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}">
                 <div>
-                    <p class="font-bold text-sm ${canRedeem ? 'text-green-800' : 'text-gray-700'}">${tier.reward}</p>
+                    <p class="font-bold text-sm ${canRedeem ? 'text-green-800' : 'text-gray-700'}">${safeReward}</p>
                     <p class="text-xs ${canRedeem ? 'text-green-600' : 'text-gray-500'} font-medium">${tier.points} pts</p>
                 </div>
-                <button data-action="redeem-reward" data-points="${tier.points}" data-reward="${tier.reward}" ${!canRedeem ? 'disabled' : ''}
+                <button data-action="redeem-reward" data-points="${tier.points}" data-reward="${safeReward}" ${!canRedeem ? 'disabled' : ''}
                     class="py-1.5 px-3 text-xs font-bold uppercase rounded shadow-sm transition-colors ${canRedeem ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}">
                     Resgatar
                 </button>
@@ -421,7 +433,7 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
     const historyHTML = historyEntries.length > 0 ? historyEntries.map(item => `
         <div class="flex justify-between items-center py-2 border-b last:border-0 border-gray-100">
             <div>
-                <p class="text-xs font-semibold text-gray-700">${item.desc}</p>
+                <p class="text-xs font-semibold text-gray-700">${escapeHTML(item.desc)}</p>
                 <p class="text-[10px] text-gray-400">${new Date(item.date).toLocaleDateString('pt-BR')} ${new Date(item.date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
             </div>
             <span class="text-xs font-bold ${item.type === 'earn' ? 'text-green-600' : 'text-red-500'}">
@@ -658,6 +670,10 @@ function renderClientListWithFilters(filteredClients, totalClients) {
             const cleanedPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
             const whatsappLinkBase = `https://wa.me/55${cleanedPhone}?text=`;
             
+            // BLINDAGEM DE XSS NO CARD PRINCIPAL
+            const safeName = escapeHTML(client.name);
+            const safePhone = escapeHTML(client.phone);
+
             if (isInactiveFilterActive) {
                 const whatsappMessage = encodeURIComponent(INACTIVE_MESSAGE_TEMPLATE(client.name, establishmentName));
                 whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-blue-500 bg-blue-50 p-1 rounded-full z-10 hover:bg-blue-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
@@ -670,11 +686,11 @@ function renderClientListWithFilters(filteredClients, totalClients) {
                 ${whatsappButton}
                 <div class="flex items-center gap-3 mb-2">
                     <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
-                        ${client.name.charAt(0).toUpperCase()}
+                        ${safeName.charAt(0).toUpperCase()}
                     </div>
                     <div class="min-w-0">
-                        <p class="font-bold text-gray-800 text-sm truncate leading-tight">${client.name}</p>
-                        <p class="text-[10px] text-gray-500 truncate">${client.phone}</p>
+                        <p class="font-bold text-gray-800 text-sm truncate leading-tight">${safeName}</p>
+                        <p class="text-[10px] text-gray-500 truncate">${safePhone}</p>
                     </div>
                 </div>
                 

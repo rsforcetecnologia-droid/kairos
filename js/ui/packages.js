@@ -1,27 +1,26 @@
+// js/ui/packages.js
+
 // --- 1. IMPORTAÇÕES ---
 import * as packagesApi from '../api/packages.js';
 import * as servicesApi from '../api/services.js';
-// (NOVO) Importa a API de produtos
 import * as productsApi from '../api/products.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 const contentDiv = document.getElementById('content');
 let localState = {
     allPackages: [],
-    // (MODIFICADO) Armazena serviços E produtos para o modal
     catalogForModal: { 
         services: [], 
         products: [] 
     },
 };
 let pageEventListener = null;
-let modalEventListener = null; // Listener de clique para o modal
-
+let modalEventListener = null; 
 
 // --- FUNÇÕES DE RENDERIZAÇÃO DA PÁGINA PRINCIPAL ---
 
-// MELHORIA UX: Função para renderizar esqueletos de carregamento
 function renderSkeletonList(count = 6) {
     let skeletonHTML = '';
     for (let i = 0; i < count; i++) {
@@ -81,11 +80,14 @@ function renderPackagesList() {
         
         const finalPrice = pkg.price || 0;
         const originalPrice = pkg.originalPrice || 0;
-        const commissionRate = pkg.commissionRate || 0;
+        // const commissionRate = pkg.commissionRate || 0; // Removido uso não utilizado
         const discountValue = originalPrice > finalPrice ? originalPrice - finalPrice : 0;
         const discountPercent = originalPrice > 0 ? ((originalPrice - finalPrice) / originalPrice) * 100 : 0;
 
-        // (MODIFICADO) usa pkg.items
+        // BLINDAGEM XSS
+        const safeName = escapeHTML(pkg.name);
+        const safeDesc = escapeHTML(pkg.description || 'Sem descrição');
+
         return `
             <div class="bg-white rounded-lg shadow-md overflow-hidden transform hover:-translate-y-1 transition-transform duration-300 flex flex-col cursor-pointer"
                  data-action="edit-package" data-package='${packageDataString}'>
@@ -93,8 +95,8 @@ function renderPackagesList() {
                 <div class="p-4 flex-grow">
                     <div class="flex justify-between items-start">
                         <div class="min-w-0 pr-2">
-                            <h3 class="text-base font-bold text-gray-900 truncate">${pkg.name}</h3>
-                            <p class="text-xs text-gray-500 truncate">${pkg.description || 'Sem descrição'}</p>
+                            <h3 class="text-base font-bold text-gray-900 truncate">${safeName}</h3>
+                            <p class="text-xs text-gray-500 truncate">${safeDesc}</p>
                         </div>
                         <span class="text-xs font-semibold py-0.5 px-2 rounded-full flex-shrink-0 ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}">
                             ${isActive ? 'Ativo' : 'Inativo'}
@@ -112,7 +114,6 @@ function renderPackagesList() {
                         </div>
                         
                         <div class="text-right flex flex-col items-end">
-                            <!-- (MODIFICADO) 'services' -> 'items' -->
                             <p class="text-sm font-semibold text-gray-800">${(pkg.items || []).length} Itens</p> 
                             <p class="text-xs text-gray-500">${pkg.commissionRate || 0}% Comissão</p>
                             <p class="text-xs text-gray-500 mt-1">${pkg.validityDays || '-'} Dias Validade</p>
@@ -130,7 +131,6 @@ function renderPackagesList() {
 
 // --- FUNÇÕES DO MODAL DE CRIAÇÃO/EDIÇÃO ---
 
-// Função para fechar o modal
 function closePackageModal() {
     const modal = document.getElementById('genericModal');
     modal.style.display = 'none';
@@ -139,12 +139,17 @@ function closePackageModal() {
     }
 }
 
-// (MODIFICADO) Função principal do Modal
 async function openPackageModal(pkg = null) {
     const modal = document.getElementById('genericModal'); 
     const isEditing = !!pkg;
-    // (MODIFICADO) Lê pkg.items em vez de pkg.services
     const itemsInPackage = pkg ? JSON.parse(JSON.stringify(pkg.items || [])) : [];
+
+    // BLINDAGEM XSS para inputs
+    const safeName = escapeHTML(pkg?.name || '');
+    const safeDesc = escapeHTML(pkg?.description || '');
+    const safePrice = pkg?.price || '';
+    const safeCommission = pkg?.commissionRate || 0;
+    const safeValidity = pkg?.validityDays || 30;
 
     const contentHTML = `
         <div class="modal-content max-w-4xl overflow-y-auto max-h-[90vh]">
@@ -161,7 +166,7 @@ async function openPackageModal(pkg = null) {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label for="packageName" class="block text-sm font-medium text-gray-700">Nome do Pacote</label>
-                                <input type="text" id="packageName" value="${pkg?.name || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                                <input type="text" id="packageName" value="${safeName}" class="mt-1 w-full p-2 border rounded-md" required>
                             </div>
                             <div>
                                 <label for="packageStatus" class="block text-sm font-medium text-gray-700">Status</label>
@@ -173,17 +178,15 @@ async function openPackageModal(pkg = null) {
                         </div>
                         <div class="mt-4">
                             <label for="packageDescription" class="block text-sm font-medium text-gray-700">Descrição (Opcional)</label>
-                            <textarea id="packageDescription" rows="2" class="mt-1 w-full p-2 border rounded-md">${pkg?.description || ''}</textarea>
+                            <textarea id="packageDescription" rows="2" class="mt-1 w-full p-2 border rounded-md">${safeDesc}</textarea>
                         </div>
                     </div>
 
                     <div class="border-t pt-6">
                         <div class="flex justify-between items-center mb-2">
-                            <!-- (MODIFICADO) Título e ID do botão -->
                             <h3 class="text-lg font-semibold text-gray-800">Itens Incluídos</h3>
                             <button type="button" id="add-item-to-package-btn" class="py-1 px-3 bg-indigo-600 text-white font-semibold rounded-lg text-sm hover:bg-indigo-700 transition shadow-sm">+ Adicionar Item</button>
                         </div>
-                        <!-- (MODIFICADO) ID do container da lista -->
                         <div id="package-items-list" class="space-y-2 max-h-48 overflow-y-auto p-2 border rounded-md bg-gray-50 min-h-[5rem]"></div>
                     </div>
 
@@ -196,15 +199,15 @@ async function openPackageModal(pkg = null) {
                             </div>
                             <div>
                                 <label for="finalPrice" class="block text-sm font-medium text-gray-700">Preço Final</label>
-                                <input type="number" step="0.01" id="finalPrice" value="${pkg?.price || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                                <input type="number" step="0.01" id="finalPrice" value="${safePrice}" class="mt-1 w-full p-2 border rounded-md" required>
                             </div>
                             <div>
                                 <label for="commissionRate" class="block text-sm font-medium text-gray-700">Comissão (%)</label>
-                                <input type="number" id="commissionRate" value="${pkg?.commissionRate || 0}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 10">
+                                <input type="number" id="commissionRate" value="${safeCommission}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 10">
                             </div>
                             <div>
                                 <label for="validityDays" class="block text-sm font-medium text-gray-700">Validade (dias)</label>
-                                <input type="number" id="validityDays" value="${pkg?.validityDays || 30}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 30, 60, 90">
+                                <input type="number" id="validityDays" value="${safeValidity}" class="mt-1 w-full p-2 border rounded-md" placeholder="Ex: 30, 60, 90">
                             </div>
                         </div>
                     </div>
@@ -221,10 +224,8 @@ async function openPackageModal(pkg = null) {
     modal.innerHTML = contentHTML;
     modal.style.display = 'flex';
 
-    // (MODIFICADO) ID do container da lista
     const itemsListContainer = modal.querySelector('#package-items-list');
     
-    // (MODIFICADO) Renomeado 'services' para 'items'
     const updatePrices = (items, modal) => {
         const originalPriceEl = modal.querySelector('#originalPrice');
         const originalPrice = items.reduce((acc, s) => acc + (s.price * s.quantity), 0);
@@ -233,13 +234,11 @@ async function openPackageModal(pkg = null) {
         }
     };
     
-    // (MODIFICADO) Renomeado 'renderSelectedServices' para 'renderSelectedItems'
     const renderSelectedItems = (items) => {
         if (items.length === 0) {
             itemsListContainer.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhum item adicionado.</p>';
         } else {
             itemsListContainer.innerHTML = items.map((item, index) => {
-                // (NOVO) Adiciona selo de tipo
                 const isService = item.type === 'service';
                 const typeLabel = isService ? 'Serviço' : 'Produto';
                 const typeBg = isService ? 'bg-indigo-100 text-indigo-800' : 'bg-green-100 text-green-800';
@@ -248,13 +247,11 @@ async function openPackageModal(pkg = null) {
                 <div class="flex items-center justify-between bg-white p-2 rounded shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 min-w-0">
                         <input type="number" value="${item.quantity}" min="1" class="w-12 p-1 border rounded-md text-sm quantity-input flex-shrink-0" data-index="${index}">
-                        <!-- (NOVO) Selo de Tipo -->
                         <span class="text-xs font-medium px-2 py-0.5 rounded-full ${typeBg}">${typeLabel}</span>
-                        <span class="font-medium text-gray-800 truncate">${item.name}</span>
+                        <span class="font-medium text-gray-800 truncate">${escapeHTML(item.name)}</span>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <span class="text-sm text-gray-600">R$ ${item.price.toFixed(2)}</span>
-                        <!-- (MODIFICADO) Classe do botão de remover -->
                         <button type="button" class="text-red-500 hover:text-red-700 remove-item-btn font-bold" data-index="${index}">&times;</button>
                     </div>
                 </div>
@@ -265,7 +262,6 @@ async function openPackageModal(pkg = null) {
 
     renderSelectedItems(itemsInPackage);
 
-    // (MODIFICADO) Atualiza 'itemsInPackage'
     itemsListContainer.addEventListener('change', (e) => {
         if (e.target.classList.contains('quantity-input')) {
             const index = parseInt(e.target.dataset.index, 10);
@@ -277,7 +273,6 @@ async function openPackageModal(pkg = null) {
         }
     });
 
-    // (MODIFICADO) Atualiza 'itemsInPackage' e classe do botão
     itemsListContainer.addEventListener('click', (e) => {
         if (e.target.classList.contains('remove-item-btn')) {
             const index = parseInt(e.target.dataset.index, 10);
@@ -286,7 +281,6 @@ async function openPackageModal(pkg = null) {
         }
     });
     
-    // (MODIFICADO) Chama o novo modal 'openItemSelectionModal'
     modal.querySelector('#add-item-to-package-btn').onclick = () => openItemSelectionModal((selectedItem) => {
         const existing = itemsInPackage.find(s => s.id === selectedItem.id && s.type === selectedItem.type);
         if (existing) {
@@ -297,7 +291,6 @@ async function openPackageModal(pkg = null) {
         renderSelectedItems(itemsInPackage);
     });
 
-    // CORREÇÃO: Listener de 'click' robusto para o modal
     if (modalEventListener) {
         modal.removeEventListener('click', modalEventListener);
     }
@@ -316,17 +309,17 @@ async function openPackageModal(pkg = null) {
         if (action === 'save-package') {
             const saveButton = button;
             
-            // (MODIFICADO) Salva 'items' em vez de 'services'
             const data = {
                 id: document.getElementById('packageId').value || null,
                 name: document.getElementById('packageName').value,
                 description: document.getElementById('packageDescription').value,
                 status: document.getElementById('packageStatus').value,
-                items: itemsInPackage, // <-- MODIFICADO
+                items: itemsInPackage, 
                 originalPrice: itemsInPackage.reduce((acc, s) => acc + (s.price * s.quantity), 0),
                 price: parseFloat(document.getElementById('finalPrice').value),
                 commissionRate: parseFloat(document.getElementById('commissionRate').value) || 0,
-                validityDays: parseInt(document.getElementById('validityDays').value, 10) || null
+                validityDays: parseInt(document.getElementById('validityDays').value, 10) || null,
+                establishmentId: state.establishmentId // CORREÇÃO MULTITENANT
             };
 
             if (!data.name || !data.price) {
@@ -334,7 +327,6 @@ async function openPackageModal(pkg = null) {
                  return;
             }
 
-            // (MODIFICADO) Verifica 'data.items'
             if (data.items.length === 0) {
                 showNotification('Erro', 'Adicione pelo menos um item ao pacote.', 'error');
                 return;
@@ -372,7 +364,6 @@ function openItemSelectionModal(onSelect) {
     modalContainer.id = 'item-selection-modal';
     modalContainer.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[110]';
 
-    // Ícones para diferenciar
     const icons = {
         service: '<svg class="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v4.512a9.04 9.04 0 00-3 5.012M12 12a9.04 9.04 0 01-3-5.012V5l-1-1z" /></svg>',
         product: '<svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>',
@@ -381,15 +372,13 @@ function openItemSelectionModal(onSelect) {
     const renderLists = (listContainer) => {
         const term = searchTerm.toLowerCase();
         
-        // Filtra Serviços
         const services = localState.catalogForModal.services.filter(s => s.name.toLowerCase().includes(term));
-        // Filtra Produtos
         const products = localState.catalogForModal.products.filter(p => p.name.toLowerCase().includes(term));
 
         const servicesHTML = services.map(item => `
             <button data-action="select-item" data-item-type="service" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
                 <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons.service}</div>
-                <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                <span class="flex-grow text-left min-w-0 truncate">${escapeHTML(item.name)}</span>
                 <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
             </button>
         `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum serviço encontrado.</p>`;
@@ -397,7 +386,7 @@ function openItemSelectionModal(onSelect) {
         const productsHTML = products.map(item => `
             <button data-action="select-item" data-item-type="product" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
                 <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons.product}</div>
-                <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                <span class="flex-grow text-left min-w-0 truncate">${escapeHTML(item.name)}</span>
                 <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
             </button>
         `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum produto encontrado.</p>`;
@@ -420,7 +409,6 @@ function openItemSelectionModal(onSelect) {
                 <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
             </div>
             <div id="item-selection-list" class="flex-1 overflow-y-auto p-4">
-                <!-- Conteúdo será renderizado por renderLists -->
             </div>
         </div>
     `;
@@ -450,7 +438,6 @@ function openItemSelectionModal(onSelect) {
             const catalog = localState.catalogForModal[itemType + 's'] || [];
             const item = catalog.find(i => i.id === itemId);
             if (item) {
-                // (MODIFICADO) Passa o objeto completo COM o tipo
                 onSelect({ ...item, type: itemType }); 
                 closeThisModal();
             }
@@ -514,7 +501,7 @@ export async function loadPackagesPage() {
         const action = target.dataset.action;
 
         if (action === 'new-package') {
-            openPackageModal(null); // <-- CORREÇÃO: Estava openPackageModal({})
+            openPackageModal(null); 
         } else if (action === 'edit-package') {
             const pkg = JSON.parse(target.dataset.package);
             openPackageModal(pkg);
@@ -523,21 +510,18 @@ export async function loadPackagesPage() {
     
     contentDiv.addEventListener('click', pageEventListener);
 
-    // --- Carregamento dos dados ---
     try {
-        // (MODIFICADO) Carrega pacotes, serviços E produtos
         const [packages, services, products] = await Promise.all([
             packagesApi.getPackages(state.establishmentId),
             servicesApi.getServices(state.establishmentId),
-            productsApi.getProducts(state.establishmentId) // <-- NOVO
+            productsApi.getProducts(state.establishmentId) 
         ]);
         localState.allPackages = packages;
-        // (MODIFICADO) Popula o novo catálogo
         localState.catalogForModal = {
             services: services.filter(s => s.active),
-            products: products // Você pode filtrar produtos inativos ou fora de estoque aqui se quiser
+            products: products 
         };
-        renderPackagesList(); // Renderiza os dados reais
+        renderPackagesList(); 
     } catch (error) {
         document.getElementById('packagesListContainer').innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar pacotes.</p>';
     }

@@ -13,13 +13,13 @@ const modules = {
     'agenda-section': 'Agenda',
     'comandas-section': 'Comandas',
     'relatorios-section': 'Relatórios Gerais',
-    'sales-report-section': 'Relatório de Vendas (Caixa)', // ADICIONADO
+    'sales-report-section': 'Relatório de Vendas (Caixa)', 
     'financial-section': 'Financeiro',
     'servicos-section': 'Serviços',
     'produtos-section': 'Produtos',
-    'suppliers-section': 'Fornecedores', // ADICIONADO (Pedido Principal)
+    'suppliers-section': 'Fornecedores', 
     'profissionais-section': 'Profissionais',
-    'ausencias-section': 'Ausências e Bloqueios', // ADICIONADO
+    'ausencias-section': 'Ausências e Bloqueios', 
     'clientes-section': 'Clientes',
     'packages-section': 'Pacotes', 
     'commissions-section': 'Comissões', 
@@ -322,7 +322,8 @@ async function showUserFormView(user = null) {
         const userData = {
             name: form.querySelector('#userName').value,
             permissions,
-            professionalId
+            professionalId,
+            establishmentId: state.establishmentId // <-- CORREÇÃO DE SEGURANÇA: VINCULAÇÃO FORÇADA AO ESTABELECIMENTO
         };
 
         try {

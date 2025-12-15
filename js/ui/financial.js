@@ -1,3 +1,5 @@
+// js/ui/financial.js
+
 import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
@@ -100,7 +102,8 @@ async function openHierarchyModal(type) {
         hierarchy.forEach(root => renderOption(root));
     };
 
-    const items = await api();
+    // CORREÇÃO: Passar establishmentId
+    const items = await api(state.establishmentId);
     localState[collectionName] = items;
     renderData(items);
 
@@ -110,8 +113,15 @@ async function openHierarchyModal(type) {
         const parentId = parentSelect.value;
         const createApi = isNature ? financialApi.createNature : financialApi.createCostCenter;
         try {
-            await createApi({ name, parentId: parentId || null });
-            const updatedItems = await api();
+            // CORREÇÃO: Passar establishmentId no payload
+            await createApi({ 
+                name, 
+                parentId: parentId || null,
+                establishmentId: state.establishmentId 
+            });
+            
+            // CORREÇÃO: Passar establishmentId
+            const updatedItems = await api(state.establishmentId);
             localState[collectionName] = updatedItems;
             renderData(updatedItems);
             modal.querySelector('#hierarchyForm').reset();
@@ -210,7 +220,8 @@ async function handleCashFlowReportGeneration() {
     
     chartContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
     try {
-        const data = await financialApi.getCashFlowData(startDate, endDate);
+        // CORREÇÃO: Passar establishmentId para o gráfico
+        const data = await financialApi.getCashFlowData(state.establishmentId, startDate, endDate);
         chartContainer.innerHTML = '<canvas id="cashFlowChart"></canvas>';
         renderCashFlowChart(data);
     } catch (error) {
@@ -287,7 +298,6 @@ function openIndicatorsModal() {
                     Análise do período: ${new Date(localState.startDate + 'T00:00:00').toLocaleDateString('pt-BR')} a ${new Date(localState.endDate + 'T00:00:00').toLocaleDateString('pt-BR')}.
                 </p>
                 
-                <!-- BLOCO 1: SALDO DE PERÍODO (REALIZADO) -->
                 <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
                     <h3 class="text-xl font-semibold text-indigo-700 mb-4 border-b pb-2">Realizado no Período (Fechado)</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
@@ -306,7 +316,6 @@ function openIndicatorsModal() {
                     </div>
                 </div>
 
-                <!-- BLOCO 2: FLUXO E SALDO ACUMULADO -->
                 <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
                     <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Balanço Patrimonial e Acumulado</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
@@ -323,7 +332,6 @@ function openIndicatorsModal() {
                     </div>
                 </div>
 
-                <!-- BLOCO 3: ANÁLISE FUTURA (PENDENTE) -->
                 <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
                     <h3 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">Previsão (Abertos no Período)</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
@@ -426,9 +434,10 @@ async function fetchAndDisplayData() {
     if (!startDate || !endDate) { 
         // Carrega apenas dados de suporte (natures e cost centers) no primeiro load
         try {
+            // CORREÇÃO: Passar establishmentId
             const [natures, costCenters] = await Promise.all([
-                financialApi.getNatures(),
-                financialApi.getCostCenters()
+                financialApi.getNatures(state.establishmentId),
+                financialApi.getCostCenters(state.establishmentId)
             ]);
             localState = { ...localState, natures, costCenters };
             
@@ -451,7 +460,12 @@ async function fetchAndDisplayData() {
     if (receivablesList) receivablesList.innerHTML = '<div class="loader mx-auto"></div>';
     
     try {
-        const filters = { startDate, endDate };
+        // CORREÇÃO: Inserir establishmentId nos filtros
+        const filters = { 
+            startDate, 
+            endDate, 
+            establishmentId: state.establishmentId 
+        };
         
         // Inclui filtros de Natureza e Centro de Custo APENAS se não for 'all'
         if (natureId && natureId !== 'all') filters.natureId = natureId;
@@ -462,8 +476,8 @@ async function fetchAndDisplayData() {
             // Passa o objeto 'filters' completo
             financialApi.getPayables(filters),
             financialApi.getReceivables(filters),
-            financialApi.getNatures(),
-            financialApi.getCostCenters()
+            financialApi.getNatures(state.establishmentId), // CORREÇÃO: Passar ID
+            financialApi.getCostCenters(state.establishmentId) // CORREÇÃO: Passar ID
         ]);
         
         // O backend retorna { entries, previousBalance }
@@ -519,6 +533,7 @@ async function handleFormSubmit(e, type, itemId = null) {
         status: isChecked ? 'paid' : 'pending',
         paymentDate: isChecked ? paymentDateValue : null,
         installments: itemId ? 1 : installments, // Parcelamento só na criação
+        establishmentId: state.establishmentId // CORREÇÃO: Vincula ao estabelecimento
     };
 
     try {
@@ -738,7 +753,6 @@ export async function loadFinancialPage() {
             <div class="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <h2 class="text-3xl font-bold text-gray-800">Módulo Financeiro</h2>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <!-- Mobile Toggle Buttons (visível apenas em telas pequenas) -->
                     <button data-action="toggle-filters" class="md:hidden py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 flex items-center gap-2">
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
                         Filtros
@@ -747,13 +761,11 @@ export async function loadFinancialPage() {
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h4a1 1 0 011 1v13m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 0H9"/></svg>
                         Indicadores
                     </button>
-                    <!-- NOVO BOTÃO DE CONFIGURAÇÕES (MOBILE) -->
                     <button data-action="open-settings-modal" class="md:hidden py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 flex items-center gap-2">
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         Config.
                     </button>
                     
-                    <!-- Desktop Buttons (visível em telas médias e maiores) -->
                     <div class="hidden md:flex items-center gap-2 flex-wrap">
                         <button data-action="open-cash-flow-modal" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
@@ -762,7 +774,6 @@ export async function loadFinancialPage() {
                         <button data-action="manage-natures" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Naturezas</button>
                         <button data-action="manage-cost-centers" class="py-2 px-4 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700">Gerir Centros de Custo</button>
                         
-                        <!-- Botão de Indicadores para Desktop -->
                         <button data-action="open-indicators-modal" class="py-2 px-4 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 flex items-center gap-2">
                              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6a1 1 0 011-1h4a1 1 0 011 1v13m-6 0a2 2 0 002 2h2a2 2 0 002-2m-6 0H9"/></svg>
                             Indicadores
@@ -772,7 +783,6 @@ export async function loadFinancialPage() {
             </div>
 
             <div id="financial-content">
-                <!-- Indicadores do Dia (Compactados e Mantidos sempre visíveis) -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div class="bg-red-50 border-l-4 border-red-400 p-3 rounded-lg shadow">
                         <p class="text-gray-500 font-semibold text-sm">A Pagar Hoje (Pendente)</p>
@@ -784,7 +794,6 @@ export async function loadFinancialPage() {
                     </div>
                 </div>
 
-                <!-- BLOCO DE FILTROS AVANÇADOS (Oculto em mobile por padrão - hidden md:block) -->
                 <div id="advanced-filters" class="hidden md:block bg-white p-3 rounded-lg shadow-md mb-4">
                     <h3 class="text-lg font-semibold text-gray-700 mb-3">Filtrar Período e Critérios</h3>
                     <div class="grid grid-cols-2 md:flex md:flex-wrap items-end gap-3 mb-3">
@@ -811,7 +820,6 @@ export async function loadFinancialPage() {
                             </select>
                         </div>
                         
-                        <!-- Botão explícito para aplicar filtro -->
                         <button id="applyDateFilterBtn" class="w-full md:w-auto py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 col-span-2 md:col-span-auto">Aplicar Filtro</button>
                     </div>
                     
@@ -822,10 +830,8 @@ export async function loadFinancialPage() {
                     </div>
                 </div>
                 
-                <!-- OCULTO: Resumo Previsto (Movido para o modal de Indicadores) -->
                 <div class="hidden">
                     <h3 class="text-xl font-semibold text-gray-800 mb-4 border-b pb-2">Resumo Previsto (No Período)</h3>
-                    <!-- Resumo Previsto (Compactado e ajustado para 2 colunas no mobile) -->
                     <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6 text-center">
                         <div class="bg-white p-3 rounded-lg shadow">
                             <p class="text-gray-500 text-sm">A Receber (Pendente)</p>
@@ -842,7 +848,6 @@ export async function loadFinancialPage() {
                     </div>
                 </div>
 
-                <!-- Botoes de alternancia de lista para mobile -->
                 <div id="list-toggle-buttons" class="grid grid-cols-2 gap-3 mb-4 md:hidden">
                     <button data-action="toggle-list-view" data-list="payables" id="btn-payables-view" class="py-2 px-4 font-semibold rounded-lg shadow-md bg-gray-200 text-red-700">Contas a Pagar</button>
                     <button data-action="toggle-list-view" data-list="receivables" id="btn-receivables-view" class="py-2 px-4 font-semibold rounded-lg shadow-md bg-green-100 text-green-700 border border-green-500">Contas a Receber</button>
@@ -850,12 +855,10 @@ export async function loadFinancialPage() {
 
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- Contas a Pagar -->
                     <div id="payables-container" class="lg:col-span-1">
                         <h3 class="text-xl font-semibold text-red-700 mb-4">Contas a Pagar</h3>
                         <div id="payables-list" class="space-y-3"></div>
                     </div>
-                    <!-- Contas a Receber -->
                     <div id="receivables-container" class="lg:col-span-1">
                         <h3 class="text-xl font-semibold text-green-700 mb-4">Contas a Receber</h3>
                         <div id="receivables-list" class="space-y-3"></div>
@@ -864,11 +867,8 @@ export async function loadFinancialPage() {
             </div>
         </section>
         
-        <!-- FLOATING ACTION BUTTON (FAB) -->
         <div id="main-fab-container" class="fixed bottom-6 right-6 z-50">
-            <!-- FAB Menu -->
             <div id="fab-menu" class="flex flex-col items-end space-y-3 mb-3 hidden">
-                <!-- BOTÃO FLUXO DE CAIXA (NOVO) -->
                 <button data-action="open-cash-flow-modal" class="p-3 bg-blue-600 text-white font-semibold rounded-lg shadow-lg hover:bg-blue-700 flex items-center gap-2 transition-transform transform hover:scale-105 text-sm">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
                     Fluxo de Caixa
@@ -882,7 +882,6 @@ export async function loadFinancialPage() {
                     Nova Despesa
                 </button>
             </div>
-            <!-- Main FAB Button -->
             <button data-action="toggle-fab-menu" id="main-fab-btn" class="w-14 h-14 bg-indigo-600 text-white font-bold text-3xl rounded-full shadow-xl hover:bg-indigo-700 flex items-center justify-center transition-transform duration-200">
                 <svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
             </button>
@@ -1092,7 +1091,8 @@ export async function loadFinancialPage() {
         if(confirmed) {
             try {
                 await deleteApi(id);
-                const updatedItems = await api();
+                // CORREÇÃO: Passar establishmentId
+                const updatedItems = await api(state.establishmentId);
                 localState[collectionName] = updatedItems;
                 renderHierarchyList(listDiv, buildHierarchy(updatedItems), type);
                 await fetchAndDisplayData();
@@ -1155,7 +1155,8 @@ export async function loadFinancialPage() {
     
     // Carrega os dados do dia e os dados filtrados
     try {
-        const todaySummary = await financialApi.getTodaySummary();
+        // CORREÇÃO: Passar establishmentId
+        const todaySummary = await financialApi.getTodaySummary(state.establishmentId);
         const summaryTodayPayablesEl = document.getElementById('summary-today-payables');
         if (summaryTodayPayablesEl) summaryTodayPayablesEl.textContent = `R$ ${todaySummary.totalPayables.toFixed(2)}`;
         const summaryTodayReceivablesEl = document.getElementById('summary-today-receivables');

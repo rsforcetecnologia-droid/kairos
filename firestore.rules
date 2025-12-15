@@ -1,107 +1,182 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // --- REGRAS GERAIS ---
-    // Função para verificar se um utilizador está autenticado
+
+    // --- FUNÇÕES AUXILIARES DE SEGURANÇA ---
+
+    // Verifica se o usuário está logado
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Função para verificar se o utilizador (owner ou employee) pertence a um estabelecimento
+
+    // Obtém o cargo (role) do token de autenticação (Custom Claim)
+    function getRole() {
+      return request.auth.token.role;
+    }
+
+    // Verifica se o usuário pertence ao estabelecimento do documento alvo
+    // Requer que o 'establishmentId' esteja definido nos Custom Claims do Auth
     function isMemberOf(establishmentId) {
       return isSignedIn() && request.auth.token.establishmentId == establishmentId;
     }
-    
-    // --- COLEÇÕES PÚBLICAS (Lidas pelo cliente no agendamento) ---
-    match /establishments/{establishmentId} {
-      allow get: if true;
-      // Permite que qualquer um leia os dados públicos de um estabelecimento
-      allow update: if isMemberOf(establishmentId) && request.auth.token.role == 'owner';
-      // Apenas o dono pode editar
+
+    // Verifica se o usuário é DONO do estabelecimento alvo
+    function isOwner(establishmentId) {
+      return isMemberOf(establishmentId) && getRole() == 'owner';
+    }
+
+    // Verifica se campos sensíveis foram alterados na requisição
+    function isNotChangingSensitiveFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['role', 'permissions', 'establishmentId', 'subscription']);
+    }
+
+    // --- COLEÇÕES DE SISTEMA ---
+
+    // USUÁRIOS (Correção Tópico 1: Escalada de Privilégios)
+    match /users/{userId} {
+      // LEITURA: O próprio usuário OU colegas do mesmo estabelecimento
+      allow read: if isSignedIn() && (request.auth.uid == userId || isMemberOf(resource.data.establishmentId));
       
-      // Regra para a sub-coleção de notificações
+      // CRIAÇÃO/EXCLUSÃO: Apenas o DONO do estabelecimento
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner';
+      allow delete: if isSignedIn() && isMemberOf(resource.data.establishmentId) && getRole() == 'owner';
+
+      // ATUALIZAÇÃO (BLINDADA):
+      // 1. O próprio usuário pode editar seus dados, MAS NÃO PODE mudar cargo, permissões ou estabelecimento.
+      // 2. O Dono pode editar tudo.
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && isNotChangingSensitiveFields()) 
+        || 
+        (isMemberOf(resource.data.establishmentId) && getRole() == 'owner')
+      );
+    }
+
+    // ESTABELECIMENTOS (Proteção contra Fraude de Assinatura)
+    match /establishments/{establishmentId} {
+      allow get: if true; // Público para leitura (agendamento)
+      
+      // O Dono pode editar dados (nome, endereço), EXCETO a assinatura (subscription)
+      allow update: if isOwner(establishmentId) 
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
+      
       match /notifications/{notificationId} {
-        allow get, list: if isMemberOf(establishmentId);
-        allow create, update, delete: if false; 
+        allow read: if isMemberOf(establishmentId);
+        allow write: if false; // Apenas backend cria notificações
       }
     }
-    
-    match /services/{serviceId} {
-      allow get: if true;
-      // Qualquer um pode ver os serviços para agendar
-    }
-    
-    match /professionals/{professionalId} {
-      allow get: if true;
-      // Qualquer um pode ver os profissionais para agendar
+
+    // --- COLEÇÕES DE NEGÓCIO (Multitenancy Obrigatório) ---
+
+    // FORNECEDORES
+    match /suppliers/{supplierId} {
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
-    // --- COLEÇÕES PRIVADAS (Acessadas apenas pelo painel de gestão) ---
-    
-    // Agendamentos
+    // HISTÓRICO DE COMPRAS
+    match /purchases/{purchaseId} {
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+    }
+
+    // CLIENTES
+    match /clients/{clientId} {
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      
+      match /loyaltyHistory/{historyId} {
+        allow read: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
+        // Criação de histórico de fidelidade idealmente via backend, mas se for via front:
+        allow create: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
+      }
+    }
+
+    // AGENDAMENTOS
     match /appointments/{appointmentId} {
-      allow create: if true;
-      allow read, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow create: if true; // Permite criação pública (agendamento online)
+      // Leitura/Edição restrita à equipe
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
-    // Produtos e Estoque
+    // PRODUTOS
     match /products/{productId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+
       match /stockHistory/{historyId} {
-        allow read, create: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
+        allow read: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
+        allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
       }
     }
     
     match /productCategories/{categoryId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
-    // --- NOVA REGRA: FORNECEDORES ---
-    // Permite leitura e escrita se o utilizador estiver logado.
-    // (Futuramente, podes restringir por establishmentId se adicionares esse campo ao fornecedor)
-    match /suppliers/{supplierId} {
-      allow read, write: if isSignedIn();
-    }
-    // --------------------------------
-    
-    match /clients/{clientId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      match /loyaltyHistory/{historyId} {
-        allow read, create: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
-      }
-    }
-
+    // VENDAS, CAIXA E BLOQUEIOS
     match /sales/{saleId} {
-       allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
     
     match /blockages/{blockageId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
     
     match /cashierSessions/{sessionId} {
-      allow read, create, update, delete: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
-    // --- AUDITORIA ---
+
+    // SERVIÇOS E PROFISSIONAIS (Públicos para Agendamento, Protegidos na Escrita)
+    match /services/{serviceId} {
+      allow get: if true;
+      allow list: if true; // Necessário para catálogo público
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+    }
+    
+    match /professionals/{professionalId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+    }
+
+    // --- AUDITORIA (Proteção contra Logs Falsos) ---
     match /audit_logs/{logId} {
-      // Qualquer utilizador logado pode CRIAR um registo (para que as suas ações fiquem gravadas)
-      allow create: if isSignedIn();
-      // Apenas o DONO (owner) pode LER o histórico completo
-      allow read: if isSignedIn() && request.auth.token.role == 'owner';
-      // Ninguém pode apagar ou editar logs (para garantir segurança e verdade)
+      // Permite criar log APENAS se o usuário estiver logado E o log pertencer ao seu estabelecimento
+      // Idealmente, o 'authorId' no documento também deveria ser validado aqui:
+      // && request.resource.data.author.uid == request.auth.uid
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      
+      // Apenas o DONO pode ver os logs
+      allow read: if isOwner(resource.data.establishmentId);
+      
+      // NUNCA permite editar ou apagar logs
       allow update, delete: if false;
     }
     
-    // Regra para Histórico de Compras
-    match /purchases/{purchaseId} {
-      allow read, write: if isSignedIn();
+    // --- FINANCEIRO (Proteção Genérica) ---
+    // Caso o frontend acesse diretamente o Firestore para estas coleções
+    match /natures/{docId} { 
+      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
-
-    // Coleção de utilizadores (funcionários)
-    match /users/{userId} {
-      allow read, update: if isSignedIn() && (request.auth.uid == userId || request.auth.token.role == 'owner');
-      allow create, delete: if isSignedIn() && request.auth.token.role == 'owner';
+    match /costCenters/{docId} { 
+      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+    }
+    match /payables/{docId} { 
+      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+    }
+    match /receivables/{docId} { 
+      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
   }
 }

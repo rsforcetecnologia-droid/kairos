@@ -1,16 +1,22 @@
-// js/ui/my-profile.js
+// js/ui/my-profile.js (Blindado)
 
 import * as professionalsApi from '../api/professionals.js';
 import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
+import { escapeHTML } from '../utils.js'; // --- SEGURANÇA ---
 
 const contentDiv = document.getElementById('content');
 
 let currentUserProfessionalData = null; 
 
 export async function loadMyProfilePage() {
+    // BLINDAGEM XSS
+    const safeUserName = escapeHTML(state.userName || 'Usuário');
+    const safeUserEmail = escapeHTML(auth.currentUser?.email || 'E-mail não disponível');
+    const initialChar = state.userName ? state.userName.charAt(0) : 'U';
+
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -26,11 +32,11 @@ export async function loadMyProfilePage() {
                 <div class="p-4 md:p-6 bg-white rounded-lg shadow-md">
                     <div class="flex flex-col items-center justify-center py-6">
                         <img id="user-profile-avatar" 
-                             src="https://placehold.co/128x128/E2E8F0/4A5568?text=${state.userName ? state.userName.charAt(0) : 'U'}" 
+                             src="https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(initialChar)}" 
                              alt="Avatar do Usuário" 
                              class="w-32 h-32 rounded-full object-cover border-4 border-indigo-200">
-                        <h3 class="text-2xl font-bold text-gray-800 mt-4">${state.userName || 'Usuário'}</h3>
-                        <p class="text-md text-gray-600">${auth.currentUser.email || 'E-mail não disponível'}</p>
+                        <h3 class="text-2xl font-bold text-gray-800 mt-4">${safeUserName}</h3>
+                        <p class="text-md text-gray-600">${safeUserEmail}</p>
                     </div>
                 </div>
             </div>
@@ -61,13 +67,16 @@ async function renderProfessionalSection() {
                 document.getElementById('user-profile-avatar').src = professional.photo;
             }
 
+            // BLINDAGEM XSS
+            const safeProfName = escapeHTML(professional.name);
+
             professionalAgendaBlock.innerHTML = `
                 <div class="bg-indigo-50 p-4 rounded-lg flex items-center gap-4 mb-6">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                     <div>
-                        <p class="font-semibold text-indigo-800">Você está associado ao profissional: ${professional.name}</p>
+                        <p class="font-semibold text-indigo-800">Você está associado ao profissional: ${safeProfName}</p>
                         <p class="text-sm text-indigo-700">Use esta seção para gerenciar sua própria agenda rapidamente.</p>
                     </div>
                 </div>
@@ -114,11 +123,9 @@ async function renderProfessionalSection() {
             
             setupBlockForm(professional.id);
             
-            // Listener do filtro
             const filterSelect = document.getElementById('my-blocks-filter');
             filterSelect.addEventListener('change', (e) => loadMyBlocks(professional.id, e.target.value));
             
-            // Carregamento inicial (Futuros)
             loadMyBlocks(professional.id, 'future');
 
         } else {
@@ -135,7 +142,7 @@ async function renderProfessionalSection() {
         professionalAgendaBlock.innerHTML = `
             <div class="bg-red-100 p-4 rounded-lg text-red-700">
                 <p>Ocorreu um erro ao carregar os dados do profissional.</p>
-                <p class="text-sm mt-2">${error.message}</p>
+                <p class="text-sm mt-2">${escapeHTML(error.message)}</p>
             </div>
         `;
     }
@@ -169,7 +176,7 @@ function setupBlockForm(professionalId) {
 
         try {
             await blockagesApi.createBlockage({
-                establishmentId: state.establishmentId, 
+                establishmentId: state.establishmentId, // VINCULAÇÃO FORÇADA
                 professionalId: professionalId,
                 reason: blockReason || 'Bloqueado (Meu Perfil)',
                 startTime: startDateTime.toISOString(),
@@ -178,7 +185,6 @@ function setupBlockForm(professionalId) {
 
             showNotification('Sucesso', 'Agenda bloqueada com sucesso!', 'success');
             form.reset();
-            // Recarrega a lista respeitando o filtro atual
             const currentFilter = document.getElementById('my-blocks-filter').value;
             loadMyBlocks(professionalId, currentFilter); 
         } catch (error) {
@@ -191,7 +197,6 @@ function setupBlockForm(professionalId) {
     });
 }
 
-// NOVO: Função atualizada para aceitar o modo de visualização (future/history)
 async function loadMyBlocks(professionalId, mode = 'future') {
     const blocksListContainer = document.getElementById('my-blocks-list');
     blocksListContainer.innerHTML = '<p class="text-gray-500">A carregar bloqueios...</p>';
@@ -201,12 +206,10 @@ async function loadMyBlocks(professionalId, mode = 'future') {
         let startDate, endDate;
 
         if (mode === 'history') {
-            // Histórico: Último 1 ano até hoje
-            endDate = new Date(); // Hoje
+            endDate = new Date();
             startDate = new Date();
-            startDate.setFullYear(startDate.getFullYear() - 1); // 1 ano atrás
+            startDate.setFullYear(startDate.getFullYear() - 1); 
         } else {
-            // Futuro: Hoje até 1 ano à frente
             startDate = new Date();
             endDate = new Date();
             endDate.setFullYear(endDate.getFullYear() + 1);
@@ -219,7 +222,6 @@ async function loadMyBlocks(professionalId, mode = 'future') {
             professionalId
         );
         
-        // Processamento e Filtragem
         let filteredBlocks = blocks
             .map(block => ({
                 ...block,
@@ -228,15 +230,13 @@ async function loadMyBlocks(professionalId, mode = 'future') {
             }));
 
         if (mode === 'history') {
-            // Filtra o que já acabou e ordena do mais recente para o mais antigo
             filteredBlocks = filteredBlocks
                 .filter(block => block.endTime < now)
-                .sort((a, b) => b.startTime - a.startTime); // Decrescente
+                .sort((a, b) => b.startTime - a.startTime);
         } else {
-            // Filtra o que ainda vai acontecer (ou está acontecendo) e ordena crescente
             filteredBlocks = filteredBlocks
                 .filter(block => block.endTime >= now)
-                .sort((a, b) => a.startTime - b.startTime); // Crescente
+                .sort((a, b) => a.startTime - b.startTime);
         }
 
         if (filteredBlocks.length > 0) {
@@ -245,11 +245,14 @@ async function loadMyBlocks(professionalId, mode = 'future') {
                 const formattedTime = `${block.startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${block.endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
                 const isPast = block.endTime < new Date();
                 
+                // BLINDAGEM XSS
+                const safeReason = escapeHTML(block.reason || 'Sem motivo');
+
                 return `
                     <div class="flex items-center justify-between p-3 ${isPast ? 'bg-gray-100 opacity-75' : 'bg-white border border-gray-200'} rounded-md shadow-sm">
                         <div>
                             <p class="font-semibold text-gray-800">${formattedDate} das ${formattedTime}</p>
-                            <p class="text-sm text-gray-600">${block.reason || 'Sem motivo'}</p>
+                            <p class="text-sm text-gray-600">${safeReason}</p>
                         </div>
                         <button data-block-id="${block.id}" class="remove-block-btn text-red-500 hover:text-red-700 text-2xl font-bold leading-none p-1" title="Apagar bloqueio">
                             &times;
@@ -280,6 +283,6 @@ async function loadMyBlocks(professionalId, mode = 'future') {
 
     } catch (error) {
         console.error("Erro ao carregar bloqueios:", error);
-        blocksListContainer.innerHTML = `<p class="text-red-500">Erro ao carregar bloqueios: ${error.message}</p>`;
+        blocksListContainer.innerHTML = `<p class="text-red-500">Erro ao carregar bloqueios: ${escapeHTML(error.message)}</p>`;
     }
 }

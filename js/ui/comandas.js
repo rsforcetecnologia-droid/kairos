@@ -13,6 +13,7 @@ import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
@@ -214,6 +215,10 @@ function renderComandaList() {
         
         const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
         
+        // BLINDAGEM XSS
+        const safeClientName = escapeHTML(comanda.clientName);
+        const safeProfName = escapeHTML(comanda.professionalName);
+        
         const typeIndicator = isWalkIn
             ? `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md">Avulso</span>`
             : `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md">Agendado</span>`;
@@ -223,14 +228,14 @@ function renderComandaList() {
                  class="comanda-card cursor-pointer ${isSelected ? 'selected' : ''}">
                 
                 <div class="flex justify-between items-start mb-1">
-                    <p class="font-bold text-gray-800 truncate max-w-[70%]">${comanda.clientName}</p>
+                    <p class="font-bold text-gray-800 truncate max-w-[70%]">${safeClientName}</p>
                     <p class="font-bold text-gray-900">R$ ${total.toFixed(2)}</p>
                 </div>
                 
                 <div class="flex justify-between items-center mt-1">
                     <div class="flex items-center gap-2">
                         ${typeIndicator}
-                        <p class="text-xs text-gray-500 truncate max-w-[100px]">${comanda.professionalName}</p>
+                        <p class="text-xs text-gray-500 truncate max-w-[100px]">${safeProfName}</p>
                     </div>
                     <p class="text-xs text-gray-400 font-medium">${time}</p> 
                 </div>
@@ -341,14 +346,18 @@ function renderComandaDetail() {
     
     const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
 
+    // BLINDAGEM XSS
+    const safeClientName = escapeHTML(comanda.clientName);
+    const safeProfName = escapeHTML(comanda.professionalName);
+
     detailContainer.innerHTML = `
         ${mobileHeaderHTML} <div class="flex-grow overflow-y-auto p-4">
             <div class="flex justify-between items-start mb-6 border-b pb-4">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-800 truncate max-w-[200px]">${comanda.clientName}</h3>
+                    <h3 class="text-xl font-bold text-gray-800 truncate max-w-[200px]">${safeClientName}</h3>
                     <p class="text-sm text-gray-500 flex items-center gap-1 mt-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                        ${comanda.professionalName}
+                        ${safeProfName}
                     </p>
                     ${isWalkIn ? `<span class="mt-2 inline-block px-2 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-md">Venda Avulsa</span>` : goToAppointmentBtn}
                 </div>
@@ -371,7 +380,7 @@ function renderComandaDetail() {
                                 ${item.quantity}x
                             </span>
                             <div>
-                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">${item.name}</p>
+                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">${escapeHTML(item.name)}</p>
                                 <p class="text-xs text-gray-500">R$ ${(item.price || 0).toFixed(2)} un.</p>
                             </div>
                         </div>
@@ -542,7 +551,7 @@ function openAddItemModal() {
                     listEl.innerHTML = items.map(item => `
                         <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
                             <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons[type]}</div>
-                            <span class="flex-grow text-left min-w-0 truncate">${item.name}</span>
+                            <span class="flex-grow text-left min-w-0 truncate">${escapeHTML(item.name)}</span>
                             <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
                         </button>
                     `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum item.</p>`;
@@ -577,7 +586,7 @@ function openAddItemModal() {
         contentContainer.innerHTML = `
             <div class="text-center p-8 relative">
                 <button data-action="back-to-catalog" class="absolute top-5 left-5 text-gray-600 hover:text-gray-900">&larr; Voltar</button>
-                <h3 class="font-bold text-2xl text-gray-800">${item.name}</h3>
+                <h3 class="font-bold text-2xl text-gray-800">${escapeHTML(item.name)}</h3>
                 <p class="text-lg text-gray-500">R$ ${item.price.toFixed(2)}</p>
                 <div class="my-8 flex items-center justify-center gap-4">
                     <button id="quantity-minus-btn" class="w-12 h-12 rounded-full bg-gray-200 text-3xl font-bold text-gray-600 hover:bg-gray-300">-</button>
@@ -646,10 +655,11 @@ async function openNewSaleModal(newClientId = null) {
     
     const clientsOptions = localState.clients.map(c => {
         const isSelected = c.id === newClientId ? 'selected' : '';
-        return `<option value="${c.id}" ${isSelected}>${c.name} - ${c.phone}</option>`;
+        // BLINDAGEM XSS
+        return `<option value="${c.id}" ${isSelected}>${escapeHTML(c.name)} - ${escapeHTML(c.phone)}</option>`;
     }).join('');
     
-    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
 
     const contentHTML = `
         <form id="new-sale-form" class="space-y-4">
@@ -1125,6 +1135,8 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         if (isAppointment) {
             await appointmentsApi.checkoutAppointment(comanda.id, data);
         } else {
+            // CORREÇÃO: Adicionado establishmentId ao payload
+            data.establishmentId = state.establishmentId;
             data.clientName = comanda.clientName;
             data.professionalId = comanda.professionalId;
             data.clientPhone = comanda.clientPhone;

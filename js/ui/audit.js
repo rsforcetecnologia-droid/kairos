@@ -1,14 +1,15 @@
-// js/ui/audit.js
+// js/ui/audit.js (Blindado)
+
 import * as auditApi from '../api/audit.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 const contentDiv = document.getElementById('content');
 
 export async function loadAuditPage() {
     // 1. Verificação de Segurança (Apenas Dono)
-    // Assumimos que state.userPermissions == null significa Dono (conforme lógica do teu main.js)
-    // Se quiseres ser mais explícito, podes verificar o token role se estiver disponível no state.
+    // Assumimos que state.userPermissions == null significa Dono (conforme lógica do main.js)
     if (state.userPermissions !== null) {
         contentDiv.innerHTML = `
             <div class="flex flex-col items-center justify-center h-96 text-center">
@@ -54,12 +55,15 @@ export async function loadAuditPage() {
         const logs = await auditApi.getAuditLogs(state.establishmentId);
         renderLogs(logs);
     } catch (error) {
-        document.getElementById('auditList').innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Erro ao carregar logs.</td></tr>`;
+        const list = document.getElementById('auditList');
+        if(list) list.innerHTML = `<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Erro ao carregar logs.</td></tr>`;
     }
 }
 
 function renderLogs(logs) {
     const tbody = document.getElementById('auditList');
+    if (!tbody) return;
+    
     tbody.innerHTML = '';
 
     if (logs.length === 0) {
@@ -70,23 +74,29 @@ function renderLogs(logs) {
     logs.forEach(log => {
         const date = log.timestamp ? new Date(log.timestamp.seconds * 1000).toLocaleString('pt-BR') : '-';
         
+        // BLINDAGEM XSS:
+        const safeUser = escapeHTML(log.userName || 'Desconhecido');
+        const safeModule = escapeHTML(log.module || '-');
+        const safeAction = escapeHTML(log.action || '-');
+        const safeDesc = escapeHTML(log.description || '');
+
         let actionColor = 'text-gray-800';
-        if (log.action.includes('Excluiu') || log.action.includes('Delete')) actionColor = 'text-red-600 font-bold';
-        if (log.action.includes('Criou') || log.action.includes('Novo')) actionColor = 'text-green-600 font-bold';
-        if (log.action.includes('Editou') || log.action.includes('Update')) actionColor = 'text-blue-600 font-bold';
+        if (safeAction.includes('Excluiu') || safeAction.includes('Delete')) actionColor = 'text-red-600 font-bold';
+        if (safeAction.includes('Criou') || safeAction.includes('Novo')) actionColor = 'text-green-600 font-bold';
+        if (safeAction.includes('Editou') || safeAction.includes('Update')) actionColor = 'text-blue-600 font-bold';
 
         const row = `
             <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${date}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${log.userName}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${safeUser}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-indigo-100 text-indigo-800">
-                        ${log.module}
+                        ${safeModule}
                     </span>
                 </td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm ${actionColor}">${log.action}</td>
-                <td class="px-6 py-4 text-sm text-gray-500 truncate max-w-xs" title="${log.description}">
-                    ${log.description}
+                <td class="px-6 py-4 whitespace-nowrap text-sm ${actionColor}">${safeAction}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 truncate max-w-xs" title="${safeDesc}">
+                    ${safeDesc}
                 </td>
             </tr>
         `;

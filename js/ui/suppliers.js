@@ -5,6 +5,7 @@ import * as suppliersApi from '../api/suppliers.js';
 import * as productsApi from '../api/products.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal, closeModal } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -36,7 +37,8 @@ async function fetchSuppliers() {
 // --- Funções Auxiliares de Dados ---
 async function loadListTabdata() {
     try {
-        const suppliers = await suppliersApi.getAll();
+        // CORREÇÃO MULTITENANT: Passando state.establishmentId
+        const suppliers = await suppliersApi.getAll(state.establishmentId);
         state.suppliers = suppliers || [];
         purchaseFlowState.allSuppliers = suppliers;
         return true;
@@ -72,7 +74,8 @@ async function handleSupplierFormSubmit(e) {
         email: form.querySelector('#supEmail').value,
         phone: form.querySelector('#supPhone').value,
         taxId: form.querySelector('#supTaxId').value,
-        category: form.querySelector('#supCategory').value
+        category: form.querySelector('#supCategory').value,
+        establishmentId: state.establishmentId // CORREÇÃO MULTITENANT
     };
 
     const btnSubmit = form.querySelector('button[type="submit"]');
@@ -124,14 +127,18 @@ async function renderListTab() {
     let mobileHtml = `<div class="flex flex-col gap-2 md:hidden">`;
     filtered.forEach(sup => {
         const supString = JSON.stringify(sup).replace(/"/g, '&quot;');
+        // BLINDAGEM XSS
+        const safeName = escapeHTML(sup.name);
+        const safeCategory = escapeHTML(sup.category || 'Geral');
+        const safeContact = escapeHTML(sup.contactName || '');
         
         mobileHtml += `
             <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between active:bg-gray-50 transition-colors cursor-pointer supplier-item-mobile" data-supplier="${supString}">
                 <div class="flex-1 min-w-0 pr-3">
-                    <h3 class="font-bold text-gray-900 text-sm truncate">${sup.name}</h3>
+                    <h3 class="font-bold text-gray-900 text-sm truncate">${safeName}</h3>
                     <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                        <span class="truncate bg-gray-100 px-1.5 py-0.5 rounded">${sup.category || 'Geral'}</span>
-                        ${sup.contactName ? `<span class="truncate">• ${sup.contactName}</span>` : ''}
+                        <span class="truncate bg-gray-100 px-1.5 py-0.5 rounded">${safeCategory}</span>
+                        ${safeContact ? `<span class="truncate">• ${safeContact}</span>` : ''}
                     </div>
                 </div>
                 <div class="text-gray-400">
@@ -159,19 +166,26 @@ async function renderListTab() {
     
     filtered.forEach(sup => {
         const supString = JSON.stringify(sup).replace(/"/g, '&quot;');
+        // BLINDAGEM XSS
+        const safeName = escapeHTML(sup.name);
+        const safeTaxId = escapeHTML(sup.taxId || 'Sem doc.');
+        const safeEmail = escapeHTML(sup.email || '-');
+        const safePhone = escapeHTML(sup.phone || '-');
+        const safeCategory = escapeHTML(sup.category || 'Geral');
+
         desktopHtml += `
             <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm font-medium text-gray-900">${sup.name}</div>
-                    <div class="text-sm text-gray-500">${sup.taxId || 'Sem doc.'}</div>
+                    <div class="text-sm font-medium text-gray-900">${safeName}</div>
+                    <div class="text-sm text-gray-500">${safeTaxId}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
-                    <div class="text-sm text-gray-900">${sup.email || '-'}</div>
-                    <div class="text-sm text-gray-500">${sup.phone || '-'}</div>
+                    <div class="text-sm text-gray-900">${safeEmail}</div>
+                    <div class="text-sm text-gray-500">${safePhone}</div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                        ${sup.category || 'Geral'}
+                        ${safeCategory}
                     </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -193,28 +207,34 @@ function openSupplierDetailsSheet(supplier) {
     const mailLink = supplier.email ? `mailto:${supplier.email}` : '#';
     
     const supString = JSON.stringify(supplier).replace(/"/g, '&quot;');
+    
+    // BLINDAGEM XSS
+    const safeName = escapeHTML(supplier.name);
+    const safeCategory = escapeHTML(supplier.category || 'Fornecedor');
+    const safeContact = escapeHTML(supplier.contactName || '');
+    const safePhone = escapeHTML(supplier.phone || '');
 
     const html = `
         <div class="text-center mb-6">
             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-500 text-2xl font-bold uppercase">
-                ${supplier.name.substring(0,2)}
+                ${safeName.substring(0,2)}
             </div>
-            <h3 class="text-xl font-bold text-gray-900 leading-tight mb-1">${supplier.name}</h3>
+            <h3 class="text-xl font-bold text-gray-900 leading-tight mb-1">${safeName}</h3>
             <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
-                ${supplier.category || 'Fornecedor'}
+                ${safeCategory}
             </span>
         </div>
 
         <div class="space-y-4 mb-8">
-            ${supplier.contactName ? `
+            ${safeContact ? `
             <div class="flex justify-between items-center border-b border-gray-100 pb-2">
                 <span class="text-gray-500 text-sm">Contato</span>
-                <span class="font-medium text-gray-800">${supplier.contactName}</span>
+                <span class="font-medium text-gray-800">${safeContact}</span>
             </div>` : ''}
-            ${supplier.phone ? `
+            ${safePhone ? `
             <div class="flex justify-between items-center border-b border-gray-100 pb-2">
                 <span class="text-gray-500 text-sm">Telefone</span>
-                <span class="font-medium text-gray-800">${supplier.phone}</span>
+                <span class="font-medium text-gray-800">${safePhone}</span>
             </div>` : ''}
         </div>
 
@@ -260,9 +280,10 @@ async function renderPurchaseTab() {
         container.innerHTML = '<div class="loader mx-auto my-8"></div>';
 
         try {
+            // CORREÇÃO MULTITENANT
             const [allProds, allSups] = await Promise.all([
                 productsApi.getProducts(state.establishmentId),
-                suppliersApi.getAll()
+                suppliersApi.getAll(state.establishmentId)
             ]);
             
             purchaseFlowState.allSuppliers = allSups || [];
@@ -297,18 +318,18 @@ async function renderPurchaseTab() {
             toBuy.forEach(prod => {
                 const min = parseInt(prod.minStock) || 0;
                 const curr = parseInt(prod.currentStock) || 0;
-                
-                // Sugere apenas o necessário para atingir o mínimo. Se já tiver (ex: curr=min), sugere 1.
                 const suggestion = Math.max((min - curr), 1);
-                
                 const costPrice = parseFloat(prod.costPrice || 0);
+                // BLINDAGEM XSS
+                const safeProdName = escapeHTML(prod.name);
 
                 let optionsHtml = '<option value="">Selecione...</option>';
                 if (purchaseFlowState.allSuppliers.length > 0) {
                     purchaseFlowState.allSuppliers.forEach(s => {
                         const isLinked = prod.supplierIds && prod.supplierIds.includes(s.id);
                         const selected = isLinked ? 'selected' : '';
-                        optionsHtml += `<option value="${s.id}" ${selected}>${s.name}</option>`;
+                        // BLINDAGEM XSS
+                        optionsHtml += `<option value="${s.id}" ${selected}>${escapeHTML(s.name)}</option>`;
                     });
                 } else {
                     optionsHtml = '<option value="">Sem fornecedores</option>';
@@ -321,7 +342,7 @@ async function renderPurchaseTab() {
                             <div class="flex items-center gap-2">
                                 <input type="checkbox" class="row-select w-5 h-5 text-indigo-600 rounded border-gray-300" checked>
                                 <div>
-                                    <p class="font-bold text-gray-800 text-sm">${prod.name}</p>
+                                    <p class="font-bold text-gray-800 text-sm">${safeProdName}</p>
                                     <p class="text-xs text-gray-500">Custo: R$ ${costPrice.toFixed(2)}</p>
                                 </div>
                             </div>
@@ -360,7 +381,7 @@ async function renderPurchaseTab() {
                         <td class="p-3 pl-4 text-center w-10">
                             <input type="checkbox" class="row-select w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" checked>
                         </td>
-                        <td class="p-3 font-medium text-gray-800">${prod.name}</td>
+                        <td class="p-3 font-medium text-gray-800">${safeProdName}</td>
                         <td class="p-3 text-center text-xs text-gray-600">
                             <div class="flex flex-col items-center">
                                 <span class="font-bold text-red-600">${curr} <span class="text-gray-400 font-normal">Atual</span></span>
@@ -476,7 +497,7 @@ function renderFinalOrders(container) {
             orderTotal += itemTotal;
             return `
             <div class="flex justify-between py-2 border-b border-gray-50 text-sm">
-                <span class="text-gray-800 font-medium">${item.name}</span>
+                <span class="text-gray-800 font-medium">${escapeHTML(item.name)}</span>
                 <div class="text-right">
                     <span class="text-gray-500 text-xs block">${item.qty} x R$ ${item.cost.toFixed(2)}</span>
                     <span class="text-indigo-600 font-bold block">R$ ${itemTotal.toFixed(2)}</span>
@@ -500,14 +521,17 @@ function renderFinalOrders(container) {
         }));
         const orderItemsStr = encodeURIComponent(JSON.stringify(data.items));
 
-        // ADICIONADO: data-supplier-id para recuperar os dados reais sem raspar o HTML
+        // BLINDAGEM XSS
+        const safeSupName = escapeHTML(data.info.name);
+        const safeSupEmail = escapeHTML(data.info.email || '');
+
         cardsHtml += `
             <div class="bg-white border ${cardBorderColor} rounded-xl overflow-hidden shadow-sm supplier-order-card mb-4" data-supplier-id="${supId}">
                 <div class="${cardHeaderColor} p-3 border-b flex justify-between items-center">
                     <div>
-                        <h4 class="font-bold text-gray-800 text-base">${data.info.name}</h4>
+                        <h4 class="font-bold text-gray-800 text-base">${safeSupName}</h4>
                         <div class="text-[10px] text-gray-500 flex flex-col">
-                            <span>${data.info.email || ''}</span>
+                            <span>${safeSupEmail}</span>
                         </div>
                     </div>
                     <div class="text-right">
@@ -575,11 +599,13 @@ async function renderHistoryTab() {
         let mobileHtml = '<div class="flex flex-col gap-3 md:hidden">';
         history.forEach(order => {
             const dateStr = new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
+            const safeSupName = escapeHTML(order.supplierName);
+            
             mobileHtml += `
                 <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center active:bg-gray-50 transition-colors">
                     <div>
                         <p class="text-xs text-gray-500 mb-0.5">${dateStr}</p>
-                        <p class="font-bold text-gray-800 text-sm">${order.supplierName}</p>
+                        <p class="font-bold text-gray-800 text-sm">${safeSupName}</p>
                         <p class="text-xs text-gray-400 mt-0.5">${order.items.length} itens</p>
                     </div>
                     <div class="text-right">
@@ -597,7 +623,7 @@ async function renderHistoryTab() {
         const rows = history.map(order => `
             <tr class="hover:bg-gray-50 border-b border-gray-100">
                 <td class="p-3 text-sm text-gray-600 whitespace-nowrap">${new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR')}</td>
-                <td class="p-3 font-medium text-gray-800">${order.supplierName}</td>
+                <td class="p-3 font-medium text-gray-800">${escapeHTML(order.supplierName)}</td>
                 <td class="p-3 text-right font-bold text-indigo-600 whitespace-nowrap">R$ ${parseFloat(order.totalAmount).toFixed(2)}</td>
                 <td class="p-3 text-right">
                     <button class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 btn-view-purchase" data-purchase='${JSON.stringify(order)}'>
@@ -638,7 +664,7 @@ function openPurchaseDetailsModal(purchase) {
     const itemsHtml = purchase.items.map(item => `
         <li class="flex justify-between py-3 border-b border-gray-100 last:border-0">
             <div>
-                <p class="font-medium text-sm text-gray-800">${item.name}</p>
+                <p class="font-medium text-sm text-gray-800">${escapeHTML(item.name)}</p>
                 <p class="text-xs text-gray-500">${item.qty} un. x R$ ${parseFloat(item.cost).toFixed(2)}</p>
             </div>
             <p class="text-sm font-bold text-gray-700">R$ ${(item.qty * item.cost).toFixed(2)}</p>
@@ -650,7 +676,7 @@ function openPurchaseDetailsModal(purchase) {
             <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
                 <div>
                     <p class="text-xs text-gray-500 uppercase font-bold">Fornecedor</p>
-                    <p class="font-bold text-gray-900 text-lg">${purchase.supplierName}</p>
+                    <p class="font-bold text-gray-900 text-lg">${escapeHTML(purchase.supplierName)}</p>
                 </div>
                 <div class="text-right">
                     <p class="text-xs text-gray-500 uppercase font-bold">Data</p>
@@ -841,7 +867,7 @@ function openSupplierModal(supplier = null) {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="col-span-1 md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa *</label>
-                    <input type="text" id="supName" value="${supplier?.name || ''}" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow" placeholder="Ex: Distribuidora Beleza">
+                    <input type="text" id="supName" value="${escapeHTML(supplier?.name || '')}" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow" placeholder="Ex: Distribuidora Beleza">
                 </div>
 
                 <div>
@@ -856,22 +882,22 @@ function openSupplierModal(supplier = null) {
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nome Contato</label>
-                    <input type="text" id="supContact" value="${supplier?.contactName || ''}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="Ex: João Silva">
+                    <input type="text" id="supContact" value="${escapeHTML(supplier?.contactName || '')}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="Ex: João Silva">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Telefone / WhatsApp</label>
-                    <input type="tel" id="supPhone" value="${supplier?.phone || ''}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="(00) 00000-0000">
+                    <input type="tel" id="supPhone" value="${escapeHTML(supplier?.phone || '')}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="(00) 00000-0000">
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input type="email" id="supEmail" value="${supplier?.email || ''}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="contato@empresa.com">
+                    <input type="email" id="supEmail" value="${escapeHTML(supplier?.email || '')}" class="w-full p-3 border border-gray-300 rounded-lg outline-none" placeholder="contato@empresa.com">
                 </div>
 
                 <div class="col-span-1 md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-1">CNPJ / CPF</label>
-                    <input type="text" id="supTaxId" value="${supplier?.taxId || ''}" class="w-full p-3 border border-gray-300 rounded-lg outline-none">
+                    <input type="text" id="supTaxId" value="${escapeHTML(supplier?.taxId || '')}" class="w-full p-3 border border-gray-300 rounded-lg outline-none">
                 </div>
             </div>
 

@@ -60,8 +60,6 @@ export const adjustStock = (productId, stockData) => {
     });
 };
 
-// ### NOVO CÓDIGO ADICIONADO AQUI ###
-
 /**
  * Busca o histórico de estoque de um produto.
  * @param {string} productId - O ID do produto.
@@ -73,13 +71,17 @@ export const getStockHistory = (productId) => {
 
 /**
  * Busca o relatório de movimentação de estoque.
- * @param {object} filters - Filtros para o relatório ({ startDate, endDate, productId, categoryId }).
+ * @param {object} filters - Filtros para o relatório ({ startDate, endDate, productId, categoryId, establishmentId }).
  * @returns {Promise<Array>} - Uma promessa que resolve com os dados do relatório.
  */
-export const getStockReport = ({ startDate, endDate, productId, categoryId }) => {
+export const getStockReport = ({ startDate, endDate, productId, categoryId, establishmentId }) => {
     const params = new URLSearchParams({ startDate, endDate });
+    
     if (productId && productId !== 'all') params.append('productId', productId);
     if (categoryId && categoryId !== 'all') params.append('categoryId', categoryId);
+    
+    // CORREÇÃO: Adicionado o establishmentId à requisição
+    if (establishmentId) params.append('establishmentId', establishmentId);
     
     return authenticatedFetch(`/api/products/stock-history/report?${params.toString()}`);
 };

@@ -1,4 +1,4 @@
-// js/ui/establishment.js
+// js/ui/establishment.js (Blindado e Multitenancy)
 
 import * as establishmentApi from '../api/establishments.js';
 import * as financialApi from '../api/financial.js';
@@ -7,6 +7,7 @@ import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
 import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
@@ -36,7 +37,7 @@ const colorThemes = {
 const menuItems = [
     { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
     { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
-    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
+    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
     { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
     { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
     { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
@@ -96,7 +97,8 @@ function buildHierarchyOptions(items, currentId = null) {
     };
     const renderOption = (item, prefix = '') => {
         const isSelected = item.id === currentId ? 'selected' : '';
-        optionsHTML += `<option value="${item.id}" ${isSelected}>${prefix}${item.name}</option>`;
+        // BLINDAGEM XSS: escapeHTML no nome do item
+        optionsHTML += `<option value="${item.id}" ${isSelected}>${prefix}${escapeHTML(item.name)}</option>`;
         item.children.forEach(child => renderOption(child, prefix + '— '));
     };
     const hierarchy = buildHierarchy(items);
@@ -136,12 +138,12 @@ async function handleSave(formData, event) {
 
         showNotification('Sucesso', 'Definições salvas com sucesso! A página será recarregada para aplicar o novo tema.', 'success');
         
-        // Se houver mudança de tema, recarregamos para garantir a aplicação limpa
         if (firestoreData.themeColor) {
             setTimeout(() => window.location.reload(), 1500);
         } else {
             const panelEstablishmentName = document.getElementById('panelEstablishmentName');
             if (firestoreData.name && panelEstablishmentName) {
+                // BLINDAGEM XSS: textContent em vez de innerHTML
                 panelEstablishmentName.textContent = firestoreData.name;
                 state.establishmentName = firestoreData.name;
             }
@@ -160,6 +162,15 @@ async function handleSave(formData, event) {
 // --- 2. FUNÇÕES DE RENDERIZAÇÃO DAS SECÇÕES ---
 
 function renderPersonalDataSection(data, container) {
+    // BLINDAGEM XSS
+    const safeName = escapeHTML(data.name || '');
+    const safePhone = escapeHTML(data.phone || '');
+    const safeDoc = escapeHTML(data.document || '');
+    const safeEmail = escapeHTML(data.email || '');
+    const safeAddr = escapeHTML(data.address || '');
+    const safeWeb = escapeHTML(data.website || '');
+    const safeUserName = escapeHTML(state.userName || '');
+
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
@@ -169,31 +180,31 @@ function renderPersonalDataSection(data, container) {
             <form id="personal-data-form" class="space-y-4">
                 <div>
                     <label for="ownerName" class="block text-sm font-medium text-gray-700">Seu nome (Dono)</label>
-                    <input type="text" id="ownerName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${state.userName || ''}">
+                    <input type="text" id="ownerName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${safeUserName}">
                 </div>
                 <div>
                     <label for="establishmentName" class="block text-sm font-medium text-gray-700">Nome do Salão ou Barbearia</label>
-                    <input type="text" id="establishmentName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.name || ''}">
+                    <input type="text" id="establishmentName" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${safeName}">
                 </div>
                 <div>
                     <label for="establishmentPhone" class="block text-sm font-medium text-gray-700">Telefone Principal</label>
-                    <input type="tel" id="establishmentPhone" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${data.phone || ''}">
+                    <input type="tel" id="establishmentPhone" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="${safePhone}">
                 </div>
                 <div>
                     <label for="establishmentCnpjCpf" class="block text-sm font-medium text-gray-700">CNPJ / CPF</label>
-                    <input type="text" id="establishmentCnpjCpf" value="${data.document || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <input type="text" id="establishmentCnpjCpf" value="${safeDoc}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
                 <div>
                     <label for="establishmentEmail" class="block text-sm font-medium text-gray-700">E-mail de Contato</label>
-                    <input type="email" id="establishmentEmail" value="${data.email || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <input type="email" id="establishmentEmail" value="${safeEmail}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
                 <div>
                     <label for="establishmentAddress" class="block text-sm font-medium text-gray-700">Endereço Completo</label>
-                    <input type="text" id="establishmentAddress" value="${data.address || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <input type="text" id="establishmentAddress" value="${safeAddr}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
                 <div>
                     <label for="establishmentWebsite" class="block text-sm font-medium text-gray-700">Website</label>
-                    <input type="url" id="establishmentWebsite" value="${data.website || ''}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <input type="url" id="establishmentWebsite" value="${safeWeb}" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm">
                 </div>
             </form>
         </div>
@@ -332,6 +343,9 @@ function renderChangeEmailSection(data, container) {
 }
 
 function renderBrandingSection(data, container) {
+    // BLINDAGEM XSS
+    const safeWelcome = escapeHTML(data.welcomeMessage || '');
+    
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
             <div class="flex justify-between items-center mb-6">
@@ -393,7 +407,7 @@ function renderBrandingSection(data, container) {
                     
                     <div>
                         <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
-                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida." value="${data.welcomeMessage || ''}">
+                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm" placeholder="Ex: Simples, rápido e à sua medida." value="${safeWelcome}">
                     </div>
                 </div>
 
@@ -488,7 +502,8 @@ function renderBookingSection(data, container) {
         baseUrl = productionUrl;
     }
 
-    const bookingLink = `${baseUrl}/agendar?id=${linkId}`;
+    // BLINDAGEM XSS (Embora o link seja gerado internamente, boa prática)
+    const bookingLink = escapeHTML(`${baseUrl}/agendar?id=${linkId}`);
     
     const isChecked = data.publicBookingEnabled || false;
     const toggleText = isChecked ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
@@ -773,6 +788,9 @@ function renderLoyaltySection(data, container) {
     
     const createTierRow = (tier = {}) => {
         const newTier = document.createElement('div');
+        // BLINDAGEM XSS
+        const safeReward = escapeHTML(tier.reward || '');
+        
         newTier.className = 'loyalty-tier-row'; 
         newTier.innerHTML = `
             <div>
@@ -781,7 +799,7 @@ function renderLoyaltySection(data, container) {
             </div>
             <div>
                 <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Descrição do Prémio</label>
-                <input type="text" placeholder="Descrição do Prémio" data-field="reward" value="${tier.reward || ''}" class="w-full p-2 border rounded-md">
+                <input type="text" placeholder="Descrição do Prémio" data-field="reward" value="${safeReward}" class="w-full p-2 border rounded-md">
             </div>
             <div>
                 <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Valor do Desconto (R$)</label>
@@ -883,9 +901,10 @@ async function renderFinancialIntegrationSection(data, container) {
     `;
 
     try {
+        // CORREÇÃO: Passar establishmentId
         const [natures, costCenters] = await Promise.all([
-            financialApi.getNatures(),
-            financialApi.getCostCenters()
+            financialApi.getNatures(state.establishmentId),
+            financialApi.getCostCenters(state.establishmentId)
         ]);
         
         const financialIntegration = data.financialIntegration || {};
@@ -1052,16 +1071,13 @@ export async function loadEstablishmentPage() {
         }
     }
 
-    // ====================================================================
-    // CORREÇÃO: Sincroniza o state.userName com o Firebase Auth
-    // ====================================================================
     const user = auth.currentUser;
     if (user && user.displayName) {
         state.userName = user.displayName;
     }
-    // ====================================================================
 
-    const displayName = state.userName || auth.currentUser.email;
+    // BLINDAGEM XSS
+    const displayName = escapeHTML(state.userName || auth.currentUser.email);
     const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
 
     contentDiv.innerHTML = `
@@ -1085,7 +1101,7 @@ export async function loadEstablishmentPage() {
                     <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}" class="w-24 h-24 rounded-full object-cover">
                  </div>
                  <h3 class="font-bold mt-2 text-lg truncate">${displayName}</h3>
-                 ${(state.userName && state.userName !== auth.currentUser.email) ? `<p class="text-sm text-gray-500">${auth.currentUser.email || 'Não disponível'}</p>` : ''}
+                 ${(state.userName && state.userName !== auth.currentUser.email) ? `<p class="text-sm text-gray-500">${escapeHTML(auth.currentUser.email)}</p>` : ''}
                  
                  <p class="text-xs text-indigo-600 font-semibold mt-2">VER MEU PERFIL / MEUS BLOQUEIOS</p>
             </div>

@@ -8,55 +8,66 @@ import { authenticatedFetch } from './apiService.js';
 
 /**
  * Busca todos os indicadores financeiros e de agendamentos.
+ * Aceita filtros de data, profissional e centro de custo.
  */
 export const getAdvancedIndicators = (startDate, endDate, professionalId = 'all', costCenterId = 'all') => {
-    const params = { startDate, endDate };
-    if (professionalId && professionalId !== 'all') params.professionalId = professionalId;
-    if (costCenterId && costCenterId !== 'all') params.costCenterId = costCenterId;
+    const params = new URLSearchParams({ startDate, endDate });
     
-    const queryParams = new URLSearchParams(params).toString();
-    return authenticatedFetch(`/api/reports/indicators?${queryParams}`);
+    if (professionalId && professionalId !== 'all') params.append('professionalId', professionalId);
+    if (costCenterId && costCenterId !== 'all') params.append('costCenterId', costCenterId);
+    
+    return authenticatedFetch(`/api/reports/indicators?${params.toString()}`);
 };
 
 /**
- * Busca lista detalhada de agendamentos do dia.
+ * Busca lista detalhada de agendamentos do dia (Drill-down do gráfico).
  */
 export const getDailyAppointments = (date, professionalId = 'all') => {
-    const params = { date };
-    if (professionalId && professionalId !== 'all') params.professionalId = professionalId;
-    const queryParams = new URLSearchParams(params).toString();
-    return authenticatedFetch(`/api/reports/appointments/list?${queryParams}`);
+    const params = new URLSearchParams({ date });
+    if (professionalId && professionalId !== 'all') params.append('professionalId', professionalId);
+    
+    return authenticatedFetch(`/api/reports/appointments/list?${params.toString()}`);
 };
 
 /**
- * Busca Centros de Custo (usando a rota do módulo financeiro)
+ * Busca Centros de Custo (usando a rota do módulo financeiro para popular o filtro).
+ * CORREÇÃO: Recebe establishmentId para evitar erro 404
  */
-export const getCostCenters = () => {
-    return authenticatedFetch('/api/financial/cost-centers');
+export const getCostCenters = (establishmentId) => {
+    if (!establishmentId) return Promise.resolve([]); // Retorna array vazio se não houver ID (fallback)
+    return authenticatedFetch(`/api/financial/cost-centers/${establishmentId}`);
 };
 
 // ============================================================================
-// 📦 FUNÇÕES ORIGINAIS (RESTAURADAS PARA COMPATIBILIDADE)
+// 📦 FUNÇÕES ORIGINAIS (MANTIDAS PARA COMPATIBILIDADE)
 // ============================================================================
 
 /**
- * Busca os dados de analytics (KPIs e gráfico) para o painel de relatórios (dashboard).
- * (Mantido para compatibilidade, embora o ideal seja migrar para getAdvancedIndicators)
+ * Busca os dados de analytics (KPIs e gráfico) - Legado.
  */
 export const getAnalytics = (establishmentId, startDate, endDate) => {
-    return authenticatedFetch(`/api/analytics/${establishmentId}?startDate=${startDate}&endDate=${endDate}`);
+    const params = new URLSearchParams({ startDate, endDate });
+    return authenticatedFetch(`/api/analytics/${establishmentId}?${params.toString()}`);
 };
 
 /**
- * Busca o relatório de vendas detalhado com base nos filtros.
- * CRUCIAL PARA A TELA DE VENDAS ANTIGA (salesReport.js)
+ * Busca o relatório de vendas detalhado.
+ * Usado na tela de Relatório de Vendas antiga.
  */
 export const getSalesReport = ({ establishmentId, startDate, endDate, cashierSessionId }) => {
-    let endpoint = `/api/reports/sales/${establishmentId}?startDate=${startDate}&endDate=${endDate}`;
+    const params = new URLSearchParams({ startDate, endDate });
+    
     if (cashierSessionId && cashierSessionId !== 'all') {
-        endpoint += `&cashierSessionId=${cashierSessionId}`;
+        params.append('cashierSessionId', cashierSessionId);
     }
-    return authenticatedFetch(endpoint);
+    
+    // Passa o ID na query string ou na rota, dependendo de como o seu backend espera.
+    // Assumindo rota REST padrão com query params:
+    if (establishmentId) {
+        params.append('establishmentId', establishmentId);
+    }
+
+    return authenticatedFetch(`/api/reports/sales?${params.toString()}`);
 };
 
 /**
@@ -91,6 +102,7 @@ export const getCommissionReport = (establishmentId, year, month, professionalId
 
 /**
  * Busca os KPIs resumidos (Sidebar/Home).
+ * CORREÇÃO: Função necessária para o main.js
  */
 export const getSummaryKPIs = () => {
     return authenticatedFetch('/api/reports/summary', {

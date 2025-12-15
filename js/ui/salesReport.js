@@ -1,10 +1,11 @@
-// js/ui/salesReport.js (Versão Mobile Adaptativa)
+// js/ui/salesReport.js (Versão Mobile Adaptativa e Blindada)
 
 // --- 1. IMPORTAÇÕES ---
 import * as reportsApi from '../api/reports.js';
 import * as cashierApi from '../api/cashier.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -18,6 +19,10 @@ function destroyAllCharts() {
 }
 
 function exportReportToPDF(title, tableId) {
+    if (!window.jspdf) {
+        showNotification('Erro', 'Biblioteca PDF não carregada.', 'error');
+        return;
+    }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: 'a4' });
     const summaryElement = document.getElementById('salesReportSummaryCards');
@@ -44,7 +49,6 @@ function exportReportToPDF(title, tableId) {
     const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 20 : 60;
     doc.text('Detalhes das Vendas', 20, finalY);
     
-    // Nota: O PDF continua usando a tabela como referência, o que é correto para impressão
     doc.autoTable({
         html: `#${tableId}`,
         startY: finalY + 10,
@@ -58,9 +62,15 @@ function exportReportToPDF(title, tableId) {
 // Função para abrir o modal de detalhes da venda
 function openSaleDetailModal(transaction) {
     const modal = document.getElementById('genericModal');
+    
+    // BLINDAGEM XSS
+    const safeClient = escapeHTML(transaction.client);
+    const safeItems = escapeHTML(transaction.items);
+    const safeCashier = escapeHTML(transaction.responsavelCaixa || 'N/A');
+
     const paymentMethodsHTML = (transaction.payments || []).map(p => `
         <div class="flex justify-between text-sm">
-            <span>${p.method.charAt(0).toUpperCase() + p.method.slice(1)}</span>
+            <span>${escapeHTML(p.method.charAt(0).toUpperCase() + p.method.slice(1))}</span>
             <span class="font-medium">R$ ${p.value.toFixed(2)}</span>
         </div>
     `).join('');
@@ -77,15 +87,15 @@ function openSaleDetailModal(transaction) {
             <div class="mt-6 space-y-4">
                 <div class="bg-gray-50 p-3 rounded-lg">
                     <p class="text-sm font-medium text-gray-600">Cliente</p>
-                    <p class="font-semibold text-gray-800">${transaction.client}</p>
+                    <p class="font-semibold text-gray-800">${safeClient}</p>
                 </div>
                  <div class="bg-gray-50 p-3 rounded-lg">
                     <p class="text-sm font-medium text-gray-600">Itens</p>
-                    <p class="font-semibold text-gray-800">${transaction.items}</p>
+                    <p class="font-semibold text-gray-800">${safeItems}</p>
                 </div>
                 <div class="bg-gray-50 p-3 rounded-lg">
                     <p class="text-sm font-medium text-gray-600">Responsável pelo Caixa</p>
-                    <p class="font-semibold text-gray-800">${transaction.responsavelCaixa || 'N/A'}</p>
+                    <p class="font-semibold text-gray-800">${safeCashier}</p>
                 </div>
                  <div class="border-t pt-4 mt-4">
                      <h3 class="font-semibold mb-2">Pagamento</h3>
@@ -119,7 +129,7 @@ function renderReportData(data) {
 
     paymentSummaryBody.innerHTML = sortedPayments.map(([method, total]) => `
         <tr class="border-b">
-            <td class="py-2 px-4 font-medium">${method.charAt(0).toUpperCase() + method.slice(1)}</td>
+            <td class="py-2 px-4 font-medium">${escapeHTML(method.charAt(0).toUpperCase() + method.slice(1))}</td>
             <td class="py-2 px-4 text-right font-semibold">R$ ${total.toFixed(2)}</td>
         </tr>
     `).join('');
@@ -136,15 +146,21 @@ function renderReportData(data) {
     }
 
     // A) Preenche a Tabela (Desktop)
-    transactionsTableBody.innerHTML = transactions.map((t, index) => `
+    transactionsTableBody.innerHTML = transactions.map((t, index) => {
+        // BLINDAGEM XSS
+        const safeClient = escapeHTML(t.client);
+        const safeItems = escapeHTML(t.items);
+        const safeType = escapeHTML(t.type);
+
+        return `
         <tr class="border-b hover:bg-gray-50 cursor-pointer" data-transaction-index="${index}">
             <td class="w-24 py-3 px-4">${new Date(t.date).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
-            <td class="w-40 py-3 px-4 truncate max-w-[150px]">${t.client}</td>
-            <td class="w-auto py-3 px-4 truncate max-w-[200px]">${t.items}</td>
-            <td class="w-16 py-3 px-4 text-center text-xs">${t.type}</td>
+            <td class="w-40 py-3 px-4 truncate max-w-[150px]">${safeClient}</td>
+            <td class="w-auto py-3 px-4 truncate max-w-[200px]">${safeItems}</td>
+            <td class="w-16 py-3 px-4 text-center text-xs">${safeType}</td>
             <td class="w-24 py-3 px-4 text-right font-medium">R$ ${t.total.toFixed(2)}</td>
         </tr>
-    `).join('');
+    `}).join('');
 
     // Listener Duplo Clique (Desktop)
     transactionsTableBody.querySelectorAll('tr').forEach(row => {
@@ -155,25 +171,31 @@ function renderReportData(data) {
         });
     });
 
-    // B) Preenche a Lista de Cards (Mobile) - NOVO
-    mobileList.innerHTML = transactions.map((t, index) => `
+    // B) Preenche a Lista de Cards (Mobile)
+    mobileList.innerHTML = transactions.map((t, index) => {
+        // BLINDAGEM XSS
+        const safeClient = escapeHTML(t.client);
+        const safeItems = escapeHTML(t.items);
+        const safeType = escapeHTML(t.type);
+
+        return `
         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 active:bg-gray-50 cursor-pointer transition-colors" data-transaction-index="${index}">
             <div class="flex justify-between items-start mb-2">
                 <div class="flex flex-col">
                     <span class="text-xs text-gray-500 font-medium">${new Date(t.date).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                    <span class="font-bold text-gray-800 text-lg">${t.client}</span>
+                    <span class="font-bold text-gray-800 text-lg">${safeClient}</span>
                 </div>
                 <div class="text-right">
                     <span class="block font-bold text-green-600 text-lg">R$ ${t.total.toFixed(2)}</span>
-                    <span class="inline-block px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 border border-gray-200">${t.type}</span>
+                    <span class="inline-block px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 border border-gray-200">${safeType}</span>
                 </div>
             </div>
             <div class="mt-2 pt-2 border-t border-dashed border-gray-200">
-                <p class="text-sm text-gray-600 line-clamp-2">${t.items}</p>
+                <p class="text-sm text-gray-600 line-clamp-2">${safeItems}</p>
             </div>
             <p class="text-xs text-blue-500 mt-2 text-center font-medium">Toque para ver detalhes</p>
         </div>
-    `).join('');
+    `}).join('');
 
     // Listener de Clique Simples (Mobile)
     mobileList.querySelectorAll('div[data-transaction-index]').forEach(card => {
@@ -203,7 +225,12 @@ async function handleGenerateReport() {
 
     try {
         const cashierSessionId = document.getElementById('cashierSessionFilter').value;
-        const data = await reportsApi.getSalesReport({ establishmentId: state.establishmentId, startDate, endDate, cashierSessionId });
+        const data = await reportsApi.getSalesReport({ 
+            establishmentId: state.establishmentId, // GARANTIA DE MULTITENANT
+            startDate, 
+            endDate, 
+            cashierSessionId 
+        });
         currentReportData = data;
 
         // Renderiza a estrutura do relatório
@@ -254,7 +281,7 @@ async function handleGenerateReport() {
         renderReportData(data);
     } catch(error) {
         showNotification('Erro', `Não foi possível carregar o relatório: ${error.message}`, 'error');
-        mainReportsView.innerHTML = `<p class="p-8 text-center text-red-500">${error.message}</p>`;
+        mainReportsView.innerHTML = `<p class="p-8 text-center text-red-500">${escapeHTML(error.message)}</p>`;
     }
 }
 
@@ -314,14 +341,16 @@ export async function loadSalesReportPage() {
     });
 
     try {
-        const sessions = await cashierApi.getCashierHistory();
+        const sessions = await cashierApi.getCashierHistory(state.establishmentId); // GARANTIA DE MULTITENANT NA API
         const sessionFilter = document.getElementById('cashierSessionFilter');
         
-        sessions.forEach(session => {
-            const openTime = new Date(session.openTime).toLocaleString('pt-BR', { dateStyle: 'short' });
-            const closedByName = session.closedByName || 'N/A';
-            sessionFilter.innerHTML += `<option value="${session.id}">${closedByName} - ${openTime}</option>`;
-        });
+        if (sessions && sessions.length > 0) {
+            sessions.forEach(session => {
+                const openTime = new Date(session.openTime).toLocaleString('pt-BR', { dateStyle: 'short' });
+                const closedByName = escapeHTML(session.closedByName || 'N/A');
+                sessionFilter.innerHTML += `<option value="${session.id}">${closedByName} - ${openTime}</option>`;
+            });
+        }
     } catch (error) {
         showNotification('Erro', 'Não foi possível carregar o histórico de caixas para o filtro.', 'error');
     }

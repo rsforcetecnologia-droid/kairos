@@ -17,9 +17,16 @@ const PURCHASES_COLLECTION = 'purchases';
 
 // --- FORNECEDORES ---
 
-export const getAll = async () => {
+// ALTERADO: Agora recebe establishmentId para filtrar
+export const getAll = async (establishmentId) => {
     try {
-        const querySnapshot = await getDocs(collection(db, COLLECTION_NAME));
+        // Cria a query filtrando pelo establishmentId
+        const q = query(
+            collection(db, COLLECTION_NAME),
+            where("establishmentId", "==", establishmentId)
+        );
+
+        const querySnapshot = await getDocs(q);
         const suppliers = [];
         querySnapshot.forEach((doc) => {
             suppliers.push({ id: doc.id, ...doc.data() });
@@ -31,7 +38,6 @@ export const getAll = async () => {
     }
 };
 
-// CORREÇÃO AQUI: Mudámos de "create" para "createSupplier"
 export const createSupplier = async (data) => {
     try {
         const docRef = await addDoc(collection(db, COLLECTION_NAME), data);
@@ -42,7 +48,6 @@ export const createSupplier = async (data) => {
     }
 };
 
-// CORREÇÃO AQUI: Mudámos de "update" para "updateSupplier"
 export const updateSupplier = async (id, data) => {
     try {
         const docRef = doc(db, COLLECTION_NAME, id);
@@ -84,10 +89,10 @@ export const registerPurchase = async (purchaseData) => {
 
 export const getPurchaseHistory = async (establishmentId) => {
     try {
-        // Filtra por estabelecimento e ordena por data (mais recente primeiro)
+        // ALTERADO: Filtro por estabelecimento ativado
         const q = query(
             collection(db, PURCHASES_COLLECTION), 
-            // where("establishmentId", "==", establishmentId), // Descomenta se quiseres filtrar por estabelecimento no futuro
+            where("establishmentId", "==", establishmentId), 
             orderBy("createdAt", "desc")
         );
         

@@ -1,4 +1,4 @@
-// js/ui/professionals.js (Versão Completa e Atualizada)
+// js/ui/professionals.js (Versão Completa e Blindada)
 
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
@@ -6,6 +6,7 @@ import * as servicesApi from '../api/services.js';
 import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -42,6 +43,10 @@ function renderProfessionalsListHTML(professionals) {
 
     return professionals.map(prof => {
         const isInactive = prof.status === 'inactive';
+        // BLINDAGEM XSS
+        const safeName = escapeHTML(prof.name);
+        const safeSpecialty = escapeHTML(prof.specialty || 'Especialidade');
+        
         const photoSrc = prof.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
         const profDataString = JSON.stringify(prof).replace(/'/g, "&apos;");
 
@@ -50,14 +55,14 @@ function renderProfessionalsListHTML(professionals) {
                         sm:flex-col sm:items-stretch sm:p-0 sm:gap-0 ${isInactive ? 'opacity-50 bg-gray-100' : ''}" 
                  data-action="open-professional-modal" data-professional='${profDataString}'>
                 
-                <img src="${photoSrc}" alt="Foto de ${prof.name}" class="w-16 h-16 rounded-full object-cover flex-shrink-0
+                <img src="${photoSrc}" alt="Foto de ${safeName}" class="w-16 h-16 rounded-full object-cover flex-shrink-0
                             sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg">
                 
                 <div class="flex-1 sm:p-4">
                     <div class="flex justify-between items-start">
                         <div>
-                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base">${prof.name}</h3>
-                            <p class="text-xs text-gray-500 text-left sm:text-sm">${prof.specialty || 'Especialidade'}</p>
+                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base">${safeName}</h3>
+                            <p class="text-xs text-gray-500 text-left sm:text-sm">${safeSpecialty}</p>
                         </div>
                         <span class="text-xs font-semibold py-1 px-2 rounded-full hidden sm:inline-block ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
                             ${isInactive ? 'Inativo' : 'Ativo'}
@@ -88,13 +93,16 @@ async function openProfessionalModal(professional) {
     const modal = document.getElementById('genericModal');
     const prof = professional.id ? professional : { name: 'Novo Profissional', specialty: '', status: 'active', workingHours: {}, services: [] };
     
+    // BLINDAGEM XSS
+    const safeTitle = escapeHTML(prof.name);
+
     const services = state.services || await servicesApi.getServices(state.establishmentId);
     const professionals = state.professionals || await professionalsApi.getProfessionals(state.establishmentId);
 
     const modalHTML = `
         <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> 
             <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
-                <h2 class="text-2xl font-bold text-gray-800">${prof.name}</h2>
+                <h2 class="text-2xl font-bold text-gray-800">${safeTitle}</h2>
                 <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
             </div>
             <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto">
@@ -150,6 +158,12 @@ function fillCadastroTab(prof, services) {
     
     const currentStatus = prof.status || 'active';
 
+    // BLINDAGEM XSS: Escapar valores para o atributo value="" e textarea
+    const safeName = escapeHTML(prof.name || '');
+    const safeSpecialty = escapeHTML(prof.specialty || '');
+    const safePhone = escapeHTML(prof.phone || '');
+    const safeNotes = escapeHTML(prof.notes || '');
+
     form.innerHTML = `
         <input type="hidden" id="professionalId" value="${prof.id || ''}">
         <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
@@ -175,9 +189,9 @@ function fillCadastroTab(prof, services) {
 
             <div class="md:col-span-2 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${prof.name || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${prof.specialty || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${prof.phone || ''}" class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${safeName}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${safeSpecialty}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${safePhone}" class="mt-1 w-full p-2 border rounded-md"></div>
                     <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="mt-1 w-full p-2 border rounded-md"></div>
                     <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Selecione...</option>${monthOptions}</select></div>
                     <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="mt-1 w-full p-2 border rounded-md"></div>
@@ -189,8 +203,8 @@ function fillCadastroTab(prof, services) {
             </div>
         </div>
 
-        <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${s.name}</span></label>`).join('')}</div></div>
-        <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${prof.notes || ''}</textarea></div>`;
+        <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${escapeHTML(s.name)}</span></label>`).join('')}</div></div>
+        <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${safeNotes}</textarea></div>`;
 
     const photoInput = document.getElementById('profPhotoInput');
     const photoButton = document.getElementById('profPhotoButton');
@@ -277,7 +291,7 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 <form id="batchBlockageForm" class="p-4 bg-white rounded-lg shadow-inner space-y-3 mb-4">
                     <h4 class="font-semibold text-gray-800">Selecione os Profissionais</h4>
                     <div id="batchProfSelectionContainer" class="max-h-32 overflow-y-auto p-2 border rounded-md space-y-2">
-                        ${allProfessionals.map(p => `<label class="flex items-center"><input type="checkbox" name="batch-professionals" value="${p.id}" class="rounded mr-2" ${p.id === prof.id ? 'checked' : ''}><span>${p.name}</span></label>`).join('')}
+                        ${allProfessionals.map(p => `<label class="flex items-center"><input type="checkbox" name="batch-professionals" value="${p.id}" class="rounded mr-2" ${p.id === prof.id ? 'checked' : ''}><span>${escapeHTML(p.name)}</span></label>`).join('')}
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div><label for="batchBlockageStartDate" class="text-sm">Data Início</label><input type="date" id="batchBlockageStartDate" required class="w-full p-2 border rounded-md"></div>
@@ -293,7 +307,7 @@ async function fillBloqueiosTab(prof, allProfessionals) {
             </div>
             <div>
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold">Bloqueios de ${prof.name}</h3>
+                    <h3 class="text-xl font-semibold">Bloqueios de ${escapeHTML(prof.name)}</h3>
                     <select id="prof-blockages-filter" class="p-1 border rounded text-sm bg-white">
                         <option value="future">Futuros</option>
                         <option value="history">Histórico</option>
@@ -437,7 +451,7 @@ async function fetchAndRenderBlockages(professionalId, mode = 'future') {
         listDiv.innerHTML = Object.entries(groupedByReason).map(([reason, group]) => `
             <div class="bg-gray-100 rounded-lg p-3 my-2 space-y-2">
                 <div class="flex justify-between items-center pb-2 border-b">
-                    <h4 class="font-bold text-gray-700">${reason} (${group.length})</h4>
+                    <h4 class="font-bold text-gray-700">${escapeHTML(reason)} (${group.length})</h4>
                     ${group.length > 1 ? `<button data-action="batch-delete-blockage" data-ids='${JSON.stringify(group.map(b => b.id))}' class="text-xs text-red-600 font-semibold hover:underline">Apagar Todos (${group.length})</button>` : ''}
                 </div>
                 ${group.map(b => `
@@ -538,7 +552,8 @@ function setupModalEventListeners(professional) {
                     showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
                     orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
                     notes: form.querySelector('#profNotes').value,
-                    status: form.querySelector('#profStatus').value
+                    status: form.querySelector('#profStatus').value,
+                    establishmentId: state.establishmentId // CORREÇÃO DE SEGURANÇA: VINCULAÇÃO FORÇADA
                 };
 
                 saveButton.disabled = true;
@@ -736,6 +751,7 @@ export async function loadProfessionalsPage() {
     filterAndRenderProfessionals(); 
     
     try {
+        // CORREÇÃO: Usando establishmentId ao carregar dados
         const [professionals, services] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
             servicesApi.getServices(state.establishmentId)

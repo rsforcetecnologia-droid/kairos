@@ -7,9 +7,10 @@ import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import * as categoriesApi from '../api/categories.js'; 
 import { navigateTo } from '../main.js';
-// --- NOVAS IMPORTAÇÕES PARA AUDITORIA ---
+// --- IMPORTAÇÕES PARA AUDITORIA E SEGURANÇA ---
 import { logAction } from '../api/audit.js';
 import { auth } from '../firebase-config.js';
+import { escapeHTML } from '../utils.js'; // <--- IMPORTAÇÃO DA FUNÇÃO DE SEGURANÇA
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -75,9 +76,10 @@ async function fetchAndDisplayCategoriesInModal() {
         state.serviceCategories = categories; 
         listDiv.innerHTML = '';
         if (categories.length > 0) {
+            // BLINDAGEM XSS: escapeHTML no nome da categoria
             listDiv.innerHTML = categories.map(cat => `
                 <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
-                    <span>${cat.name}</span>
+                    <span>${escapeHTML(cat.name)}</span>
                     <button data-action="delete-category" data-id="${cat.id}" class="text-red-500 hover:text-red-700 font-semibold text-sm">Apagar</button>
                 </div>`).join('');
         } else {
@@ -227,8 +229,13 @@ function openServiceModal(service = null) {
     const durationInMinutes = service?.duration || 0; 
     const bufferTimeInMinutes = service?.bufferTime || 0; 
     
+    // BLINDAGEM XSS
+    const safeName = escapeHTML(service?.name || '');
+    const safeNotes = escapeHTML(service?.notes || '');
+    const safeTitle = service ? safeName : 'Novo Serviço';
+
     const categoryOptions = categories.map(c => 
-        `<option value="${c.id}" ${service?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
+        `<option value="${c.id}" ${service?.categoryId === c.id ? 'selected' : ''}>${escapeHTML(c.name)}</option>`
     ).join('');
 
     modal.innerHTML = `
@@ -238,7 +245,7 @@ function openServiceModal(service = null) {
             <input type="hidden" id="servicePhotoBase64" value="${service?.photo || ''}">
             
             <div class="flex justify-between items-center mb-4">
-                <h2 id="serviceModalTitle" class="text-2xl font-bold text-gray-800">${service ? service.name : 'Novo Serviço'}</h2>
+                <h2 id="serviceModalTitle" class="text-2xl font-bold text-gray-800">${safeTitle}</h2>
                 <button type="button" data-action="close-modal" data-target="serviceModal" class="text-2xl font-bold">&times;</button>
             </div>
 
@@ -262,7 +269,7 @@ function openServiceModal(service = null) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="serviceName" class="block text-sm font-medium text-gray-700">Nome do serviço</label>
-                        <input type="text" id="serviceName" value="${service?.name || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                        <input type="text" id="serviceName" value="${safeName}" class="mt-1 w-full p-2 border rounded-md" required>
                     </div>
                     <div>
                         <label for="servicePrice" class="block text-sm font-medium text-gray-700">Preço (a partir de:)</label>
@@ -289,7 +296,7 @@ function openServiceModal(service = null) {
                 </div>
                 <div>
                     <label for="serviceNotes" class="block text-sm font-medium text-gray-700">Observações</label>
-                    <textarea id="serviceNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${service?.notes || ''}</textarea>
+                    <textarea id="serviceNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${safeNotes}</textarea>
                 </div>
                 <div>
                     <label for="serviceStatus" class="block text-sm font-medium text-gray-700">Status</label>
@@ -393,10 +400,6 @@ function openServiceModal(service = null) {
         }
     });
 
-    // ... (restante do código igual, apenas a lógica de auditoria foi injetada acima) ...
-    // Para poupar espaço, o restante do código abaixo é o mesmo que já tinhas, apenas colei a parte modificada acima.
-    // Mas para garantir que tens o arquivo COMPLETO, vou incluir tudo.
-
     const tabs = modal.querySelectorAll('.tab-btn');
     const tabContents = modal.querySelectorAll('.tab-content');
     tabs.forEach(tab => {
@@ -429,12 +432,13 @@ function openServiceModal(service = null) {
         profListContainer.innerHTML = (state.professionals || []).map(prof => {
             const isChecked = service?.professionalCommissions?.[prof.id] !== undefined;
             const rate = service?.professionalCommissions?.[prof.id] || 0;
+            // BLINDAGEM XSS no nome do profissional
             return `
                 <div class="professional-commission-row flex items-center justify-between p-2 rounded-md ${isChecked ? 'bg-blue-50' : ''}" data-prof-id="${prof.id}">
                     <label class="flex items-center gap-2 cursor-pointer">
                         <input type="checkbox" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <img src="${prof.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${prof.name.charAt(0)}`}" class="w-8 h-8 rounded-full object-cover">
-                        <span class="text-sm font-medium">${prof.name}</span>
+                        <img src="${prof.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${escapeHTML(prof.name.charAt(0))}`}" class="w-8 h-8 rounded-full object-cover">
+                        <span class="text-sm font-medium">${escapeHTML(prof.name)}</span>
                     </label>
                     <div class="flex items-center gap-1">
                         <input type="number" value="${rate}" class="w-20 p-1 border rounded-md text-sm text-center" ${!isChecked ? 'disabled' : ''}>
@@ -523,15 +527,17 @@ function renderServicesList() {
             card.dataset.action = 'edit-service'; 
             card.dataset.service = serviceDataString; 
 
+            // BLINDAGEM XSS
+            const safeServiceName = escapeHTML(service.name);
+            const safeCategoryName = escapeHTML(categoryMap.get(service.categoryId) || 'N/A');
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
-            const categoryName = categoryMap.get(service.categoryId) || 'N/A';
 
             card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${service.name}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
+                <img src="${photoSrc}" alt="Imagem de ${safeServiceName}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
                 
                 <div class="p-3 flex flex-col flex-grow justify-between w-full">
                     <div class="flex justify-between items-start mb-1">
-                        <h3 class="text-sm font-bold text-gray-900 flex-1 text-left truncate pr-2">${service.name}</h3>
+                        <h3 class="text-sm font-bold text-gray-900 flex-1 text-left truncate pr-2">${safeServiceName}</h3>
                         <label class="flex items-center cursor-pointer ml-2" data-action-stop-propagation="true">
                             <div class="relative">
                                 <input type="checkbox" data-action="toggle-service-status" data-id="${service.id}" class="sr-only" ${service.active !== false ? 'checked' : ''}>
@@ -544,7 +550,7 @@ function renderServicesList() {
 
                     <div>
                         <div class="hidden sm:block">
-                            <p class="text-xs text-gray-500 text-left mb-1 truncate">Categoria: ${categoryName}</p>
+                            <p class="text-xs text-gray-500 text-left mb-1 truncate">Categoria: ${safeCategoryName}</p>
                             <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
                         </div>
                         <div class="flex justify-between items-center sm:hidden mt-2">
@@ -585,7 +591,7 @@ function renderServiceIndicators() {
     
     if (popularEl) {
         if (state.mostPopularService && state.mostPopularService.name !== 'N/A') {
-            popularEl.textContent = state.mostPopularService.name;
+            popularEl.textContent = escapeHTML(state.mostPopularService.name); // BLINDAGEM
             popularEl.closest('.indicator-card').title = `${state.mostPopularService.name} (${state.mostPopularService.count} agendamentos)`;
         } else {
             popularEl.textContent = 'N/A';
@@ -635,7 +641,8 @@ function renderServicesView() {
     const categoryFilter = document.getElementById('serviceCategoryFilter');
     if (categoryFilter) {
         categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
-        (state.serviceCategories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${cat.name}</option>`);
+        // BLINDAGEM XSS
+        (state.serviceCategories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${escapeHTML(cat.name)}</option>`);
     }
 
     renderServiceIndicators();

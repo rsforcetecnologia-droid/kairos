@@ -1,4 +1,4 @@
-// js/ui/products.js (Versão Completa com Preço de Custo Médio e Aba Fornecedores)
+// js/ui/products.js
 
 // --- 1. IMPORTAÇÕES ---
 import * as productsApi from '../api/products.js';
@@ -6,6 +6,7 @@ import * as categoriesApi from '../api/categories.js';
 import * as suppliersApi from '../api/suppliers.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -57,7 +58,7 @@ async function fetchAndDisplayCategoriesInModal() {
         if (categories.length > 0) {
             listDiv.innerHTML = categories.map(cat => `
                 <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
-                    <span>${cat.name}</span>
+                    <span>${escapeHTML(cat.name)}</span>
                     <button data-action="delete-category" data-id="${cat.id}" class="text-red-500 hover:text-red-700 font-semibold text-sm">Apagar</button>
                 </div>`).join('');
         } else {
@@ -211,12 +212,23 @@ function openProductModal(product = null) {
     // Garante que a lista de fornecedores existe
     const allSuppliers = state.suppliers || []; 
     
+    // Escapar nomes de categoria
     const categoryOptions = categories.map(c => 
-        `<option value="${c.id}" ${product?.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
+        `<option value="${c.id}" ${product?.categoryId === c.id ? 'selected' : ''}>${escapeHTML(c.name)}</option>`
     ).join('');
 
     // Set temporário para gerir a seleção visual
     let tempSelectedIds = new Set(product?.supplierIds || []);
+
+    // --- BLINDAGEM XSS NO MODAL ---
+    const safeName = escapeHTML(product?.name || '');
+    const safePrice = product?.price || '';
+    const safeCost = product?.costPrice || '';
+    const safeComm = product?.commissionRate || '';
+    const safeMin = product?.minStock || 0;
+    const safeMax = product?.maxStock || 0;
+    const safeCurrent = product?.currentStock || 0;
+    const title = product ? safeName : 'Novo Produto';
 
     modal.innerHTML = `
     <div class="modal-content max-w-3xl overflow-y-auto max-h-[90vh]">
@@ -225,7 +237,7 @@ function openProductModal(product = null) {
             <input type="hidden" id="productPhotoBase64" value="${product?.photo || ''}">
             
             <div class="flex justify-between items-center mb-4">
-                <h2 id="productModalTitle" class="text-2xl font-bold text-gray-800">${product ? product.name : 'Novo Produto'}</h2>
+                <h2 id="productModalTitle" class="text-2xl font-bold text-gray-800">${title}</h2>
                 <button type="button" data-action="close-modal" data-target="productModal" class="text-2xl font-bold">&times;</button>
             </div>
 
@@ -244,26 +256,26 @@ function openProductModal(product = null) {
                             <div class="form-group"><label>Imagem do Produto</label><div class="mt-1 flex flex-col items-center"><img id="productPhotoPreview" src="${product?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto'}" alt="Foto do Produto" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50"><input type="file" id="productPhotoInput" class="hidden" accept="image/*"><button type="button" id="productPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button></div></div>
                         </div>
                         <div class="md:col-span-2"><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-                            <div class="form-group sm:col-span-2"><label for="productName">Nome do Produto</label><input type="text" id="productName" value="${product?.name || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                            <div class="form-group sm:col-span-2"><label for="productName">Nome do Produto</label><input type="text" id="productName" value="${safeName}" required class="mt-1 w-full p-2 border rounded-md"></div>
                             
                             <div class="form-group sm:col-span-2"><label for="productCategory">Categoria</label><select id="productCategory" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Sem categoria</option>${categoryOptions}</select></div>
                             
-                            <div class="form-group"><label for="productPrice">Preço Venda (R$)</label><input type="number" id="productPrice" step="0.01" value="${product?.price || ''}" required class="mt-1 w-full p-2 border rounded-md"></div>
+                            <div class="form-group"><label for="productPrice">Preço Venda (R$)</label><input type="number" id="productPrice" step="0.01" value="${safePrice}" required class="mt-1 w-full p-2 border rounded-md"></div>
                             
-                            <div class="form-group"><label for="productCostPrice">Preço de Custo Médio (R$)</label><input type="number" id="productCostPrice" step="0.01" value="${product?.costPrice || ''}" class="mt-1 w-full p-2 border rounded-md" placeholder="0.00"></div>
+                            <div class="form-group"><label for="productCostPrice">Preço de Custo Médio (R$)</label><input type="number" id="productCostPrice" step="0.01" value="${safeCost}" class="mt-1 w-full p-2 border rounded-md" placeholder="0.00"></div>
                             
-                            <div class="form-group"><label for="productCommissionRate">Comissão (%)</label><input type="number" id="productCommissionRate" placeholder="Ex: 10" value="${product?.commissionRate || ''}" class="mt-1 w-full p-2 border rounded-md"></div>
+                            <div class="form-group"><label for="productCommissionRate">Comissão (%)</label><input type="number" id="productCommissionRate" placeholder="Ex: 10" value="${safeComm}" class="mt-1 w-full p-2 border rounded-md"></div>
                         </div></div>
                     </div>
                     <div class="mt-6 pt-6 border-t"><h3 class="text-lg font-semibold text-gray-700 text-left mb-4">Controlo de Stock (Definições)</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                        <div class="form-group"><label for="productCurrentStock">Atual</label><input type="number" id="productCurrentStock" value="${product?.currentStock || 0}" readonly class="mt-1 w-full p-2 border rounded-md bg-gray-100"></div>
-                        <div class="form-group"><label for="productMinStock">Mínimo (Alerta)</label><input type="number" id="productMinStock" value="${product?.minStock || 0}" class="mt-1 w-full p-2 border rounded-md"></div>
-                        <div class="form-group"><label for="productMaxStock">Máximo</label><input type="number" id="productMaxStock" value="${product?.maxStock || 0}" class="mt-1 w-full p-2 border rounded-md"></div>
+                        <div class="form-group"><label for="productCurrentStock">Atual</label><input type="number" id="productCurrentStock" value="${safeCurrent}" readonly class="mt-1 w-full p-2 border rounded-md bg-gray-100"></div>
+                        <div class="form-group"><label for="productMinStock">Mínimo (Alerta)</label><input type="number" id="productMinStock" value="${safeMin}" class="mt-1 w-full p-2 border rounded-md"></div>
+                        <div class="form-group"><label for="productMaxStock">Máximo</label><input type="number" id="productMaxStock" value="${safeMax}" class="mt-1 w-full p-2 border rounded-md"></div>
                     </div></div>
                 </div>
 
                 <div id="tab-content-stock" class="tab-content hidden space-y-6">
-                    <p class="text-sm text-gray-600">Use esta secção para registar entradas (compras) ou saídas (perdas) manuais. O estoque atual é <strong id="currentStockDisplay" class="text-lg">${product?.currentStock || 0}</strong>.</p>
+                    <p class="text-sm text-gray-600">Use esta secção para registar entradas (compras) ou saídas (perdas) manuais. O estoque atual é <strong id="currentStockDisplay" class="text-lg">${safeCurrent}</strong>.</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                         <div class="form-group">
                             <label for="stockAdjustmentAmount">Quantidade</label>
@@ -334,7 +346,7 @@ function openProductModal(product = null) {
     const photoInput = modal.querySelector('#productPhotoInput');
     modal.querySelector('#productPhotoButton').addEventListener('click', () => photoInput.click());
 
-    categorySelect.innerHTML = '<option value="">Sem categoria</option>' + (state.categories || []).map(cat => `<option value="${cat.id}" ${product?.categoryId === cat.id ? 'selected' : ''}>${cat.name}</option>`).join('');
+    categorySelect.innerHTML = '<option value="">Sem categoria</option>' + (state.categories || []).map(cat => `<option value="${cat.id}" ${product?.categoryId === cat.id ? 'selected' : ''}>${escapeHTML(cat.name)}</option>`).join('');
     if(product) categorySelect.value = product.categoryId || '';
 
     const photoPreview = modal.querySelector('#productPhotoPreview');
@@ -385,7 +397,7 @@ function openProductModal(product = null) {
                 searchResultsDiv.classList.remove('hidden');
                 searchResultsDiv.innerHTML = results.map(s => `
                     <div class="p-2 hover:bg-indigo-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" data-add-supplier="${s.id}">
-                        <span class="font-medium">${s.name}</span>
+                        <span class="font-medium">${escapeHTML(s.name)}</span>
                         <span class="text-indigo-600 text-xs">+ Adicionar</span>
                     </div>
                 `).join('');
@@ -406,8 +418,8 @@ function openProductModal(product = null) {
                     selectedListDiv.innerHTML += `
                         <div class="selected-supplier-item flex items-center justify-between bg-white border p-2 rounded shadow-sm" data-id="${sup.id}">
                             <div class="text-sm">
-                                <p class="font-bold text-gray-800">${sup.name}</p>
-                                <p class="text-xs text-gray-500">${sup.contactName || ''} - ${sup.phone || ''}</p>
+                                <p class="font-bold text-gray-800">${escapeHTML(sup.name)}</p>
+                                <p class="text-xs text-gray-500">${escapeHTML(sup.contactName || '')} - ${escapeHTML(sup.phone || '')}</p>
                             </div>
                             <button type="button" class="text-red-500 hover:text-red-700 p-1" data-remove-supplier="${sup.id}" title="Remover">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -610,7 +622,7 @@ function renderProductsView() {
     const categoryFilter = document.getElementById('productCategoryFilter');
     if (categoryFilter) {
         categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
-        (state.categories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${cat.name}</option>`);
+        (state.categories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${escapeHTML(cat.name)}</option>`);
     }
     renderStockIndicators();
     renderProductsList();
@@ -642,10 +654,11 @@ function renderStockReportView() {
 
     const productFilter = document.getElementById('productFilterReport');
     const categoryFilter = document.getElementById('categoryFilterReport');
-    if (productFilter && state.products) productFilter.innerHTML += state.products.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    if (categoryFilter && state.categories) categoryFilter.innerHTML += state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (productFilter && state.products) productFilter.innerHTML += state.products.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+    if (categoryFilter && state.categories) categoryFilter.innerHTML += state.categories.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
 }
 
+// CORREÇÃO APLICADA: establishmentId adicionado aos filtros
 async function generateStockReport() {
     const resultsContainer = document.getElementById('report-results');
     resultsContainer.innerHTML = '<div class="loader mx-auto my-8"></div>';
@@ -655,6 +668,7 @@ async function generateStockReport() {
         endDate: document.getElementById('reportEndDate').value,
         productId: document.getElementById('productFilterReport').value,
         categoryId: document.getElementById('categoryFilterReport').value,
+        establishmentId: state.establishmentId // CORREÇÃO: Garante que o relatório é filtrado pelo estabelecimento
     };
 
     try {
@@ -683,14 +697,14 @@ async function generateStockReport() {
                         ${reportData.map(item => `
                             <tr class="hover:bg-gray-50">
                                 <td class="px-4 py-3 whitespace-nowrap text-gray-600">${new Date(item.date).toLocaleString('pt-BR')}</td>
-                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-gray-800">${item.productName}</td>
+                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-gray-800">${escapeHTML(item.productName)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-center font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">
                                     ${item.change > 0 ? '+' : ''}${item.change}
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap text-center text-gray-500">${item.oldStock}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-center text-gray-800 font-medium">${item.newStock}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-gray-600 truncate max-w-xs" title="${item.reason}">${item.reason}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-gray-600">${item.user}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-gray-600 truncate max-w-xs" title="${escapeHTML(item.reason)}">${escapeHTML(item.reason)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-gray-600">${escapeHTML(item.user)}</td>
                             </tr>`).join('')}
                     </tbody>
                 </table>
@@ -703,7 +717,7 @@ async function generateStockReport() {
                         <div class="flex justify-between items-start mb-2">
                             <div>
                                 <span class="text-xs text-gray-400 font-medium">${new Date(item.date).toLocaleString('pt-BR')}</span>
-                                <h4 class="font-bold text-gray-800 text-base line-clamp-1">${item.productName}</h4>
+                                <h4 class="font-bold text-gray-800 text-base line-clamp-1">${escapeHTML(item.productName)}</h4>
                             </div>
                             <span class="text-lg font-bold ${item.change > 0 ? 'text-green-600' : 'text-red-600'}">
                                 ${item.change > 0 ? '+' : ''}${item.change}
@@ -720,11 +734,11 @@ async function generateStockReport() {
                         </div>
 
                         <div class="flex justify-between items-center text-xs border-t pt-2 border-dashed border-gray-200">
-                            <span class="text-gray-600 truncate max-w-[60%] font-medium" title="${item.reason}">
-                                ${item.reason || 'Sem motivo'}
+                            <span class="text-gray-600 truncate max-w-[60%] font-medium" title="${escapeHTML(item.reason)}">
+                                ${escapeHTML(item.reason) || 'Sem motivo'}
                             </span>
                             <span class="text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                                ${item.user || 'Sistema'}
+                                ${escapeHTML(item.user) || 'Sistema'}
                             </span>
                         </div>
                     </div>
@@ -832,18 +846,18 @@ function renderProductsList() {
             }
 
             card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${product.name}" class="w-16 h-16 rounded-md object-cover flex-shrink-0 sm:w-full sm:h-24 sm:rounded-b-none">
+                <img src="${photoSrc}" alt="Imagem de ${escapeHTML(product.name)}" class="w-16 h-16 rounded-md object-cover flex-shrink-0 sm:w-full sm:h-24 sm:rounded-b-none">
                 
                 <div class="flex-1 sm:p-3 sm:flex sm:flex-col sm:flex-grow">
                     <div class="sm:flex-grow">
                         <div class="flex justify-between items-start mb-1 gap-2">
-                            <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${product.name}</h3>
+                            <h3 class="text-sm font-bold text-gray-900 flex-1 text-left">${escapeHTML(product.name)}</h3>
                             <div class="hidden sm:block">${stockStatusHtml}</div>
                         </div>
                         
                         <p class="text-xl font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${product.price.toFixed(2)}</p>
                         
-                        <p class="text-xs text-gray-500 text-left mb-2 hidden sm:block">Categoria: ${categoryName}</p>
+                        <p class="text-xs text-gray-500 text-left mb-2 hidden sm:block">Categoria: ${escapeHTML(categoryName)}</p>
                     </div>
 
                     <div class="flex justify-between items-center mt-2 sm:mt-0">
@@ -872,7 +886,7 @@ async function fetchBaseData() {
         const [products, categories, suppliers] = await Promise.all([
             productsApi.getProducts(state.establishmentId),
             categoriesApi.getCategories(state.establishmentId, 'products'),
-            suppliersApi.getAll()
+            suppliersApi.getAll(state.establishmentId) // Corrigido para passar o ID
         ]);
         
         state.products = (products || []).filter(Boolean); 

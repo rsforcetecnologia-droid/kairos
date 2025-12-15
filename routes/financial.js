@@ -42,7 +42,8 @@ const createHierarchicalEntry = (collectionName) => async (req, res) => {
 };
 
 const getHierarchicalEntries = (collectionName) => async (req, res) => {
-    const { establishmentId } = req.user;
+    // Mantém a segurança pegando o ID do token, mas a rota agora aceita o parâmetro na URL
+    const { establishmentId } = req.user; 
     try {
         const snapshot = await req.db.collection(collectionName)
             .where('establishmentId', '==', establishmentId)
@@ -72,13 +73,14 @@ const deleteHierarchicalEntry = (collectionName) => async (req, res) => {
 };
 
 
-// --- ROTAS ESPECÍFICAS (MANTIDAS) ---
+// --- ROTAS ESPECÍFICAS (AJUSTADAS PARA ACEITAR ID NA URL) ---
+// O frontend envia /natures/ID, então precisamos declarar :establishmentId
 router.post('/natures', createHierarchicalEntry('financial_natures'));
-router.get('/natures', getHierarchicalEntries('financial_natures'));
+router.get('/natures/:establishmentId', getHierarchicalEntries('financial_natures')); // <--- AJUSTADO
 router.delete('/natures/:id', deleteHierarchicalEntry('financial_natures'));
 
 router.post('/cost-centers', createHierarchicalEntry('financial_cost_centers'));
-router.get('/cost-centers', getHierarchicalEntries('financial_cost_centers'));
+router.get('/cost-centers/:establishmentId', getHierarchicalEntries('financial_cost_centers')); // <--- AJUSTADO
 router.delete('/cost-centers/:id', deleteHierarchicalEntry('financial_cost_centers'));
 
 
@@ -393,7 +395,7 @@ router.get('/cash-flow', async (req, res) => {
 
 
 // ROTA PARA O RESUMO DO DIA
-router.get('/today-summary', async (req, res) => {
+router.get('/today-summary/:establishmentId', async (req, res) => { // <--- AJUSTADO
     const { establishmentId } = req.user;
     const { db } = req;
     const today = new Date().toISOString().split('T')[0];

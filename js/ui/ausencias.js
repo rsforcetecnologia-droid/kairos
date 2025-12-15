@@ -6,6 +6,7 @@ import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -31,16 +32,15 @@ async function fetchAndDisplayBlockages(professionalId) {
         const filterReason = document.getElementById('filterReason')?.value.toLowerCase();
         const filteredBlockages = filterReason ? blockages.filter(b => b.reason && b.reason.toLowerCase().includes(filterReason)) : blockages;
 
-    // Agrupa os bloqueios por motivo
-    const groupedByReason = filteredBlockages.reduce((acc, b) => {
-        const reason = b.reason || 'Sem motivo';
-        if (!acc[reason]) {
-            acc[reason] = [];
-        }
-        acc[reason].push(b);
-        return acc;
-    }, {});
-
+        // Agrupa os bloqueios por motivo
+        const groupedByReason = filteredBlockages.reduce((acc, b) => {
+            const reason = b.reason || 'Sem motivo';
+            if (!acc[reason]) {
+                acc[reason] = [];
+            }
+            acc[reason].push(b);
+            return acc;
+        }, {});
 
         blockagesListDiv.innerHTML = '';
         if (filteredBlockages.length === 0) {
@@ -52,8 +52,11 @@ async function fetchAndDisplayBlockages(professionalId) {
             const groupDiv = document.createElement('div');
             groupDiv.className = 'bg-gray-100 rounded-lg p-3 my-2 space-y-2';
             
+            // BLINDAGEM XSS: escapeHTML no reason
+            const safeReason = escapeHTML(reason);
+
             let headerHTML = `<div class="flex justify-between items-center pb-2 border-b border-gray-200">
-                                <h4 class="font-bold text-gray-700">${reason} (${group.length})</h4>`;
+                                <h4 class="font-bold text-gray-700">${safeReason} (${group.length})</h4>`;
             
             if (group.length > 1) {
                 const ids = JSON.stringify(group.map(b => b.id));
@@ -223,6 +226,9 @@ export async function loadAusenciasPage(params) {
         return;
     }
 
+    // BLINDAGEM XSS
+    const safeProfName = escapeHTML(professionalName);
+
     contentDiv.innerHTML = `
         <section>
             <div class="flex items-center mb-6">
@@ -234,7 +240,7 @@ export async function loadAusenciasPage(params) {
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div class="space-y-8">
                     <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-xl font-semibold mb-4 border-b pb-2">Bloqueio para <span class="text-indigo-600">${professionalName}</span></h3>
+                        <h3 class="text-xl font-semibold mb-4 border-b pb-2">Bloqueio para <span class="text-indigo-600">${safeProfName}</span></h3>
                         <form id="blockageForm" class="space-y-4">
                             <input type="hidden" id="blockageProfId" value="${professionalId}">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -271,7 +277,7 @@ export async function loadAusenciasPage(params) {
                 </div>
                 <div>
                     <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-xl font-semibold mb-4 border-b pb-2">Bloqueios de ${professionalName}</h3>
+                        <h3 class="text-xl font-semibold mb-4 border-b pb-2">Bloqueios de ${safeProfName}</h3>
                         <div id="blockage-filters" class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                             <div><label for="filterStartDate" class="block text-sm font-medium text-gray-700">De</label><input type="date" id="filterStartDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
                             <div><label for="filterEndDate" class="block text-sm font-medium text-gray-700">Até</label><input type="date" id="filterEndDate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"></div>
@@ -293,7 +299,7 @@ export async function loadAusenciasPage(params) {
         batchProfContainer.innerHTML = allProfessionals.map(prof => `
             <div class="flex items-center">
                 <input id="prof-batch-${prof.id}" value="${prof.id}" name="batch-professionals" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                <label for="prof-batch-${prof.id}" class="ml-2 text-sm text-gray-700">${prof.name}</label>
+                <label for="prof-batch-${prof.id}" class="ml-2 text-sm text-gray-700">${escapeHTML(prof.name)}</label>
             </div>`).join('');
     } catch (error) {
         batchProfContainer.innerHTML = '<p class="text-red-500">Erro ao carregar profissionais.</p>';

@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda)
+// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda + Blindagem XSS)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -10,10 +10,10 @@ import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
-// API_BASE_URL removida pois agora usamos o appointmentsApi que gerencia a URL base
 let currentTimeInterval = null;
 let hasContentDelegationInitialized = false; 
 
@@ -103,6 +103,9 @@ function renderProfessionalSelector() {
         const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
         const isActive = prof.status !== 'inactive';
         
+        // BLINDAGEM XSS
+        const safeName = escapeHTML(profName);
+        
         const defaultColor = colorPalette[0];
         const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
         
@@ -121,9 +124,9 @@ function renderProfessionalSelector() {
                     ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
                            ${initials}
                           </div>`
-                    : `<img src="${photoSrc}" alt="${prof.name}" class="prof-card-photo" style="${borderStyle}" />`
+                    : `<img src="${photoSrc}" alt="${safeName}" class="prof-card-photo" style="${borderStyle}" />`
                 }
-                <span class="prof-card-name">${profName}</span>
+                <span class="prof-card-name">${safeName}</span>
             </div>
         `;
     }).join('');
@@ -154,6 +157,12 @@ function renderListView(allEvents) {
         const endTimeStr = endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
         
+        // BLINDAGEM XSS
+        const safeReason = escapeHTML(event.reason);
+        const safeProfName = escapeHTML(event.professionalName);
+        const safeClientName = escapeHTML(event.clientName);
+        const safeServiceName = escapeHTML(event.serviceName);
+
         if (event.type === 'blockage') {
             return `
                 <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
@@ -162,8 +171,8 @@ function renderListView(allEvents) {
                         <p class="text-xs text-gray-500">${endTimeStr}</p>
                     </div>
                     <div class="details-info min-w-0">
-                        <p class="font-bold text-red-800 truncate">${event.reason}</p>
-                        <p class="text-sm text-gray-600 truncate">com ${event.professionalName}</p>
+                        <p class="font-bold text-red-800 truncate">${safeReason}</p>
+                        <p class="text-sm text-gray-600 truncate">com ${safeProfName}</p>
                     </div>
                     <div class="status-info">
                         <span class="status-badge bg-red-100 text-red-800">Bloqueio</span>
@@ -190,9 +199,9 @@ function renderListView(allEvents) {
                 </div>
 
                 <div class="details-info min-w-0" data-action="open-comanda">
-                    <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
-                    <p class="text-sm text-gray-600 truncate">${event.serviceName}</p>
-                    <p class="text-xs text-gray-500 truncate">com ${event.professionalName || 'Indefinido'}</p>
+                    <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
+                    <p class="text-sm text-gray-600 truncate">${safeServiceName}</p>
+                    <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
                     
                     ${isRedeemed ? '<p class="text-xs font-semibold text-purple-600">Resgate de Prémio</p>' : ''}
                 </div>
@@ -249,13 +258,19 @@ function renderWeekView(allEvents) {
                 const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
                 const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
                 
+                // BLINDAGEM XSS
+                const safeReason = escapeHTML(event.reason);
+                const safeProfName = escapeHTML(event.professionalName);
+                const safeClientName = escapeHTML(event.clientName);
+                const safeServiceName = escapeHTML(event.serviceName);
+
                 if (event.type === 'blockage') {
                     return `
                         <div class="p-2 rounded-lg border-l-4 flex flex-col bg-red-100" style="border-left-color: ${profColor.border};">
                             <span class="font-bold text-xs text-red-900">${startTimeStr}</span>
                             <div class="mt-1 min-w-0">
-                                <p class="font-semibold text-sm text-red-800 truncate">${event.reason}</p>
-                                <p class="text-xs text-red-600 truncate">com ${event.professionalName}</p>
+                                <p class="font-semibold text-sm text-red-800 truncate">${safeReason}</p>
+                                <p class="text-xs text-red-600 truncate">com ${safeProfName}</p>
                             </div>
                         </div>
                     `;
@@ -277,9 +292,9 @@ function renderWeekView(allEvents) {
                         </div>
 
                         <div class="mt-1 min-w-0">
-                            <p class="font-semibold text-sm text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${event.clientName}</p>
-                            <p class="text-xs text-gray-600 truncate">${event.serviceName}</p>
-                            <p class="text-xs text-gray-500 truncate">com ${event.professionalName || 'Indefinido'}</p>
+                            <p class="font-semibold text-sm text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
+                            <p class="text-xs text-gray-600 truncate">${safeServiceName}</p>
+                            <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
                             ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate</p>' : ''}
                         </div>
                         
@@ -603,15 +618,18 @@ function renderLoyaltyRewards() {
     if (availableRewards.length > 0) {
         rewardsHTML += '<div class="space-y-2">';
         rewardsHTML += availableRewards.map(reward => {
-            const isChecked = redeemedReward?.reward === reward.reward; 
+            const isChecked = redeemedReward?.reward === reward.reward;
+            // BLINDAGEM XSS
+            const safeReward = escapeHTML(reward.reward);
+
             return `
                 <label class="flex items-center p-3 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
                     <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600" 
-                           value="${reward.reward}" 
+                           value="${safeReward}" 
                            data-points="${reward.points}"
                            ${isChecked ? 'checked' : ''}>
                     <span class="ml-3">
-                        <span class="font-semibold text-gray-800">${reward.reward}</span>
+                        <span class="font-semibold text-gray-800">${safeReward}</span>
                         <span class="text-sm text-gray-600"> (-${reward.points} pontos)</span>
                     </span>
                 </label>
@@ -705,17 +723,20 @@ async function handleAppointmentFormSubmit(e) {
 
 function renderClientCard(client) {
     const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
-    
+    // BLINDAGEM XSS
+    const safeName = escapeHTML(client.name);
+    const safePhone = escapeHTML(client.phone);
+
     return `
         <div class="client-search-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-blue-50 ${isSelected ? 'selected border-blue-500' : ''}" 
              data-action="select-client" 
-             data-client-name="${client.name}" 
-             data-client-phone="${client.phone}">
+             data-client-name="${safeName}" 
+             data-client-phone="${safePhone}">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${client.name.charAt(0).toUpperCase()}</div>
+                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${safeName.charAt(0).toUpperCase()}</div>
                 <div>
-                    <p class="font-semibold text-gray-800">${client.name}</p>
-                    <p class="text-sm text-gray-500">${client.phone}</p>
+                    <p class="font-semibold text-gray-800">${safeName}</p>
+                    <p class="text-sm text-gray-500">${safePhone}</p>
                 </div>
             </div>
         </div>
@@ -867,11 +888,11 @@ function renderStep1_Client(appointment, isNavigating) {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="apptClientName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
-                    <input type="text" id="apptClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Nome Completo" value="${newAppointmentState.data.clientName}">
+                    <input type="text" id="apptClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Nome Completo" value="${escapeHTML(newAppointmentState.data.clientName)}">
                 </div>
                 <div>
                     <label for="apptClientPhone" class="block text-sm font-medium text-gray-700">Telemóvel</label>
-                    <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${newAppointmentState.data.clientPhone}">
+                    <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${escapeHTML(newAppointmentState.data.clientPhone)}">
                 </div>
             </div>
              <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
@@ -926,13 +947,14 @@ function renderStep2_Service() {
                  ${availableServicesForModal.map(service => {
                      const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
                      const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-                     
+                     const safeName = escapeHTML(service.name);
+
                      return `
                          <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
                              <div class="flex items-center">
                                  <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
                                  <div class="flex-1">
-                                     <p class="font-semibold text-sm text-gray-800">${service.name}</p>
+                                     <p class="font-semibold text-sm text-gray-800">${safeName}</p>
                                      <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
                                  </div>
                              </div>
@@ -964,12 +986,13 @@ function renderStep3_Professional() {
                  ${availableProfessionalsForModal.map(prof => {
                      const isChecked = newAppointmentState.data.professionalId === prof.id;
                      const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
+                     const safeName = escapeHTML(prof.name);
                      
                      return `
                          <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
                              <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                             <p class="text-xs font-semibold text-gray-800">${prof.name.split(' ')[0]}</p>
-                             <p class="text-[10px] text-gray-500">${prof.specialty || 'Profissional'}</p>
+                             <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
+                             <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
                          </div>`;
                  }).join('')}
              </div>
@@ -992,15 +1015,19 @@ function renderStep4_Schedule(appointment) {
     const today = new Date();
     const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const initialDate = newAppointmentState.data.date || todayString;
+    
+    // BLINDAGEM XSS
+    const safeClientName = escapeHTML(newAppointmentState.data.clientName);
+    const safeProfName = escapeHTML(newAppointmentState.data.professionalName);
 
     const formContent = `
         <div class="p-5 space-y-6">
             <h3 class="text-xl font-bold text-gray-800">4. ${title}</h3>
 
             <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 space-y-1">
-                <p class="font-bold text-gray-800">${newAppointmentState.data.clientName}</p>
+                <p class="font-bold text-gray-800">${safeClientName}</p>
                 <p class="text-sm text-gray-700">Serviços: ${newAppointmentState.data.selectedServiceIds.length} selecionado(s)</p>
-                <p class="text-sm text-gray-700">Profissional: ${newAppointmentState.data.professionalName}</p>
+                <p class="text-sm text-gray-700">Profissional: ${safeProfName}</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
@@ -1047,7 +1074,7 @@ function handleServiceSearchInModal(searchTerm) {
                 <div class="flex items-center">
                     <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
                     <div class="flex-1">
-                        <p class="font-semibold text-sm text-gray-800">${service.name}</p>
+                        <p class="font-semibold text-sm text-gray-800">${escapeHTML(service.name)}</p>
                         <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
                     </div>
                 </div>
@@ -1068,12 +1095,13 @@ function handleProfessionalSearchInModal(searchTerm) {
     container.innerHTML = filtered.map(prof => {
         const isChecked = newAppointmentState.data.professionalId === prof.id;
         const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
+        const safeName = escapeHTML(prof.name);
         
         return `
              <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
                  <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                 <p class="text-xs font-semibold text-gray-800">${prof.name.split(' ')[0]}</p>
-                 <p class="text-[10px] text-gray-500">${prof.specialty || 'Profissional'}</p>
+                 <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
+                 <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
              </div>`;
     }).join('');
 

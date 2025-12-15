@@ -1,15 +1,16 @@
-// js/ui/reports.js
+// js/ui/reports.js (Versão Completa, Otimizada e Blindada)
 
 // --- 1. IMPORTAÇÕES ---
 import * as reportsApi from '../api/reports.js';
 import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showGenericModal, showNotification } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
 
 const contentDiv = document.getElementById('content');
-let chartsInstances = {}; // Cache dos gráficos
+let chartsInstances = {}; // Cache dos gráficos para evitar sobreposição
 
-// Paleta de cores consistente
+// Paleta de cores consistente para os gráficos
 const chartColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 // --- 2. ESTADO LOCAL ---
@@ -18,16 +19,16 @@ const localState = {
     startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // Início do Ano atual
     endDate: new Date().toISOString().split('T')[0], // Hoje
     selectedProfessional: 'all',
-    selectedCostCenter: 'all', // Novo filtro
+    selectedCostCenter: 'all',
     
-    // Dados de Dependências
+    // Dados de Dependências (para os selects)
     professionalsList: [],
     costCentersList: [],
 
-    // Dados Carregados
-    data: null, // Dados completos retornados pela API /indicators
+    // Dados Carregados (Cache da API)
+    data: null, 
 
-    // Controle de Navegação (Views)
+    // Controle de Navegação (Abas)
     currentTab: 'dashboards', // 'dashboards', 'appointments', 'dre'
     
     // Estado Específico de Agendamentos (Drill-down)
@@ -37,6 +38,7 @@ const localState = {
 
 // --- 3. CARREGAMENTO DE RECURSOS ---
 
+// Carrega a biblioteca Chart.js dinamicamente se ainda não estiver carregada
 async function loadChartJs() {
     if (window.Chart) return;
     return new Promise((resolve, reject) => {
@@ -48,30 +50,33 @@ async function loadChartJs() {
     });
 }
 
-// --- 4. PONTO DE ENTRADA ---
+// --- 4. PONTO DE ENTRADA (INIT) ---
 export async function loadReportsPage() {
-    contentDiv.innerHTML = `<div class="flex flex-col items-center justify-center h-64"><div class="loader mb-4"></div><p class="text-gray-500">Carregando inteligência de dados...</p></div>`;
+    // Loader inicial
+    contentDiv.innerHTML = `<div class="flex flex-col items-center justify-center h-64"><div class="loader mb-4"></div><p class="text-gray-500">A carregar inteligência de dados...</p></div>`;
     
     try {
         await loadChartJs();
         
-        // Carrega dependências em paralelo
+        // Carrega dependências (Profissionais e Centros de Custo) em paralelo
+        // O establishmentId é passado automaticamente pelas funções da API importadas
         const [profs, costs] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
-            reportsApi.getCostCenters().catch(() => []) // Fallback se módulo financeiro não estiver ativo
+            reportsApi.getCostCenters().catch(() => []) // Fallback caso módulo financeiro esteja inativo
         ]);
         
-        localState.professionalsList = profs;
-        localState.costCentersList = costs;
+        localState.professionalsList = profs || [];
+        localState.costCentersList = costs || [];
 
         renderLayout();
         await fetchAndRenderData();
     } catch (e) {
+        console.error("Erro no loadReportsPage:", e);
         contentDiv.innerHTML = `
             <div class="flex flex-col items-center justify-center h-full text-red-500">
                 <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <p>Erro ao carregar relatórios: ${e.message}</p>
-                <button onclick="window.location.reload()" class="mt-4 px-4 py-2 bg-gray-200 rounded text-gray-700">Tentar Novamente</button>
+                <p>Erro ao carregar relatórios: ${escapeHTML(e.message)}</p>
+                <button onclick="window.location.reload()" class="mt-4 px-4 py-2 bg-gray-200 rounded text-gray-700 hover:bg-gray-300">Tentar Novamente</button>
             </div>`;
     }
 }
@@ -79,8 +84,9 @@ export async function loadReportsPage() {
 // --- 5. RENDERIZAÇÃO E LAYOUT ---
 
 function renderLayout() {
-    const profOptions = localState.professionalsList.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    const costOptions = localState.costCentersList.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    // Gera as opções dos selects com segurança XSS
+    const profOptions = localState.professionalsList.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+    const costOptions = localState.costCentersList.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
 
     contentDiv.innerHTML = `
         <div class="flex flex-col min-h-screen bg-gray-50 pb-20">
@@ -102,13 +108,19 @@ function renderLayout() {
 
                     <div class="flex flex-col md:flex-row gap-2 w-full xl:w-auto">
                         <div class="grid grid-cols-2 gap-2">
-                            <select id="report-prof" class="border rounded-lg px-2 py-2 text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full"><option value="all">Todos Profissionais</option>${profOptions}</select>
-                            <select id="report-cost" class="border rounded-lg px-2 py-2 text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full"><option value="all">Todos Centros</option>${costOptions}</select>
+                            <select id="report-prof" class="border rounded-lg px-2 py-2 text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full">
+                                <option value="all">Todos Profissionais</option>
+                                ${profOptions}
+                            </select>
+                            <select id="report-cost" class="border rounded-lg px-2 py-2 text-sm bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full">
+                                <option value="all">Todos Centros</option>
+                                ${costOptions}
+                            </select>
                         </div>
                         <div class="flex gap-2">
                             <input type="date" id="report-start" value="${localState.startDate}" class="border rounded-lg px-2 py-2 text-sm w-full">
                             <input type="date" id="report-end" value="${localState.endDate}" class="border rounded-lg px-2 py-2 text-sm w-full">
-                            <button id="btn-filter" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition">
+                            <button id="btn-filter" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 shadow-sm transition flex items-center justify-center">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                             </button>
                         </div>
@@ -131,7 +143,7 @@ function renderLayout() {
         };
     });
 
-    updateTabsUI(); // Define estado inicial dos botões
+    updateTabsUI(); 
 }
 
 function updateTabsUI() {
@@ -151,7 +163,7 @@ async function applyFilters() {
     localState.selectedProfessional = document.getElementById('report-prof').value;
     localState.selectedCostCenter = document.getElementById('report-cost').value;
     
-    // Reseta visualizações de drill-down
+    // Reseta visualizações de drill-down ao filtrar
     localState.apptViewMode = 'year';
     localState.apptSelectedMonth = null;
 
@@ -176,15 +188,15 @@ async function fetchAndRenderData() {
         container.innerHTML = `
             <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded text-red-700 text-center">
                 <p class="font-bold">Erro ao carregar dados</p>
-                <p class="text-sm">${error.message || 'Verifique sua conexão.'}</p>
+                <p class="text-sm">${escapeHTML(error.message || 'Verifique sua conexão.')}</p>
             </div>`;
     }
 }
 
 function renderCurrentView() {
     const container = document.getElementById('report-content');
+    if (!localState.data) return; // Segurança
     
-    // Roteamento de Views
     switch(localState.currentTab) {
         case 'dashboards':
             renderFinancialDashboards(container);
@@ -209,7 +221,6 @@ function renderFinancialDashboards(container) {
 
     container.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-fade-in">
-            
             <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-indigo-500">
                 <p class="text-xs text-gray-500 font-bold uppercase">Faturamento</p>
                 <p class="text-xl xl:text-2xl font-extrabold text-gray-800 mt-1">R$ ${dre.grossRevenue.toFixed(2)}</p>
@@ -261,13 +272,21 @@ function renderFinancialDashboards(container) {
         </div>
     `;
 
+    // Renderiza os gráficos com proteção XSS nos labels
     renderChart('chart-monthly', 'bar', 'Receita Mensal', charts.salesMonthly.labels, charts.salesMonthly.data, chartColors[0]);
-    renderChart('chart-profs', 'doughnut', 'Total Vendas', charts.professionals.labels, charts.professionals.data, chartColors);
+    
+    // Blindagem XSS para labels de profissionais
+    const safeProfLabels = charts.professionals.labels.map(l => escapeHTML(l));
+    renderChart('chart-profs', 'doughnut', 'Total Vendas', safeProfLabels, charts.professionals.data, chartColors);
+    
     renderChart('chart-daily', 'line', 'Vendas Diárias', charts.salesDaily.labels, charts.salesDaily.data, chartColors[4]);
-    renderChart('chart-products', 'bar', 'Total Vendido', charts.products.labels, charts.products.data, chartColors[1]);
+    
+    // Blindagem XSS para labels de produtos
+    const safeProductLabels = charts.products.labels.map(l => escapeHTML(l));
+    renderChart('chart-products', 'bar', 'Total Vendido', safeProductLabels, charts.products.data, chartColors[1]);
 }
 
-// --- 8. ABA AGENDAMENTOS (CORRIGIDA) ---
+// --- 8. ABA AGENDAMENTOS ---
 
 function renderAppointmentsDashboard(container) {
     const { charts } = localState.data;
@@ -276,12 +295,14 @@ function renderAppointmentsDashboard(container) {
     let subtext = `Clique na barra do Mês para detalhar os dias`;
 
     if (localState.apptViewMode === 'month') {
+        // Blindagem XSS no nome do mês selecionado
+        const safeMonth = escapeHTML(localState.apptSelectedMonth);
         headerHtml = `
             <div class="flex items-center gap-4">
                 <button id="btn-back-year" class="text-indigo-600 hover:text-indigo-800 flex items-center text-sm font-bold bg-indigo-50 px-3 py-1 rounded transition hover:bg-indigo-100">
                     ← Voltar
                 </button>
-                <h3 class="font-bold text-gray-700 text-lg">Detalhes de ${localState.apptSelectedMonth}</h3>
+                <h3 class="font-bold text-gray-700 text-lg">Detalhes de ${safeMonth}</h3>
             </div>`;
         subtext = `Clique na barra do Dia para ver a lista de clientes`;
     }
@@ -315,7 +336,6 @@ function renderAppointmentsDashboard(container) {
         </div>
     `;
     
-    // Configura o botão de voltar ANTES de renderizar o gráfico
     const backBtn = document.getElementById('btn-back-year');
     if (backBtn) {
         backBtn.onclick = () => {
@@ -325,7 +345,6 @@ function renderAppointmentsDashboard(container) {
         };
     }
 
-    // Tenta renderizar o gráfico com proteção contra erros
     try {
         renderInteractiveApptChart();
     } catch (e) {
@@ -341,12 +360,10 @@ function renderInteractiveApptChart() {
     let labels, dataValues;
 
     if (localState.apptViewMode === 'year') {
-        // Visão Geral (Meses)
         labels = charts.appointmentsMonthly.labels;
         dataValues = charts.appointmentsMonthly.data;
     } else {
-        // CORREÇÃO ROBUSTA: Extração de mês e ano usando Regex
-        // Captura: (letras ou pontos para o mês) + (separador qualquer) + (2 ou 4 dígitos para o ano)
+        // Lógica de extração de mês/ano segura com Regex
         const parts = localState.apptSelectedMonth.match(/([a-zç\.]+)(?:[\/\s\-]*)(\d{2,4})/i);
         
         if (!parts) {
@@ -354,7 +371,6 @@ function renderInteractiveApptChart() {
             return;
         }
 
-        // Limpa o mês (remove pontos)
         const cleanMStr = parts[1].toLowerCase().replace(/\./g, '').trim();
         const yStr = parts[2];
         const fullYear = yStr.length === 2 ? '20' + yStr : yStr;
@@ -366,12 +382,11 @@ function renderInteractiveApptChart() {
             'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
         };
         
-        const mNum = monthMap[cleanMStr] || '01'; // Fallback seguro
+        const mNum = monthMap[cleanMStr] || '01';
         const targetSuffix = `/${mNum}/${fullYear}`;
 
         const filteredEntries = Object.entries(charts.appointmentsDaily.data).map(([k, v], i) => {
             const dateKey = charts.appointmentsDaily.labels[i];
-            // Verifica se a data (ex: 05/10/2023) contém o sufixo (ex: /10/2023)
             if (dateKey.includes(targetSuffix)) return { label: dateKey, value: v };
             return null;
         }).filter(Boolean);
@@ -427,7 +442,6 @@ function handleApptChartClick(label) {
 }
 
 async function openDayDetailsModal(dateStr) {
-    // Parser seguro da data DD/MM/YYYY
     const [d, m, y] = dateStr.split('/');
     const apiDate = `${y}-${m}-${d}`;
 
@@ -438,13 +452,14 @@ async function openDayDetailsModal(dateStr) {
     });
 
     try {
+        // Chama API para detalhes
         const list = await reportsApi.getDailyAppointments(apiDate, localState.selectedProfessional);
         
         let html = '';
         if (list.length === 0) {
             html = '<div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">Nenhum agendamento encontrado para este dia.</div>';
         } else {
-            // CORREÇÃO: Tabela com coluna Profissional
+            // Tabela com Blindagem XSS
             html = `
                 <div class="overflow-hidden border rounded-lg max-h-[60vh] overflow-y-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -460,10 +475,10 @@ async function openDayDetailsModal(dateStr) {
                         <tbody class="bg-white divide-y divide-gray-200 text-sm">
                             ${list.map(appt => `
                                 <tr class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-gray-900">${appt.time || '--:--'}</td>
-                                    <td class="px-4 py-3 text-indigo-700 font-medium">${appt.professionalName || 'N/A'}</td>
-                                    <td class="px-4 py-3 text-gray-700">${appt.clientName || 'Cliente'}</td>
-                                    <td class="px-4 py-3 text-gray-500">${appt.serviceName || 'Serviço'}</td>
+                                    <td class="px-4 py-3 font-bold text-gray-900">${escapeHTML(appt.time || '--:--')}</td>
+                                    <td class="px-4 py-3 text-indigo-700 font-medium">${escapeHTML(appt.professionalName || 'N/A')}</td>
+                                    <td class="px-4 py-3 text-gray-700">${escapeHTML(appt.clientName || 'Cliente')}</td>
+                                    <td class="px-4 py-3 text-gray-500">${escapeHTML(appt.serviceName || 'Serviço')}</td>
                                     <td class="px-4 py-3">
                                         <span class="px-2 py-1 rounded-full text-xs font-bold ${
                                             appt.status === 'completed' ? 'bg-green-100 text-green-800' : 
@@ -483,6 +498,7 @@ async function openDayDetailsModal(dateStr) {
         const modalBody = document.querySelector('.modal-content-body');
         if(modalBody) {
              modalBody.innerHTML = html;
+             // Blindagem no título do modal
              document.querySelector('.modal-title').innerText = `Agendamentos de ${dateStr}`;
         } else {
              document.getElementById('genericModal').style.display = 'none';
@@ -504,19 +520,19 @@ async function openDayDetailsModal(dateStr) {
 function renderDRE(container) {
     const { dreFinancial } = localState.data;
 
-    // Linhas de Receita (Agrupadas)
+    // Linhas de Receita (Agrupadas e Blindadas)
     const revRows = Object.entries(dreFinancial.revenues).map(([nature, val]) => `
         <tr class="text-sm text-gray-600 bg-green-50/30 hover:bg-green-50 transition-colors">
-            <td class="pl-8 py-2 border-l-4 border-transparent hover:border-green-400">${nature}</td>
+            <td class="pl-8 py-2 border-l-4 border-transparent hover:border-green-400">${escapeHTML(nature)}</td>
             <td class="text-right pr-6 py-2 text-green-700 font-medium">R$ ${val.toFixed(2)}</td>
             <td class="text-right pr-4 text-xs text-gray-400">${dreFinancial.totalRevenues > 0 ? ((val/dreFinancial.totalRevenues)*100).toFixed(1) : 0}%</td>
         </tr>
     `).join('');
 
-    // Linhas de Despesa (Agrupadas)
+    // Linhas de Despesa (Agrupadas e Blindadas)
     const expRows = Object.entries(dreFinancial.expenses).map(([nature, val]) => `
         <tr class="text-sm text-gray-600 bg-red-50/30 hover:bg-red-50 transition-colors">
-            <td class="pl-8 py-2 border-l-4 border-transparent hover:border-red-400">${nature}</td>
+            <td class="pl-8 py-2 border-l-4 border-transparent hover:border-red-400">${escapeHTML(nature)}</td>
             <td class="text-right pr-6 py-2 text-red-600 font-medium">- R$ ${val.toFixed(2)}</td>
             <td class="text-right pr-4 text-xs text-gray-400">${dreFinancial.totalRevenues > 0 ? ((val/dreFinancial.totalRevenues)*100).toFixed(1) : 0}%</td>
         </tr>
