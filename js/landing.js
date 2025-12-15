@@ -1,31 +1,39 @@
 document.addEventListener("DOMContentLoaded", () => {
     
-    // --- 1. MENU MOBILE (Mantido) ---
-    const menuBtn = document.querySelector('.mobile-menu-btn');
-    const navLinks = document.querySelector('.nav-links');
-    const links = document.querySelectorAll('.nav-links a');
+    // =========================================
+    // 1. ACTIVE STATE NA BARRA INFERIOR (SCROLL SPY)
+    // =========================================
+    const navItems = document.querySelectorAll('.bottom-nav .nav-item');
+    const sections = document.querySelectorAll('section, header');
 
-    if (menuBtn && navLinks) {
-        menuBtn.addEventListener('click', () => {
-            navLinks.classList.toggle('active');
-            const icon = menuBtn.querySelector('i');
-            if (navLinks.classList.contains('active')) {
-                icon.classList.replace('ph-list', 'ph-x');
-            } else {
-                icon.classList.replace('ph-x', 'ph-list');
-            }
-        });
+    function changeActiveNav() {
+        let index = sections.length;
 
-        links.forEach(link => {
-            link.addEventListener('click', () => {
-                navLinks.classList.remove('active');
-                const icon = menuBtn.querySelector('i');
-                if(icon) icon.classList.replace('ph-x', 'ph-list');
-            });
-        });
+        while(--index && window.scrollY + 200 < sections[index].offsetTop) {}
+        
+        // Remove active class from all
+        navItems.forEach((link) => link.classList.remove('active'));
+        
+        // Add active based on scroll (apenas se corresponder a um link na barra)
+        // A lógica aqui depende dos IDs. O primeiro link é "Início" (Header)
+        if (index >= 0 && navItems[index]) {
+             // Ajuste básico: index 0 = header, 1 = funcionalidades, 2 = demo
+             // O ultimo link é "Entrar", que é externo, então ignoramos
+             if(index < 3) {
+                 navItems[index].classList.add('active');
+             }
+        } else {
+            // Default Home Active
+            navItems[0].classList.add('active');
+        }
     }
 
-    // --- 2. NAVBAR SCROLL (Mantido) ---
+    // Otimização: Debounce no scroll se necessário, ou usar direto
+    window.addEventListener('scroll', changeActiveNav);
+
+    // =========================================
+    // 2. NAVBAR SCROLL (Fundo da Barra Superior)
+    // =========================================
     const navbar = document.querySelector('.navbar');
     if (navbar) {
         window.addEventListener('scroll', () => {
@@ -37,8 +45,9 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- 3. SLIDER AUTOMÁTICO (NOVO e CORRIGIDO) ---
-    // Função que faz o trilho (track) deslizar
+    // =========================================
+    // 3. SLIDER AUTOMÁTICO
+    // =========================================
     function setupInfiniteSlider(wrapperSelector, intervalTime) {
         const wrapper = document.querySelector(wrapperSelector);
         if (!wrapper) return;
@@ -54,23 +63,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         setInterval(() => {
             currentIndex++;
-            
-            // Se chegou na última, volta para a primeira
             if (currentIndex >= totalImages) {
                 currentIndex = 0;
             }
-
-            // Move o trilho para a esquerda baseado no índice
-            // Ex: index 1 move -100%, index 2 move -200%
             track.style.transform = `translateX(-${currentIndex * 100}%)`;
-            
         }, intervalTime);
     }
 
-    // Inicia o Slider do Monitor (Web) - a cada 3 segundos
     setupInfiniteSlider('.monitor-wrapper', 3000);
-
-    // Inicia o Slider do Celular (Mobile) - a cada 3 segundos
     setupInfiniteSlider('.mobile-wrapper', 3000);
-
 });
