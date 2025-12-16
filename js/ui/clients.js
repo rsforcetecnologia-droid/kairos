@@ -15,8 +15,8 @@ let currentView = 'list'; // 'list' ou 'detail'
 let activeFilterKey = 'all'; // Chave do filtro ativo na barra superior
 let establishmentName = 'O Estabelecimento';
 
-// CONSTANTE: Conversão padrão (1 Real = 1 Ponto) se não vier do backend
-const DEFAULT_CONVERSION_RATE = 1;
+// CONSTANTE: Valor padrão para evitar divisão por zero (1 Real = 1 Ponto se não houver regra)
+const DEFAULT_POINTS_DIVISOR = 1;
 
 // Mensagens padrão de WhatsApp
 const BIRTHDAY_MESSAGE_TEMPLATE = (clientName, estName) => `Olá, ${clientName}! Nós da ${estName} desejamos a você um Feliz Aniversário! Esperamos que seu dia seja maravilhoso. Venha comemorar conosco! 🎉🎂`;
@@ -335,10 +335,10 @@ function renderHistoryTab(history, type) {
     `;
 }
 
-// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE ---
+// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE (CORRIGIDO PARA DIVISÃO) ---
 
 function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
-    // 1. Calcula Pontos Ganhos
+    // 1. Calcula Pontos Ganhos com base no histórico de vendas
     const validSales = (salesHistory || []).filter(s => {
         const st = (s.status || '').toLowerCase();
         return st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized';
@@ -346,26 +346,28 @@ function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
     
     let totalSpent = 0;
     validSales.forEach(sale => {
-        // Usa a mesma função robusta para garantir que o valor seja somado
         totalSpent += getItemTotalValue(sale);
     });
 
-    const conversionRate = (loyaltySettings && loyaltySettings.conversionRate) ? parseFloat(loyaltySettings.conversionRate) : DEFAULT_CONVERSION_RATE;
-    
-    const totalPointsEarned = Math.floor(totalSpent * conversionRate);
+    // CORREÇÃO: Trata o valor como divisor ("A cada X reais = 1 ponto")
+    let moneyPerPoint = (loyaltySettings && loyaltySettings.conversionRate) ? parseFloat(loyaltySettings.conversionRate) : DEFAULT_POINTS_DIVISOR;
+    if (moneyPerPoint <= 0) moneyPerPoint = 1; // Proteção contra divisão por zero
 
-    // 2. Calcula Pontos Gastos
+    // Ex: Gastou 400 reais. Regra é 40. 400 / 40 = 10 pontos.
+    const totalPointsEarned = Math.floor(totalSpent / moneyPerPoint);
+
+    // 2. Calcula Pontos Gastos (Resgates)
     let totalPointsRedeemed = 0;
     (loyaltyHistory || []).forEach(log => {
         if (log.type === 'redeem') {
-            totalPointsRedeemed += (log.points || 0);
+            totalPointsRedeemed += (log.points ? Math.abs(log.points) : 0); // Soma o valor positivo dos pontos gastos
         }
     });
 
     // 3. Saldo Atual
     const currentBalance = totalPointsEarned - totalPointsRedeemed;
 
-    return { totalSpent, totalPointsEarned, totalPointsRedeemed, currentBalance };
+    return { totalSpent, totalPointsEarned, totalPointsRedeemed, currentBalance, moneyPerPoint };
 }
 
 function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
@@ -400,14 +402,16 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
     }).join('') || '<p class="text-sm text-gray-400 italic">Nenhum prêmio configurado.</p>';
 
     const historyEntries = [];
-    const conversionRate = (loyaltySettings.conversionRate || DEFAULT_CONVERSION_RATE);
     
-    // Adiciona entradas de vendas (Ganhos)
+    // Adiciona entradas de vendas (Ganhos) usando a lógica de DIVISÃO
     (salesHistory || []).forEach(sale => {
         const st = (sale.status || '').toLowerCase();
         if (st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized') {
             const saleValue = getItemTotalValue(sale);
-            const pts = Math.floor(saleValue * conversionRate);
+            
+            // CORREÇÃO AQUI TAMBÉM: Divisão pelo fator configurado
+            const pts = Math.floor(saleValue / stats.moneyPerPoint);
+            
             if (pts > 0) {
                 historyEntries.push({
                     type: 'earn',
@@ -423,7 +427,7 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
         historyEntries.push({
             type: 'redeem',
             desc: `Resgate: ${log.reward || 'Prêmio'}`,
-            points: log.points,
+            points: log.points, // Pontos vêm negativos do backend geralmente, ou ajustamos na exibição
             date: log.timestamp || log.date
         });
     });
@@ -437,7 +441,7 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
                 <p class="text-[10px] text-gray-400">${new Date(item.date).toLocaleDateString('pt-BR')} ${new Date(item.date).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
             </div>
             <span class="text-xs font-bold ${item.type === 'earn' ? 'text-green-600' : 'text-red-500'}">
-                ${item.type === 'earn' ? '+' : '-'}${item.points}
+                ${item.type === 'earn' ? '+' : ''}${item.points}
             </span>
         </div>
     `).join('') : '<p class="text-xs text-center text-gray-400 py-4">Sem movimentações.</p>';
@@ -449,6 +453,7 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
                 <p class="text-indigo-100 text-xs font-medium uppercase tracking-wider mb-1">Saldo Fidelidade</p>
                 <p class="text-5xl font-extrabold mb-1">${stats.currentBalance}</p>
                 <p class="text-sm opacity-90">Total Gasto: R$ ${stats.totalSpent.toFixed(2)}</p>
+                <p class="text-[10px] mt-2 opacity-75">Regra: A cada R$ ${stats.moneyPerPoint} = 1 ponto</p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

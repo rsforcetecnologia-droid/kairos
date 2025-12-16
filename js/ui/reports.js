@@ -1,44 +1,41 @@
-// js/ui/reports.js (Versão Completa, Otimizada e Blindada)
+// js/ui/reports.js (Versão Híbrida: Financeiro/DRE Originais + Agendamentos Novo)
 
 // --- 1. IMPORTAÇÕES ---
 import * as reportsApi from '../api/reports.js';
 import * as professionalsApi from '../api/professionals.js';
+import * as appointmentsApi from '../api/appointments.js'; // Necessário para a aba Agendamentos
 import { state } from '../state.js';
 import { showGenericModal, showNotification } from '../components/modal.js';
-import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
+import { escapeHTML } from '../utils.js';
 
 const contentDiv = document.getElementById('content');
-let chartsInstances = {}; // Cache dos gráficos para evitar sobreposição
+let chartsInstances = {}; // Cache dos gráficos
 
-// Paleta de cores consistente para os gráficos
+// Cores modernas
 const chartColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 // --- 2. ESTADO LOCAL ---
 const localState = {
     // Filtros Globais
-    startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], // Início do Ano atual
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], // Início do Mês
     endDate: new Date().toISOString().split('T')[0], // Hoje
     selectedProfessional: 'all',
     selectedCostCenter: 'all',
     
-    // Dados de Dependências (para os selects)
+    // Dados de Dependências
     professionalsList: [],
     costCentersList: [],
 
-    // Dados Carregados (Cache da API)
-    data: null, 
+    // Dados Carregados
+    data: null,            // Dados do Financeiro/DRE (getAdvancedIndicators)
+    appointmentsData: [],  // Dados dos Agendamentos (getAppointmentsByDateRange)
 
-    // Controle de Navegação (Abas)
-    currentTab: 'dashboards', // 'dashboards', 'appointments', 'dre'
-    
-    // Estado Específico de Agendamentos (Drill-down)
-    apptViewMode: 'year', // 'year' ou 'month'
-    apptSelectedMonth: null
+    // Controle de Navegação
+    currentTab: 'dashboards', // 'dashboards' (Financeiro), 'appointments' (Novo), 'dre' (DRE)
 };
 
 // --- 3. CARREGAMENTO DE RECURSOS ---
 
-// Carrega a biblioteca Chart.js dinamicamente se ainda não estiver carregada
 async function loadChartJs() {
     if (window.Chart) return;
     return new Promise((resolve, reject) => {
@@ -52,17 +49,15 @@ async function loadChartJs() {
 
 // --- 4. PONTO DE ENTRADA (INIT) ---
 export async function loadReportsPage() {
-    // Loader inicial
     contentDiv.innerHTML = `<div class="flex flex-col items-center justify-center h-64"><div class="loader mb-4"></div><p class="text-gray-500">A carregar inteligência de dados...</p></div>`;
     
     try {
         await loadChartJs();
         
-        // Carrega dependências (Profissionais e Centros de Custo) em paralelo
-        // O establishmentId é passado automaticamente pelas funções da API importadas
+        // Carrega dependências
         const [profs, costs] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
-            reportsApi.getCostCenters().catch(() => []) // Fallback caso módulo financeiro esteja inativo
+            reportsApi.getCostCenters(state.establishmentId).catch(() => []) 
         ]);
         
         localState.professionalsList = profs || [];
@@ -84,7 +79,6 @@ export async function loadReportsPage() {
 // --- 5. RENDERIZAÇÃO E LAYOUT ---
 
 function renderLayout() {
-    // Gera as opções dos selects com segurança XSS
     const profOptions = localState.professionalsList.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
     const costOptions = localState.costCentersList.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
 
@@ -162,10 +156,6 @@ async function applyFilters() {
     localState.endDate = document.getElementById('report-end').value;
     localState.selectedProfessional = document.getElementById('report-prof').value;
     localState.selectedCostCenter = document.getElementById('report-cost').value;
-    
-    // Reseta visualizações de drill-down ao filtrar
-    localState.apptViewMode = 'year';
-    localState.apptSelectedMonth = null;
 
     await fetchAndRenderData();
 }
@@ -175,13 +165,31 @@ async function fetchAndRenderData() {
     container.innerHTML = `<div class="flex justify-center py-20"><div class="loader"></div></div>`;
 
     try {
-        const data = await reportsApi.getAdvancedIndicators(
+        // BUSCA 1: Dados Financeiros e DRE (API Antiga/Potente)
+        const financialPromise = reportsApi.getAdvancedIndicators(
             localState.startDate, 
             localState.endDate, 
             localState.selectedProfessional,
             localState.selectedCostCenter
         );
+
+        // BUSCA 2: Dados de Agendamentos Detalhados (API Nova/Flexível)
+        const profIdFilter = localState.selectedProfessional === 'all' ? null : localState.selectedProfessional;
+        const startISO = new Date(localState.startDate + 'T00:00:00').toISOString();
+        const endISO = new Date(localState.endDate + 'T23:59:59').toISOString();
+        
+        const appointmentsPromise = appointmentsApi.getAppointmentsByDateRange(
+            state.establishmentId, 
+            startISO, 
+            endISO, 
+            profIdFilter
+        ).catch(err => []); // Fallback
+
+        const [data, appointments] = await Promise.all([financialPromise, appointmentsPromise]);
+        
         localState.data = data;
+        localState.appointmentsData = Array.isArray(appointments) ? appointments : [];
+        
         renderCurrentView();
     } catch (error) {
         console.error(error);
@@ -202,7 +210,8 @@ function renderCurrentView() {
             renderFinancialDashboards(container);
             break;
         case 'appointments':
-            renderAppointmentsDashboard(container);
+            // AQUI ESTÁ A MUDANÇA: Usamos a função da "nova aba" que você gostou
+            renderAppointmentsTab(container);
             break;
         case 'dre':
             renderDRE(container);
@@ -210,7 +219,7 @@ function renderCurrentView() {
     }
 }
 
-// --- 7. ABA FINANCEIRO ---
+// --- 7. ABA FINANCEIRO (Ressuscitada) ---
 
 function renderFinancialDashboards(container) {
     const { dreSimple, charts } = localState.data;
@@ -272,255 +281,117 @@ function renderFinancialDashboards(container) {
         </div>
     `;
 
-    // Renderiza os gráficos com proteção XSS nos labels
     renderChart('chart-monthly', 'bar', 'Receita Mensal', charts.salesMonthly.labels, charts.salesMonthly.data, chartColors[0]);
-    
-    // Blindagem XSS para labels de profissionais
     const safeProfLabels = charts.professionals.labels.map(l => escapeHTML(l));
     renderChart('chart-profs', 'doughnut', 'Total Vendas', safeProfLabels, charts.professionals.data, chartColors);
-    
     renderChart('chart-daily', 'line', 'Vendas Diárias', charts.salesDaily.labels, charts.salesDaily.data, chartColors[4]);
-    
-    // Blindagem XSS para labels de produtos
     const safeProductLabels = charts.products.labels.map(l => escapeHTML(l));
     renderChart('chart-products', 'bar', 'Total Vendido', safeProductLabels, charts.products.data, chartColors[1]);
 }
 
-// --- 8. ABA AGENDAMENTOS ---
+// --- 8. ABA AGENDAMENTOS (A NOVA, DO PASSO ANTERIOR) ---
 
-function renderAppointmentsDashboard(container) {
-    const { charts } = localState.data;
+function renderAppointmentsTab(container) {
+    const appointments = localState.appointmentsData;
+    
+    // Processamento
+    const totalCount = appointments.length;
+    let completedCount = 0;
+    let cancelledCount = 0;
+    let totalValue = 0;
+    let cancelledValue = 0;
 
-    let headerHtml = `<h3 class="font-bold text-gray-700 text-lg">Visão Anual/Mensal</h3>`;
-    let subtext = `Clique na barra do Mês para detalhar os dias`;
+    const dailyMap = {};
+    const professionalMap = {};
 
-    if (localState.apptViewMode === 'month') {
-        // Blindagem XSS no nome do mês selecionado
-        const safeMonth = escapeHTML(localState.apptSelectedMonth);
-        headerHtml = `
-            <div class="flex items-center gap-4">
-                <button id="btn-back-year" class="text-indigo-600 hover:text-indigo-800 flex items-center text-sm font-bold bg-indigo-50 px-3 py-1 rounded transition hover:bg-indigo-100">
-                    ← Voltar
-                </button>
-                <h3 class="font-bold text-gray-700 text-lg">Detalhes de ${safeMonth}</h3>
-            </div>`;
-        subtext = `Clique na barra do Dia para ver a lista de clientes`;
+    // Popula datas zeradas no range
+    let curr = new Date(localState.startDate);
+    const end = new Date(localState.endDate);
+    while (curr <= end) {
+        dailyMap[curr.toISOString().split('T')[0]] = 0;
+        curr.setDate(curr.getDate() + 1);
     }
 
+    appointments.forEach(app => {
+        const val = parseFloat(app.totalAmount || app.price || 0);
+        const status = (app.status || '').toLowerCase();
+        let dateStr = app.startTime ? (app.startTime.toDate ? app.startTime.toDate() : new Date(app.startTime)).toISOString().split('T')[0] : '';
+        const profName = app.professionalName || 'Sem Profissional';
+
+        if (!professionalMap[profName]) professionalMap[profName] = { name: profName, count: 0, value: 0 };
+
+        if (['cancelled', 'cancelado', 'no-show'].includes(status)) {
+            cancelledCount++;
+            cancelledValue += val;
+        } else {
+            if (['completed', 'finalized', 'paid'].includes(status)) completedCount++;
+            totalValue += val;
+            
+            if (dateStr && dailyMap.hasOwnProperty(dateStr)) dailyMap[dateStr]++;
+            
+            professionalMap[profName].count++;
+            professionalMap[profName].value += val;
+        }
+    });
+
+    const dailyLabels = Object.keys(dailyMap).sort();
+    const dailyValues = dailyLabels.map(d => dailyMap[d]);
+    const byProfessional = Object.values(professionalMap).sort((a,b) => b.count - a.count);
+
     container.innerHTML = `
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 animate-fade-in">
-            <div class="mb-6 flex justify-between items-center flex-wrap gap-2">
-                ${headerHtml}
-                <div class="text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                    ${subtext}
-                </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 animate-fade-in">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <p class="text-xs font-bold text-gray-500 uppercase">Total Agendamentos</p>
+                <h3 class="text-3xl font-extrabold text-indigo-600 mt-1">${totalCount - cancelledCount}</h3>
+                <p class="text-xs text-green-600 mt-1">${completedCount} concluídos</p>
             </div>
-            <div class="relative h-80">
-                <canvas id="chart-appointments"></canvas>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <p class="text-xs font-bold text-gray-500 uppercase">Valor Estimado</p>
+                <h3 class="text-3xl font-extrabold text-gray-800 mt-1">R$ ${totalValue.toLocaleString('pt-BR', {minimumFractionDigits:2})}</h3>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <p class="text-xs font-bold text-gray-500 uppercase">Cancelamentos</p>
+                <h3 class="text-3xl font-extrabold text-red-500 mt-1">${cancelledCount}</h3>
+                <p class="text-xs text-red-400 mt-1">Perda: R$ ${cancelledValue.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div class="bg-blue-50 p-4 rounded-lg text-center border border-blue-100">
-                <span class="block text-2xl font-bold text-blue-600">${charts.appointmentsStatus.scheduled || 0}</span>
-                <span class="text-xs text-blue-400 uppercase font-bold tracking-wider">Agendados</span>
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-6 animate-fade-in">
+            <h3 class="font-bold text-gray-800 mb-4">Volume Diário</h3>
+            <div class="h-64 w-full relative"><canvas id="dailyApptChart"></canvas></div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 overflow-hidden mt-6 animate-fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-gray-800">Performance por Profissional</h3>
             </div>
-            <div class="bg-green-50 p-4 rounded-lg text-center border border-green-100">
-                <span class="block text-2xl font-bold text-green-600">${charts.appointmentsStatus.completed || 0}</span>
-                <span class="text-xs text-green-400 uppercase font-bold tracking-wider">Concluídos</span>
-            </div>
-            <div class="bg-red-50 p-4 rounded-lg text-center border border-red-100">
-                <span class="block text-2xl font-bold text-red-600">${charts.appointmentsStatus.canceled || 0}</span>
-                <span class="text-xs text-red-400 uppercase font-bold tracking-wider">Cancelados</span>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-500 font-semibold border-b">
+                        <tr><th class="p-3 text-left">Nome</th><th class="p-3 text-center">Qtd.</th><th class="p-3 text-right">Valor Total</th></tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        ${byProfessional.map(p => `
+                            <tr>
+                                <td class="p-3 text-gray-800 font-medium">${escapeHTML(p.name)}</td>
+                                <td class="p-3 text-center"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-bold">${p.count}</span></td>
+                                <td class="p-3 text-right text-gray-600">R$ ${p.value.toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
             </div>
         </div>
     `;
-    
-    const backBtn = document.getElementById('btn-back-year');
-    if (backBtn) {
-        backBtn.onclick = () => {
-            localState.apptViewMode = 'year';
-            localState.apptSelectedMonth = null;
-            renderAppointmentsDashboard(container);
-        };
-    }
 
-    try {
-        renderInteractiveApptChart();
-    } catch (e) {
-        console.error("Erro ao renderizar gráfico de agendamentos:", e);
-    }
+    renderChart('dailyApptChart', 'line', 'Agendamentos', dailyLabels.map(d => d.split('-').reverse().slice(0,2).join('/')), dailyValues, '#4f46e5');
 }
 
-function renderInteractiveApptChart() {
-    const ctx = document.getElementById('chart-appointments').getContext('2d');
-    if (chartsInstances['chart-appointments']) chartsInstances['chart-appointments'].destroy();
-
-    const { charts } = localState.data;
-    let labels, dataValues;
-
-    if (localState.apptViewMode === 'year') {
-        labels = charts.appointmentsMonthly.labels;
-        dataValues = charts.appointmentsMonthly.data;
-    } else {
-        // Lógica de extração de mês/ano segura com Regex
-        const parts = localState.apptSelectedMonth.match(/([a-zç\.]+)(?:[\/\s\-]*)(\d{2,4})/i);
-        
-        if (!parts) {
-            console.error("Formato de mês não reconhecido:", localState.apptSelectedMonth);
-            return;
-        }
-
-        const cleanMStr = parts[1].toLowerCase().replace(/\./g, '').trim();
-        const yStr = parts[2];
-        const fullYear = yStr.length === 2 ? '20' + yStr : yStr;
-
-        const monthMap = { 
-            'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06', 
-            'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
-            'janeiro': '01', 'fevereiro': '02', 'março': '03', 'abril': '04', 'maio': '05', 'junho': '06',
-            'julho': '07', 'agosto': '08', 'setembro': '09', 'outubro': '10', 'novembro': '11', 'dezembro': '12'
-        };
-        
-        const mNum = monthMap[cleanMStr] || '01';
-        const targetSuffix = `/${mNum}/${fullYear}`;
-
-        const filteredEntries = Object.entries(charts.appointmentsDaily.data).map(([k, v], i) => {
-            const dateKey = charts.appointmentsDaily.labels[i];
-            if (dateKey.includes(targetSuffix)) return { label: dateKey, value: v };
-            return null;
-        }).filter(Boolean);
-
-        labels = filteredEntries.map(e => e.label);
-        dataValues = filteredEntries.map(e => e.value);
-    }
-
-    const config = {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Volume de Agendamentos',
-                data: dataValues,
-                backgroundColor: localState.apptViewMode === 'year' ? '#3b82f6' : '#8b5cf6',
-                borderRadius: 4,
-                hoverBackgroundColor: '#1e40af'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const index = elements[0].index;
-                    const label = labels[index];
-                    handleApptChartClick(label);
-                }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => ` ${context.raw} Agendamentos`
-                    }
-                }
-            }
-        }
-    };
-
-    chartsInstances['chart-appointments'] = new Chart(ctx, config);
-}
-
-function handleApptChartClick(label) {
-    if (localState.apptViewMode === 'year') {
-        localState.apptViewMode = 'month';
-        localState.apptSelectedMonth = label;
-        renderAppointmentsDashboard(document.getElementById('report-content'));
-    } else if (localState.apptViewMode === 'month') {
-        openDayDetailsModal(label);
-    }
-}
-
-async function openDayDetailsModal(dateStr) {
-    const [d, m, y] = dateStr.split('/');
-    const apiDate = `${y}-${m}-${d}`;
-
-    showGenericModal({
-        title: `Carregando...`,
-        contentHTML: `<div class="p-8 text-center"><div class="loader mx-auto"></div></div>`,
-        maxWidth: 'max-w-2xl'
-    });
-
-    try {
-        // Chama API para detalhes
-        const list = await reportsApi.getDailyAppointments(apiDate, localState.selectedProfessional);
-        
-        let html = '';
-        if (list.length === 0) {
-            html = '<div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">Nenhum agendamento encontrado para este dia.</div>';
-        } else {
-            // Tabela com Blindagem XSS
-            html = `
-                <div class="overflow-hidden border rounded-lg max-h-[60vh] overflow-y-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50 sticky top-0 z-10">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Hora</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Profissional</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cliente</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Serviço</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200 text-sm">
-                            ${list.map(appt => `
-                                <tr class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-gray-900">${escapeHTML(appt.time || '--:--')}</td>
-                                    <td class="px-4 py-3 text-indigo-700 font-medium">${escapeHTML(appt.professionalName || 'N/A')}</td>
-                                    <td class="px-4 py-3 text-gray-700">${escapeHTML(appt.clientName || 'Cliente')}</td>
-                                    <td class="px-4 py-3 text-gray-500">${escapeHTML(appt.serviceName || 'Serviço')}</td>
-                                    <td class="px-4 py-3">
-                                        <span class="px-2 py-1 rounded-full text-xs font-bold ${
-                                            appt.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                                            appt.status === 'canceled' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
-                                        }">
-                                            ${appt.status === 'completed' ? 'Concluído' : appt.status === 'canceled' ? 'Cancelado' : 'Agendado'}
-                                        </span>
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        }
-
-        const modalBody = document.querySelector('.modal-content-body');
-        if(modalBody) {
-             modalBody.innerHTML = html;
-             // Blindagem no título do modal
-             document.querySelector('.modal-title').innerText = `Agendamentos de ${dateStr}`;
-        } else {
-             document.getElementById('genericModal').style.display = 'none';
-             showGenericModal({
-                title: `Agendamentos de ${dateStr}`,
-                contentHTML: html,
-                maxWidth: 'max-w-4xl'
-            });
-        }
-
-    } catch (e) {
-        showNotification('Erro', 'Não foi possível carregar os detalhes do dia.', 'error');
-        document.getElementById('genericModal').style.display = 'none';
-    }
-}
-
-// --- 9. ABA DRE (Detalhado por Natureza) ---
+// --- 9. ABA DRE (Ressuscitada) ---
 
 function renderDRE(container) {
     const { dreFinancial } = localState.data;
 
-    // Linhas de Receita (Agrupadas e Blindadas)
     const revRows = Object.entries(dreFinancial.revenues).map(([nature, val]) => `
         <tr class="text-sm text-gray-600 bg-green-50/30 hover:bg-green-50 transition-colors">
             <td class="pl-8 py-2 border-l-4 border-transparent hover:border-green-400">${escapeHTML(nature)}</td>
@@ -529,7 +400,6 @@ function renderDRE(container) {
         </tr>
     `).join('');
 
-    // Linhas de Despesa (Agrupadas e Blindadas)
     const expRows = Object.entries(dreFinancial.expenses).map(([nature, val]) => `
         <tr class="text-sm text-gray-600 bg-red-50/30 hover:bg-red-50 transition-colors">
             <td class="pl-8 py-2 border-l-4 border-transparent hover:border-red-400">${escapeHTML(nature)}</td>
@@ -550,7 +420,6 @@ function renderDRE(container) {
             
             <table class="w-full">
                 <tbody class="divide-y divide-gray-100">
-                    
                     <tr class="font-bold text-gray-800 bg-blue-50">
                         <td class="p-4">1. RECEITAS OPERACIONAIS</td>
                         <td class="p-4 text-right text-blue-800 font-extrabold">R$ ${dreFinancial.totalRevenues.toFixed(2)}</td>
@@ -576,13 +445,6 @@ function renderDRE(container) {
                     </tr>
                 </tbody>
             </table>
-            
-            <div class="p-4 bg-gray-50 text-center border-t border-gray-200">
-                <p class="text-xs text-gray-500">
-                    * Este relatório baseia-se nos lançamentos de Contas a Pagar/Receber e Naturezas Financeiras.
-                    Verifique se todos os lançamentos estão categorizados corretamente.
-                </p>
-            </div>
         </div>
     `;
 }

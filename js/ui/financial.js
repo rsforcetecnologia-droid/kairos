@@ -11,14 +11,12 @@ let localState = {
     natures: [], 
     costCenters: [],
     currentFilter: 'pending', // 'pending', 'paid', 'all'
-    // Novos campos de estado para o filtro de data e saldo anterior
     startDate: new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
     previousBalance: 0,
-    // Novos campos de filtro
     filterNaturezaId: 'all',
     filterCostCenterId: 'all',
-    currentListView: 'receivables' // 'payables' or 'receivables'
+    currentListView: 'receivables' 
 };
 let cashFlowChart = null;
 let financialPageEventListener = null;
@@ -44,6 +42,7 @@ function buildHierarchy(list) {
 // --- LÓGICA DE GESTÃO (NATUREZAS E CENTROS DE CUSTO) ---
 
 function renderHierarchyList(container, items, type) {
+    if (!container) return; // Blindagem
     if (!items || items.length === 0) {
         container.innerHTML = '<p class="text-center text-gray-500">Nenhum item criado.</p>';
         return;
@@ -62,7 +61,6 @@ function renderHierarchyList(container, items, type) {
 }
 
 async function openHierarchyModal(type) {
-    // Garante que o menu FAB feche se estiver aberto
     document.getElementById('fab-menu')?.classList.add('hidden');
     document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
 
@@ -93,43 +91,49 @@ async function openHierarchyModal(type) {
     const renderData = (items) => {
         const hierarchy = buildHierarchy(items);
         renderHierarchyList(listDiv, hierarchy, type);
-        parentSelect.innerHTML = '<option value="">-- Nível Principal --</option>';
-        const renderOption = (item, prefix = '', level = 0) => {
-            const spacer = level > 0 ? '— '.repeat(level) : '';
-            parentSelect.innerHTML += `<option value="${item.id}">${spacer}${item.name}</option>`;
-            item.children.forEach(child => renderOption(child, prefix + '— '));
-        };
-        hierarchy.forEach(root => renderOption(root));
+        if(parentSelect) {
+            parentSelect.innerHTML = '<option value="">-- Nível Principal --</option>';
+            const renderOption = (item, prefix = '', level = 0) => {
+                const spacer = level > 0 ? '— '.repeat(level) : '';
+                parentSelect.innerHTML += `<option value="${item.id}">${spacer}${item.name}</option>`;
+                item.children.forEach(child => renderOption(child, prefix + '— '));
+            };
+            hierarchy.forEach(root => renderOption(root));
+        }
     };
 
-    // CORREÇÃO: Passar establishmentId
-    const items = await api(state.establishmentId);
-    localState[collectionName] = items;
-    renderData(items);
+    try {
+        const items = await api(state.establishmentId);
+        localState[collectionName] = items;
+        renderData(items);
+    } catch (e) { console.error(e); }
 
-    modal.querySelector('#hierarchyForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = modal.querySelector('#itemName').value;
-        const parentId = parentSelect.value;
-        const createApi = isNature ? financialApi.createNature : financialApi.createCostCenter;
-        try {
-            // CORREÇÃO: Passar establishmentId no payload
-            await createApi({ 
-                name, 
-                parentId: parentId || null,
-                establishmentId: state.establishmentId 
-            });
-            
-            // CORREÇÃO: Passar establishmentId
-            const updatedItems = await api(state.establishmentId);
-            localState[collectionName] = updatedItems;
-            renderData(updatedItems);
-            modal.querySelector('#hierarchyForm').reset();
-            await fetchAndDisplayData(); // Atualiza a lista principal após a criação
-        } catch (error) {
-            showNotification('Erro', `Não foi possível criar: ${error.message}`, 'error');
-        }
-    });
+    const form = modal.querySelector('#hierarchyForm');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const nameInput = modal.querySelector('#itemName');
+            if(!nameInput) return;
+            const name = nameInput.value;
+            const parentId = parentSelect.value;
+            const createApi = isNature ? financialApi.createNature : financialApi.createCostCenter;
+            try {
+                await createApi({ 
+                    name, 
+                    parentId: parentId || null,
+                    establishmentId: state.establishmentId 
+                });
+                
+                const updatedItems = await api(state.establishmentId);
+                localState[collectionName] = updatedItems;
+                renderData(updatedItems);
+                form.reset();
+                await fetchAndDisplayData();
+            } catch (error) {
+                showNotification('Erro', `Não foi possível criar: ${error.message}`, 'error');
+            }
+        });
+    }
 }
 
 // --- LÓGICA DO GRÁFICO DE FLUXO DE CAIXA ---
@@ -150,40 +154,13 @@ function renderCashFlowChart(data) {
         data: {
             labels: data.labels,
             datasets: [
-                {
-                    label: 'Receitas',
-                    data: data.receivables,
-                    backgroundColor: 'rgba(74, 222, 128, 0.6)',
-                    borderColor: 'rgba(34, 197, 94, 1)',
-                    borderWidth: 1,
-                    yAxisID: 'y',
-                },
-                {
-                    label: 'Despesas',
-                    data: negativePayables,
-                    backgroundColor: 'rgba(248, 113, 113, 0.6)',
-                    borderColor: 'rgba(239, 68, 68, 1)',
-                    borderWidth: 1,
-                    yAxisID: 'y',
-                },
-                {
-                    label: 'Saldo Acumulado',
-                    data: data.expectedBalance,
-                    type: 'line',
-                    borderColor: 'rgba(59, 130, 246, 1)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    borderWidth: 3,
-                    pointRadius: 4,
-                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
-                    fill: true,
-                    tension: 0.1,
-                    yAxisID: 'y1',
-                }
+                { label: 'Receitas', data: data.receivables, backgroundColor: 'rgba(74, 222, 128, 0.6)', borderColor: 'rgba(34, 197, 94, 1)', borderWidth: 1, yAxisID: 'y' },
+                { label: 'Despesas', data: negativePayables, backgroundColor: 'rgba(248, 113, 113, 0.6)', borderColor: 'rgba(239, 68, 68, 1)', borderWidth: 1, yAxisID: 'y' },
+                { label: 'Saldo Acumulado', data: data.expectedBalance, type: 'line', borderColor: 'rgba(59, 130, 246, 1)', backgroundColor: 'rgba(59, 130, 246, 0.2)', borderWidth: 3, pointRadius: 4, pointBackgroundColor: 'rgba(59, 130, 246, 1)', fill: true, tension: 0.1, yAxisID: 'y1' }
             ]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             scales: {
                 x: { stacked: true },
                 y: { type: 'linear', display: true, position: 'left', stacked: true, title: { display: true, text: 'Movimentações (R$)' } },
@@ -210,8 +187,13 @@ function renderCashFlowChart(data) {
 
 async function handleCashFlowReportGeneration() {
     const chartContainer = document.getElementById('cash-flow-chart-container');
-    const startDate = document.getElementById('cashFlowStartDate').value;
-    const endDate = document.getElementById('cashFlowEndDate').value;
+    const startDateInput = document.getElementById('cashFlowStartDate');
+    const endDateInput = document.getElementById('cashFlowEndDate');
+    
+    if(!chartContainer || !startDateInput || !endDateInput) return;
+
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
     
     if (!startDate || !endDate) {
         showNotification('Atenção', 'Por favor, selecione as datas de início e fim.', 'error');
@@ -220,17 +202,20 @@ async function handleCashFlowReportGeneration() {
     
     chartContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
     try {
-        // CORREÇÃO: Passar establishmentId para o gráfico
         const data = await financialApi.getCashFlowData(state.establishmentId, startDate, endDate);
-        chartContainer.innerHTML = '<canvas id="cashFlowChart"></canvas>';
-        renderCashFlowChart(data);
+        // Verifica se ainda está no modal
+        if(document.getElementById('cash-flow-chart-container')) {
+            chartContainer.innerHTML = '<canvas id="cashFlowChart"></canvas>';
+            renderCashFlowChart(data);
+        }
     } catch (error) {
-        chartContainer.innerHTML = `<p class="text-red-500 text-center">Erro ao carregar dados do gráfico: ${error.message}</p>`;
+        if(document.getElementById('cash-flow-chart-container')) {
+            chartContainer.innerHTML = `<p class="text-red-500 text-center">Erro ao carregar dados do gráfico: ${error.message}</p>`;
+        }
     }
 }
 
 function openCashFlowModal() {
-    // Garante que o menu FAB feche se estiver aberto
     document.getElementById('fab-menu')?.classList.add('hidden');
     document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
 
@@ -263,8 +248,11 @@ function openCashFlowModal() {
     `;
     modal.style.display = 'flex';
 
-    modal.querySelector('#generateCashFlowBtn').addEventListener('click', handleCashFlowReportGeneration);
-    handleCashFlowReportGeneration();
+    const btn = modal.querySelector('#generateCashFlowBtn');
+    if(btn) {
+        btn.addEventListener('click', handleCashFlowReportGeneration);
+        handleCashFlowReportGeneration();
+    }
 }
 
 
@@ -273,7 +261,6 @@ function openCashFlowModal() {
 function openIndicatorsModal() {
     const modal = document.getElementById('genericModal');
     
-    // Cálculos necessários para o modal (usando dados de localState)
     const pendingPayable = localState.payables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
     const pendingReceivable = localState.receivables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
     const totalPendingBalance = pendingReceivable - pendingPayable;
@@ -356,7 +343,6 @@ function openIndicatorsModal() {
     modal.style.display = 'flex';
 }
 
-// --- LÓGICA DO MODAL DE CONFIGURAÇÕES (NOVO) ---
 function openSettingsModal() {
     const modal = document.getElementById('genericModal');
     modal.innerHTML = `
@@ -388,7 +374,6 @@ function openSettingsModal() {
 
 // --- LÓGICA DE LANÇAMENTOS ---
 
-// Função para construir as opções hierárquicas nos filtros
 function buildFilterHierarchyOptions(items, selectedId = 'all') {
     let optionsHTML = '<option value="all">Todos</option>';
     
@@ -424,24 +409,31 @@ function buildFilterHierarchyOptions(items, selectedId = 'all') {
 async function fetchAndDisplayData() {
     const content = document.getElementById('financial-content');
     
-    // Captura as datas de filtro do DOM
-    const startDate = document.getElementById('filterStartDate')?.value;
-    const endDate = document.getElementById('filterEndDate')?.value;
+    // GUARD CLAUSE: Se o conteúdo não existir (usuário navegou), para.
+    if (!content) return;
+
+    const startDateInput = document.getElementById('filterStartDate');
+    const endDateInput = document.getElementById('filterEndDate');
+    
+    // Se inputs de data não existem, algo errado na DOM, para.
+    if(!startDateInput || !endDateInput) return;
+
+    const startDate = startDateInput.value;
+    const endDate = endDateInput.value;
     const natureId = document.getElementById('filterNaturezaId')?.value;
     const costCenterId = document.getElementById('filterCostCenterId')?.value;
     
-    // Se as datas não estiverem definidas, sai para evitar erro (primeiro load)
     if (!startDate || !endDate) { 
-        // Carrega apenas dados de suporte (natures e cost centers) no primeiro load
         try {
-            // CORREÇÃO: Passar establishmentId
             const [natures, costCenters] = await Promise.all([
                 financialApi.getNatures(state.establishmentId),
                 financialApi.getCostCenters(state.establishmentId)
             ]);
+            // Verifica DOM novamente após await
+            if(!document.getElementById('financial-content')) return;
+
             localState = { ...localState, natures, costCenters };
             
-            // Popula os selects na primeira carga com as opções disponíveis
             if (document.getElementById('filterNaturezaId')) document.getElementById('filterNaturezaId').innerHTML = buildFilterHierarchyOptions(localState.natures);
             if (document.getElementById('filterCostCenterId')) document.getElementById('filterCostCenterId').innerHTML = buildFilterHierarchyOptions(localState.costCenters);
             
@@ -453,56 +445,54 @@ async function fetchAndDisplayData() {
         return; 
     }
     
-    // Exibe loader
     const payablesList = document.getElementById('payables-list');
     const receivablesList = document.getElementById('receivables-list');
     if (payablesList) payablesList.innerHTML = '<div class="loader mx-auto"></div>';
     if (receivablesList) receivablesList.innerHTML = '<div class="loader mx-auto"></div>';
     
     try {
-        // CORREÇÃO: Inserir establishmentId nos filtros
         const filters = { 
             startDate, 
             endDate, 
             establishmentId: state.establishmentId 
         };
         
-        // Inclui filtros de Natureza e Centro de Custo APENAS se não for 'all'
         if (natureId && natureId !== 'all') filters.natureId = natureId;
         if (costCenterId && costCenterId !== 'all') filters.costCenterId = costCenterId;
 
-        // O API service precisa ser ajustado para aceitar e construir a query string com todos os filtros.
         const [payablesResult, receivablesResult, natures, costCenters] = await Promise.all([
-            // Passa o objeto 'filters' completo
             financialApi.getPayables(filters),
             financialApi.getReceivables(filters),
-            financialApi.getNatures(state.establishmentId), // CORREÇÃO: Passar ID
-            financialApi.getCostCenters(state.establishmentId) // CORREÇÃO: Passar ID
+            financialApi.getNatures(state.establishmentId),
+            financialApi.getCostCenters(state.establishmentId)
         ]);
         
-        // O backend retorna { entries, previousBalance }
-        const previousBalance = receivablesResult.previousBalance - payablesResult.previousBalance;
+        // Verifica DOM novamente após await crítico
+        if(!document.getElementById('financial-content')) return;
+
+        const previousBalance = (receivablesResult.previousBalance || 0) - (payablesResult.previousBalance || 0);
         
         localState = { 
             ...localState, 
-            payables: payablesResult.entries, 
-            receivables: receivablesResult.entries, 
-            natures, 
-            costCenters,
+            payables: payablesResult.entries || [], 
+            receivables: receivablesResult.entries || [], 
+            natures: natures || [], 
+            costCenters: costCenters || [],
             previousBalance,
             filterNaturezaId: natureId,
             filterCostCenterId: costCenterId
         };
         
-        // Repopula os selects para manter o valor selecionado
         if (document.getElementById('filterNaturezaId')) document.getElementById('filterNaturezaId').innerHTML = buildFilterHierarchyOptions(localState.natures, localState.filterNaturezaId);
         if (document.getElementById('filterCostCenterId')) document.getElementById('filterCostCenterId').innerHTML = buildFilterHierarchyOptions(localState.costCenters, localState.filterCostCenterId);
 
         renderLists();
         updateSummary();
     } catch (error) {
-        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
-        if (content) content.innerHTML = `<p class="text-red-500 text-center">Falha ao carregar dados.</p>`;
+        if(document.getElementById('financial-content')) {
+            showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
+            content.innerHTML = `<p class="text-red-500 text-center">Falha ao carregar dados.</p>`;
+        }
     }
 }
 
@@ -532,8 +522,8 @@ async function handleFormSubmit(e, type, itemId = null) {
         notes: form.querySelector('[name="notes"]').value,
         status: isChecked ? 'paid' : 'pending',
         paymentDate: isChecked ? paymentDateValue : null,
-        installments: itemId ? 1 : installments, // Parcelamento só na criação
-        establishmentId: state.establishmentId // CORREÇÃO: Vincula ao estabelecimento
+        installments: itemId ? 1 : installments, 
+        establishmentId: state.establishmentId
     };
 
     try {
@@ -575,7 +565,6 @@ async function handleMarkAsPaid(type, id) {
     }
 }
 
-// Função para aplicar o filtro de status (usando o filtro de data do backend)
 function applyFilter(items) {
     const filter = localState.currentFilter;
     if (filter === 'all') return items;
@@ -633,27 +622,27 @@ function renderLists() {
     receivablesList.innerHTML = filteredReceivables.map(item => renderItem(item, 'receivable')).join('') || '<p class="text-center text-gray-500 py-4">Nenhuma conta a receber.</p>';
 }
 
+// CORREÇÃO: Guard Clauses adicionados aqui
 function updateSummary() {
     const pendingPayable = localState.payables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
     const pendingReceivable = localState.receivables.filter(i => i.status === 'pending').reduce((acc, i) => acc + i.amount, 0);
     const totalPendingBalance = pendingReceivable - pendingPayable;
     
-    // Totais Previstos (Pendentes no período) - MANTIDOS PARA O CÁLCULO NO DOM OCULTO
-    document.getElementById('summary-pending-receivables').textContent = `R$ ${pendingReceivable.toFixed(2)}`;
-    document.getElementById('summary-pending-payables').textContent = `R$ ${pendingPayable.toFixed(2)}`;
-    document.getElementById('summary-pending-balance').textContent = `R$ ${totalPendingBalance.toFixed(2)}`;
+    // Verificações antes de atualizar
+    const elPendingRec = document.getElementById('summary-pending-receivables');
+    if(elPendingRec) elPendingRec.textContent = `R$ ${pendingReceivable.toFixed(2)}`;
     
-    const summaryPendingBalanceEl = document.getElementById('summary-pending-balance');
-    if (summaryPendingBalanceEl) {
-         // Uso de text-2xl para compactação mobile
-         summaryPendingBalanceEl.className = `text-2xl font-bold ${totalPendingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
+    const elPendingPay = document.getElementById('summary-pending-payables');
+    if(elPendingPay) elPendingPay.textContent = `R$ ${pendingPayable.toFixed(2)}`;
+    
+    const elPendingBal = document.getElementById('summary-pending-balance');
+    if(elPendingBal) {
+        elPendingBal.textContent = `R$ ${totalPendingBalance.toFixed(2)}`;
+        elPendingBal.className = `text-2xl font-bold ${totalPendingBalance >= 0 ? 'text-green-600' : 'text-red-600'}`;
     }
-
-    // REMOVIDO: Atualizações do DOM para indicadores secundários (movidos para o modal)
 }
 
 function openFinancialModal(type, item = null) {
-    // Garante que o menu FAB feche ao abrir o modal
     document.getElementById('fab-menu')?.classList.add('hidden');
     document.getElementById('main-fab-btn')?.classList.remove('rotate-45');
     
@@ -676,7 +665,6 @@ function openFinancialModal(type, item = null) {
     const natureOptions = buildOptions(localState.natures);
     const costCenterOptions = buildOptions(localState.costCenters);
 
-    // Mostra o campo de parcelas apenas se for uma NOVA entrada
     const installmentsHTML = !item ? `
         <div>
             <label>Número de Parcelas</label>
@@ -709,8 +697,10 @@ function openFinancialModal(type, item = null) {
     modal.style.display = 'flex';
     
     if(item) {
-        modal.querySelector('[name="naturezaId"]').value = item.naturezaId || '';
-        modal.querySelector('[name="centroDeCustoId"]').value = item.centroDeCustoId || '';
+        const natSelect = modal.querySelector('[name="naturezaId"]');
+        if(natSelect) natSelect.value = item.naturezaId || '';
+        const ccSelect = modal.querySelector('[name="centroDeCustoId"]');
+        if(ccSelect) ccSelect.value = item.centroDeCustoId || '';
     }
 
     const statusToggle = modal.querySelector('#status');
@@ -735,13 +725,11 @@ function openFinancialModal(type, item = null) {
 // --- FUNÇÃO DE INICIALIZAÇÃO ---
 
 export async function loadFinancialPage() {
-    // Calcula as datas padrão para filtro (1º dia do mês passado até hoje)
     const today = new Date();
     const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastMonthStr = lastMonth.toISOString().split('T')[0];
     const todayStr = today.toISOString().split('T')[0];
     
-    // Atualiza o estado local com as datas padrão
     localState.startDate = lastMonthStr;
     localState.endDate = todayStr;
     localState.currentFilter = 'pending';
@@ -888,23 +876,19 @@ export async function loadFinancialPage() {
         </div>
     `;
 
-    // --- CORREÇÃO: LISTENERS DIRETOS NO FAB ---
-    // Anexa listeners de clique diretamente nos elementos do FAB após serem renderizados.
     const mainFabBtn = document.getElementById('main-fab-btn');
     const fabMenu = document.getElementById('fab-menu');
     
     if (mainFabBtn && fabMenu) {
-        // Listener para o botão principal (+)
         mainFabBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // Impede que o clique "vaze" para o body
+            e.stopPropagation();
             fabMenu.classList.toggle('hidden');
             mainFabBtn.classList.toggle('rotate-45');
         });
 
-        // Listeners para os itens do menu
         const fabReceivableBtn = fabMenu.querySelector('button[data-action="open-modal"][data-type="receivable"]');
         const fabPayableBtn = fabMenu.querySelector('button[data-action="open-modal"][data-type="payable"]');
-        const fabCashFlowBtn = fabMenu.querySelector('button[data-action="open-cash-flow-modal"]'); // Listener para o novo botão
+        const fabCashFlowBtn = fabMenu.querySelector('button[data-action="open-cash-flow-modal"]');
 
         if (fabReceivableBtn) {
             fabReceivableBtn.addEventListener('click', (e) => {
@@ -928,7 +912,6 @@ export async function loadFinancialPage() {
         }
     }
     
-    // Remove listeners antigos para evitar duplicação
     if (financialPageEventListener) {
         document.body.removeEventListener('click', financialPageEventListener);
     }
@@ -936,25 +919,21 @@ export async function loadFinancialPage() {
         document.getElementById('genericModal').removeEventListener('click', genericModalEventListener);
     }
     
-    // --- LÓGICA DE FILTRAGEM (Status e Data/Natureza/CCusto) ---
-    
     const handleFilterChangeAndReload = () => {
-        // Captura o estado atualizado dos filtros
         const startDateInput = document.getElementById('filterStartDate');
         const endDateInput = document.getElementById('filterEndDate');
         const filterNaturezaId = document.getElementById('filterNaturezaId');
         const filterCostCenterId = document.getElementById('filterCostCenterId');
         
-        // Atualiza o estado local com os valores atuais do DOM
+        if(!startDateInput) return; // Se mudou de tela
+
         localState.startDate = startDateInput.value;
         localState.endDate = endDateInput.value;
         localState.filterNaturezaId = filterNaturezaId.value;
         localState.filterCostCenterId = filterCostCenterId.value;
         
-        // Se a tela for pequena, oculta o painel de filtros após a aplicação
         const advancedFiltersEl = document.getElementById('advanced-filters');
         if (advancedFiltersEl && advancedFiltersEl.classList.contains('hidden') === false) {
-            // 768px é o breakpoint 'md' do Tailwind
             if (window.innerWidth < 768) { 
                 advancedFiltersEl.classList.add('hidden');
             }
@@ -970,7 +949,6 @@ export async function loadFinancialPage() {
         const newFilter = filterBtn.dataset.statusFilter;
         localState.currentFilter = newFilter;
         
-        // Atualiza o estilo dos botões
         document.querySelectorAll('[data-status-filter]').forEach(btn => {
             btn.classList.remove('bg-blue-100', 'text-blue-800');
             btn.classList.add('bg-gray-100', 'text-gray-600');
@@ -981,14 +959,14 @@ export async function loadFinancialPage() {
         renderLists();
     };
     
-    // Lógica de alternância de visualização da lista (mobile)
     const toggleListView = (listType) => {
         const payablesContainer = document.getElementById('payables-container');
         const receivablesContainer = document.getElementById('receivables-container');
         const btnPayables = document.getElementById('btn-payables-view');
         const btnReceivables = document.getElementById('btn-receivables-view');
 
-        // Esta função deve funcionar em todas as resoluções, mas a lógica de visibilidade é forçada para mobile no initialSetup.
+        if(!payablesContainer) return;
+
         if (window.innerWidth >= 1024 && localState.currentListView === listType) return;
 
         if (listType === 'payables') {
@@ -1003,7 +981,7 @@ export async function loadFinancialPage() {
                 btnReceivables.classList.remove('bg-green-100', 'border', 'border-green-500');
                 btnReceivables.classList.add('bg-gray-200');
             }
-        } else { // receivables
+        } else {
             payablesContainer.classList.add('hidden');
             receivablesContainer.classList.remove('hidden');
 
@@ -1019,13 +997,8 @@ export async function loadFinancialPage() {
         localState.currentListView = listType;
     };
 
-
-    // --- SETUP DE LISTENERS ---
-    
-    // Listener principal para aplicar filtros de data/natureza/centro de custo
     document.getElementById('applyDateFilterBtn').addEventListener('click', handleFilterChangeAndReload);
     
-    // Listeners de change nos selects de hierarquia
     document.getElementById('filterNaturezaId').addEventListener('change', () => { 
         localState.filterNaturezaId = document.getElementById('filterNaturezaId').value; 
     });
@@ -1037,28 +1010,24 @@ export async function loadFinancialPage() {
         btn.addEventListener('click', handleStatusFilterClick);
     });
 
-    // Listener principal da página (agora no document.body)
     financialPageEventListener = (e) => {
         const target = e.target.closest('button[data-action]');
         if (!target) return;
 
         const { action, type, id } = target.dataset;
         
-        // Ações do FAB (toggle-fab-menu, open-modal, open-cash-flow-modal) são tratadas por listeners diretos
-        
         if (action === 'edit') openFinancialModal(type, JSON.parse(target.dataset.item.replace(/&apos;/g, "'")));
         else if (action === 'delete') handleDelete(type, id);
         else if (action === 'mark-as-paid') handleMarkAsPaid(type, id);
-        else if (action === 'manage-natures') openHierarchyModal('nature'); // Esta ação é reutilizada
-        else if (action === 'manage-cost-centers') openHierarchyModal('cost-center'); // Esta ação é reutilizada
-        else if (action === 'open-cash-flow-modal') openCashFlowModal(); // Chamado pelo botão do desktop
+        else if (action === 'manage-natures') openHierarchyModal('nature');
+        else if (action === 'manage-cost-centers') openHierarchyModal('cost-center');
+        else if (action === 'open-cash-flow-modal') openCashFlowModal();
         else if (action === 'toggle-filters') {
             document.getElementById('advanced-filters')?.classList.toggle('hidden');
         }
         else if (action === 'open-indicators-modal') { 
             openIndicatorsModal();
         }
-        // Ação do novo botão de Configurações
         else if (action === 'open-settings-modal') {
             openSettingsModal();
         }
@@ -1067,7 +1036,6 @@ export async function loadFinancialPage() {
         }
     };
 
-    // Listener do Modal Genérico
     genericModalEventListener = (e) => {
         const target = e.target.closest('button[data-action^="delete-"]');
         if (target) {
@@ -1076,7 +1044,6 @@ export async function loadFinancialPage() {
         }
     };
 
-    // Anexa os listeners principais
     document.body.addEventListener('click', financialPageEventListener);
     document.getElementById('genericModal').addEventListener('click', genericModalEventListener);
 
@@ -1091,7 +1058,6 @@ export async function loadFinancialPage() {
         if(confirmed) {
             try {
                 await deleteApi(id);
-                // CORREÇÃO: Passar establishmentId
                 const updatedItems = await api(state.establishmentId);
                 localState[collectionName] = updatedItems;
                 renderHierarchyList(listDiv, buildHierarchy(updatedItems), type);
@@ -1102,7 +1068,6 @@ export async function loadFinancialPage() {
         }
     }
 
-    // Chamada inicial para configurar o estado da visualização da lista no mobile
     const initialSetup = () => {
         const isMobileView = window.innerWidth < 1024;
         const payablesContainer = document.getElementById('payables-container');
@@ -1110,39 +1075,27 @@ export async function loadFinancialPage() {
         const listToggleButtons = document.getElementById('list-toggle-buttons');
 
         if (payablesContainer && receivablesContainer) {
-            // Garante que a visibilidade padrão seja resetada pelo CSS em telas grandes.
             payablesContainer.classList.remove('hidden');
             receivablesContainer.classList.remove('hidden');
 
             if (isMobileView) {
-                // Força o display em colunas simples para mobile
                 payablesContainer.classList.remove('lg:col-span-1');
                 receivablesContainer.classList.remove('lg:col-span-1');
-                
-                // Garante que o container de botões de toggle esteja visível no mobile
                 listToggleButtons?.classList.remove('hidden');
-                
-                // Seta o estado inicial (Receivables visível por padrão)
                 toggleListView(localState.currentListView);
-                
             } else {
-                // Visão Desktop: Ambas as colunas visíveis por padrão (controlado pelo grid lg:grid-cols-2)
                 payablesContainer.classList.add('lg:col-span-1');
                 receivablesContainer.classList.add('lg:col-span-1');
                 listToggleButtons?.classList.add('hidden');
-                
-                // Remove qualquer classe 'hidden' forçada pela visão mobile
                 payablesContainer.classList.remove('hidden');
                 receivablesContainer.classList.remove('hidden');
             }
         }
     };
     
-    // Roda a configuração inicial e adiciona um listener para redimensionamento
     initialSetup();
     window.addEventListener('resize', initialSetup);
     
-    // Aplica o estilo inicial de filtro e carrega os dados
     const initialFilterButton = document.querySelector(`[data-status-filter="${localState.currentFilter}"]`);
     if (initialFilterButton) {
         document.querySelectorAll('[data-status-filter]').forEach(btn => {
@@ -1153,16 +1106,16 @@ export async function loadFinancialPage() {
         initialFilterButton.classList.add('bg-blue-100', 'text-blue-800');
     }
     
-    // Carrega os dados do dia e os dados filtrados
     try {
-        // CORREÇÃO: Passar establishmentId
         const todaySummary = await financialApi.getTodaySummary(state.establishmentId);
+        // Verifica se elementos ainda existem antes de setar
         const summaryTodayPayablesEl = document.getElementById('summary-today-payables');
         if (summaryTodayPayablesEl) summaryTodayPayablesEl.textContent = `R$ ${todaySummary.totalPayables.toFixed(2)}`;
+        
         const summaryTodayReceivablesEl = document.getElementById('summary-today-receivables');
         if (summaryTodayReceivablesEl) summaryTodayReceivablesEl.textContent = `R$ ${todaySummary.totalReceivables.toFixed(2)}`;
     } catch (error) {
-        showNotification('Erro', 'Não foi possível carregar o resumo do dia.', 'error');
+        // Ignora erro de navegação aqui
     }
     
     await fetchAndDisplayData();

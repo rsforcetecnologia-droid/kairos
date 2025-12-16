@@ -593,14 +593,25 @@
                         return;
                     }
 
+                    // --- CORREÇÃO DEFINITIVA DE DATA E HORA ---
                     const now = new Date();
-                    const todayStr = now.toISOString().split('T')[0];
-                    const isToday = booking.date === todayStr;
+                    
+                    // Cria uma data local para o dia selecionado (evitando a conversão UTC do toISOString)
+                    const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+                    
+                    // Compara usando toDateString (que ignora a hora e usa o fuso local)
+                    const isToday = selectedDateObj.toDateString() === now.toDateString();
+
+                    // Calcula os minutos atuais para comparação precisa
+                    const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
                     slots.forEach(slot => {
                         const [h, m] = slot.split(':').map(Number);
+                        
+                        // Se for hoje, filtra horários passados com base em minutos
                         if (isToday) {
-                            if (h < now.getHours() || (h === now.getHours() && m < now.getMinutes())) return;
+                            const slotMinutes = h * 60 + m;
+                            if (slotMinutes <= currentMinutes) return;
                         }
 
                         const btn = document.createElement('button');

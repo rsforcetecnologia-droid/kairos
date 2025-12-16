@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda + Blindagem XSS)
+// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda + Blindagem XSS + Correção Erro Navegação)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -82,6 +82,7 @@ function renderProfessionalSelector() {
     const container = document.getElementById('profSelectorContainer');
     const searchTerm = localState.profSearchTerm.toLowerCase();
     
+    // CORREÇÃO: Se o container não existir (usuário navegou), para a execução
     if (!container || !state.professionals) return;
 
     let availableProfs = state.professionals.filter(p => 
@@ -143,6 +144,9 @@ function createWhatsAppLink(phone, clientName, serviceName, professionalName, st
 
 function renderListView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
+    // CORREÇÃO: Verifica se o elemento existe antes de prosseguir
+    if (!agendaView) return;
+
     allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
 
     if (allEvents.length === 0) {
@@ -235,6 +239,9 @@ function getActiveWeekDays() {
 
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
+    // CORREÇÃO: Verifica se o elemento existe antes de prosseguir
+    if (!agendaView) return;
+
     const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     const weekStart = getWeekStart(localState.currentDate);
     
@@ -336,11 +343,16 @@ function renderAgenda() {
 
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
+    // CORREÇÃO: Verifica se o elemento existe no início
     if (!agendaView) return;
+    
     agendaView.innerHTML = '<div class="loader mx-auto my-10"></div>';
 
     let start, end;
     const weekRangeSpan = document.getElementById('weekRange');
+
+    // CORREÇÃO: Verifica se os elementos de controle ainda existem
+    if (!weekRangeSpan) return;
 
     if (localState.currentView === 'list') {
         start = new Date(localState.currentDate);
@@ -373,6 +385,9 @@ async function fetchAndDisplayAgenda() {
             localState.selectedProfessionalId
         );
         
+        // CORREÇÃO: Verifica se o usuário mudou de tela durante o Await (elemento ainda existe?)
+        if (!document.getElementById('agenda-view')) return;
+
         const enrichedBlockages = blockagesData.map(b => {
             let profName = b.professionalName;
             
@@ -414,8 +429,11 @@ async function fetchAndDisplayAgenda() {
         }
 
     } catch (error) {
-        showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
-        agendaView.innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
+        // CORREÇÃO: Verifica se o elemento existe antes de tentar manipular
+        if (document.getElementById('agenda-view')) {
+            document.getElementById('agenda-view').innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
+            showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
+        }
     }
 }
 

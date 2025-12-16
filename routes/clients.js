@@ -26,7 +26,7 @@ function handleFirestoreError(res, error, context) {
 // 🚀 ROTAS DE CLIENTES
 // =======================================================================
 
-// 1. LISTAR CLIENTES (OTIMIZADA)
+// 1. LISTAR CLIENTES
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     try {
@@ -147,7 +147,7 @@ router.delete('/:clientId', async (req, res) => {
     }
 });
 
-// 5. HISTÓRICO COMPLETO (AGENDAMENTOS + VENDAS/COMANDAS) - CORRIGIDO
+// 5. HISTÓRICO COMPLETO
 router.get('/history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -159,7 +159,6 @@ router.get('/history/:establishmentId', async (req, res) => {
     try {
         const { db } = req;
 
-        // 1. Buscar Agendamentos (Appointments)
         const appointmentsPromise = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
@@ -168,7 +167,6 @@ router.get('/history/:establishmentId', async (req, res) => {
             .limit(20) 
             .get();
 
-        // 2. Buscar Vendas/Comandas (Sales) - ESSENCIAL para cálculo de gastos
         const salesPromise = db.collection('sales')
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
@@ -181,31 +179,22 @@ router.get('/history/:establishmentId', async (req, res) => {
 
         const history = [];
 
-        // Mapear Agendamentos
         apptSnapshot.docs.forEach(doc => {
             const data = doc.data();
             history.push({
                 id: doc.id,
                 type: 'appointment',
                 date: data.startTime ? data.startTime.toDate().toISOString() : new Date().toISOString(),
-                // Tenta pegar o nome dos serviços ou usa um genérico
                 serviceName: (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'Serviço Agendado',
                 status: data.status || 'pendente',
                 professionalName: data.professionalName || 'N/A',
-                // IMPORTANTE: Envia o valor para o cálculo de fidelidade
                 totalAmount: data.totalAmount || data.price || 0,
-                // Envia items se existirem, para fallback no frontend
                 items: data.services || [] 
             });
         });
 
-        // Mapear Vendas (Comandas)
         salesSnapshot.docs.forEach(doc => {
             const data = doc.data();
-            // Identifica se é uma venda
-            const isSale = true; 
-            
-            // Tenta montar uma descrição amigável dos itens
             const itemsSummary = (data.items || []).map(i => `${i.quantity || 1}x ${i.name}`).join(', ');
 
             history.push({
@@ -213,18 +202,15 @@ router.get('/history/:establishmentId', async (req, res) => {
                 type: 'sale',
                 date: data.startTime ? data.startTime.toDate().toISOString() : (data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
                 serviceName: itemsSummary || 'Comanda / Venda Avulsa',
-                status: data.status || 'completed', // Vendas geralmente já nascem completas/pagas
+                status: data.status || 'completed',
                 professionalName: data.professionalName || 'Balcão',
-                // IMPORTANTE: Envia o valor para o cálculo de fidelidade
                 totalAmount: Number(data.totalAmount || 0),
                 items: data.items || []
             });
         });
 
-        // Ordenar tudo por data (do mais recente para o mais antigo)
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        // Retorna os 50 registros mais recentes combinados
         res.status(200).json(history.slice(0, 50));
 
     } catch (error) {
@@ -236,7 +222,7 @@ router.get('/history/:establishmentId', async (req, res) => {
 // 💎 ROTAS DO MÓDULO FIDELIDADE
 // =======================================================================
 
-// 6. HISTÓRICO DE PONTOS
+// 6. HISTÓRICO DE PONTOS (CORRIGIDO)
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -249,7 +235,18 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
         const { db } = req;
         
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        if (!establishmentDoc.exists || establishmentDoc.data().modules?.['loyalty-section'] !== true) {
+        if (!establishmentDoc.exists) {
+            return res.status(404).json({ message: "Estabelecimento não encontrado." });
+        }
+
+        const estData = establishmentDoc.data();
+        
+        // CORREÇÃO: Verifica se o módulo está ativo OU se o programa está habilitado nas configurações
+        const isLoyaltyActive = 
+            (estData.modules && estData.modules['loyalty-section'] === true) || 
+            (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);
+
+        if (!isLoyaltyActive) {
             return res.status(403).json({ message: "Fidelidade inativa." });
         }
 
@@ -282,7 +279,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
 });
 
-// 7. RESGATAR PRÊMIO MANUALMENTE
+// 7. RESGATAR PRÊMIO MANUALMENTE (CORRIGIDO)
 router.post('/redeem', async (req, res) => {
     const { establishmentId, clientName, clientPhone, rewardData } = req.body;
     
@@ -294,7 +291,18 @@ router.post('/redeem', async (req, res) => {
         const { db } = req;
 
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        if (!establishmentDoc.exists || establishmentDoc.data().modules?.['loyalty-section'] !== true) {
+        if (!establishmentDoc.exists) {
+            return res.status(404).json({ message: "Estabelecimento não encontrado." });
+        }
+
+        const estData = establishmentDoc.data();
+
+        // CORREÇÃO: Mesma verificação flexível
+        const isLoyaltyActive = 
+            (estData.modules && estData.modules['loyalty-section'] === true) || 
+            (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);
+
+        if (!isLoyaltyActive) {
             return res.status(403).json({ message: "Fidelidade inativa." });
         }
         
