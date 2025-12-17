@@ -160,22 +160,29 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
-    // --- FINANCEIRO (Proteção Genérica) ---
-    // Caso o frontend acesse diretamente o Firestore para estas coleções
-    match /natures/{docId} { 
-      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+    // --- FINANCEIRO (CORRIGIDO: NOMES DAS COLEÇÕES) ---
+    
+    // Naturezas Financeiras
+    match /financial_natures/{docId} { 
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
-    match /costCenters/{docId} { 
-      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+    
+    // Centros de Custo
+    match /financial_cost_centers/{docId} { 
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
-    match /payables/{docId} { 
-      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+    
+    // Contas a Pagar (Onde as Compras são lançadas)
+    match /financial_payables/{docId} { 
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
-    match /receivables/{docId} { 
-      allow read, write: if isSignedIn() && isMemberOf(resource.data.establishmentId); 
+    
+    // Contas a Receber (Vendas)
+    match /financial_receivables/{docId} { 
+      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
   }

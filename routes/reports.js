@@ -25,7 +25,7 @@ function handleFirestoreError(res, error, context) {
 }
 
 // =======================================================================
-// 🚀 ROTAS DE INDICADORES (CORRIGIDAS)
+// 🚀 ROTAS DE INDICADORES (DASHBOARD & DRE)
 // =======================================================================
 
 router.get('/indicators', async (req, res) => {
@@ -38,45 +38,42 @@ router.get('/indicators', async (req, res) => {
         const { db } = req;
         
         // --- PREPARAÇÃO DE DATAS ---
-        const start = new Date(startDate); 
-        start.setHours(0,0,0,0);
-        
-        const end = new Date(endDate); 
-        end.setHours(23,59,59,999);
+        const start = new Date(startDate + 'T00:00:00'); 
+        const end = new Date(endDate + 'T23:59:59.999');
 
         // --- QUERIES ---
         
-        // A) VENDAS
+        // A) VENDAS (PDV/Agenda) - Para Dashboard Operacional
         let salesQuery = db.collection('sales')
             .where('establishmentId', '==', establishmentId)
             .where('transaction.paidAt', '>=', start)
             .where('transaction.paidAt', '<=', end);
             
-        // B) FINANCEIRO PAGAR
+        // B) FINANCEIRO PAGAR - Fonte Real da DRE (Despesas)
         let expensesQuery = db.collection('financial_payables')
             .where('establishmentId', '==', establishmentId)
             .where('dueDate', '>=', startDate)
             .where('dueDate', '<=', endDate);
 
-        // C) FINANCEIRO RECEBER
+        // C) FINANCEIRO RECEBER - Fonte Real da DRE (Receitas)
         let receivablesQuery = db.collection('financial_receivables')
             .where('establishmentId', '==', establishmentId)
             .where('dueDate', '>=', startDate)
             .where('dueDate', '<=', endDate);
 
-        // D) COMISSÕES
+        // D) COMISSÕES - Para Dashboard Operacional
         let commissionsQuery = db.collection('commission_reports')
             .where('establishmentId', '==', establishmentId)
             .where('createdAt', '>=', start)
             .where('createdAt', '<=', end);
 
-        // E) AGENDAMENTOS (Busca por startTime)
+        // E) AGENDAMENTOS - Para Estatísticas
         let appointmentsQuery = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('startTime', '>=', start)
             .where('startTime', '<=', end);
 
-        // F) NATUREZAS
+        // F) NATUREZAS - Para Nomes na DRE
         let naturesQuery = db.collection('financial_natures')
             .where('establishmentId', '==', establishmentId);
 
@@ -98,54 +95,44 @@ router.get('/indicators', async (req, res) => {
         const apptByDay = {}, apptByMonth = {}, apptStatus = { scheduled: 0, completed: 0, canceled: 0, missed: 0 };
         const expensesByCategory = {};
         
+        // Estrutura da DRE (Baseada APENAS no Financeiro agora)
         const dreFinancial = { revenues: {}, expenses: {}, totalRevenues: 0, totalExpenses: 0 };
 
-        let totalRevenue = 0;
-        let totalCommissions = 0;
+        let totalSalesRevenue = 0; // Operacional (Dashboard)
+        let totalCommissions = 0;  // Operacional (Dashboard)
         let totalCompletedAppointments = 0; 
         let totalAppointmentsVolume = 0;    
 
-        // A) PROCESSAR VENDAS (Lógica Aprimorada)
+        // A) PROCESSAR VENDAS (Apenas para Gráficos e Cards Superiores)
         salesSnap.forEach(doc => {
             const data = doc.data();
             if (!data.transaction || !data.transaction.paidAt) return;
             
             let docValue = 0;
 
-            // 1. Processamento Detalhado por Item
-            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+            if (professionalId && professionalId !== 'all') {
+                const belongsToProf = (data.items || []).some(i => i.professionalId === professionalId) || data.professionalId === professionalId;
+                if (!belongsToProf) return;
+            }
+
+            if (data.items && Array.isArray(data.items)) {
                 data.items.forEach(item => {
-                    const itemOwner = item.professionalId || data.professionalId;
-                    
-                    // Filtro de Profissional (Backend)
-                    if (professionalId && professionalId !== 'all' && itemOwner !== professionalId) return;
-                    
                     const val = Number(item.price) || 0;
                     docValue += val;
-                    
-                    // Agrupamento por Produto
                     const prodName = item.name || 'Outros';
                     salesByProduct[prodName] = (salesByProduct[prodName] || 0) + val;
                     
-                    // Agrupamento por Profissional (CORREÇÃO AQUI)
-                    // Tenta nome do item -> Tenta nome da venda -> Fallback
                     const profName = item.professionalName || data.professionalName || 'Não Identificado';
                     salesByProfessional[profName] = (salesByProfessional[profName] || 0) + val;
                 });
             } else {
-                // 2. Processamento de Venda Simples (Sem itens ou legado)
-                if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
-                
                 docValue = Number(data.total || data.transaction.totalAmount) || 0;
-                
-                // CORREÇÃO: Agora contabiliza vendas simples no gráfico de profissionais
                 const profName = data.professionalName || 'Não Identificado';
                 salesByProfessional[profName] = (salesByProfessional[profName] || 0) + docValue;
             }
 
-            // Totais Gerais e Temporais
             if (docValue > 0) {
-                totalRevenue += docValue;
+                totalSalesRevenue += docValue;
                 const d = data.transaction.paidAt.toDate();
                 const dKey = d.toLocaleDateString('pt-BR');
                 const mKey = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
@@ -154,28 +141,32 @@ router.get('/indicators', async (req, res) => {
             }
         });
 
-        // B) PROCESSAR FINANCEIRO (DRE)
+        // B) PROCESSAR FINANCEIRO (DRE REAL)
         const filterCostCenter = (docData) => {
             if (costCenterId && costCenterId !== 'all' && docData.centroDeCustoId !== costCenterId) return false;
             return true;
         };
 
+        // Receitas Financeiras
         receivablesSnap.forEach(doc => {
             const data = doc.data();
             if (!filterCostCenter(data)) return;
 
             const val = Number(data.amount) || 0;
-            const nature = naturesMap[data.naturezaId] || 'Receitas Diversas';
+            const nature = data.naturezaId ? (naturesMap[data.naturezaId] || 'Natureza Excluída') : 'Outras Receitas';
+            
             dreFinancial.revenues[nature] = (dreFinancial.revenues[nature] || 0) + val;
             dreFinancial.totalRevenues += val;
         });
 
+        // Despesas Financeiras
         expensesSnap.forEach(doc => {
             const data = doc.data();
             if (!filterCostCenter(data)) return;
 
             const val = Number(data.amount) || 0;
-            const nature = naturesMap[data.naturezaId] || 'Despesas Gerais';
+            const nature = data.naturezaId ? (naturesMap[data.naturezaId] || 'Natureza Excluída') : 'Despesas Gerais';
+            
             dreFinancial.expenses[nature] = (dreFinancial.expenses[nature] || 0) + val;
             dreFinancial.totalExpenses += val;
             
@@ -183,7 +174,7 @@ router.get('/indicators', async (req, res) => {
             expensesByCategory[cat] = (expensesByCategory[cat] || 0) + val;
         });
 
-        // C) PROCESSAR COMISSÕES
+        // C) PROCESSAR COMISSÕES (Apenas para Dashboard Operacional)
         commissionsSnap.forEach(doc => {
             const data = doc.data();
             if (professionalId && professionalId !== 'all' && data.professionalId !== professionalId) return;
@@ -217,16 +208,23 @@ router.get('/indicators', async (req, res) => {
             }
         });
 
+        // --- CONSOLIDAÇÃO FINAL DA DRE ---
+        // REMOVIDO: A soma manual de 'totalSalesRevenue' e 'totalCommissions' na DRE.
+        // A DRE agora reflete EXATAMENTE o que está nas coleções 'financial_receivables' e 'financial_payables'.
+
+        const netResult = dreFinancial.totalRevenues - dreFinancial.totalExpenses;
+
         // RETORNO
         res.json({
             dreFinancial: { 
                 ...dreFinancial, 
-                netResult: dreFinancial.totalRevenues - dreFinancial.totalExpenses 
+                netResult 
             },
+            // O dreSimple mantém os dados operacionais para os Cards do topo
             dreSimple: { 
-                grossRevenue: totalRevenue, 
+                grossRevenue: totalSalesRevenue, 
                 variableCosts: totalCommissions, 
-                netProfit: totalRevenue - totalCommissions 
+                netProfit: totalSalesRevenue - totalCommissions 
             },
             charts: {
                 salesDaily: { labels: Object.keys(salesByDay), data: Object.values(salesByDay) },
@@ -265,7 +263,6 @@ router.get('/appointments/list', async (req, res) => {
 
         const snap = await query.get();
         
-        // Fallback robusto se a busca por string falhar
         let list = [];
         if (!snap.empty) {
              list = snap.docs.map(d => ({ id: d.id, ...d.data() }));

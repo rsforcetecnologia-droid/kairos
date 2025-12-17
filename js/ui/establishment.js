@@ -843,6 +843,7 @@ function renderLoyaltySection(data, container) {
     });
 }
 
+// --- SECÇÃO ATUALIZADA: INTEGRAÇÃO FINANCEIRA ---
 async function renderFinancialIntegrationSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
@@ -857,7 +858,7 @@ async function renderFinancialIntegrationSection(data, container) {
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path></svg>
                         Vendas (Contas a Receber)
                     </h4>
-                    <p class="text-sm text-green-700 mb-4">Defina a classificação automática para vendas realizadas.</p>
+                    <p class="text-sm text-green-700 mb-4">Defina a classificação automática para vendas realizadas no PDV/Agenda.</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="financialNatureId" class="block text-sm font-bold text-gray-700">Natureza Padrão</label>
@@ -868,6 +869,28 @@ async function renderFinancialIntegrationSection(data, container) {
                         <div>
                             <label for="financialCostCenterId" class="block text-sm font-bold text-gray-700">Centro de Custo</label>
                             <select id="financialCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                    <h4 class="text-lg font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        Compras de Fornecedores (Contas a Pagar)
+                    </h4>
+                    <p class="text-sm text-blue-700 mb-4">Defina a classificação automática para pedidos de compra confirmados.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="purchaseNatureId" class="block text-sm font-bold text-gray-700">Natureza Padrão</label>
+                            <select id="purchaseNatureId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
+                                <option value="">A carregar...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="purchaseCostCenterId" class="block text-sm font-bold text-gray-700">Centro de Custo</label>
+                            <select id="purchaseCostCenterId" class="mt-1 block w-full p-2 border border-gray-300 rounded-md bg-white">
                                 <option value="">A carregar...</option>
                             </select>
                         </div>
@@ -901,7 +924,6 @@ async function renderFinancialIntegrationSection(data, container) {
     `;
 
     try {
-        // CORREÇÃO: Passar establishmentId
         const [natures, costCenters] = await Promise.all([
             financialApi.getNatures(state.establishmentId),
             financialApi.getCostCenters(state.establishmentId)
@@ -909,12 +931,17 @@ async function renderFinancialIntegrationSection(data, container) {
         
         const financialIntegration = data.financialIntegration || {};
         const commissionConfig = data.commissionConfig || {};
+        const purchaseConfig = data.purchaseConfig || {}; // Carrega config de compras
 
-        // Populate Receivables (Vendas)
+        // Populate Vendas
         container.querySelector('#financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
         container.querySelector('#financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
 
-        // Populate Payables (Comissões)
+        // Populate Compras (NOVO)
+        container.querySelector('#purchaseNatureId').innerHTML = buildHierarchyOptions(natures, purchaseConfig.defaultNatureId);
+        container.querySelector('#purchaseCostCenterId').innerHTML = buildHierarchyOptions(costCenters, purchaseConfig.defaultCostCenterId);
+
+        // Populate Comissões
         container.querySelector('#commissionNatureId').innerHTML = buildHierarchyOptions(natures, commissionConfig.defaultNatureId);
         container.querySelector('#commissionCostCenterId').innerHTML = buildHierarchyOptions(costCenters, commissionConfig.defaultCostCenterId);
 
@@ -928,6 +955,10 @@ async function renderFinancialIntegrationSection(data, container) {
             financialIntegration: {
                 defaultNaturezaId: container.querySelector('#financialNatureId').value || null,
                 defaultCentroDeCustoId: container.querySelector('#financialCostCenterId').value || null,
+            },
+            purchaseConfig: { // Salva config de compras
+                defaultNatureId: container.querySelector('#purchaseNatureId').value || null,
+                defaultCostCenterId: container.querySelector('#purchaseCostCenterId').value || null,
             },
             commissionConfig: {
                 defaultNatureId: container.querySelector('#commissionNatureId').value || null,

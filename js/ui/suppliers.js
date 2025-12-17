@@ -3,6 +3,7 @@
 // --- 1. IMPORTAÇÕES ---
 import * as suppliersApi from '../api/suppliers.js';
 import * as productsApi from '../api/products.js';
+import * as establishmentApi from '../api/establishments.js'; // <--- IMPORTAÇÃO ESSENCIAL ADICIONADA
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal, closeModal } from '../components/modal.js';
 import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
@@ -595,7 +596,7 @@ async function renderHistoryTab() {
             return;
         }
 
-        // --- 1. MOBILE CARDS ---
+        // --- 1. MOBILE CARDS (COM BOTÃO DE EXCLUIR) ---
         let mobileHtml = '<div class="flex flex-col gap-3 md:hidden">';
         history.forEach(order => {
             const dateStr = new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
@@ -608,26 +609,34 @@ async function renderHistoryTab() {
                         <p class="font-bold text-gray-800 text-sm">${safeSupName}</p>
                         <p class="text-xs text-gray-400 mt-0.5">${order.items.length} itens</p>
                     </div>
-                    <div class="text-right">
+                    <div class="text-right flex flex-col items-end gap-2">
                         <p class="text-indigo-600 font-bold text-sm mb-1">R$ ${parseFloat(order.totalAmount).toFixed(2)}</p>
-                        <button class="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200 btn-view-purchase" data-purchase='${JSON.stringify(order)}'>
-                            Ver
-                        </button>
+                        <div class="flex gap-2">
+                            <button class="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-200 btn-view-purchase" data-purchase='${JSON.stringify(order)}'>
+                                Ver
+                            </button>
+                            <button class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-100 btn-delete-purchase" data-id="${order.id}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
         });
         mobileHtml += '</div>';
 
-        // --- 2. DESKTOP TABLE ---
+        // --- 2. DESKTOP TABLE (COM BOTÃO DE EXCLUIR) ---
         const rows = history.map(order => `
             <tr class="hover:bg-gray-50 border-b border-gray-100">
                 <td class="p-3 text-sm text-gray-600 whitespace-nowrap">${new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR')}</td>
                 <td class="p-3 font-medium text-gray-800">${escapeHTML(order.supplierName)}</td>
                 <td class="p-3 text-right font-bold text-indigo-600 whitespace-nowrap">R$ ${parseFloat(order.totalAmount).toFixed(2)}</td>
-                <td class="p-3 text-right">
+                <td class="p-3 text-right flex justify-end gap-2">
                     <button class="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 btn-view-purchase" data-purchase='${JSON.stringify(order)}'>
                         Ver
+                    </button>
+                    <button class="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg font-bold hover:bg-red-100 btn-delete-purchase" data-id="${order.id}">
+                        Excluir
                     </button>
                 </td>
             </tr>
@@ -1120,22 +1129,58 @@ export function loadSuppliersPage() {
             }
         }
 
-        // --- REGISTRAR COMPRA ---
+        // --- REGISTRAR COMPRA (ATUALIZADO) ---
         if (e.target.closest('.btn-register-order')) {
             const btn = e.target.closest('.btn-register-order');
+            if (btn.disabled) return; // Evita cliques duplos
+
             const orderData = JSON.parse(decodeURIComponent(btn.dataset.order));
-            
             orderData.establishmentId = state.establishmentId;
 
-            suppliersApi.registerPurchase(orderData).then(() => {
-                showNotification("Sucesso", "Compra registrada no histórico!", "success");
-                btn.disabled = true; 
-                btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Registrado`;
-                btn.classList.replace('bg-blue-600', 'bg-green-600');
-                btn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
-            }).catch(err => {
-                showNotification("Erro", "Falha ao registrar compra: " + err.message, "error");
-            });
+            // Feedback Visual
+            btn.disabled = true;
+            btn.textContent = 'A processar...';
+
+            // 1. Busca Configuração do Estabelecimento
+            establishmentApi.getEstablishmentDetails(state.establishmentId)
+                .then(estabData => {
+                    // Pega a config de compras salva em establishment.js
+                    const purchaseConfig = estabData.purchaseConfig || null;
+                    
+                    // 2. Chama a API de registro passando a config para integração
+                    return suppliersApi.registerPurchase(orderData, purchaseConfig);
+                })
+                .then(() => {
+                    showNotification("Sucesso", "Compra registrada e integrada ao financeiro!", "success");
+                    btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Registrado`;
+                    btn.classList.replace('bg-blue-600', 'bg-green-600');
+                    btn.classList.replace('hover:bg-blue-700', 'hover:bg-green-700');
+                })
+                .catch(err => {
+                    btn.disabled = false;
+                    btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Salvar`;
+                    showNotification("Erro", "Falha ao registrar compra: " + err.message, "error");
+                });
+        }
+
+        // --- AÇÃO DE EXCLUIR COMPRA (HISTÓRICO - NOVO) ---
+        if (e.target.closest('.btn-delete-purchase')) {
+            const btn = e.target.closest('.btn-delete-purchase');
+            const purchaseId = btn.dataset.id;
+            
+            showConfirmation("Excluir Compra", "Isto apagará o registo histórico E o lançamento financeiro associado. Deseja continuar?")
+                .then(async (confirmed) => {
+                    if (confirmed) {
+                        try {
+                            // Chama a API que deleta em cascata
+                            await suppliersApi.deletePurchase(purchaseId, state.establishmentId);
+                            showNotification("Sucesso", "Compra e financeiro excluídos.", "success");
+                            renderHistoryTab(); // Recarrega a lista
+                        } catch (error) {
+                            showNotification("Erro", "Erro ao excluir: " + error.message, "error");
+                        }
+                    }
+                });
         }
 
         // Imprimir Pedido/Cotação Final (CORRIGIDO PARA USAR DADOS REAIS)
