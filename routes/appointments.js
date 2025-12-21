@@ -55,18 +55,39 @@ async function checkClientRewards(db, clientName, clientPhone, establishmentId) 
     }
 }
 
+// *** CORREÇÃO PRINCIPAL: FILTRO DE ESTABELECIMENTO REFORÇADO ***
 async function sendPushNotificationToEstablishment(db, establishmentId, title, body) {
+    if (!establishmentId) return; // Segurança básica
+
     try {
-        const usersSnapshot = await db.collection('users').where('establishmentId', '==', establishmentId).get();
+        // 1. Busca usuários filtrando pelo ID do estabelecimento
+        const usersSnapshot = await db.collection('users')
+            .where('establishmentId', '==', establishmentId)
+            .get();
+
         const tokens = [];
         usersSnapshot.forEach(doc => {
-            if (doc.data().fcmToken) tokens.push(doc.data().fcmToken);
+            const data = doc.data();
+            // 2. Verificação Dupla (Defensiva): Garante que o usuário tem token E pertence ao estabelecimento
+            if (data.fcmToken && data.establishmentId === establishmentId) {
+                tokens.push(data.fcmToken);
+            }
         });
 
         if (tokens.length === 0) return;
 
-        const message = { notification: { title, body }, tokens };
+        // 3. Adiciona 'data' com o ID. O App Mobile deve verificar isso ao receber!
+        const message = { 
+            notification: { title, body }, 
+            tokens,
+            data: {
+                establishmentId: establishmentId, // O App deve checar: if (currentUser.establishmentId !== payload.establishmentId) return;
+                type: 'appointment_update'
+            }
+        };
+        
         await admin.messaging().sendEachForMulticast(message);
+        console.log(`Push enviado para ${establishmentId}: ${title}`);
     } catch (error) {
         console.error("Erro Push:", error);
     }
@@ -96,14 +117,14 @@ router.post('/', async (req, res) => {
 
         // Validar Serviços e Calcular Total
         let totalDuration = 0;
-        let totalAmount = 0; // *** NOVO: Variável para somar o total ***
+        let totalAmount = 0;
         const servicesDetails = [];
         for (const s of services) {
             const doc = await db.collection('services').doc(s.id).get();
             if (!doc.exists) continue; 
             const data = doc.data();
             totalDuration += (data.duration || 0) + (data.bufferTime || 0);
-            totalAmount += (data.price || 0); // *** Soma o preço ***
+            totalAmount += (data.price || 0);
             servicesDetails.push({ 
                 id: doc.id, name: data.name, price: data.price, 
                 duration: data.duration, bufferTime: data.bufferTime || 0, photo: data.photo || null 
@@ -155,7 +176,7 @@ router.post('/', async (req, res) => {
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'confirmed', createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 hasRewards,
-                totalAmount: totalAmount // *** GRAVA O TOTAL NA RAIZ ***
+                totalAmount: totalAmount 
             };
 
             if (redeemedReward && redeemedReward.points > 0) {
@@ -186,6 +207,7 @@ router.post('/', async (req, res) => {
             });
         });
 
+        // Envia notificação segura
         sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
             .catch(e => console.error("Falha push:", e));
 
@@ -199,7 +221,6 @@ router.post('/', async (req, res) => {
 // 🔒 ROTAS PRIVADAS (EXIGEM LOGIN)
 // =======================================================================
 
-// Aplica o cadeado daqui para baixo
 router.use(verifyToken, hasAccess);
 
 // 2. LISTAR AGENDAMENTOS
@@ -298,17 +319,30 @@ router.get('/cancelled/:establishmentId', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'cancelados'); }
 });
 
-// 4. DELETAR AGENDAMENTO
+// 4. DELETAR AGENDAMENTO (Com Notificação de Cancelamento)
 router.delete('/:appointmentId', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
+    let notificationData = null;
+
     try {
         await db.runTransaction(async (transaction) => {
             const ref = db.collection('appointments').doc(appointmentId);
             const doc = await transaction.get(ref);
             if (!doc.exists) throw new Error("Não encontrado.");
             
-            const items = doc.data().comandaItems || [];
+            const data = doc.data();
+            
+            // Salva dados para notificação
+            if (data.establishmentId) {
+                notificationData = {
+                    establishmentId: data.establishmentId,
+                    clientName: data.clientName || 'Cliente',
+                    date: data.startTime.toDate()
+                };
+            }
+
+            const items = data.comandaItems || [];
             const products = items.filter(i => i.type === 'product');
             for (const item of products) {
                 if (item.itemId) {
@@ -318,6 +352,20 @@ router.delete('/:appointmentId', async (req, res) => {
             }
             transaction.delete(ref);
         });
+
+        // Envia notificação após exclusão bem sucedida
+        if (notificationData) {
+            const dateStr = notificationData.date.toLocaleDateString('pt-BR');
+            const timeStr = notificationData.date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+            
+            sendPushNotificationToEstablishment(
+                db, 
+                notificationData.establishmentId, 
+                "Agendamento Excluído", 
+                `${notificationData.clientName} - ${dateStr} às ${timeStr} foi removido.`
+            ).catch(e => console.error("Erro push delete:", e));
+        }
+
         res.status(200).json({ message: 'Excluído.' });
     } catch (error) { handleFirestoreError(res, error, 'excluir agendamento'); }
 });
@@ -332,13 +380,13 @@ router.put('/:appointmentId', async (req, res) => {
         if (!profDoc.exists) throw new Error('Profissional inválido.');
         
         let duration = 0;
-        let totalAmount = 0; // *** NOVO: Recalcula total ***
+        let totalAmount = 0; 
         const servicesDetails = [];
         for (const s of services) {
             const d = await db.collection('services').doc(s.id).get();
             if(d.exists) {
                 duration += (d.data().duration||0) + (d.data().bufferTime||0);
-                totalAmount += (d.data().price || 0); // *** Soma ***
+                totalAmount += (d.data().price || 0); 
                 servicesDetails.push({ id: d.id, name: d.data().name, price: d.data().price, duration: d.data().duration, bufferTime: d.data().bufferTime||0 });
             }
         }
@@ -367,7 +415,7 @@ router.put('/:appointmentId', async (req, res) => {
                 clientName, clientPhone, professionalId, professionalName: profDoc.data().name,
                 startTime: admin.firestore.Timestamp.fromDate(start), endTime: admin.firestore.Timestamp.fromDate(end),
                 services: servicesDetails, redeemedReward: redeemedReward || null, hasRewards,
-                totalAmount: totalAmount // *** ATUALIZA O TOTAL NA RAIZ ***
+                totalAmount: totalAmount 
             };
 
             if (redeemedReward && !oldData.redeemedReward) {
@@ -396,9 +444,6 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             const doc = await t.get(ref);
             if(!doc.exists) throw new Error("Não encontrado.");
             
-            // Recalcula total com os novos itens da comanda
-            const currentTotal = newItems.reduce((acc, item) => acc + (parseFloat(item.price || 0) * (item.quantity || 1)), 0);
-
             const oldItems = doc.data().comandaItems || [];
             const count = (list) => list.filter(i=>i.type==='product').reduce((acc,i)=>{ acc[i.itemId]=(acc[i.itemId]||0)+(i.quantity||1); return acc; }, {});
             const oldC = count(oldItems);
@@ -413,17 +458,13 @@ router.post('/:appointmentId/comanda', async (req, res) => {
                 }
             }
             
-            t.update(ref, { 
-                comandaItems: newItems,
-                // Opcional: Atualizar totalAmount aqui também se desejar que a comanda aberta reflita o total parcial
-                // totalAmount: currentTotal 
-            });
+            t.update(ref, { comandaItems: newItems });
         });
         res.status(200).json({ message: 'Comanda atualizada.' });
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT (CORRIGIDO)
+// 7. CHECKOUT
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -453,26 +494,23 @@ router.post('/:appointmentId/checkout', async (req, res) => {
             
             const clientSnap = await transaction.get(clientQuery);
 
-            // A) Atualizar Agendamento
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
                 comandaItems: items,
-                totalAmount: Number(totalAmount), // *** AQUI: GRAVA O VALOR FINAL NA RAIZ ***
+                totalAmount: Number(totalAmount), 
                 transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
             });
 
-            // B) Criar Venda
             transaction.set(saleRef, {
                 type: 'appointment', appointmentId, establishmentId, items,
-                totalAmount: Number(totalAmount), // Também grava na raiz da Venda
+                totalAmount: Number(totalAmount), 
                 clientName: apptData.clientName, clientPhone: apptData.clientPhone,
                 professionalId: apptData.professionalId, professionalName: apptData.professionalName,
                 createdBy: uid, createdAt: paidAtTimestamp, cashierSessionId: cashierSessionId || null,
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            // C) Atualizar Cliente
             if (!clientSnap.empty) {
                 const clientRef = clientSnap.docs[0].ref;
                 let clientUpdate = { lastServiceDate: paidAtTimestamp };
@@ -489,7 +527,6 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction.update(clientRef, clientUpdate);
             }
 
-            // D) Lançamentos Financeiros
             const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
             payments.forEach(payment => {
                 const finRef = db.collection('financial_receivables').doc();
@@ -509,7 +546,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA (CORRIGIDO)
+// 8. REABRIR COMANDA
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
@@ -537,7 +574,6 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 status: 'confirmed', 
                 transaction: admin.firestore.FieldValue.delete(), 
                 cashierSessionId: admin.firestore.FieldValue.delete(),
-                // Opcional: Zerar ou manter o totalAmount anterior? Manter é seguro para exibição
             });
         });
         res.status(200).json({ message: 'Reaberto.' });
@@ -549,8 +585,44 @@ router.post('/:appointmentId/awaiting-payment', async (req, res) => {
     catch(e){ handleFirestoreError(res, e, 'status'); }
 });
 
+// 9. ALTERAR STATUS (Com Notificação de Cancelamento)
 router.patch('/:appointmentId/status', async (req, res) => {
-    try { await req.db.collection('appointments').doc(req.params.appointmentId).update({ status: req.body.status }); res.status(200).json({message:'ok'}); }
+    try { 
+        const { appointmentId } = req.params;
+        const { status } = req.body;
+        const ref = req.db.collection('appointments').doc(appointmentId);
+        
+        await ref.update({ status }); 
+
+        // Se for cancelamento, busca os dados para notificar
+        if (status === 'cancelled') {
+            const doc = await ref.get();
+            const data = doc.data();
+            if (data && data.establishmentId) {
+                const dateStr = data.startTime.toDate().toLocaleDateString('pt-BR');
+                const timeStr = data.startTime.toDate().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+                
+                sendPushNotificationToEstablishment(
+                    req.db,
+                    data.establishmentId,
+                    "Agendamento Cancelado",
+                    `${data.clientName || 'Cliente'} cancelou o horário de ${dateStr} às ${timeStr}.`
+                ).catch(e => console.error("Erro push cancelamento:", e));
+                
+                // Grava notificação no painel do estabelecimento
+                await req.db.collection('establishments').doc(data.establishmentId).collection('notifications').add({
+                    title: "Cancelamento", 
+                    message: `${data.clientName} cancelou o agendamento de ${dateStr} às ${timeStr}`,
+                    timestamp: admin.firestore.FieldValue.serverTimestamp(), 
+                    read: false, 
+                    type: 'cancellation', 
+                    relatedId: appointmentId
+                });
+            }
+        }
+
+        res.status(200).json({message:'ok'}); 
+    }
     catch(e){ handleFirestoreError(res, e, 'status patch'); }
 });
 

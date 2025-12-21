@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <script>
         // Verifica se está a rodar dentro do App (Capacitor)
-        // Se for nativo (Android/iOS), redireciona para o sistema (app.html)
         if (window.Capacitor && window.Capacitor.isNativePlatform()) {
             window.location.replace("app.html");
         }
@@ -18,9 +17,78 @@
     
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <script type="module" crossorigin src="/assets/main-Dkh_gkyH.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="stylesheet" crossorigin href="/assets/landing-CIN9cT2o.css">
+    
+    <style>
+        /* --- CORREÇÃO DE CLIQUE PREÇOS --- */
+        .pricing-toggle-container {
+            position: relative;
+            z-index: 50;
+        }
+        .toggle-btn {
+            cursor: pointer;
+        }
+        
+        /* --- ESTILO PREÇO RISCADO --- */
+        .original-price {
+            display: block;
+            font-size: 0.85rem;
+            color: #94A3B8;
+            text-decoration: line-through;
+            margin-top: -5px;
+            margin-bottom: 5px;
+            height: 20px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .original-price.visible { opacity: 1; }
+
+        /* --- ESTILO INFO TOTAL E PARCELAMENTO --- */
+        .total-price-info {
+            font-size: 0.8rem;
+            color: #94A3B8;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 20px;
+            min-height: 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            line-height: 1.4;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .total-price-info strong {
+            color: #F8FAFC;
+            font-weight: 600;
+        }
+
+        /* --- ANIMAÇÃO SLIDES --- */
+        .demo-slide, .mobile-slide {
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+        }
+        .demo-slide.active, .mobile-slide.active {
+            opacity: 1;
+        }
+
+        /* --- DASHBOARD HERO (ESTILO RICO) --- */
+        .dashboard-preview { display: flex; flex-direction: column; gap: 20px; height: 100%; }
+        .dash-stat { margin-bottom: 5px; }
+        .stat-label { font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-size: 1.8rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 10px; font-family: 'Playfair Display', serif; }
+        .stat-growth { font-size: 0.85rem; color: #10B981; background: rgba(16, 185, 129, 0.15); padding: 2px 8px; border-radius: 12px; font-family: 'Inter', sans-serif; display: flex; align-items: center; gap: 4px; }
+        .dash-chart-area { display: flex; align-items: flex-end; justify-content: space-between; height: 60px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .chart-bar { width: 12%; background: rgba(255,255,255,0.1); border-radius: 4px; transition: height 1s ease; }
+        .chart-bar.active { background: #8B5CF6; box-shadow: 0 0 10px rgba(139, 92, 246, 0.4); }
+        .dash-list { display: flex; flex-direction: column; gap: 12px; }
+        .dash-item { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 8px; }
+        .avatar-mini { width: 32px; height: 32px; background: #8B5CF6; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: white; }
+        .item-info { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+        .item-info strong { font-size: 0.85rem; color: #e2e8f0; }
+        .item-info span { font-size: 0.75rem; color: #94a3b8; }
+        .status-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #10B981; }
+    </style>
+  <link rel="stylesheet" crossorigin href="/assets/landing-C8yb-aWA.css">
 </head>
 <body>
 
@@ -47,7 +115,7 @@
         <div class="hero-slideshow">
             <div class="slide-item" style="background-image: url('/assets/hero-bg-1-ywweQIUE.jpg');"></div>
             <div class="slide-item" style="background-image: url('/assets/hero-bg-2-BFFeoQnP.jpg');"></div>
-            <div class="slide-item" style="background-image: url('/assets/hero-bg-3-Dq3tyH5Y.jpg');"></div>
+            <div class="slide-item" style="background-image: url('/assets/hero-bg-3-Di81GNbv.jpg');"></div>
             <div class="hero-overlay"></div>
         </div>
 
@@ -80,10 +148,42 @@
                         </div>
                         <div class="bar">Kairos Dashboard</div>
                     </div>
-                    <div class="card-body">
-                        <div class="mock-chart"></div>
-                        <div class="mock-lines"></div>
-                        <div class="mock-lines"></div>
+                    <div class="card-body dashboard-preview">
+                        <div class="dash-stat">
+                            <span class="stat-label">Faturamento Hoje</span>
+                            <div class="stat-value">
+                                R$ 1.850,00
+                                <span class="stat-growth"><i class="ph ph-trend-up"></i> +12%</span>
+                            </div>
+                        </div>
+
+                        <div class="dash-chart-area">
+                            <div class="chart-bar" style="height: 40%"></div>
+                            <div class="chart-bar" style="height: 65%"></div>
+                            <div class="chart-bar" style="height: 50%"></div>
+                            <div class="chart-bar" style="height: 85%"></div>
+                            <div class="chart-bar active" style="height: 95%"></div>
+                            <div class="chart-bar" style="height: 70%"></div>
+                        </div>
+
+                        <div class="dash-list">
+                            <div class="dash-item">
+                                <div class="avatar-mini">JM</div>
+                                <div class="item-info">
+                                    <strong>João M.</strong>
+                                    <span>Corte + Barba • 14:00</span>
+                                </div>
+                                <span class="status-badge">Confirmado</span>
+                            </div>
+                            <div class="dash-item">
+                                <div class="avatar-mini" style="background: #10B981;">AL</div>
+                                <div class="item-info">
+                                    <strong>André L.</strong>
+                                    <span>Pigmentação • 14:45</span>
+                                </div>
+                                <span class="status-badge">Aguardando</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="glow-effect"></div>
                 </div>
@@ -158,60 +258,359 @@
     </section>
 
     <section id="demonstracao" class="modern-demo-section">
-      <div class="container">
-        <div class="section-header text-center">
-          <h2>Experiência Premium</h2>
-          <p>Design pensado para produtividade. Do computador ao celular.</p>
-        </div>
+        <div class="container">
+            <div class="section-header text-center">
+                <span class="badge">Em Ação</span>
+                <h2>Experiência Visual Imersiva</h2>
+                <p>Veja como o Kairos transforma a gestão numa experiência fluida.</p>
+            </div>
 
-        <div class="demo-wrapper">
-          <div class="demo-text">
-            <h3>Painel de Gestão Web</h3>
-            <p>Visão panorâmica do seu faturamento, agenda e equipe. Tudo em uma tela limpa e sem distrações.</p>
-            <ul class="demo-features">
-                <li>✨ Relatórios Financeiros Detalhados</li>
-                <li>✨ Controle de Estoque Inteligente</li>
-                <li>✨ Gestão de Múltiplos Profissionais</li>
-            </ul>
-          </div>
-          
-          <div class="demo-visual web-visual">
-            <div class="monitor-wrapper">
-                <div class="sliding-track">
-                    <img src="/assets/hero-bg-1-EoCTdSwv.png" alt="Screen 1">
-                    <img src="/assets/hero-bg-2-DehyBWut.png" alt="Screen 2">
-                    <img src="/assets/hero-bg-3-BsqoX-dF.png" alt="Screen 3">
-                    <img src="/assets/hero-bg-4-DZQ_tEdh.png" alt="Screen 4">
-                    <img src="/assets/hero-bg-1-EoCTdSwv.png" alt="Screen 1 Loop">
+            <div class="demo-showcase">
+                <div class="browser-frame">
+                    <div class="browser-header">
+                        <div class="window-controls">
+                            <span class="control red"></span>
+                            <span class="control yellow"></span>
+                            <span class="control green"></span>
+                        </div>
+                        <div class="address-bar">app.kairos.com/dashboard</div>
+                    </div>
+                    
+                    <div class="screen-viewport" id="demo-slider">
+                        <img src="/assets/demo-1-EoCTdSwv.png" class="demo-slide active" alt="Slide 1">
+                        <img src="/assets/demo-2-DehyBWut.png" class="demo-slide" alt="Slide 2">
+                        <img src="/assets/demo-3-BsqoX-dF.png" class="demo-slide" alt="Slide 3">
+                        <img src="/assets/demo-4-DZQ_tEdh.png" class="demo-slide" alt="Slide 4">
+
+                        <button class="nav-btn prev-btn"><i class="ph ph-caret-left"></i></button>
+                        <button class="nav-btn next-btn"><i class="ph ph-caret-right"></i></button>
+
+                        <div class="slide-indicators">
+                            <span class="indicator active" data-index="0"></span>
+                            <span class="indicator" data-index="1"></span>
+                            <span class="indicator" data-index="2"></span>
+                            <span class="indicator" data-index="3"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
-          </div>
         </div>
+    </section>
 
-        <div class="demo-wrapper reverse-layout">
-          <div class="demo-text">
-            <h3>App para Clientes e Equipe</h3>
-            <p>Seu cliente agenda em 15 segundos. Sua equipe recebe notificações em tempo real.</p>
-            <ul class="demo-features">
-                <li>📱 Agendamento 24h por dia</li>
-                <li>📱 Notificações via WhatsApp</li>
-                <li>📱 Histórico de Comandas</li>
-            </ul>
-          </div>
+    <section id="mobile-app" class="mobile-app-section">
+        <div class="container">
+            <div class="mobile-grid">
+                
+                <div class="mobile-text">
+                    <span class="badge">Disponível em iOS e Android</span>
+                    <h2>A sua empresa,<br>no seu bolso.</h2>
+                    <p>Não precisa estar no balcão para gerir o negócio. Com a app Kairos, tem controlo total onde quer que esteja.</p>
+                    
+                    <ul class="mobile-features-list">
+                        <li>
+                            <div class="icon-check"><i class="ph ph-check"></i></div>
+                            <span>Notificações de agendamento em tempo real</span>
+                        </li>
+                        <li>
+                            <div class="icon-check"><i class="ph ph-check"></i></div>
+                            <span>Acesso rápido à agenda da equipe</span>
+                        </li>
+                        <li>
+                            <div class="icon-check"><i class="ph ph-check"></i></div>
+                            <span>Resumo financeiro diário</span>
+                        </li>
+                    </ul>
 
-          <div class="demo-visual mobile-visual">
-             <div class="mobile-wrapper">
-                <div class="sliding-track">
-                    <img src="images/mobile-1.png" alt="App 1">
-                    <img src="images/mobile-2.png" alt="App 2">
-                    <img src="images/mobile-3.png" alt="App 3">
-                    <img src="images/mobile-4.png" alt="App 4">
-                    <img src="images/mobile-1.png" alt="App 1 Loop">
+                    <div class="app-buttons">
+                        <a href="#" class="btn-primary">
+                            <i class="ph ph-google-play-logo"></i> Google Play
+                        </a>
+                        <a href="#" class="btn-outline">
+                            <i class="ph ph-app-store-logo"></i> App Store
+                        </a>
+                    </div>
                 </div>
-             </div>
-          </div>
+
+                <div class="mobile-visual">
+                    <div class="phone-glow"></div>
+
+                    <div class="phone-frame">
+                        <div class="phone-notch"></div>
+                        <div class="phone-buttons-right"></div>
+                        <div class="phone-buttons-left"></div>
+                        
+                        <div class="phone-screen" id="mobile-slider">
+                            <img src="/assets/mobile-1-D-lFWj1O.png" class="mobile-slide active" alt="App Screen 1">
+                            <img src="/assets/mobile-2-DwJoMN9V.png" class="mobile-slide" alt="App Screen 2">
+                            <img src="/assets/mobile-3-Ch8Dcjz8.png" class="mobile-slide" alt="App Screen 3">
+                            <img src="/assets/mobile-4-DYEExSfh.png" class="mobile-slide" alt="App Screen 4">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
         </div>
-      </div>
+    </section>
+
+    <section id="depoimentos" class="testimonials-section">
+        <div class="container">
+            <div class="section-header text-center">
+                <span class="badge">Resultados Reais</span>
+                <h2>Quem usa, cresce.</h2>
+                <p>Junte-se a centenas de estabelecimentos que transformaram a sua gestão e aumentaram os lucros com o Kairos.</p>
+            </div>
+
+            <div class="testimonials-grid">
+                
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"Antes do Kairos, eu perdia 2 horas por dia a responder no WhatsApp. Com o agendamento automático, ganhei tempo para fazer mais 4 cortes diários. O sistema pagou-se na primeira semana."</p>
+                    <div class="author">
+                        <div class="avatar-circle">CR</div>
+                        <div class="author-info">
+                            <strong>Carlos Rodrigues</strong>
+                            <span>Barber King, Lisboa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"A clareza financeira é incrível. Descobri onde estava a perder dinheiro com produtos de estoque parado. Em 3 meses, o nosso lucro líquido aumentou 18% só com a organização que o sistema trouxe."</p>
+                    <div class="author">
+                        <div class="avatar-circle">AS</div>
+                        <div class="author-info">
+                            <strong>Ana Silva</strong>
+                            <span>Studio Glamour</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"O cálculo de comissões era um pesadelo no final do mês, sempre gerava discussões. Agora é automático e transparente. A minha equipe está mais motivada e eu tenho paz de espírito."</p>
+                    <div class="author">
+                        <div class="avatar-circle">ML</div>
+                        <div class="author-info">
+                            <strong>Mariana Lima</strong>
+                            <span>Lotus Estética Avançada</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"Os meus clientes adoram a App. Agendam às 2 da manhã se quiserem. O sistema de lembretes reduziu as faltas (no-shows) em quase 40%. É essencial."</p>
+                    <div class="author">
+                        <div class="avatar-circle">JP</div>
+                        <div class="author-info">
+                            <strong>João Pereira</strong>
+                            <span>Vintage Barber Shop</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"A gestão inteligente de estoque avisa-me exatamente quando comprar. Acabou o desperdício e nunca mais falhei um serviço por falta de tinta ou produto."</p>
+                    <div class="author">
+                        <div class="avatar-circle">SR</div>
+                        <div class="author-info">
+                            <strong>Sofia Ramos</strong>
+                            <span>Belleza Pura</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"Gerir duas unidades era o caos. O Kairos centralizou tudo. Consigo ver o faturamento de ambas as lojas em tempo real no telemóvel. Simplesmente mudou o meu negócio."</p>
+                    <div class="author">
+                        <div class="avatar-circle">RT</div>
+                        <div class="author-info">
+                            <strong>Ricardo Torres</strong>
+                            <span>Zen Spa & Wellness</span>
+                        </div>
+                    </div>
+                </div>
+
+                 <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"O design do sistema impressiona. É fácil de usar e muito rápido. Já usei outros sistemas complicados, mas o Kairos é direto ao ponto. Ajudou a fidelizar clientes."</p>
+                    <div class="author">
+                        <div class="avatar-circle">DM</div>
+                        <div class="author-info">
+                            <strong>Diogo Mendes</strong>
+                            <span>Mendes Cuts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="testimonial-card">
+                    <div class="card-top">
+                        <div class="stars">★★★★★</div>
+                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
+                    </div>
+                    <p class="testimonial-text">"Trabalho sozinha e o Kairos é a minha 'secretária'. Organiza a agenda, manda lembretes e controla o caixa. Sobra-me tempo para focar na arte e nas clientes."</p>
+                    <div class="author">
+                        <div class="avatar-circle">PC</div>
+                        <div class="author-info">
+                            <strong>Patrícia Costa</strong>
+                            <span>Nail Art Design</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section id="planos" class="pricing-section">
+        <div class="container">
+            <div class="section-header text-center">
+                <span class="badge">Investimento</span>
+                <h2>Planos que crescem com você</h2>
+                <p>O sistema é completo em todos os planos. Escolha apenas o tamanho da sua equipe.</p>
+            </div>
+
+            <div class="pricing-toggle-container">
+                <div class="pricing-toggle">
+                    <button class="toggle-btn" onclick="updatePrices('mensal', this)">Mensal</button>
+                    <button class="toggle-btn" onclick="updatePrices('semestral', this)">Semestral <span class="discount-tag">-15%</span></button>
+                    <button class="toggle-btn active" onclick="updatePrices('anual', this)">Anual <span class="discount-tag">-30%</span></button>
+                </div>
+            </div>
+
+            <div class="pricing-grid">
+                
+                <div class="pricing-card">
+                    <div class="card-content">
+                        <div class="plan-header">
+                            <h3>Solo</h3>
+                            <p class="desc">Para profissionais independentes.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="currency">R$</span>
+                            <span class="amount" data-mensal="79,90" data-semestral="67,80" data-anual="55,90">55,90</span>
+                            <span class="period">/mês</span>
+                            <div class="original-price visible">de R$ 79,90</div>
+                        </div>
+                        <div class="total-price-info">
+                            Total de <strong>R$ 670,80</strong><br>em até 12x sem juros no cartão
+                        </div>
+                        <div class="plan-features">
+                            <ul>
+                                <li><i class="ph ph-user"></i> <strong>1 Profissional</strong></li>
+                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
+                            </ul>
+                        </div>
+                        <a href="publicRegister.html" class="btn-outline full-width">Começar Agora</a>
+                    </div>
+                </div>
+
+                <div class="pricing-card popular">
+                    <div class="popular-tag">Mais Escolhido</div>
+                    <div class="card-content">
+                        <div class="plan-header">
+                            <h3>Starter</h3>
+                            <p class="desc">Pequenas equipes em crescimento.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="currency">R$</span>
+                            <span class="amount" data-mensal="109,90" data-semestral="93,30" data-anual="76,90">76,90</span>
+                            <span class="period">/mês</span>
+                            <div class="original-price visible">de R$ 109,90</div>
+                        </div>
+                        <div class="total-price-info">
+                            Total de <strong>R$ 922,80</strong><br>em até 12x sem juros no cartão
+                        </div>
+                        <div class="plan-features">
+                            <ul>
+                                <li><i class="ph ph-users"></i> <strong>Até 5 Profissionais</strong></li>
+                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
+                            </ul>
+                        </div>
+                        <a href="publicRegister.html" class="btn-primary full-width">Começar Agora</a>
+                    </div>
+                </div>
+
+                <div class="pricing-card">
+                    <div class="card-content">
+                        <div class="plan-header">
+                            <h3>Pro</h3>
+                            <p class="desc">Salões e Barbearias estabelecidos.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="currency">R$</span>
+                            <span class="amount" data-mensal="164,50" data-semestral="139,80" data-anual="115,15">115,15</span>
+                            <span class="period">/mês</span>
+                            <div class="original-price visible">de R$ 164,50</div>
+                        </div>
+                        <div class="total-price-info">
+                            Total de <strong>R$ 1.381,80</strong><br>em até 12x sem juros no cartão
+                        </div>
+                        <div class="plan-features">
+                            <ul>
+                                <li><i class="ph ph-users-three"></i> <strong>Até 15 Profissionais</strong></li>
+                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
+                            </ul>
+                        </div>
+                        <a href="publicRegister.html" class="btn-outline full-width">Experimentar Grátis</a>
+                    </div>
+                </div>
+
+                <div class="pricing-card">
+                    <div class="card-content">
+                        <div class="plan-header">
+                            <h3>Business</h3>
+                            <p class="desc">Grandes redes e franquias.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="currency">R$</span>
+                            <span class="amount" data-mensal="219,90" data-semestral="186,80" data-anual="153,90">153,90</span>
+                            <span class="period">/mês</span>
+                            <div class="original-price visible">de R$ 219,90</div>
+                        </div>
+                        <div class="total-price-info">
+                            Total de <strong>R$ 1.846,80</strong><br>em até 12x sem juros no cartão
+                        </div>
+                        <div class="plan-features">
+                            <ul>
+                                <li><i class="ph ph-buildings"></i> <strong>Profissionais Ilimitados</strong></li>
+                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
+                                <li><i class="ph ph-check-circle"></i> Suporte Prioritário VIP</li>
+                                <li><i class="ph ph-check-circle"></i> Migração de Dados Grátis</li>
+                            </ul>
+                        </div>
+                        <a href="publicRegister.html" class="btn-outline full-width">Falar com Vendas</a>
+                    </div>
+                </div>
+
+            </div>
+            
+            <p class="pricing-note text-center">* Nos planos anuais e semestrais, o valor total compromete o limite do cartão.</p>
+        </div>
     </section>
 
     <footer class="footer">
@@ -250,7 +649,117 @@
         </a>
     </nav>
 
-    <script src="js/landing.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            
+            // 1. NAVBAR SCROLL
+            const navbar = document.querySelector('.navbar');
+            if (navbar) {
+                window.addEventListener('scroll', () => {
+                    window.scrollY > 50 ? navbar.classList.add('scrolled') : navbar.classList.remove('scrolled');
+                });
+            }
+
+            // 2. SLIDERS (ANIMAÇÃO IMAGENS)
+            function createSlider(containerId, intervalTime = 4000) {
+                const container = document.getElementById(containerId);
+                if (!container) return; 
+
+                let slides = container.querySelectorAll('.demo-slide, .mobile-slide');
+                if (slides.length === 0) slides = container.querySelectorAll('img');
+                if (slides.length === 0) return;
+
+                const parentFrame = container.parentElement;
+                const indicators = parentFrame ? parentFrame.querySelectorAll('.indicator') : [];
+                const nextBtn = parentFrame ? parentFrame.querySelector('.next-btn') : null;
+                const prevBtn = parentFrame ? parentFrame.querySelector('.prev-btn') : null;
+
+                let currentIndex = 0;
+                let slideInterval;
+
+                function showSlide(index) {
+                    if (index >= slides.length) index = 0;
+                    if (index < 0) index = slides.length - 1;
+
+                    slides.forEach(s => s.classList.remove('active'));
+                    indicators.forEach(i => i.classList.remove('active'));
+
+                    currentIndex = index;
+                    slides[currentIndex].classList.add('active');
+                    if (indicators[currentIndex]) indicators[currentIndex].classList.add('active');
+                }
+
+                function next() { showSlide(currentIndex + 1); }
+                function prev() { showSlide(currentIndex - 1); }
+
+                function startTimer() {
+                    clearInterval(slideInterval);
+                    slideInterval = setInterval(next, intervalTime);
+                }
+
+                if (nextBtn) nextBtn.addEventListener('click', (e) => { e.preventDefault(); next(); startTimer(); });
+                if (prevBtn) prevBtn.addEventListener('click', (e) => { e.preventDefault(); prev(); startTimer(); });
+
+                indicators.forEach(ind => {
+                    ind.addEventListener('click', (e) => {
+                        const idx = parseInt(e.target.dataset.index);
+                        showSlide(idx);
+                        startTimer();
+                    });
+                });
+
+                startTimer();
+            }
+
+            createSlider('demo-slider', 5000);
+            createSlider('mobile-slider', 4000);
+        });
+
+        // 3. FUNÇÃO DE PREÇOS (COM CÁLCULO DE TOTAL)
+        function updatePrices(period, btn) {
+            document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            document.querySelectorAll('.pricing-card').forEach(card => {
+                const amountEl = card.querySelector('.amount');
+                const originalPriceEl = card.querySelector('.original-price');
+                const totalInfoEl = card.querySelector('.total-price-info');
+                
+                if (amountEl) {
+                    const priceString = amountEl.getAttribute('data-' + period);
+                    const priceValue = parseFloat(priceString.replace(',', '.')); // Ex: 55.90
+                    
+                    // Animação do Preço Principal
+                    amountEl.style.opacity = '0';
+                    setTimeout(() => {
+                        amountEl.textContent = priceString;
+                        amountEl.style.opacity = '1';
+                    }, 200);
+
+                    // Lógica do Preço Riscado e Total
+                    if (period === 'mensal') {
+                        if(originalPriceEl) originalPriceEl.classList.remove('visible');
+                        if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
+                    } else {
+                        // Semestral ou Anual
+                        const originalValue = amountEl.getAttribute('data-mensal');
+                        if(originalPriceEl) {
+                            originalPriceEl.textContent = 'de R$ ' + originalValue;
+                            originalPriceEl.classList.add('visible');
+                        }
+
+                        if(totalInfoEl) {
+                            let multiplier = period === 'semestral' ? 6 : 12;
+                            // Calcula Total: (Valor do Plano * Meses)
+                            let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
+                            
+                            totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
+                        }
+                    }
+                }
+            });
+        }
+    </script>
 
 </body>
 </html>
