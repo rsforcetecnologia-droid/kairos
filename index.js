@@ -35,7 +35,6 @@ try {
     if (!admin.apps.length) {
         admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
-            // ATUALIZADO: Nome do bucket correto para a região US
             storageBucket: 'kairos-agenda-us.firebasestorage.app' 
         });
         console.log("✅ Firebase Admin SDK inicializado com sucesso!");
@@ -44,7 +43,6 @@ try {
     }
 
 } catch (error) {
-    // ERRO CRÍTICO: Mata o processo para o erro aparecer no log do Cloud Run
     console.error("🚨 ERRO FATAL NA INICIALIZAÇÃO DO FIREBASE 🚨");
     console.error(error.message);
     process.exit(1); 
@@ -108,7 +106,6 @@ app.post('/api/admin/config/logo',
             if (!req.file) return res.status(400).json({ message: 'Nenhum ficheiro enviado.' });
             
             const { db } = req; 
-            // CORREÇÃO: Bucket US
             const bucket = admin.storage().bucket('kairos-agenda-us.firebasestorage.app'); 
             const fileName = `platform-logo/logo-${Date.now()}-${req.file.originalname}`;
             const fileUpload = bucket.file(fileName);
@@ -139,12 +136,20 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api', addFirebaseInstances); 
 
 // ======================================================================
-// SERVIR a pasta do BUILD
+// CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS (CRUCIAL PARA O SITE FUNCIONAR)
 // ======================================================================
+
+// 1. Serve a pasta do BUILD principal (cap-dist)
 app.use(express.static(path.join(__dirname, 'cap-dist')));
 
-// --- ROTAS DA API ---
+// 2. CORREÇÃO: Serve as pastas da RAIZ que contêm os scripts e imagens novos
+app.use('/js', express.static(path.join(__dirname, 'js')));
+app.use('/css', express.static(path.join(__dirname, 'css')));
+app.use('/images', express.static(path.join(__dirname, 'images')));
 
+// ----------------------------------------------------------------------
+
+// --- ROTAS DA API ---
 // Rotas Administrativas (Protegidas)
 app.use('/api/admin', verifyToken, isSuperAdmin, adminRoutes);
 app.use('/api/subscriptions', verifyToken, isSuperAdmin, subscriptionsRoutes);
@@ -162,33 +167,32 @@ app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRo
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
 
-// --- CORREÇÃO AQUI: ROTAS PÚBLICAS/HÍBRIDAS (Sem verifyToken global) ---
-// Estas rotas precisam ser acessíveis sem login para o agendamento online funcionar.
-// A segurança (quem pode editar/apagar) é tratada DENTRO de cada arquivo de rota.
+// Rotas Híbridas/Públicas
 app.use('/api/establishments', establishmentRoutes); 
 app.use('/api/professionals', professionalRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/availability', availabilityRoutes);
-// ---------------------------------------------------------------------
 
-app.use('/api/import', importRoutes); // Importação pode ter lógica própria
+app.use('/api/import', importRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/public/subscriptions', publicSubscriptionsRoutes);
 app.use('/api/public/register', addFirebaseInstances, publicRegisterRoutes);
 app.use('/api/appointments', appointmentRoutes);
 
 // ======================================================================
-// ROTAS PARA PÁGINAS HTML (Redirecionam para cap-dist)
+// ROTAS PARA PÁGINAS HTML
 // ======================================================================
 const sendBuildFile = (res, filename) => {
     res.sendFile(path.join(__dirname, 'cap-dist', filename));
 };
 
+// Páginas do Landing Site
 app.get('/', (req, res) => sendBuildFile(res, 'landing.html')); 
 app.get('/funcionalidades.html', (req, res) => sendBuildFile(res, 'funcionalidades.html'));
 app.get('/precos.html', (req, res) => sendBuildFile(res, 'precos.html'));
 app.get('/contato_kairos.html', (req, res) => sendBuildFile(res, 'contato_kairos.html'));
 
+// Páginas do App
 app.get('/painel', (req, res) => sendBuildFile(res, 'index.html'));
 app.get('/agendar', (req, res) => sendBuildFile(res, 'cliente.html'));
 app.get('/admin', (req, res) => sendBuildFile(res, 'admin.html'));
@@ -198,6 +202,11 @@ app.get('/mobile-app', (req, res) => sendBuildFile(res, 'mobile-app.html'));
 app.get('/import', (req, res) => sendBuildFile(res, 'import.html'));
 app.get('/dbexplorer', (req, res) => sendBuildFile(res, 'dbexplorer.html'));
 app.get('/datadictionary', (req, res) => sendBuildFile(res, 'datadictionary.html'));
+
+// CORREÇÃO: Rota específica para a nova página de registo na raiz
+app.get('/publicRegister.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'publicRegister.html'));
+});
 
 // --- TRATAMENTO DE ERROS FINAL ---
 app.use((err, req, res, next) => {

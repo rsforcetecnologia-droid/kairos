@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kairos - Criar Minha Conta</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <style>
+        :root { --primary: #4F46E5; --bg: #0F172A; --card: #1E293B; --text: #F8FAFC; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .register-container { background: var(--card); padding: 30px; border-radius: 16px; width: 100%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
+        .logo { text-align: center; margin-bottom: 20px; }
+        .logo img { height: 40px; }
+        h2 { text-align: center; font-size: 1.5rem; margin-bottom: 8px; }
+        p.subtitle { text-align: center; color: #94A3B8; font-size: 0.9rem; margin-bottom: 25px; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #CBD5E1; }
+        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0F172A; color: white; box-sizing: border-box; }
+        
+        /* Estilo para o campo do Cartão (Stripe) */
+        #card-element { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0F172A; }
+        
+        .btn-submit { width: 100%; background: var(--primary); color: white; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        #card-errors { color: #F87171; font-size: 0.8rem; margin-top: 10px; text-align: center; }
+        .selected-plan-badge { background: rgba(79, 70, 229, 0.2); color: #818CF8; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; }
+        .loader { display: none; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="register-container">
+        <div class="logo"><img src="images/logo_kairossite.png" alt="Kairos"></div>
+        <h2>Comece a sua gestão</h2>
+        <p class="subtitle">Preencha os dados abaixo para ativar o seu plano.</p>
+
+        <div style="text-align: center;">
+            <span id="plan-display" class="selected-plan-badge">A carregar plano...</span>
+        </div>
+
+        <form id="register-form">
+            <div class="form-group">
+                <label>Nome do Estabelecimento</label>
+                <input type="text" id="establishmentName" placeholder="Ex: Barbearia do João" required>
+            </div>
+            
+            <div class="form-group">
+                <label>ID de Acesso (Ex: barbearia-joao)</label>
+                <input type="text" id="establishmentId" placeholder="Apenas letras e números" required>
+            </div>
+
+            <div class="form-group">
+                <label>E-mail do Proprietário</label>
+                <input type="email" id="ownerEmail" placeholder="seu@email.com" required>
+            </div>
+
+            <div class="form-group">
+                <label>Senha de Acesso</label>
+                <input type="password" id="ownerPassword" placeholder="Mínimo 6 caracteres" required>
+            </div>
+
+            <div class="form-group" style="margin-top: 25px;">
+                <label>Dados do Cartão de Crédito</label>
+                <div id="card-element">
+                    </div>
+                <div id="card-errors" role="alert"></div>
+            </div>
+
+            <button type="submit" id="submit-button" class="btn-submit">
+                <i class="ph ph-circle-notch loader"></i> Ativar Minha Assinatura
+            </button>
+        </form>
+    </div>
+
+    <script src="js/publicRegister.js"></script>
+</body>
+</html>

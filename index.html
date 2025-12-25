@@ -504,7 +504,7 @@
 
             <div class="pricing-grid">
                 
-                <div class="pricing-card">
+                <div class="pricing-card" data-plan-level="solo">
                     <div class="card-content">
                         <div class="plan-header">
                             <h3>Solo</h3>
@@ -525,11 +525,11 @@
                                 <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
                             </ul>
                         </div>
-                        <a href="publicRegister.html" class="btn-outline full-width">Começar Agora</a>
+                        <a href="publicRegister.html?planId=solo_anual" class="btn-outline full-width btn-plan">Começar Agora</a>
                     </div>
                 </div>
 
-                <div class="pricing-card popular">
+                <div class="pricing-card popular" data-plan-level="starter">
                     <div class="popular-tag">Mais Escolhido</div>
                     <div class="card-content">
                         <div class="plan-header">
@@ -551,11 +551,11 @@
                                 <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
                             </ul>
                         </div>
-                        <a href="publicRegister.html" class="btn-primary full-width">Começar Agora</a>
+                        <a href="publicRegister.html?planId=starter_anual" class="btn-primary full-width btn-plan">Começar Agora</a>
                     </div>
                 </div>
 
-                <div class="pricing-card">
+                <div class="pricing-card" data-plan-level="pro">
                     <div class="card-content">
                         <div class="plan-header">
                             <h3>Pro</h3>
@@ -576,11 +576,11 @@
                                 <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
                             </ul>
                         </div>
-                        <a href="publicRegister.html" class="btn-outline full-width">Experimentar Grátis</a>
+                        <a href="publicRegister.html?planId=pro_anual" class="btn-outline full-width btn-plan">Experimentar Grátis</a>
                     </div>
                 </div>
 
-                <div class="pricing-card">
+                <div class="pricing-card" data-plan-level="business">
                     <div class="card-content">
                         <div class="plan-header">
                             <h3>Business</h3>
@@ -603,7 +603,7 @@
                                 <li><i class="ph ph-check-circle"></i> Migração de Dados Grátis</li>
                             </ul>
                         </div>
-                        <a href="publicRegister.html" class="btn-outline full-width">Falar com Vendas</a>
+                        <a href="publicRegister.html?planId=business_anual" class="btn-outline full-width btn-plan">Falar com Vendas</a>
                     </div>
                 </div>
 
@@ -715,7 +715,7 @@
             createSlider('mobile-slider', 4000);
         });
 
-        // 3. FUNÇÃO DE PREÇOS (COM CÁLCULO DE TOTAL)
+        // 3. FUNÇÃO DE PREÇOS (COM CÁLCULO DE TOTAL E ATUALIZAÇÃO DE LINK)
         function updatePrices(period, btn) {
             document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -724,6 +724,8 @@
                 const amountEl = card.querySelector('.amount');
                 const originalPriceEl = card.querySelector('.original-price');
                 const totalInfoEl = card.querySelector('.total-price-info');
+                const actionBtn = card.querySelector('.btn-plan'); // O botão de link do card
+                const planLevel = card.getAttribute('data-plan-level'); // ex: 'solo', 'starter'
                 
                 if (amountEl) {
                     const priceString = amountEl.getAttribute('data-' + period);
@@ -755,6 +757,14 @@
                             
                             totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
                         }
+                    }
+
+                    // --- AJUSTE PARA O STRIPE: ATUALIZAÇÃO DO LINK ---
+                    if (actionBtn && planLevel) {
+                        // Constrói o ID do plano cadastrado no Firestore (ex: solo_anual)
+                        const finalPlanId = `${planLevel}_${period}`;
+                        // Atualiza o href para enviar o planId na URL
+                        actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
                     }
                 }
             });

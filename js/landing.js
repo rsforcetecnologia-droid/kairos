@@ -1,7 +1,12 @@
+/**
+ * Kairos - Landing Page Logic
+ * Inclui: Navegação Ativa, Sliders e Gestão Dinâmica de Preços/Planos para Stripe
+ */
+
 document.addEventListener("DOMContentLoaded", () => {
     
     // =========================================
-    // 1. ACTIVE STATE NA BARRA INFERIOR & SCROLL NAVBAR
+    // 1. ESTADO ATIVO NA BARRA INFERIOR & NAVBAR
     // =========================================
     const navItems = document.querySelectorAll('.bottom-nav .nav-item');
     const sections = document.querySelectorAll('section, header');
@@ -9,8 +14,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function changeActiveNav() {
         let index = sections.length;
+        // Deteta qual secção está visível no scroll
         while(--index && window.scrollY + 200 < sections[index].offsetTop) {}
+        
         navItems.forEach((link) => link.classList.remove('active'));
+        
         if (index >= 0 && navItems[index] && index < 3) {
              navItems[index].classList.add('active');
         } else if (navItems[0]) {
@@ -20,23 +28,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (navbar) {
         window.addEventListener('scroll', () => {
+            // Efeito de sombra/fundo na navbar ao rolar
             window.scrollY > 50 ? navbar.classList.add('scrolled') : navbar.classList.remove('scrolled');
             changeActiveNav();
         });
     }
 
     // =========================================
-    // 2. FUNÇÃO GENÉRICA DE SLIDER (WEB & MOBILE)
+    // 2. FUNÇÃO DE SLIDER (WEB & MOBILE)
     // =========================================
     function createSlider(containerId, intervalTime = 4000) {
         const container = document.getElementById(containerId);
-        if (!container) return; // Se não existir (ex: numa página de login), sai sem erro.
+        if (!container) return; 
 
-        const slides = container.querySelectorAll('img'); // Seleciona apenas imagens diretas ou com classe específica se preferir
+        const slides = container.querySelectorAll('img');
         if (slides.length === 0) return;
 
-        // Tenta encontrar indicadores e botões dentro do container PAI (browser-frame ou phone-frame)
-        // Subimos um nível para encontrar os botões que podem estar fora da "tela"
         const parentFrame = container.parentElement;
         const indicators = parentFrame ? parentFrame.querySelectorAll('.indicator') : [];
         const nextBtn = parentFrame ? parentFrame.querySelector('.next-btn') : null;
@@ -46,15 +53,12 @@ document.addEventListener("DOMContentLoaded", () => {
         let slideInterval;
 
         function showSlide(index) {
-            // Lógica circular
             if (index >= slides.length) index = 0;
             if (index < 0) index = slides.length - 1;
 
-            // Remove ativos antigos
             slides.forEach(s => s.classList.remove('active'));
             indicators.forEach(i => i.classList.remove('active'));
 
-            // Define novos
             currentIndex = index;
             slides[currentIndex].classList.add('active');
             if (indicators[currentIndex]) indicators[currentIndex].classList.add('active');
@@ -68,7 +72,6 @@ document.addEventListener("DOMContentLoaded", () => {
             slideInterval = setInterval(next, intervalTime);
         }
 
-        // Eventos
         if (nextBtn) nextBtn.addEventListener('click', (e) => { e.preventDefault(); next(); startTimer(); });
         if (prevBtn) prevBtn.addEventListener('click', (e) => { e.preventDefault(); prev(); startTimer(); });
 
@@ -80,66 +83,89 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
 
-        // Iniciar
         startTimer();
     }
 
-    // =========================================
-    // 3. INICIALIZAR SLIDERS
-    // =========================================
-    
-    // Slider Web (Demonstração Principal)
+    // Inicializar os Sliders
     createSlider('demo-slider', 5000);
-
-    // Slider Mobile (Nova Secção)
     createSlider('mobile-slider', 4000);
 
-}
-);
-
-// =========================================
-    // 4. LÓGICA DE PREÇOS (MENSAL/SEMESTRAL/ANUAL)
+    // =========================================
+    // 3. LÓGICA DE PREÇOS & INTEGRAÇÃO STRIPE
     // =========================================
     function initPricingToggle() {
         const toggleBtns = document.querySelectorAll('.toggle-btn');
-        const priceAmounts = document.querySelectorAll('.plan-price .amount');
-        const pricePeriods = document.querySelectorAll('.plan-price .period');
+        const pricingCards = document.querySelectorAll('.pricing-card');
 
         if (toggleBtns.length === 0) return;
 
         toggleBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                // 1. Remove active de todos
+            btn.addEventListener('click', function() {
+                const period = this.getAttribute('data-period'); // mensal, semestral, anual
+                
+                // 1. Atualizar visual dos botões
                 toggleBtns.forEach(b => b.classList.remove('active'));
-                // 2. Adiciona active no clicado
-                btn.classList.add('active');
+                this.classList.add('active');
 
-                // 3. Pega o período selecionado (mensal, semestral, anual)
-                const period = btn.getAttribute('data-period');
+                // 2. Atualizar cada card de preço
+                pricingCards.forEach(card => {
+                    const amountEl = card.querySelector('.amount');
+                    const originalPriceEl = card.querySelector('.original-price');
+                    const totalInfoEl = card.querySelector('.total-price-info');
+                    const actionBtn = card.querySelector('.btn-plan');
+                    const planLevel = card.getAttribute('data-plan-level'); // solo, starter, pro, business
 
-                // 4. Atualiza os preços nos cards
-                priceAmounts.forEach(price => {
-                    // Pega o valor do atributo correspondente (ex: data-anual)
-                    const newValue = price.getAttribute(`data-${period}`);
-                    
-                    // Pequena animação de fade
-                    price.style.opacity = '0';
-                    setTimeout(() => {
-                        price.textContent = newValue;
-                        price.style.opacity = '1';
-                    }, 200);
+                    if (amountEl) {
+                        const priceString = amountEl.getAttribute('data-' + period);
+                        const priceValue = parseFloat(priceString.replace(',', '.'));
+
+                        // Animação de transição do valor
+                        amountEl.style.opacity = '0';
+                        setTimeout(() => {
+                            amountEl.textContent = priceString;
+                            amountEl.style.opacity = '1';
+                        }, 200);
+
+                        // Lógica de Preço Riscado e Info Total
+                        if (period === 'mensal') {
+                            if(originalPriceEl) originalPriceEl.classList.remove('visible');
+                            if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
+                        } else {
+                            const originalValue = amountEl.getAttribute('data-mensal');
+                            if(originalPriceEl) {
+                                originalPriceEl.textContent = 'de R$ ' + originalValue;
+                                originalPriceEl.classList.add('visible');
+                            }
+
+                            if(totalInfoEl) {
+                                let multiplier = period === 'semestral' ? 6 : 12;
+                                let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
+                                totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
+                            }
+                        }
+
+                        // --- INTEGRAÇÃO STRIPE: Atualiza o link com o planId correto ---
+                        if (actionBtn && planLevel) {
+                            // Constrói o ID conforme configurado no Banco de Dados (ex: solo_anual)
+                            const finalPlanId = `${planLevel}_${period}`;
+                            actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
+                        }
+                    }
                 });
-
-                // 5. Opcional: Atualizar texto "/mês" ou "/ano" se desejar
-                // Neste caso mantivemos "/mês" pois geralmente mostra-se o valor equivalente mensal
-                // Se quiser mudar a cobranca:
-                /*
-                pricePeriods.forEach(p => {
-                    p.textContent = period === 'mensal' ? '/mês' : '/mês (cobrado '+ period +')';
-                });
-                */
             });
         });
+
+        // Inicializar os links corretamente no carregamento da página (padrão Anual)
+        const activeBtn = document.querySelector('.toggle-btn.active');
+        if (activeBtn) {
+            const currentPeriod = activeBtn.getAttribute('data-period');
+            // Pequeno delay para garantir que o DOM está pronto para os links
+            setTimeout(() => {
+                activeBtn.click();
+            }, 100);
+        }
     }
 
+    // Inicializar lógica de preços
     initPricingToggle();
+});

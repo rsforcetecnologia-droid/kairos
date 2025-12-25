@@ -3,20 +3,23 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// ⚠️ SUBSTITUA PELA SUA CHAVE SECRETA DA STRIPE ⚠️
-// Requer a biblioteca 'stripe' instalada via npm.
-const stripe = require('stripe')('SUA_CHAVE_SECRETA_STRIPE'); 
+// ⚠️ ATENÇÃO: Certifica-te de que substituíste 'SUA_CHAVE_SECRETA_STRIPE' 
+// pela tua chave SK_TEST real (começa com sk_test_...)
+const stripe = require('stripe')('process.env.STRIPE_SECRET_KEY'); 
 
-// Este endpoint precisa de um body parser 'raw' para que o Stripe possa verificar a assinatura do webhook
+/**
+ * Rota para receber notificações automáticas do Stripe.
+ */
 router.post('/', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
-    // ⚠️ SUBSTITUA PELO SEU ENDPOINT SECRET DO STRIPE ⚠️
-    const endpointSecret = 'SEU_ENDPOINT_SECRET_DO_STRIPE'; 
+    
+    // ✅ O TEU SEGREDO DO WEBHOOK (Copiado do teu terminal)
+    const endpointSecret = 'whsec_f01ede13862e961ae09f986ef6e5a5eba784abca7fad253a1cf622e3d8ed8f8a'; 
+    
     let event;
 
     try {
-        // 1. Constrói o evento Stripe para verificação de assinatura
-        // Isso garante que o evento realmente veio do Stripe
+        // Valida se o evento realmente veio do Stripe
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
         console.error(`❌ Erro de verificação de Webhook: ${err.message}`);
@@ -26,12 +29,12 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
     const { db } = req;
     const subscription = event.data.object;
     
-    // O ID do estabelecimento é recuperado dos metadados que enviamos na criação
+    // Recuperamos o ID do estabelecimento que guardamos nos metadados durante o registo
     const establishmentId = subscription.metadata?.establishmentId; 
 
-    // Ignora eventos que não têm o ID do estabelecimento atrelado
+    // Se for um evento que não tem metadados (ex: alguns logs de sistema), ignoramos com sucesso
     if (!establishmentId) {
-        return res.status(400).send('Webhook: establishmentId não encontrado nos metadados.');
+        return res.status(200).json({ received: true });
     }
 
     try {
@@ -42,50 +45,44 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted':
                 
-                // Extrai o novo status e a data de expiração
                 const statusStripe = subscription.status;
+                // Converte o timestamp do Stripe (segundos) para Date
                 const expiryDate = new Date(subscription.current_period_end * 1000); 
                 
                 let systemStatus = 'active';
 
-                // Mapeamento do status Stripe para o status interno do seu sistema
-                if (statusStripe === 'active') {
+                // Mapeamento de status para o teu sistema
+                if (['active', 'trialing', 'past_due'].includes(statusStripe)) {
                     systemStatus = 'active';
-                } else if (statusStripe === 'trialing') {
-                    systemStatus = 'active';
-                } else if (statusStripe === 'past_due' || statusStripe === 'unpaid') {
-                    // Durante 'past_due' o acesso ainda é mantido (carência)
-                    systemStatus = 'active'; 
-                } else if (statusStripe === 'canceled' || statusStripe === 'incomplete_expired') {
+                } else {
                     systemStatus = 'inactive';
                 }
 
-                // 3. Atualiza o Firestore com os novos dados do Stripe
+                // Atualiza o Firestore com as informações mais recentes da assinatura
                 await establishmentRef.update({
-                    'status': systemStatus, // Ativa/inativa o acesso principal
+                    'status': systemStatus,
                     'subscription.statusStripe': statusStripe,
                     'subscription.expiryDate': admin.firestore.Timestamp.fromDate(expiryDate),
                     'subscription.stripeSubscriptionId': subscription.id,
-                    'subscription.lastUpdate': admin.firestore.FieldValue.serverTimestamp()
+                    'subscription.lastWebhookUpdate': admin.firestore.FieldValue.serverTimestamp()
                 });
 
-                console.log(`✅ Assinatura ${establishmentId} atualizada. Status: ${statusStripe}.`);
+                console.log(`✅ Webhook: Estabelecimento [${establishmentId}] sincronizado. Status: ${statusStripe}`);
                 break;
                 
-            // O evento invoice.payment_failed é útil para fins de notificação do cliente
             case 'invoice.payment_failed':
-                console.log(`⚠️ Falha no pagamento para ${establishmentId}. O acesso será mantido durante o período de carência.`);
+                console.log(`⚠️ Webhook: Falha no pagamento para o estabelecimento: ${establishmentId}`);
+                // Aqui entraria a lógica de envio de e-mail de falha
                 break;
                 
             default:
-                // Para outros eventos, apenas loga e ignora
-                console.log(`Evento Stripe não tratado: ${event.type}`);
+                console.log(`ℹ️ Evento Webhook ignorado: ${event.type}`);
         }
 
         res.status(200).json({ received: true });
     } catch (error) {
-        console.error("Erro ao processar evento Stripe no Firestore:", error);
-        res.status(500).json({ error: 'Falha interna do servidor.' });
+        console.error("Erro ao processar Webhook no Firestore:", error);
+        res.status(500).json({ error: 'Erro interno.' });
     }
 });
 

@@ -4,7 +4,7 @@ const router = express.Router();
 const admin = require('firebase-admin');
 
 // ⚠️ SUBSTITUA PELA SUA CHAVE SECRETA DA STRIPE (sk_...) ⚠️
-const stripe = require('stripe')('SUA_CHAVE_SECRETA_STRIPE'); 
+const stripe = require('stripe')('process.env.STRIPE_SECRET_KEY'); 
 
 // ####################################################################
 // ### INÍCIO DA MODIFICAÇÃO (PERMISSÕES MASTER ATUALIZADAS) ###
@@ -107,6 +107,7 @@ router.post('/', async (req, res) => {
             payment_behavior: 'default_incomplete', // Tenta cobrar, mas permite falha
             proration_behavior: 'none',
             expand: ['latest_invoice.payment_intent'],
+            metadata: { establishmentId: sanitizedId },
             trial_period_days: 0, 
         });
         
