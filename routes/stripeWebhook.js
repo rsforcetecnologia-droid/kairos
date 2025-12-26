@@ -5,7 +5,7 @@ const admin = require('firebase-admin');
 
 // ⚠️ ATENÇÃO: Certifica-te de que substituíste 'SUA_CHAVE_SECRETA_STRIPE' 
 // pela tua chave SK_TEST real (começa com sk_test_...)
-const stripe = require('stripe')('process.env.STRIPE_SECRET_KEY'); 
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 
 /**
  * Rota para receber notificações automáticas do Stripe.

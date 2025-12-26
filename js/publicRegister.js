@@ -83,7 +83,7 @@ form.addEventListener('submit', async (event) => {
         const response = await fetch('https://kairos-app-407358446276.us-central1.run.app/api/public/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(formData) // <--- CORRIGIDO AQUI (antes estava 'payload')
         });
 
         const result = await response.json();

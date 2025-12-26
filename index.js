@@ -1,5 +1,5 @@
 // index.js (Raiz do projeto)
-
+require('dotenv').config();
 // --- CONFIGURAÇÃO INICIAL ---
 const express = require('express');
 const cors = require('cors');
