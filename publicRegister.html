@@ -3,83 +3,355 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kairos - Criar Minha Conta</title>
+    <title>Finalizar Assinatura - Kairos</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://js.stripe.com/v3/"></script>
 
     <style>
-        :root { --primary: #4F46E5; --bg: #0F172A; --card: #1E293B; --text: #F8FAFC; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .register-container { background: var(--card); padding: 30px; border-radius: 16px; width: 100%; max-width: 500px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
-        .logo { text-align: center; margin-bottom: 20px; }
-        .logo img { height: 40px; }
-        h2 { text-align: center; font-size: 1.5rem; margin-bottom: 8px; }
-        p.subtitle { text-align: center; color: #94A3B8; font-size: 0.9rem; margin-bottom: 25px; }
+        :root {
+            --primary: #8B5CF6;
+            --primary-hover: #7C3AED;
+            --bg-dark: #0F172A;
+            --card-bg: #1E293B;
+            --text-light: #F8FAFC;
+            --text-gray: #94A3B8;
+            --border: rgba(255, 255, 255, 0.1);
+            --success: #10B981;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .checkout-container {
+            display: grid;
+            grid-template-columns: 1fr 1.3fr;
+            width: 100%;
+            max-width: 1000px;
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Coluna da Esquerda (Resumo) */
+        .summary-col {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 27, 75, 0.8) 100%);
+            padding: 40px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .brand-area { margin-bottom: 30px; }
+        .brand-area img { height: 35px; }
+
+        .plan-highlight {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .plan-name { font-size: 0.9rem; color: #A78BFA; text-transform: uppercase; font-weight: 600; margin-bottom: 5px; }
+        .plan-price-display { font-family: 'Playfair Display', serif; font-size: 2.5rem; font-weight: 700; color: white; }
+        .plan-period { font-size: 1rem; color: var(--text-gray); font-family: 'Inter', sans-serif; font-weight: 400; }
+
+        .benefits-list { list-style: none; padding: 0; margin: 20px 0; }
+        .benefits-list li { display: flex; align-items: center; gap: 10px; color: #CBD5E1; margin-bottom: 12px; font-size: 0.9rem; }
+        .benefits-list li i { color: #10B981; font-size: 1.1rem; }
+
+        .trust-badge { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-gray); margin-top: auto; opacity: 0.8; }
+
+        /* Coluna da Direita (Formulário) */
+        .form-col { padding: 40px; }
+
+        h2 { font-size: 1.5rem; margin: 0 0 5px 0; color: white; }
+        p.step-desc { color: var(--text-gray); font-size: 0.9rem; margin-bottom: 25px; }
+
+        .form-section-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: #64748B; margin: 25px 0 15px 0; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .form-section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+        .input-group { margin-bottom: 15px; position: relative; }
+        .input-group label { display: block; font-size: 0.85rem; color: #CBD5E1; margin-bottom: 6px; }
         
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #CBD5E1; }
-        input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0F172A; color: white; box-sizing: border-box; }
+        input, select { 
+            width: 100%; 
+            padding: 12px 15px; 
+            border-radius: 8px; 
+            border: 1px solid #334155; 
+            background: #0F172A; 
+            color: white; 
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2); }
+
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394A3B8' viewBox='0 0 256 256'%3E%3Cpath d='M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+            cursor: pointer;
+        }
+
+        .id-wrapper { display: flex; align-items: center; background: #0F172A; border: 1px solid #334155; border-radius: 8px; overflow: hidden; }
+        .id-prefix { padding: 0 15px; color: #64748B; background: rgba(255,255,255,0.02); border-right: 1px solid #334155; font-size: 0.85rem; height: 42px; display: flex; align-items: center; }
+        .id-wrapper input { border: none; background: transparent; height: 42px; }
+
+        .payment-box {
+            background: #0F172A;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .cards-accepted { display: flex; gap: 10px; margin-bottom: 15px; opacity: 0.8; }
+        .card-icon { width: 38px; height: 24px; background: #fff; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .card-icon img { height: 100%; width: 100%; object-fit: contain; }
+
+        #card-element { padding: 12px; border-radius: 6px; background: #1E293B; border: 1px solid #334155; }
+
+        .btn-submit { 
+            width: 100%; 
+            background: linear-gradient(90deg, var(--primary), var(--primary-hover)); 
+            color: white; 
+            padding: 16px; 
+            border: none; 
+            border-radius: 8px; 
+            font-size: 1rem; 
+            font-weight: 600; 
+            cursor: pointer; 
+            margin-top: 25px; 
+            transition: all 0.3s; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            gap: 10px;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+        }
+        .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4); }
+        .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+
+        /* --- ESTILOS DO TRIAL --- */
+        .trial-summary {
+            margin-top: 20px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+        }
         
-        /* Estilo para o campo do Cartão (Stripe) */
-        #card-element { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0F172A; }
+        .trial-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #CBD5E1;
+        }
         
-        .btn-submit { width: 100%; background: var(--primary); color: white; padding: 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: opacity 0.2s; }
-        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .trial-row.total-today {
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: 8px;
+            padding-top: 8px;
+            font-weight: 600;
+            color: white;
+            font-size: 1rem;
+        }
         
-        #card-errors { color: #F87171; font-size: 0.8rem; margin-top: 10px; text-align: center; }
-        .selected-plan-badge { background: rgba(79, 70, 229, 0.2); color: #818CF8; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; display: inline-block; margin-bottom: 20px; }
-        .loader { display: none; margin-right: 10px; }
+        .trial-highlight { color: var(--success); }
+
+        .trial-disclaimer {
+            font-size: 0.75rem;
+            color: #94A3B8;
+            text-align: center;
+            margin-top: 15px;
+            line-height: 1.4;
+        }
+
+        .installments-section { display: none; margin-bottom: 15px; }
+        .installments-section.visible { display: block; }
+
+        .loader { animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .checkout-container { grid-template-columns: 1fr; }
+            .summary-col { order: -1; padding: 25px; }
+            .form-col { padding: 25px; }
+            .plan-highlight { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; }
+            .benefits-list { display: none; }
+            .trust-badge { display: none; }
+        }
     </style>
 </head>
 <body>
 
-    <div class="register-container">
-        <div class="logo"><img src="images/logo_kairossite.png" alt="Kairos"></div>
-        <h2>Comece a sua gestão</h2>
-        <p class="subtitle">Preencha os dados abaixo para ativar o seu plano.</p>
+    <div class="checkout-container">
+        
+        <div class="summary-col">
+            <div>
+                <div class="brand-area">
+                    <img src="images/logo_kairossite.png" alt="Kairos">
+                </div>
+                
+                <div class="plan-highlight">
+                    <div>
+                        <div class="plan-name" id="plan-name-display">Plano Unlimited 2026</div>
+                        <div class="plan-price-display">
+                            <span id="plan-price-val">--,--</span>
+                            <span class="plan-period" id="plan-period-text">/mês</span>
+                        </div>
+                    </div>
+                </div>
 
-        <div style="text-align: center;">
-            <span id="plan-display" class="selected-plan-badge">A carregar plano...</span>
+                <ul class="benefits-list">
+                    <li><i class="ph ph-check-circle"></i> <strong>7 Dias Grátis</strong> (Sem cobrança hoje)</li>
+                    <li><i class="ph ph-check-circle"></i> Acesso Ilimitado ao Sistema</li>
+                    <li><i class="ph ph-check-circle"></i> Sem fidelidade (ancele quando quiser)</li>
+                    <li><i class="ph ph-check-circle"></i> Suporte Premium WhatsApp</li>
+                    <li><i class="ph ph-check-circle"></i> Garantia de preço fixo 2026</li>
+                </ul>
+            </div>
+
+            <div class="trust-badge">
+                <i class="ph ph-lock-key" style="font-size: 1.5rem; color: #10B981;"></i>
+                <div>
+                    <strong>Teste Sem Risco</strong><br>
+                    Não gostou? Basta nos avisar e cancelamos sem custo.
+                </div>
+            </div>
         </div>
 
-        <form id="register-form">
-            <div class="form-group">
-                <label>Nome do Estabelecimento</label>
-                <input type="text" id="establishmentName" placeholder="Ex: Barbearia do João" required>
-            </div>
-            
-            <div class="form-group">
-                <label>ID de Acesso (Ex: barbearia-joao)</label>
-                <input type="text" id="establishmentId" placeholder="Apenas letras e números" required>
-            </div>
+        <div class="form-col">
+            <h2>Ativar Teste Grátis</h2>
+            <p class="step-desc">Comece a usar agora. Só pague se gostar.</p>
 
-            <div class="form-group">
-                <label>E-mail do Proprietário</label>
-                <input type="email" id="ownerEmail" placeholder="seu@email.com" required>
-            </div>
+            <form id="register-form">
+                
+                <div class="form-section-title">Dados do Estabelecimento</div>
+                
+                <div class="input-group">
+                    <label>Nome do Negócio</label>
+                    <input type="text" id="establishmentName" placeholder="Ex: Barbearia Vip" required>
+                </div>
 
-            <div class="form-group">
-                <label>Senha de Acesso</label>
-                <input type="password" id="ownerPassword" placeholder="Mínimo 6 caracteres" required>
-            </div>
-
-            <div class="form-group" style="margin-top: 25px;">
-                <label>Dados do Cartão de Crédito</label>
-                <div id="card-element">
+                <div class="input-group">
+                    <label>ID Personalizado (Link de acesso)</label>
+                    <div class="id-wrapper">
+                        <div class="id-prefix">kairosagenda.com.br/</div>
+                        <input type="text" id="establishmentId" placeholder="barbearia-vip" required style="padding-left: 10px;">
                     </div>
-                <div id="card-errors" role="alert"></div>
-            </div>
+                </div>
 
-            <button type="submit" id="submit-button" class="btn-submit">
-                <i class="ph ph-circle-notch loader"></i> Ativar Minha Assinatura
-            </button>
-        </form>
+                <div class="form-section-title">Dados de Acesso</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="input-group">
+                        <label>Seu E-mail</label>
+                        <input type="email" id="ownerEmail" placeholder="nome@email.com" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Senha</label>
+                        <input type="password" id="ownerPassword" placeholder="******" required>
+                    </div>
+                </div>
+
+                <div class="form-section-title">Confirmação de Teste <i class="ph ph-calendar-check" style="color: #10B981;"></i></div>
+
+                <div class="payment-box">
+                    
+                    <div id="installments-wrapper" class="installments-section">
+                        <label style="display: block; font-size: 0.85rem; color: #CBD5E1; margin-bottom: 10px;">Parcelamento (Para cobrança futura)</label>
+                        <select id="installmentsCount">
+                            <option value="1">1x à vista</option>
+                        </select>
+                    </div>
+
+                    <label style="display: block; font-size: 0.85rem; color: #CBD5E1; margin-bottom: 10px;">Cartão para Ativação</label>
+                    
+                    <div class="cards-accepted">
+                        <div class="card-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" alt="Visa"></div>
+                        <div class="card-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" alt="Mastercard"></div>
+                        <div class="card-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg" alt="Amex"></div>
+                        <div class="card-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Elo_logo.png" alt="Elo"></div>
+                    </div>
+
+                    <div id="card-element"></div>
+                    <div id="card-errors" role="alert" style="color: #F87171; font-size: 0.8rem; margin-top: 8px;"></div>
+
+                    <div class="trial-summary">
+                        <div class="trial-row">
+                            <span>Teste Grátis (7 dias):</span>
+                            <span class="trial-highlight">R$ 0,00</span>
+                        </div>
+                        <div class="trial-row total-today">
+                            <span>Total a pagar HOJE:</span>
+                            <span>R$ 0,00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="trial-disclaimer">
+                    Sua assinatura iniciará automaticamente em <strong id="charge-date-display" style="color: #F8FAFC;">[DATA]</strong>. Para cancelar durante o teste ou a qualquer momento, basta contactar nosso suporte via WhatsApp.
+                </p>
+
+                <button type="submit" id="submit-button" class="btn-submit">
+                    <i class="ph ph-circle-notch loader"></i> <span id="btn-text">Começar Teste Grátis de 7 Dias</span>
+                </button>
+
+                <div class="security-footer">
+                    <i class="ph ph-lock"></i> Dados protegidos por criptografia SSL de 256 bits.
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="js/publicRegister.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const planId = urlParams.get('planId');
+            
+            const priceEl = document.getElementById('plan-price-val');
+            const nameEl = document.getElementById('plan-name-display');
+            const periodEl = document.getElementById('plan-period-text');
+
+            if(planId) {
+                if(planId.includes('mensal')) {
+                    priceEl.innerText = 'R$ 85,90';
+                    nameEl.innerText = 'Plano Unlimited 2026 - Mensal';
+                    if(periodEl) periodEl.innerText = '/mês';
+                } else if (planId.includes('semestral')) {
+                    priceEl.innerText = 'R$ 438,09';
+                    nameEl.innerText = 'Plano Unlimited 2026 - Semestral';
+                    if(periodEl) periodEl.innerText = '/semestre';
+                } else if (planId.includes('anual')) {
+                    priceEl.innerText = 'R$ 721,56';
+                    nameEl.innerText = 'Plano Unlimited 2026 - Anual';
+                    if(periodEl) periodEl.innerText = '/ano';
+                }
+            }
+        });
+    </script>
 </body>
 </html>

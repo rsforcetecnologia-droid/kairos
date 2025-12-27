@@ -9,7 +9,7 @@
         }
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kairos - Gestão para Barbearias e Salões</title>
+    <title>Kairos - Gestão Profissional 2026</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,6 +24,7 @@
         .pricing-toggle-container {
             position: relative;
             z-index: 50;
+            margin-bottom: 30px;
         }
         .toggle-btn {
             cursor: pointer;
@@ -32,7 +33,7 @@
         /* --- ESTILO PREÇO RISCADO --- */
         .original-price {
             display: block;
-            font-size: 0.85rem;
+            font-size: 0.95rem;
             color: #94A3B8;
             text-decoration: line-through;
             margin-top: -5px;
@@ -45,18 +46,20 @@
 
         /* --- ESTILO INFO TOTAL E PARCELAMENTO --- */
         .total-price-info {
-            font-size: 0.8rem;
-            color: #94A3B8;
-            background: rgba(255, 255, 255, 0.03);
+            font-size: 0.85rem;
+            color: #CBD5E1;
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 8px;
-            padding: 8px;
+            padding: 10px;
             margin-bottom: 20px;
             min-height: 50px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             line-height: 1.4;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            width: 100%;
         }
         .total-price-info strong {
             color: #F8FAFC;
@@ -88,6 +91,222 @@
         .item-info strong { font-size: 0.85rem; color: #e2e8f0; }
         .item-info span { font-size: 0.75rem; color: #94a3b8; }
         .status-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #10B981; }
+
+        /* ========================================= */
+        /* --- ESTILOS DA PROMOÇÃO 2026 (NOVO) --- */
+        /* ========================================= */
+
+        /* Fundo da secção */
+        .pricing-section.launch-mode {
+            background: linear-gradient(180deg, #0F172A 0%, #172554 100%);
+            position: relative;
+            overflow: hidden;
+            padding: 80px 0;
+        }
+
+        /* Container do Cartão Único */
+        .launch-card-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            backdrop-filter: blur(10px);
+            max-width: 900px;
+            margin: 0 auto;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        }
+
+        .launch-badge {
+            background: linear-gradient(90deg, #8B5CF6, #6366f1);
+            color: white;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+            border: none;
+            margin-bottom: 15px;
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Coluna Esquerda (Features) */
+        .launch-features {
+            flex: 1.5;
+            padding: 40px;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: left;
+        }
+
+        .launch-features h3 {
+            color: #F8FAFC;
+            margin-bottom: 25px;
+            font-size: 1.4rem;
+        }
+
+        .feature-grid-launch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .feat-item {
+            color: #CBD5E1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.95rem;
+        }
+        .feat-item i { color: #8B5CF6; font-size: 1.2rem; }
+
+        /* Comparação de Personas */
+        .comparison-box {
+            background: rgba(0,0,0,0.2);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .comparison-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; }
+
+        .personas-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 5px;
+        }
+
+        .persona {
+            font-size: 0.8rem;
+            color: #64748B;
+            background: rgba(255,255,255,0.05);
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+        .persona.striked { text-decoration: line-through; }
+
+        .highlight-text {
+            color: #F59E0B !important;
+            font-weight: bold;
+            margin-top: 5px;
+            margin-bottom: 0 !important;
+        }
+
+        /* Coluna Direita (Preço) */
+        .launch-price-box {
+            flex: 1;
+            padding: 40px;
+            background: linear-gradient(145deg, rgba(30, 27, 75, 0.6), rgba(15, 23, 42, 0.6));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border-left: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* Animação de Brilho */
+        .glow-ring {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px; height: 200px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
+            animation: pulse-glow 3s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .price-header {
+            background: rgba(139, 92, 246, 0.15);
+            color: #A78BFA;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            z-index: 2;
+        }
+
+        .price-display {
+            display: flex;
+            align-items: flex-start;
+            color: #fff;
+            margin-bottom: 5px;
+            z-index: 2;
+        }
+        .price-display .currency { font-size: 1.5rem; margin-top: 10px; margin-right: 5px; }
+        .price-display .amount { font-size: 3.5rem; font-weight: 700; font-family: 'Playfair Display', serif; line-height: 1; transition: opacity 0.2s; }
+        .price-display .period { font-size: 1rem; color: #94A3B8; align-self: flex-end; margin-bottom: 10px; margin-left: 5px; }
+
+        .price-sub { color: #94A3B8; font-size: 0.9rem; margin-bottom: 25px; z-index: 2; }
+
+        /* Botão Pulsante */
+        .pulse-btn {
+            background: #8B5CF6;
+            border: none;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
+            animation: pulse-purple 2s infinite;
+            transition: all 0.3s;
+            z-index: 2;
+            text-align: center;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: white;
+            display: block;
+            width: 100%;
+        }
+
+        .pulse-btn:hover {
+            background: #7C3AED;
+            transform: scale(1.02);
+        }
+
+        .guarantees {
+            list-style: none;
+            margin-top: 25px;
+            text-align: left;
+            padding: 0;
+            z-index: 2;
+        }
+        .guarantees li {
+            font-size: 0.85rem;
+            color: #94A3B8;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .guarantees li i { color: #10B981; }
+
+        /* Animações Keyframes */
+        @keyframes pulse-purple {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
+            70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+        }
+
+        @keyframes pulse-glow {
+            0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
+            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
+        }
+
+        /* Responsivo Mobile */
+        @media (max-width: 768px) {
+            .launch-card-wrapper { flex-direction: column; }
+            .launch-features { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 30px 20px; }
+            .feature-grid-launch { grid-template-columns: 1fr; }
+            .launch-price-box { padding: 40px 20px; border-left: none; }
+        }
     </style>
 </head>
 <body>
@@ -125,7 +344,7 @@
                 <h1>O tempo a favor da <br>sua beleza.</h1>
                 <p>Domine a agenda, o financeiro e o estoque do seu estabelecimento com uma plataforma desenhada para a elegância e eficiência.</p>
                 <div class="cta-group">
-                    <a href="publicRegister.html" class="btn-primary">Começar Gratuitamente</a>
+                    <a href="#planos" class="btn-primary">Ver Oferta 2026</a>
                     <a href="#demonstracao" class="btn-outline"><i class="ph ph-play-circle"></i> Ver em Ação</a>
                 </div>
                 
@@ -422,194 +641,82 @@
                     </div>
                 </div>
 
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"A gestão inteligente de estoque avisa-me exatamente quando comprar. Acabou o desperdício e nunca mais falhei um serviço por falta de tinta ou produto."</p>
-                    <div class="author">
-                        <div class="avatar-circle">SR</div>
-                        <div class="author-info">
-                            <strong>Sofia Ramos</strong>
-                            <span>Belleza Pura</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"Gerir duas unidades era o caos. O Kairos centralizou tudo. Consigo ver o faturamento de ambas as lojas em tempo real no telemóvel. Simplesmente mudou o meu negócio."</p>
-                    <div class="author">
-                        <div class="avatar-circle">RT</div>
-                        <div class="author-info">
-                            <strong>Ricardo Torres</strong>
-                            <span>Zen Spa & Wellness</span>
-                        </div>
-                    </div>
-                </div>
-
-                 <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"O design do sistema impressiona. É fácil de usar e muito rápido. Já usei outros sistemas complicados, mas o Kairos é direto ao ponto. Ajudou a fidelizar clientes."</p>
-                    <div class="author">
-                        <div class="avatar-circle">DM</div>
-                        <div class="author-info">
-                            <strong>Diogo Mendes</strong>
-                            <span>Mendes Cuts</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"Trabalho sozinha e o Kairos é a minha 'secretária'. Organiza a agenda, manda lembretes e controla o caixa. Sobra-me tempo para focar na arte e nas clientes."</p>
-                    <div class="author">
-                        <div class="avatar-circle">PC</div>
-                        <div class="author-info">
-                            <strong>Patrícia Costa</strong>
-                            <span>Nail Art Design</span>
-                        </div>
-                    </div>
-                </div>
-
             </div>
         </div>
     </section>
 
-    <section id="planos" class="pricing-section">
+    <section id="planos" class="pricing-section launch-mode">
         <div class="container">
             <div class="section-header text-center">
-                <span class="badge">Investimento</span>
-                <h2>Planos que crescem com você</h2>
-                <p>O sistema é completo em todos os planos. Escolha apenas o tamanho da sua equipe.</p>
+                <span class="badge launch-badge">Promoção 2026</span>
+                <h2>Prepare-se para crescer.</h2>
+                <p>Condição especial antecipada: Desbloqueie o potencial máximo do seu negócio em 2026.</p>
             </div>
 
             <div class="pricing-toggle-container">
                 <div class="pricing-toggle">
-                    <button class="toggle-btn" onclick="updatePrices('mensal', this)">Mensal</button>
+                    <button class="toggle-btn active" onclick="updatePrices('mensal', this)">Mensal</button>
                     <button class="toggle-btn" onclick="updatePrices('semestral', this)">Semestral <span class="discount-tag">-15%</span></button>
-                    <button class="toggle-btn active" onclick="updatePrices('anual', this)">Anual <span class="discount-tag">-30%</span></button>
+                    <button class="toggle-btn" onclick="updatePrices('anual', this)">Anual <span class="discount-tag">-30%</span></button>
                 </div>
             </div>
 
-            <div class="pricing-grid">
+            <div class="launch-card-wrapper pricing-card" data-plan-level="lancamento">
                 
-                <div class="pricing-card" data-plan-level="solo">
-                    <div class="card-content">
-                        <div class="plan-header">
-                            <h3>Solo</h3>
-                            <p class="desc">Para profissionais independentes.</p>
+                <div class="launch-features">
+                    <h3>O Plano Unlimited inclui:</h3>
+                    <div class="feature-grid-launch">
+                        <div class="feat-item"><i class="ph ph-users-three"></i> Profissionais Ilimitados</div>
+                        <div class="feat-item"><i class="ph ph-storefront"></i> Múltiplas Unidades</div>
+                        <div class="feat-item"><i class="ph ph-whatsapp-logo"></i> Notificações WhatsApp</div>
+                        <div class="feat-item"><i class="ph ph-chart-line-up"></i> Financeiro Completo</div>
+                        <div class="feat-item"><i class="ph ph-calendar-check"></i> Agenda Inteligente</div>
+                        <div class="feat-item"><i class="ph ph-shield-check"></i> Suporte Prioritário</div>
+                    </div>
+                    
+                    <div class="comparison-box">
+                        <p>Esqueça os limites de usuários:</p>
+                        <div class="personas-row">
+                            <span class="persona striked">Custo por Profissional</span>
+                            <span class="persona striked">Taxas de Instalação</span>
                         </div>
-                        <div class="plan-price">
-                            <span class="currency">R$</span>
-                            <span class="amount" data-mensal="79,90" data-semestral="67,80" data-anual="55,90">55,90</span>
-                            <span class="period">/mês</span>
-                            <div class="original-price visible">de R$ 79,90</div>
-                        </div>
-                        <div class="total-price-info">
-                            Total de <strong>R$ 670,80</strong><br>em até 12x sem juros no cartão
-                        </div>
-                        <div class="plan-features">
-                            <ul>
-                                <li><i class="ph ph-user"></i> <strong>1 Profissional</strong></li>
-                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
-                            </ul>
-                        </div>
-                        <a href="publicRegister.html?planId=solo_anual" class="btn-outline full-width btn-plan">Começar Agora</a>
+                        <p class="arrow-down" style="color: #64748B;">▼</p>
+                        <p class="highlight-text">Acesso Total. Valor Fixo.</p>
                     </div>
                 </div>
 
-                <div class="pricing-card popular" data-plan-level="starter">
-                    <div class="popular-tag">Mais Escolhido</div>
-                    <div class="card-content">
-                        <div class="plan-header">
-                            <h3>Starter</h3>
-                            <p class="desc">Pequenas equipes em crescimento.</p>
-                        </div>
-                        <div class="plan-price">
-                            <span class="currency">R$</span>
-                            <span class="amount" data-mensal="109,90" data-semestral="93,30" data-anual="76,90">76,90</span>
-                            <span class="period">/mês</span>
-                            <div class="original-price visible">de R$ 109,90</div>
-                        </div>
-                        <div class="total-price-info">
-                            Total de <strong>R$ 922,80</strong><br>em até 12x sem juros no cartão
-                        </div>
-                        <div class="plan-features">
-                            <ul>
-                                <li><i class="ph ph-users"></i> <strong>Até 5 Profissionais</strong></li>
-                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
-                            </ul>
-                        </div>
-                        <a href="publicRegister.html?planId=starter_anual" class="btn-primary full-width btn-plan">Começar Agora</a>
+                <div class="launch-price-box">
+                    <div class="glow-ring"></div>
+                    <div class="price-header">
+                        <span class="uppercase">Oferta Exclusiva 2026</span>
                     </div>
-                </div>
-
-                <div class="pricing-card" data-plan-level="pro">
-                    <div class="card-content">
-                        <div class="plan-header">
-                            <h3>Pro</h3>
-                            <p class="desc">Salões e Barbearias estabelecidos.</p>
-                        </div>
-                        <div class="plan-price">
-                            <span class="currency">R$</span>
-                            <span class="amount" data-mensal="164,50" data-semestral="139,80" data-anual="115,15">115,15</span>
-                            <span class="period">/mês</span>
-                            <div class="original-price visible">de R$ 164,50</div>
-                        </div>
-                        <div class="total-price-info">
-                            Total de <strong>R$ 1.381,80</strong><br>em até 12x sem juros no cartão
-                        </div>
-                        <div class="plan-features">
-                            <ul>
-                                <li><i class="ph ph-users-three"></i> <strong>Até 15 Profissionais</strong></li>
-                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
-                            </ul>
-                        </div>
-                        <a href="publicRegister.html?planId=pro_anual" class="btn-outline full-width btn-plan">Experimentar Grátis</a>
+                    <div class="price-display">
+                        <span class="currency">R$</span>
+                        <span class="amount" data-mensal="85,90" data-semestral="73,02" data-anual="60,13">85,90</span>
+                        <span class="period">/mês</span>
                     </div>
-                </div>
-
-                <div class="pricing-card" data-plan-level="business">
-                    <div class="card-content">
-                        <div class="plan-header">
-                            <h3>Business</h3>
-                            <p class="desc">Grandes redes e franquias.</p>
-                        </div>
-                        <div class="plan-price">
-                            <span class="currency">R$</span>
-                            <span class="amount" data-mensal="219,90" data-semestral="186,80" data-anual="153,90">153,90</span>
-                            <span class="period">/mês</span>
-                            <div class="original-price visible">de R$ 219,90</div>
-                        </div>
-                        <div class="total-price-info">
-                            Total de <strong>R$ 1.846,80</strong><br>em até 12x sem juros no cartão
-                        </div>
-                        <div class="plan-features">
-                            <ul>
-                                <li><i class="ph ph-buildings"></i> <strong>Profissionais Ilimitados</strong></li>
-                                <li><i class="ph ph-check-circle"></i> Sistema Completo (Sem limites)</li>
-                                <li><i class="ph ph-check-circle"></i> Suporte Prioritário VIP</li>
-                                <li><i class="ph ph-check-circle"></i> Migração de Dados Grátis</li>
-                            </ul>
-                        </div>
-                        <a href="publicRegister.html?planId=business_anual" class="btn-outline full-width btn-plan">Falar com Vendas</a>
+                    
+                    <div class="original-price">de R$ 219,90</div>
+                    
+                    <div class="total-price-info">
+                        Cobrança mensal recorrente<br>Cancele quando quiser
                     </div>
+                    
+                    <a href="publicRegister.html?planId=lancamento_mensal" class="btn-primary full-width pulse-btn btn-plan">
+                        TESTE AGORA E GARANTA O PREÇO 2026
+                    </a>
+                    
+                    <ul class="guarantees">
+                        <li><i class="ph ph-check"></i> 7 dias grátis para testar</li>
+                        <li><i class="ph ph-check"></i> Configuração assistida</li>
+                        <li><i class="ph ph-check"></i> Garantia de preço fixo</li>
+                    </ul>
                 </div>
-
             </div>
             
-            <p class="pricing-note text-center">* Nos planos anuais e semestrais, o valor total compromete o limite do cartão.</p>
+            <p class="pricing-note text-center" style="margin-top: 30px; opacity: 0.6;">
+                *Ao assinar nesta oferta promocional, você garante este valor especial para 2026 enquanto mantiver a assinatura ativa.
+            </p>
         </div>
     </section>
 
@@ -715,59 +822,66 @@
             createSlider('mobile-slider', 4000);
         });
 
-        // 3. FUNÇÃO DE PREÇOS (COM CÁLCULO DE TOTAL E ATUALIZAÇÃO DE LINK)
+        // 3. FUNÇÃO DE PREÇOS (AJUSTADA PARA A PROMOÇÃO 2026)
         function updatePrices(period, btn) {
+            // Atualiza botões
             document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            document.querySelectorAll('.pricing-card').forEach(card => {
-                const amountEl = card.querySelector('.amount');
-                const originalPriceEl = card.querySelector('.original-price');
-                const totalInfoEl = card.querySelector('.total-price-info');
-                const actionBtn = card.querySelector('.btn-plan'); // O botão de link do card
-                const planLevel = card.getAttribute('data-plan-level'); // ex: 'solo', 'starter'
+            // Seleciona o card de lançamento
+            const card = document.querySelector('.pricing-card');
+            if (!card) return;
+
+            const amountEl = card.querySelector('.amount');
+            const originalPriceEl = card.querySelector('.original-price');
+            const totalInfoEl = card.querySelector('.total-price-info');
+            const actionBtn = card.querySelector('.btn-plan');
+            const planLevel = card.getAttribute('data-plan-level'); // 'lancamento'
+            
+            if (amountEl) {
+                const priceString = amountEl.getAttribute('data-' + period);
                 
-                if (amountEl) {
-                    const priceString = amountEl.getAttribute('data-' + period);
-                    const priceValue = parseFloat(priceString.replace(',', '.')); // Ex: 55.90
-                    
-                    // Animação do Preço Principal
-                    amountEl.style.opacity = '0';
-                    setTimeout(() => {
-                        amountEl.textContent = priceString;
-                        amountEl.style.opacity = '1';
-                    }, 200);
+                // Animação do Preço Principal
+                amountEl.style.opacity = '0';
+                setTimeout(() => {
+                    amountEl.textContent = priceString;
+                    amountEl.style.opacity = '1';
+                }, 200);
 
-                    // Lógica do Preço Riscado e Total
-                    if (period === 'mensal') {
-                        if(originalPriceEl) originalPriceEl.classList.remove('visible');
-                        if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
-                    } else {
-                        // Semestral ou Anual
-                        const originalValue = amountEl.getAttribute('data-mensal');
-                        if(originalPriceEl) {
-                            originalPriceEl.textContent = 'de R$ ' + originalValue;
-                            originalPriceEl.classList.add('visible');
-                        }
-
-                        if(totalInfoEl) {
-                            let multiplier = period === 'semestral' ? 6 : 12;
-                            // Calcula Total: (Valor do Plano * Meses)
-                            let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
-                            
-                            totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
-                        }
+                // Lógica do Preço Riscado e Total
+                if (period === 'mensal') {
+                    if(originalPriceEl) {
+                        originalPriceEl.textContent = 'de R$ 219,90'; // Comparação com preço cheio
+                        originalPriceEl.classList.add('visible');
+                    }
+                    if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
+                } else {
+                    // Semestral ou Anual
+                    const originalValue = amountEl.getAttribute('data-mensal'); // 85,90
+                    if(originalPriceEl) {
+                        originalPriceEl.textContent = 'de R$ ' + originalValue;
+                        originalPriceEl.classList.add('visible');
                     }
 
-                    // --- AJUSTE PARA O STRIPE: ATUALIZAÇÃO DO LINK ---
-                    if (actionBtn && planLevel) {
-                        // Constrói o ID do plano cadastrado no Firestore (ex: solo_anual)
-                        const finalPlanId = `${planLevel}_${period}`;
-                        // Atualiza o href para enviar o planId na URL
-                        actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
+                    if(totalInfoEl) {
+                        // Calcula valor total baseado no preço com desconto
+                        const priceValue = parseFloat(priceString.replace(',', '.')); // ex: 73.02
+                        let multiplier = period === 'semestral' ? 6 : 12;
+                        // Calcula Total: (Valor Mensal Promocional * Meses)
+                        let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
+                        
+                        totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
                     }
                 }
-            });
+
+                // --- ATUALIZAÇÃO DO LINK PARA STRIPE ---
+                if (actionBtn && planLevel) {
+                    // Constrói o ID do plano cadastrado no Firestore (ex: lancamento_mensal)
+                    const finalPlanId = `${planLevel}_${period}`;
+                    // Atualiza o href para enviar o planId na URL
+                    actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
+                }
+            }
         }
     </script>
 

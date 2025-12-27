@@ -8,7 +8,7 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// 2. Define os Módulos Padrão (Como o site diz "Sistema Completo" para todos, ativamos tudo)
+// 2. Define os Módulos Padrão (Sistema Completo)
 const allModules = {
     agenda: true,
     financial: true,
@@ -21,14 +21,14 @@ const allModules = {
     settings: true
 };
 
-// 3. Dados dos Planos (Baseado no teu CSV e estrutura definida)
+// 3. Dados dos Planos (Antigos + Novos 2026)
 const plans = [
-    // --- SOLO (1 Profissional) ---
+    // --- PLANOS ANTIGOS (Mantidos no histórico) ---
     {
         id: 'solo_mensal',
         data: {
             name: 'Plano Solo - Mensal',
-            stripePriceId: 'price_1STtcZAIZNC4mWLrdcFeJnWj', // ID do Stripe (CSV)
+            stripePriceId: 'price_1STtcZAIZNC4mWLrdcFeJnWj',
             price: 79.90,
             maxProfessionals: 1,
             maxUsers: 1,
@@ -42,7 +42,7 @@ const plans = [
         data: {
             name: 'Plano Solo - Semestral',
             stripePriceId: 'price_1Sh94fAIZNC4mWLrd9JJauh5',
-            price: 406.80, // Valor total do período
+            price: 406.80,
             maxProfessionals: 1,
             maxUsers: 1,
             description: 'Ideal para profissionais independentes. Cobrança semestral.',
@@ -63,8 +63,6 @@ const plans = [
             active: true
         }
     },
-
-    // --- STARTER (Até 5 Profissionais) ---
     {
         id: 'starter_mensal',
         data: {
@@ -104,8 +102,6 @@ const plans = [
             active: true
         }
     },
-
-    // --- PRO (Até 15 Profissionais) ---
     {
         id: 'pro_mensal',
         data: {
@@ -145,8 +141,6 @@ const plans = [
             active: true
         }
     },
-
-    // --- BUSINESS (Ilimitado) ---
     {
         id: 'business_mensal',
         data: {
@@ -185,6 +179,59 @@ const plans = [
             allowedModules: allModules,
             active: true
         }
+    },
+
+    // ============================================================
+    // --- NOVOS PLANOS PROMOCIONAIS 2026 (Unlimited) ---
+    // Preço Base: R$ 85,90
+    // ============================================================
+    
+    // 1. Mensal (Preço base)
+    {
+        id: 'lancamento_mensal', 
+        data: {
+            name: 'Plano Unlimited 2026 - Mensal',
+            stripePriceId: 'prod_Tg6AvFIKgmpfiW', // <--- PREENCHER AQUI
+            price: 85.90,
+            maxProfessionals: 9999, // Ilimitado
+            maxUsers: 9999, // Ilimitado
+            description: 'Condição especial 2026. Acesso total e ilimitado.',
+            allowedModules: allModules,
+            active: true,
+            isPromo: true
+        }
+    },
+
+    // 2. Semestral (15% de Desconto)
+    {
+        id: 'lancamento_semestral',
+        data: {
+            name: 'Plano Unlimited 2026 - Semestral',
+            stripePriceId: 'prod_Tg6BKL21lbdLap', // <--- PREENCHER AQUI
+            price: 438.09, // R$ 85,90 * 6 * 0.85
+            maxProfessionals: 9999,
+            maxUsers: 9999,
+            description: 'Condição especial 2026. Semestral com 15% OFF.',
+            allowedModules: allModules,
+            active: true,
+            isPromo: true
+        }
+    },
+
+    // 3. Anual (30% de Desconto)
+    {
+        id: 'lancamento_anual',
+        data: {
+            name: 'Plano Unlimited 2026 - Anual',
+            stripePriceId: 'prod_Tg6Cz0CIeHz4tz', // <--- PREENCHER AQUI
+            price: 721.56, // R$ 85,90 * 12 * 0.70
+            maxProfessionals: 9999,
+            maxUsers: 9999,
+            description: 'Condição especial 2026. Anual com 30% OFF.',
+            allowedModules: allModules,
+            active: true,
+            isPromo: true
+        }
     }
 ];
 
@@ -204,7 +251,7 @@ async function uploadPlans() {
 
     try {
         await batch.commit();
-        console.log("✅ Sucesso! Todos os 12 planos foram criados/atualizados.");
+        console.log("✅ Sucesso! Todos os planos (incluindo Oferta 2026) foram criados/atualizados.");
     } catch (error) {
         console.error("❌ Erro ao subir planos:", error);
     }
