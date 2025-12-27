@@ -2,6 +2,12 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kairos">
+    <link rel="apple-touch-icon" href="assets/icon.png">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finalizar Assinatura - Kairos</title>
     
@@ -193,6 +199,46 @@
         .loader { animation: spin 1s linear infinite; display: none; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
+        /* --- MODAL PWA --- */
+        #pwa-success-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        .pwa-content {
+            background: #1e293b;
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 400px;
+            width: 100%;
+            color: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .pwa-icon { font-size: 3rem; color: #4ade80; margin-bottom: 15px; }
+        .pwa-btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-top: 20px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .ios-hint-arrow {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            font-size: 2rem; color: white; animation: bounce 1s infinite;
+        }
+        @keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(10px); } }
+
         @media (max-width: 768px) {
             .checkout-container { grid-template-columns: 1fr; }
             .summary-col { order: -1; padding: 25px; }
@@ -226,7 +272,7 @@
                 <ul class="benefits-list">
                     <li><i class="ph ph-check-circle"></i> <strong>7 Dias Grátis</strong> (Sem cobrança hoje)</li>
                     <li><i class="ph ph-check-circle"></i> Acesso Ilimitado ao Sistema</li>
-                    <li><i class="ph ph-check-circle"></i> Sem fidelidade (ancele quando quiser)</li>
+                    <li><i class="ph ph-check-circle"></i> Sem fidelidade (cancele quando quiser)</li>
                     <li><i class="ph ph-check-circle"></i> Suporte Premium WhatsApp</li>
                     <li><i class="ph ph-check-circle"></i> Garantia de preço fixo 2026</li>
                 </ul>
@@ -245,9 +291,7 @@
             <h2>Ativar Teste Grátis</h2>
             <p class="step-desc">Comece a usar agora. Só pague se gostar.</p>
 
-            <form id="register-form">
-                
-                <div class="form-section-title">Dados do Estabelecimento</div>
+            <form id="registerForm"> <div class="form-section-title">Dados do Estabelecimento</div>
                 
                 <div class="input-group">
                     <label>Nome do Negócio</label>
@@ -255,11 +299,13 @@
                 </div>
 
                 <div class="input-group">
-                    <label>ID Personalizado (Link de acesso)</label>
-                    <div class="id-wrapper">
-                        <div class="id-prefix">kairosagenda.com.br/</div>
-                        <input type="text" id="establishmentId" placeholder="barbearia-vip" required style="padding-left: 10px;">
-                    </div>
+                    <label>Nome Completo (Responsável)</label>
+                    <input type="text" id="name" placeholder="Seu nome" required>
+                </div>
+
+                <div class="input-group">
+                    <label>Telefone / WhatsApp</label>
+                    <input type="tel" id="phone" placeholder="(00) 00000-0000" required>
                 </div>
 
                 <div class="form-section-title">Dados de Acesso</div>
@@ -267,11 +313,11 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div class="input-group">
                         <label>Seu E-mail</label>
-                        <input type="email" id="ownerEmail" placeholder="nome@email.com" required>
+                        <input type="email" id="email" placeholder="nome@email.com" required>
                     </div>
                     <div class="input-group">
                         <label>Senha</label>
-                        <input type="password" id="ownerPassword" placeholder="******" required>
+                        <input type="password" id="password" placeholder="******" required minlength="6">
                     </div>
                 </div>
 
@@ -314,20 +360,44 @@
                     Sua assinatura iniciará automaticamente em <strong id="charge-date-display" style="color: #F8FAFC;">[DATA]</strong>. Para cancelar durante o teste ou a qualquer momento, basta contactar nosso suporte via WhatsApp.
                 </p>
 
-                <button type="submit" id="submit-button" class="btn-submit">
+                <button type="submit" id="btnRegister" class="btn-submit">
                     <i class="ph ph-circle-notch loader"></i> <span id="btn-text">Começar Teste Grátis de 7 Dias</span>
                 </button>
+                <p id="errorMsg" style="color: #F87171; font-size: 0.85rem; margin-top: 10px; display: none; text-align: center;"></p>
 
-                <div class="security-footer">
+                <div class="security-footer" style="text-align: center; margin-top: 15px; font-size: 0.75rem; color: #64748B;">
                     <i class="ph ph-lock"></i> Dados protegidos por criptografia SSL de 256 bits.
                 </div>
             </form>
         </div>
     </div>
 
-    <script src="js/publicRegister.js"></script>
+    <div id="pwa-success-modal">
+        <div class="pwa-content">
+            <div class="pwa-icon"><i class="ph ph-check-circle"></i></div>
+            <h3>Conta Criada!</h3>
+            <p style="color: #cbd5e1; margin-top: 10px; font-size: 0.95rem;">Para acessar o sistema, instale o aplicativo agora.</p>
+            
+            <button id="pwa-install-btn" class="pwa-btn" style="display: none;">
+                <i class="ph ph-download-simple"></i> Instalar App
+            </button>
+
+            <div id="pwa-ios-hint" style="display: none; margin-top: 20px; text-align: left; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
+                <p style="font-size: 0.9rem; margin-bottom: 8px;"><strong>Toque em Compartilhar <i class="ph ph-export"></i></strong></p>
+                <p style="font-size: 0.9rem;">E escolha <strong>"Adicionar à Tela de Início"</strong>.</p>
+            </div>
+            
+            <button id="pwa-skip-btn" style="background: none; border: none; color: #94a3b8; margin-top: 15px; font-size: 0.85rem; cursor: pointer; text-decoration: underline;">
+                Continuar pelo navegador
+            </button>
+        </div>
+        <div id="ios-arrow" class="ios-hint-arrow" style="display: none;">▼</div>
+    </div>
+
+    <script type="module" src="js/publicRegister.js"></script>
 
     <script>
+        // Script simples para preencher dados do plano visualmente (caso o JS principal demore)
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('planId');
@@ -335,6 +405,14 @@
             const priceEl = document.getElementById('plan-price-val');
             const nameEl = document.getElementById('plan-name-display');
             const periodEl = document.getElementById('plan-period-text');
+            const installmentsWrapper = document.getElementById('installments-wrapper');
+            const installmentsSelect = document.getElementById('installmentsCount');
+
+            // Calcula data de cobrança (Hoje + 7 dias)
+            const chargeDate = new Date();
+            chargeDate.setDate(chargeDate.getDate() + 7);
+            const dateStr = chargeDate.toLocaleDateString('pt-BR');
+            document.getElementById('charge-date-display').innerText = dateStr;
 
             if(planId) {
                 if(planId.includes('mensal')) {
@@ -345,10 +423,33 @@
                     priceEl.innerText = 'R$ 438,09';
                     nameEl.innerText = 'Plano Unlimited 2026 - Semestral';
                     if(periodEl) periodEl.innerText = '/semestre';
+                    
+                    if(installmentsWrapper && installmentsSelect) {
+                        installmentsWrapper.classList.add('visible');
+                        installmentsSelect.innerHTML = `
+                            <option value="1">1x de R$ 438,09</option>
+                            <option value="2">2x de R$ 219,05</option>
+                            <option value="3">3x de R$ 146,03</option>
+                            <option value="4">4x de R$ 109,52</option>
+                            <option value="5">5x de R$ 87,62</option>
+                            <option value="6">6x de R$ 73,02</option>
+                        `;
+                    }
                 } else if (planId.includes('anual')) {
                     priceEl.innerText = 'R$ 721,56';
                     nameEl.innerText = 'Plano Unlimited 2026 - Anual';
                     if(periodEl) periodEl.innerText = '/ano';
+
+                    if(installmentsWrapper && installmentsSelect) {
+                        installmentsWrapper.classList.add('visible');
+                        installmentsSelect.innerHTML = `
+                            <option value="1">1x de R$ 721,56</option>
+                            <option value="3">3x de R$ 240,52</option>
+                            <option value="6">6x de R$ 120,26</option>
+                            <option value="10">10x de R$ 72,16</option>
+                            <option value="12">12x de R$ 60,13</option>
+                        `;
+                    }
                 }
             }
         });

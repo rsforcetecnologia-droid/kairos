@@ -3,11 +3,6 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Este módulo agrupa todas as funções para interagir com os endpoints
- * de profissionais (`professionals`) da API.
- */
-
-/**
  * Busca todos os profissionais de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de profissionais.
@@ -16,17 +11,14 @@ export const getProfessionals = (establishmentId) => {
     return authenticatedFetch(`/api/professionals/${establishmentId}`);
 };
 
-// --- INÍCIO DA FUNÇÃO ADICIONADA ---
 /**
  * Busca os detalhes de um único profissional (usado pela tela Meu Perfil).
  * @param {string} professionalId - O ID do profissional.
  * @returns {Promise<object>} Os dados do profissional.
  */
 export const getProfessional = (professionalId) => {
-    // Esta rota será adicionada ao routes/professionals.js
     return authenticatedFetch(`/api/professionals/details/${professionalId}`); 
 };
-// --- FIM DA FUNÇÃO ADICIONADA ---
 
 /**
  * Cria um novo profissional.
@@ -53,13 +45,27 @@ export const updateProfessional = (professionalId, professionalData) => {
     });
 };
 
+// --- FIX: Função adicionada para o Onboarding ---
+export const updateProfessionalServices = (professionalId, serviceIds) => {
+    // Reutiliza a função de update padrão, passando apenas os serviços
+    return updateProfessional(professionalId, { services: serviceIds });
+};
+
 /**
- * Apaga um profissional (ou marca como inativo, dependendo da regra de negócio).
+ * Apaga um profissional.
  * @param {string} professionalId - O ID do profissional a ser apagado.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da exclusão.
+ * @returns {Promise<object>} - Confirmação da exclusão.
  */
 export const deleteProfessional = (professionalId) => {
     return authenticatedFetch(`/api/professionals/${professionalId}`, {
         method: 'DELETE',
     });
+};
+
+// --- FIX: Função adicionada para a UI de Profissionais (Lote) ---
+export const batchDeleteProfessionals = (professionalIds) => {
+    // Implementação segura: deleta um por um usando Promise.all
+    // Isso garante funcionamento mesmo sem uma rota específica de "batch" no backend
+    const deletePromises = professionalIds.map(id => deleteProfessional(id));
+    return Promise.all(deletePromises);
 };

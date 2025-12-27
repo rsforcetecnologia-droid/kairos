@@ -2,13 +2,19 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Kairos">
+    <link rel="apple-touch-icon" href="assets/icon.png"> 
+    
     <script>
         // Verifica se está a rodar dentro do App (Capacitor)
         if (window.Capacitor && window.Capacitor.isNativePlatform()) {
             window.location.replace("app.html");
         }
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Kairos - Gestão Profissional 2026</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -93,18 +99,14 @@
         .status-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #10B981; }
 
         /* ========================================= */
-        /* --- ESTILOS DA PROMOÇÃO 2026 (NOVO) --- */
+        /* --- ESTILOS DA PROMOÇÃO 2026 --- */
         /* ========================================= */
-
-        /* Fundo da secção */
         .pricing-section.launch-mode {
             background: linear-gradient(180deg, #0F172A 0%, #172554 100%);
             position: relative;
             overflow: hidden;
             padding: 80px 0;
         }
-
-        /* Container do Cartão Único */
         .launch-card-wrapper {
             display: flex;
             flex-wrap: wrap;
@@ -117,7 +119,6 @@
             overflow: hidden;
             box-shadow: 0 20px 50px rgba(0,0,0,0.3);
         }
-
         .launch-badge {
             background: linear-gradient(90deg, #8B5CF6, #6366f1);
             color: white;
@@ -132,28 +133,23 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-
-        /* Coluna Esquerda (Features) */
         .launch-features {
             flex: 1.5;
             padding: 40px;
             border-right: 1px solid rgba(255, 255, 255, 0.05);
             text-align: left;
         }
-
         .launch-features h3 {
             color: #F8FAFC;
             margin-bottom: 25px;
             font-size: 1.4rem;
         }
-
         .feature-grid-launch {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
             margin-bottom: 30px;
         }
-
         .feat-item {
             color: #CBD5E1;
             display: flex;
@@ -162,8 +158,6 @@
             font-size: 0.95rem;
         }
         .feat-item i { color: #8B5CF6; font-size: 1.2rem; }
-
-        /* Comparação de Personas */
         .comparison-box {
             background: rgba(0,0,0,0.2);
             padding: 20px;
@@ -172,7 +166,6 @@
             border: 1px solid rgba(255,255,255,0.05);
         }
         .comparison-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; }
-
         .personas-row {
             display: flex;
             justify-content: center;
@@ -180,7 +173,6 @@
             flex-wrap: wrap;
             margin-bottom: 5px;
         }
-
         .persona {
             font-size: 0.8rem;
             color: #64748B;
@@ -189,15 +181,12 @@
             border-radius: 20px;
         }
         .persona.striked { text-decoration: line-through; }
-
         .highlight-text {
             color: #F59E0B !important;
             font-weight: bold;
             margin-top: 5px;
             margin-bottom: 0 !important;
         }
-
-        /* Coluna Direita (Preço) */
         .launch-price-box {
             flex: 1;
             padding: 40px;
@@ -209,8 +198,6 @@
             position: relative;
             border-left: 1px solid rgba(255,255,255,0.05);
         }
-
-        /* Animação de Brilho */
         .glow-ring {
             position: absolute;
             top: 50%; left: 50%;
@@ -220,7 +207,6 @@
             animation: pulse-glow 3s infinite ease-in-out;
             pointer-events: none;
         }
-
         .price-header {
             background: rgba(139, 92, 246, 0.15);
             color: #A78BFA;
@@ -232,7 +218,6 @@
             border: 1px solid rgba(139, 92, 246, 0.3);
             z-index: 2;
         }
-
         .price-display {
             display: flex;
             align-items: flex-start;
@@ -243,9 +228,8 @@
         .price-display .currency { font-size: 1.5rem; margin-top: 10px; margin-right: 5px; }
         .price-display .amount { font-size: 3.5rem; font-weight: 700; font-family: 'Playfair Display', serif; line-height: 1; transition: opacity 0.2s; }
         .price-display .period { font-size: 1rem; color: #94A3B8; align-self: flex-end; margin-bottom: 10px; margin-left: 5px; }
-
         .price-sub { color: #94A3B8; font-size: 0.9rem; margin-bottom: 25px; z-index: 2; }
-
+        
         /* Botão Pulsante */
         .pulse-btn {
             background: #8B5CF6;
@@ -264,12 +248,10 @@
             display: block;
             width: 100%;
         }
-
         .pulse-btn:hover {
             background: #7C3AED;
             transform: scale(1.02);
         }
-
         .guarantees {
             list-style: none;
             margin-top: 25px;
@@ -286,27 +268,54 @@
             gap: 8px;
         }
         .guarantees li i { color: #10B981; }
-
-        /* Animações Keyframes */
         @keyframes pulse-purple {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
             70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
         }
-
         @keyframes pulse-glow {
             0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
             50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
             100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
         }
-
-        /* Responsivo Mobile */
         @media (max-width: 768px) {
             .launch-card-wrapper { flex-direction: column; }
             .launch-features { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 30px 20px; }
             .feature-grid-launch { grid-template-columns: 1fr; }
             .launch-price-box { padding: 40px 20px; border-left: none; }
         }
+
+        /* --- MODAL DE INSTRUÇÕES PWA IOS/ANDROID (NOVO) --- */
+        #install-modal-container {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 9999;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 20px;
+        }
+        .install-modal-content {
+            background: #1e293b;
+            color: white;
+            padding: 25px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+            animation: slideUp 0.3s ease-out;
+        }
+        .install-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .install-modal-header h3 { margin: 0; font-size: 1.1rem; }
+        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; }
+        .instruction-step { display: flex; align-items: center; gap: 15px; text-align: left; margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .icon-box-modal { font-size: 1.5rem; color: #4f46e5; }
+        .arrow-down { position: absolute; bottom: -35px; left: 50%; transform: translateX(-50%); color: white; font-size: 2rem; animation: bounce 1s infinite; }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes bounce { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, 10px); } }
     </style>
 </head>
 <body>
@@ -541,11 +550,12 @@
                     </ul>
 
                     <div class="app-buttons">
-                        <a href="#" class="btn-primary">
-                            <i class="ph ph-google-play-logo"></i> Google Play
+                        <a href="#" id="btn-install-android" class="btn-primary" style="display: none;">
+                            <i class="ph ph-download-simple"></i> Instalar App
                         </a>
-                        <a href="#" class="btn-outline">
-                            <i class="ph ph-app-store-logo"></i> App Store
+                        
+                        <a href="#" id="btn-install-ios" class="btn-outline" style="display: none;">
+                            <i class="ph ph-apple-logo"></i> Instalar no iPhone
                         </a>
                     </div>
                 </div>
@@ -702,7 +712,7 @@
                         Cobrança mensal recorrente<br>Cancele quando quiser
                     </div>
                     
-                    <a href="publicRegister.html?planId=lancamento_mensal" class="btn-primary full-width pulse-btn btn-plan">
+                    <a href="publicRegister.html?planId=lancamento_mensal" id="btn-subscribe-main" class="btn-primary full-width pulse-btn btn-plan">
                         TESTE AGORA E GARANTA O PREÇO 2026
                     </a>
                     
@@ -756,10 +766,42 @@
         </a>
     </nav>
 
+    <div id="install-modal-container">
+        <div class="install-modal-content">
+            <div class="install-modal-header">
+                <h3 id="modal-title">Instalar Aplicativo</h3>
+                <button class="close-btn" onclick="closeInstallModal()">&times;</button>
+            </div>
+            
+            <div id="ios-instructions" style="display:none;">
+                <div class="instruction-step">
+                    <div class="icon-box-modal"><i class="ph ph-export"></i></div>
+                    <span>1. Toque no botão <strong>Compartilhar</strong> na barra inferior do Safari.</span>
+                </div>
+                <div class="instruction-step">
+                    <div class="icon-box-modal"><i class="ph ph-plus-square"></i></div>
+                    <span>2. Role e escolha <strong>Adicionar à Tela de Início</strong>.</span>
+                </div>
+                <div class="arrow-down">▼</div>
+            </div>
+
+            <div id="android-instructions" style="display:none;">
+                <p>Para a melhor experiência, instale o App:</p>
+                <div class="instruction-step">
+                    <div class="icon-box-modal"><i class="ph ph-dots-three-vertical"></i></div>
+                    <span>1. Toque no menu do navegador (3 pontinhos).</span>
+                </div>
+                <div class="instruction-step">
+                    <div class="icon-box-modal"><i class="ph ph-download-simple"></i></div>
+                    <span>2. Escolha <strong>Instalar aplicativo</strong> ou "Adicionar à tela inicial".</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            
-            // 1. NAVBAR SCROLL
+            // 1. SLIDERS e NAVBAR (Mantido)
             const navbar = document.querySelector('.navbar');
             if (navbar) {
                 window.addEventListener('scroll', () => {
@@ -767,46 +809,35 @@
                 });
             }
 
-            // 2. SLIDERS (ANIMAÇÃO IMAGENS)
             function createSlider(containerId, intervalTime = 4000) {
                 const container = document.getElementById(containerId);
                 if (!container) return; 
-
                 let slides = container.querySelectorAll('.demo-slide, .mobile-slide');
                 if (slides.length === 0) slides = container.querySelectorAll('img');
                 if (slides.length === 0) return;
-
                 const parentFrame = container.parentElement;
                 const indicators = parentFrame ? parentFrame.querySelectorAll('.indicator') : [];
                 const nextBtn = parentFrame ? parentFrame.querySelector('.next-btn') : null;
                 const prevBtn = parentFrame ? parentFrame.querySelector('.prev-btn') : null;
-
                 let currentIndex = 0;
                 let slideInterval;
-
                 function showSlide(index) {
                     if (index >= slides.length) index = 0;
                     if (index < 0) index = slides.length - 1;
-
                     slides.forEach(s => s.classList.remove('active'));
                     indicators.forEach(i => i.classList.remove('active'));
-
                     currentIndex = index;
                     slides[currentIndex].classList.add('active');
                     if (indicators[currentIndex]) indicators[currentIndex].classList.add('active');
                 }
-
                 function next() { showSlide(currentIndex + 1); }
                 function prev() { showSlide(currentIndex - 1); }
-
                 function startTimer() {
                     clearInterval(slideInterval);
                     slideInterval = setInterval(next, intervalTime);
                 }
-
                 if (nextBtn) nextBtn.addEventListener('click', (e) => { e.preventDefault(); next(); startTimer(); });
                 if (prevBtn) prevBtn.addEventListener('click', (e) => { e.preventDefault(); prev(); startTimer(); });
-
                 indicators.forEach(ind => {
                     ind.addEventListener('click', (e) => {
                         const idx = parseInt(e.target.dataset.index);
@@ -814,71 +845,151 @@
                         startTimer();
                     });
                 });
-
                 startTimer();
             }
-
             createSlider('demo-slider', 5000);
             createSlider('mobile-slider', 4000);
+
+            // 2. LÓGICA DE INSTALAÇÃO PWA
+            let deferredPrompt;
+            const btnAndroid = document.getElementById('btn-install-android');
+            const btnIOS = document.getElementById('btn-install-ios');
+            const iosModal = document.getElementById('ios-install-modal');
+
+            // Detecção de Dispositivo
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+            const isAndroid = /Android/.test(userAgent);
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+            // Se JÁ estiver instalado/standalone
+            if (isStandalone) {
+                if(btnAndroid) {
+                    btnAndroid.style.display = 'inline-flex';
+                    btnAndroid.innerHTML = '<i class="ph ph-sign-in"></i> Abrir Sistema';
+                    btnAndroid.href = 'login.html';
+                }
+                if(btnIOS) {
+                    btnIOS.style.display = 'inline-flex';
+                    btnIOS.innerHTML = '<i class="ph ph-sign-in"></i> Abrir Sistema';
+                    btnIOS.href = 'login.html';
+                }
+            } 
+            // Se NÃO instalado
+            else {
+                // iPhone/iPad: Botão visível por padrão
+                if (isIOS && btnIOS) {
+                    btnIOS.style.display = 'inline-flex';
+                    btnIOS.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        showInstallModal('ios');
+                    });
+                } 
+                // Android: Botão visível por padrão
+                else if (isAndroid && btnAndroid) {
+                    btnAndroid.style.display = 'inline-flex';
+                    btnAndroid.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        if (deferredPrompt) {
+                            deferredPrompt.prompt();
+                            const { outcome } = await deferredPrompt.userChoice;
+                            console.log(`Resultado da instalação: ${outcome}`);
+                            deferredPrompt = null;
+                        } else {
+                            // Se o prompt nativo não estiver pronto (ex: Chrome antigo ou já dispensado), mostra ajuda
+                            showInstallModal('android');
+                        }
+                    });
+                }
+            }
+
+            // Captura o evento nativo do Android
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+            });
+
+            // 3. INICIALIZAÇÃO DE PREÇOS (IMPORTANTE: Para corrigir o link na carga)
+            const defaultToggle = document.querySelector('.toggle-btn.active');
+            if (defaultToggle) {
+                updatePrices('mensal', defaultToggle);
+            } else {
+                // Fallback se nenhum botão estiver ativo
+                const firstToggle = document.querySelector('.toggle-btn');
+                if (firstToggle) updatePrices('mensal', firstToggle);
+            }
         });
 
-        // 3. FUNÇÃO DE PREÇOS (AJUSTADA PARA A PROMOÇÃO 2026)
-        function updatePrices(period, btn) {
-            // Atualiza botões
-            document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+        // 4. FUNÇÕES GLOBAIS
+        function showInstallModal(type) {
+            const container = document.getElementById('install-modal-container');
+            const iosInstr = document.getElementById('ios-instructions');
+            const androidInstr = document.getElementById('android-instructions');
+            const title = document.getElementById('modal-title');
 
-            // Seleciona o card de lançamento
+            if (type === 'ios') {
+                iosInstr.style.display = 'block';
+                androidInstr.style.display = 'none';
+                title.innerText = 'Instalar no iPhone';
+            } else {
+                iosInstr.style.display = 'none';
+                androidInstr.style.display = 'block';
+                title.innerText = 'Instalar App';
+            }
+            container.style.display = 'flex';
+        }
+
+        function closeInstallModal() {
+            document.getElementById('install-modal-container').style.display = 'none';
+        }
+
+        function updatePrices(period, btn) {
+            if (btn) {
+                document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
             const card = document.querySelector('.pricing-card');
             if (!card) return;
 
             const amountEl = card.querySelector('.amount');
             const originalPriceEl = card.querySelector('.original-price');
             const totalInfoEl = card.querySelector('.total-price-info');
-            const actionBtn = card.querySelector('.btn-plan');
-            const planLevel = card.getAttribute('data-plan-level'); // 'lancamento'
+            const actionBtn = document.getElementById('btn-subscribe-main'); // ID Fixo adicionado
+            const planLevel = card.getAttribute('data-plan-level');
             
             if (amountEl) {
                 const priceString = amountEl.getAttribute('data-' + period);
                 
-                // Animação do Preço Principal
-                amountEl.style.opacity = '0';
-                setTimeout(() => {
-                    amountEl.textContent = priceString;
-                    amountEl.style.opacity = '1';
-                }, 200);
+                // Atualiza sem piscar opacidade na inicialização para ser mais rápido
+                amountEl.textContent = priceString;
+                amountEl.style.opacity = '1';
 
-                // Lógica do Preço Riscado e Total
                 if (period === 'mensal') {
                     if(originalPriceEl) {
-                        originalPriceEl.textContent = 'de R$ 219,90'; // Comparação com preço cheio
+                        originalPriceEl.textContent = 'de R$ 219,90';
                         originalPriceEl.classList.add('visible');
                     }
                     if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
                 } else {
-                    // Semestral ou Anual
-                    const originalValue = amountEl.getAttribute('data-mensal'); // 85,90
+                    const originalValue = amountEl.getAttribute('data-mensal'); 
                     if(originalPriceEl) {
                         originalPriceEl.textContent = 'de R$ ' + originalValue;
                         originalPriceEl.classList.add('visible');
                     }
 
                     if(totalInfoEl) {
-                        // Calcula valor total baseado no preço com desconto
-                        const priceValue = parseFloat(priceString.replace(',', '.')); // ex: 73.02
+                        const priceValue = parseFloat(priceString.replace(',', '.')); 
                         let multiplier = period === 'semestral' ? 6 : 12;
-                        // Calcula Total: (Valor Mensal Promocional * Meses)
                         let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
                         
                         totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
                     }
                 }
 
-                // --- ATUALIZAÇÃO DO LINK PARA STRIPE ---
+                // ATUALIZAÇÃO DO LINK COM ID FIXO
                 if (actionBtn && planLevel) {
-                    // Constrói o ID do plano cadastrado no Firestore (ex: lancamento_mensal)
                     const finalPlanId = `${planLevel}_${period}`;
-                    // Atualiza o href para enviar o planId na URL
                     actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
                 }
             }
