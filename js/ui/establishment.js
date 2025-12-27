@@ -1,4 +1,4 @@
-// js/ui/establishment.js (Blindado e Multitenancy)
+// js/ui/establishment.js (Blindado, Multitenancy, Suporte, Cancelamento e Foto de Perfil)
 
 import * as establishmentApi from '../api/establishments.js';
 import * as financialApi from '../api/financial.js';
@@ -43,6 +43,8 @@ const menuItems = [
     { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
     { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
     { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
+    { id: 'support', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z', label: 'Suporte e Ajuda' },
+    { id: 'cancellation', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Cancelar Assinatura' },
 ];
 
 let establishmentData = null; 
@@ -969,6 +971,100 @@ async function renderFinancialIntegrationSection(data, container) {
     });
 }
 
+// --- NOVO: FUNÇÃO DE RENDERIZAÇÃO DA SECÇÃO DE SUPORTE ---
+function renderSupportSection(data, container) {
+    // Configurações do WhatsApp
+    const supportNumber = "5516997859430";
+    const message = encodeURIComponent("Olá, preciso de ajuda com o sistema Kairos.");
+    const whatsappLink = `https://wa.me/${supportNumber}?text=${message}`;
+
+    container.innerHTML = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md text-center md:text-left">
+            <div class="flex flex-col md:flex-row items-center justify-between mb-6 border-b pb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">Suporte Técnico</h3>
+                    <p class="text-sm text-gray-600 mt-1">Estamos aqui para ajudar você a tirar o máximo proveito do sistema.</p>
+                </div>
+            </div>
+
+            <div class="bg-green-50 border border-green-100 rounded-lg p-6 flex flex-col items-center justify-center space-y-4">
+                <div class="bg-white p-3 rounded-full shadow-sm">
+                    <svg class="w-12 h-12 text-green-500" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                </div>
+                
+                <h4 class="text-lg font-semibold text-gray-800">Falar com Suporte via WhatsApp</h4>
+                <p class="text-gray-600 max-w-md text-center">
+                    Encontrou algum erro, tem dúvidas sobre funcionalidades ou precisa de ajuda com a sua conta? Clique abaixo para iniciar uma conversa.
+                </p>
+
+                <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer" 
+                   class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full transition-all transform hover:scale-105 shadow-lg">
+                    <span>Iniciar Atendimento</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </a>
+                
+                <p class="text-xs text-gray-400 mt-4">Horário de atendimento: Seg a Sex, das 09h às 18h.</p>
+            </div>
+        </div>
+    `;
+}
+
+// --- NOVO: FUNÇÃO DE RENDERIZAÇÃO DA SECÇÃO DE CANCELAMENTO ---
+function renderCancellationSection(data, container) {
+    const supportNumber = "5516997859430";
+    const cancellationMessage = encodeURIComponent("Olá, gostaria de solicitar o cancelamento da minha assinatura.");
+    const whatsappLink = `https://wa.me/${supportNumber}?text=${cancellationMessage}`;
+    const emailContato = "sistemakairosagenda@gmail.com";
+
+    container.innerHTML = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
+            <div class="flex flex-col md:flex-row items-center justify-between mb-6 border-b pb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-red-600">Cancelamento de Assinatura</h3>
+                    <p class="text-sm text-gray-600 mt-1">Lamentamos ver você partir. Veja abaixo como proceder.</p>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <p class="text-gray-700">
+                    Para solicitar o cancelamento da sua assinatura, por favor, entre em contato conosco através de um dos canais abaixo. Nossa equipe financeira irá processar sua solicitação o mais breve possível.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="border rounded-lg p-6 bg-gray-50 flex flex-col items-center text-center">
+                        <div class="bg-white p-3 rounded-full shadow-sm mb-4">
+                            <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">Via E-mail</h4>
+                        <p class="text-sm text-gray-600 mb-4">Envie um e-mail com seus dados para:</p>
+                        <a href="mailto:${emailContato}" class="text-indigo-600 font-semibold hover:underline">${emailContato}</a>
+                    </div>
+
+                    <div class="border rounded-lg p-6 bg-green-50 border-green-100 flex flex-col items-center text-center">
+                        <div class="bg-white p-3 rounded-full shadow-sm mb-4">
+                             <svg class="w-8 h-8 text-green-500" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                        </div>
+                        <h4 class="font-bold text-gray-800 mb-2">Via WhatsApp</h4>
+                        <p class="text-sm text-gray-600 mb-4">Fale diretamente com nosso suporte financeiro.</p>
+                        <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer" 
+                           class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full transition-colors text-sm">
+                            <span>Solicitar Cancelamento</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="mt-8 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700">
+                    <p class="font-bold">Importante:</p>
+                    <p class="text-sm">O cancelamento pode levar até 48h úteis para ser processado. Seus dados permanecerão seguros conforme nossa política de privacidade.</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
 function renderPlaceholderSection(title, container) {
     container.innerHTML = `
@@ -1076,6 +1172,9 @@ async function showSettingsDetailView(sectionId) {
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
+        // --- NOVOS CASOS ---
+        case 'support': renderSupportSection(establishmentData, detailContainer); break;
+        case 'cancellation': renderCancellationSection(establishmentData, detailContainer); break;
         default:
             renderPlaceholderSection(menuItem ? menuItem.label : 'Definições', detailContainer);
     }
@@ -1111,6 +1210,14 @@ export async function loadEstablishmentPage() {
     const displayName = escapeHTML(state.userName || auth.currentUser.email);
     const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
 
+    // --- CORREÇÃO: Lógica para exibir a foto de perfil se existir ---
+    let userAvatarUrl = `https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}`; // Fallback padrão
+    
+    if (user && user.photoURL) {
+        userAvatarUrl = user.photoURL;
+    }
+    // ----------------------------------------------------------------
+
     contentDiv.innerHTML = `
         <div class="bg-white p-4 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -1129,7 +1236,7 @@ export async function loadEstablishmentPage() {
                  </div>
 
                  <div class="relative w-24 h-24 mx-auto">
-                    <img id="user-avatar" src="https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}" class="w-24 h-24 rounded-full object-cover">
+                    <img id="user-avatar" src="${userAvatarUrl}" class="w-24 h-24 rounded-full object-cover">
                  </div>
                  <h3 class="font-bold mt-2 text-lg truncate">${displayName}</h3>
                  ${(state.userName && state.userName !== auth.currentUser.email) ? `<p class="text-sm text-gray-500">${escapeHTML(auth.currentUser.email)}</p>` : ''}

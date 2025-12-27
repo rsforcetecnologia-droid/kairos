@@ -10,6 +10,9 @@ import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails } from './api/establishments.js';
 import { getProfessionals } from './api/professionals.js'; 
 
+// --- IMPORTAÇÃO DO ONBOARDING (GAMIFICAÇÃO) ---
+import { checkAndStartOnboarding } from './ui/onboarding.js'; // <--- ADICIONADO AQUI
+
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
@@ -475,6 +478,13 @@ function initialize() {
                     setTimeout(() => {
                         loadingScreen.style.display = 'none';
                     }, 500);
+
+                    // --- INÍCIO DA VERIFICAÇÃO DE ONBOARDING (GAMIFICAÇÃO) ---
+                    console.log("Verificando Onboarding...");
+                    setTimeout(() => {
+                        checkAndStartOnboarding();
+                    }, 1500); // Delay para garantir carregamento da UI
+                    // --------------------------------------------------------
 
                     navigateTo('agenda-section');
                 } else {
