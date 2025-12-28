@@ -284,38 +284,6 @@
             .feature-grid-launch { grid-template-columns: 1fr; }
             .launch-price-box { padding: 40px 20px; border-left: none; }
         }
-
-        /* --- MODAL DE INSTRUÇÕES PWA IOS/ANDROID (NOVO) --- */
-        #install-modal-container {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            z-index: 9999;
-            align-items: flex-end;
-            justify-content: center;
-            padding-bottom: 20px;
-        }
-        .install-modal-content {
-            background: #1e293b;
-            color: white;
-            padding: 25px;
-            border-radius: 20px;
-            width: 90%;
-            max-width: 400px;
-            text-align: center;
-            position: relative;
-            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
-            animation: slideUp 0.3s ease-out;
-        }
-        .install-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .install-modal-header h3 { margin: 0; font-size: 1.1rem; }
-        .close-btn { background: none; border: none; color: #94a3b8; font-size: 1.5rem; cursor: pointer; }
-        .instruction-step { display: flex; align-items: center; gap: 15px; text-align: left; margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 10px; }
-        .icon-box-modal { font-size: 1.5rem; color: #4f46e5; }
-        .arrow-down { position: absolute; bottom: -35px; left: 50%; transform: translateX(-50%); color: white; font-size: 2rem; animation: bounce 1s infinite; }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        @keyframes bounce { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, 10px); } }
     </style>
 </head>
 <body>
@@ -334,7 +302,7 @@
             
             <div class="nav-actions desktop-only">
                 <a href="login.html" class="btn-text">Entrar</a>
-                <a href="publicRegister.html" class="btn-primary">Criar Conta</a>
+                <a href="#planos" class="btn-primary">Criar Conta</a>
             </div>
         </div>
     </nav>
@@ -550,12 +518,8 @@
                     </ul>
 
                     <div class="app-buttons">
-                        <a href="#" id="btn-install-android" class="btn-primary" style="display: none;">
+                        <a href="install.html" class="btn-primary">
                             <i class="ph ph-download-simple"></i> Instalar App
-                        </a>
-                        
-                        <a href="#" id="btn-install-ios" class="btn-outline" style="display: none;">
-                            <i class="ph ph-apple-logo"></i> Instalar no iPhone
                         </a>
                     </div>
                 </div>
@@ -713,7 +677,7 @@
                     </div>
                     
                     <a href="publicRegister.html?planId=lancamento_mensal" id="btn-subscribe-main" class="btn-primary full-width pulse-btn btn-plan">
-                        TESTE AGORA E GARANTA O PREÇO 2026
+                        Escolha seu plano para começar a testar
                     </a>
                     
                     <ul class="guarantees">
@@ -766,42 +730,9 @@
         </a>
     </nav>
 
-    <div id="install-modal-container">
-        <div class="install-modal-content">
-            <div class="install-modal-header">
-                <h3 id="modal-title">Instalar Aplicativo</h3>
-                <button class="close-btn" onclick="closeInstallModal()">&times;</button>
-            </div>
-            
-            <div id="ios-instructions" style="display:none;">
-                <div class="instruction-step">
-                    <div class="icon-box-modal"><i class="ph ph-export"></i></div>
-                    <span>1. Toque no botão <strong>Compartilhar</strong> na barra inferior do Safari.</span>
-                </div>
-                <div class="instruction-step">
-                    <div class="icon-box-modal"><i class="ph ph-plus-square"></i></div>
-                    <span>2. Role e escolha <strong>Adicionar à Tela de Início</strong>.</span>
-                </div>
-                <div class="arrow-down">▼</div>
-            </div>
-
-            <div id="android-instructions" style="display:none;">
-                <p>Para a melhor experiência, instale o App:</p>
-                <div class="instruction-step">
-                    <div class="icon-box-modal"><i class="ph ph-dots-three-vertical"></i></div>
-                    <span>1. Toque no menu do navegador (3 pontinhos).</span>
-                </div>
-                <div class="instruction-step">
-                    <div class="icon-box-modal"><i class="ph ph-download-simple"></i></div>
-                    <span>2. Escolha <strong>Instalar aplicativo</strong> ou "Adicionar à tela inicial".</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            // 1. SLIDERS e NAVBAR (Mantido)
+            // 1. SLIDERS e NAVBAR
             const navbar = document.querySelector('.navbar');
             if (navbar) {
                 window.addEventListener('scroll', () => {
@@ -850,99 +781,17 @@
             createSlider('demo-slider', 5000);
             createSlider('mobile-slider', 4000);
 
-            // 2. LÓGICA DE INSTALAÇÃO PWA
-            let deferredPrompt;
-            const btnAndroid = document.getElementById('btn-install-android');
-            const btnIOS = document.getElementById('btn-install-ios');
-            const iosModal = document.getElementById('ios-install-modal');
-
-            // Detecção de Dispositivo
-            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
-            const isAndroid = /Android/.test(userAgent);
-            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-
-            // Se JÁ estiver instalado/standalone
-            if (isStandalone) {
-                if(btnAndroid) {
-                    btnAndroid.style.display = 'inline-flex';
-                    btnAndroid.innerHTML = '<i class="ph ph-sign-in"></i> Abrir Sistema';
-                    btnAndroid.href = 'login.html';
-                }
-                if(btnIOS) {
-                    btnIOS.style.display = 'inline-flex';
-                    btnIOS.innerHTML = '<i class="ph ph-sign-in"></i> Abrir Sistema';
-                    btnIOS.href = 'login.html';
-                }
-            } 
-            // Se NÃO instalado
-            else {
-                // iPhone/iPad: Botão visível por padrão
-                if (isIOS && btnIOS) {
-                    btnIOS.style.display = 'inline-flex';
-                    btnIOS.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        showInstallModal('ios');
-                    });
-                } 
-                // Android: Botão visível por padrão
-                else if (isAndroid && btnAndroid) {
-                    btnAndroid.style.display = 'inline-flex';
-                    btnAndroid.addEventListener('click', async (e) => {
-                        e.preventDefault();
-                        if (deferredPrompt) {
-                            deferredPrompt.prompt();
-                            const { outcome } = await deferredPrompt.userChoice;
-                            console.log(`Resultado da instalação: ${outcome}`);
-                            deferredPrompt = null;
-                        } else {
-                            // Se o prompt nativo não estiver pronto (ex: Chrome antigo ou já dispensado), mostra ajuda
-                            showInstallModal('android');
-                        }
-                    });
-                }
-            }
-
-            // Captura o evento nativo do Android
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-            });
-
-            // 3. INICIALIZAÇÃO DE PREÇOS (IMPORTANTE: Para corrigir o link na carga)
+            // 2. INICIALIZAÇÃO DE PREÇOS
             const defaultToggle = document.querySelector('.toggle-btn.active');
             if (defaultToggle) {
                 updatePrices('mensal', defaultToggle);
             } else {
-                // Fallback se nenhum botão estiver ativo
                 const firstToggle = document.querySelector('.toggle-btn');
                 if (firstToggle) updatePrices('mensal', firstToggle);
             }
         });
 
-        // 4. FUNÇÕES GLOBAIS
-        function showInstallModal(type) {
-            const container = document.getElementById('install-modal-container');
-            const iosInstr = document.getElementById('ios-instructions');
-            const androidInstr = document.getElementById('android-instructions');
-            const title = document.getElementById('modal-title');
-
-            if (type === 'ios') {
-                iosInstr.style.display = 'block';
-                androidInstr.style.display = 'none';
-                title.innerText = 'Instalar no iPhone';
-            } else {
-                iosInstr.style.display = 'none';
-                androidInstr.style.display = 'block';
-                title.innerText = 'Instalar App';
-            }
-            container.style.display = 'flex';
-        }
-
-        function closeInstallModal() {
-            document.getElementById('install-modal-container').style.display = 'none';
-        }
-
+        // 3. FUNÇÕES GLOBAIS DE PREÇO
         function updatePrices(period, btn) {
             if (btn) {
                 document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
@@ -955,13 +804,12 @@
             const amountEl = card.querySelector('.amount');
             const originalPriceEl = card.querySelector('.original-price');
             const totalInfoEl = card.querySelector('.total-price-info');
-            const actionBtn = document.getElementById('btn-subscribe-main'); // ID Fixo adicionado
+            const actionBtn = document.getElementById('btn-subscribe-main');
             const planLevel = card.getAttribute('data-plan-level');
             
             if (amountEl) {
                 const priceString = amountEl.getAttribute('data-' + period);
                 
-                // Atualiza sem piscar opacidade na inicialização para ser mais rápido
                 amountEl.textContent = priceString;
                 amountEl.style.opacity = '1';
 
@@ -987,7 +835,6 @@
                     }
                 }
 
-                // ATUALIZAÇÃO DO LINK COM ID FIXO
                 if (actionBtn && planLevel) {
                     const finalPlanId = `${planLevel}_${period}`;
                     actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;

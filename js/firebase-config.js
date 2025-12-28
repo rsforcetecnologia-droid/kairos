@@ -1,47 +1,75 @@
 // js/firebase-config.js
-
-// Importa funções do Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-// 1. ADICIONADO: Imports do Messaging para Notificações Push
+import { 
+    getAuth, 
+    onAuthStateChanged,
+    setPersistence,
+    browserLocalPersistence 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    getDocs, 
+    doc, 
+    getDoc, 
+    updateDoc, 
+    deleteDoc, 
+    query, 
+    where,
+    setDoc 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 
-/**
- * Este arquivo é responsável por inicializar e configurar a conexão com o Firebase.
- * Ele exporta as instâncias de autenticação (auth), do Firestore (db) e Messaging.
- */
-
-// --- CONFIGURAÇÃO PARA O KAIROS AGENDA US ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
-  authDomain: "kairos-agenda-us.firebaseapp.com",
-  projectId: "kairos-agenda-us",
-  storageBucket: "kairos-agenda-us.firebasestorage.app",
-  messagingSenderId: "407358446276",
-  appId: "1:407358446276:web:c6229ea999b56701558791"
+    apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+    authDomain: "kairos-agenda-us.firebaseapp.com",
+    projectId: "kairos-agenda-us",
+    storageBucket: "kairos-agenda-us.firebasestorage.app",
+    messagingSenderId: "407358446276",
+    appId: "1:407358446276:web:c6229ea999b56701558791"
 };
 
-// Inicializa o aplicativo Firebase
+// Inicializa o App
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const messaging = getMessaging(app);
 
-// Inicializa Auth e Firestore
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Configura persistência local (funciona como backup)
+setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+        console.log("Persistência de login ativada no config.");
+    })
+    .catch((error) => {
+        console.error("Erro ao ativar persistência:", error);
+    });
 
-// 2. ADICIONADO: Inicializa o Messaging
-export const messaging = getMessaging(app);
-
-// --- CONFIGURAÇÃO DE PERSISTÊNCIA (PWA) ---
-// Tenta definir a persistência globalmente logo na inicialização
-(async () => {
-    try {
-        await setPersistence(auth, browserLocalPersistence);
-        console.log("Persistência de sessão configurada para LOCAL (PWA).");
-    } catch (error) {
-        console.error("Erro ao definir persistência:", error);
-    }
-})();
-
-// 3. ADICIONADO: Exporta as funções para serem usadas em outros arquivos
-export { setPersistence, browserLocalPersistence, getToken, onMessage };
+// --- EXPORTAÇÕES (O ERRO ESTAVA AQUI) ---
+// Agora incluímos setPersistence e browserLocalPersistence na lista
+export { 
+    auth, 
+    db, 
+    storage, 
+    messaging, 
+    getToken, 
+    onMessage,
+    onAuthStateChanged,
+    setPersistence,          // <--- Adicionado
+    browserLocalPersistence, // <--- Adicionado
+    collection,
+    addDoc,
+    getDocs,
+    doc,
+    getDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    where,
+    setDoc,
+    ref, 
+    uploadBytes, 
+    getDownloadURL 
+};

@@ -1,7 +1,6 @@
 // js/main.js
 
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
-// FIX: Adicionado setPersistence e browserLocalPersistence
 import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
@@ -102,10 +101,8 @@ const pageLoader = {
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
 function applyTheme(themeKey) {
-    // Se o tema não existir, usa o índigo como fallback
     const theme = colorThemes[themeKey] || colorThemes.indigo;
     
-    // Converte Hex para RGB para usar com opacidade no CSS
     const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
@@ -113,13 +110,10 @@ function applyTheme(themeKey) {
     
     const mainRgb = hexToRgb(theme.main);
     
-    // Atualiza a variável CSS global para JS
     document.body.style.setProperty('--theme-main', theme.main);
 
     const styleSheet = document.getElementById('dynamic-theme-styles');
     
-    // INJEÇÃO DE CSS DINÂMICO
-    // Isso sobrescreve as classes padrões do Tailwind (indigo) para a cor escolhida
     styleSheet.innerHTML = `
         :root {
             --theme-color-main: ${theme.main};
@@ -365,6 +359,7 @@ async function initializePushNotifications(userUid) {
 async function initialize() {
     
     // --- FIX: DEFINIR PERSISTÊNCIA LOCAL IMEDIATAMENTE (PWA) ---
+    // Isso garante que o navegador tente recuperar a sessão antes de qualquer outra coisa
     try {
         await setPersistence(auth, browserLocalPersistence);
         console.log("Persistência LOCAL configurada na inicialização.");
@@ -425,14 +420,16 @@ async function initialize() {
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            try {
-                // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
-                if (!Capacitor.isNativePlatform()) {
-                    console.log("Inicializando Web Push...");
-                    // Chama a função importada de push-notifications.js
-                    initWebPush(); 
-                }
+            console.log("Usuário detectado:", user.email);
 
+            // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
+            // Se estiver no navegador/PWA (não nativo), inicia o push e renova o token se necessário
+            if (!Capacitor.isNativePlatform()) {
+                console.log("Inicializando Web Push (PWA)...");
+                initWebPush(); 
+            }
+
+            try {
                 const idTokenResult = await user.getIdTokenResult(true);
                 const claims = idTokenResult.claims;
                 if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
@@ -464,7 +461,7 @@ async function initialize() {
                     
                     state.userProfessionalId = userProfessionalId; 
                     
-                    // Inicializa notificações nativas apenas se estiver no ambiente nativo
+                    // Inicializa notificações nativas apenas se estiver no ambiente nativo (Android/iOS via Loja)
                     if (Capacitor.isNativePlatform()) {
                         initializePushNotifications(user.uid);
                     }

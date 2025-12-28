@@ -17,21 +17,52 @@ async function getEstablishmentTokens(establishmentId) {
       .where("establishmentId", "==", establishmentId)
       .get();
 
-  if (snapshotUsers.empty) return [];
+  if (snapshotUsers.empty) {
+    console.log(`Nenhum usuário encontrado para: ${establishmentId}`);
+    return [];
+  }
 
   const tokens = [];
   snapshotUsers.forEach((doc) => {
     const userData = doc.data();
     if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
       tokens.push(...userData.fcmTokens);
-    }
-    if (userData.fcmToken) {
+    } else if (userData.fcmToken) {
       tokens.push(userData.fcmToken);
     }
   });
 
-  return [...new Set(tokens)];
+  const uniqueTokens = [...new Set(tokens)];
+  console.log(`Encontrados ${uniqueTokens.length} tokens para envio.`);
+  return uniqueTokens;
 }
+
+// Configuração de "Alerta Máximo"
+const androidConfig = {
+  priority: "high",
+  notification: {
+    channelId: "kairos_appointments",
+    priority: "max",
+    defaultSound: true,
+    defaultVibrateTimings: true,
+    visibility: "public",
+  },
+};
+
+const webpushConfig = {
+  headers: {
+    "Urgency": "high", // Importante para acordar o Android
+  },
+  fcmOptions: {
+    link: "/app.html",
+  },
+  notification: {
+    icon: "https://kairos-agenda-us.web.app/assets/icon.png",
+    badge: "https://kairos-agenda-us.web.app/assets/icon.png",
+    requireInteraction: true, // A notificação fica na tela até o usuário clicar
+    vibrate: [200, 100, 200, 100, 200], // Padrão de vibração
+  },
+};
 
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
@@ -40,27 +71,35 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
       if (!snapshot) return;
 
       const appointment = snapshot.data();
-      const tokens = await getEstablishmentTokens(appointment.establishmentId);
+      if (!appointment.establishmentId) return;
 
-      if (tokens.length === 0) {
-        console.log("Nenhum token para notificar criação.");
-        return;
-      }
+      const tokens = await getEstablishmentTokens(appointment.establishmentId);
+      if (tokens.length === 0) return;
+
+      const clientName = appointment.clientName || "Cliente";
+      const serviceName = appointment.serviceName || "serviço";
 
       const message = {
         notification: {
           title: "Novo Agendamento! 📅",
-          body: `${appointment.clientName} agendou ` +
-              `${appointment.serviceName} às ${appointment.time}.`,
+          body: `${clientName} agendou ${serviceName} às ${appointment.time}.`,
         },
+        android: androidConfig, // Configuração nativa Android
+        webpush: webpushConfig, // Configuração PWA
         tokens: tokens,
       };
 
       try {
-        await admin.messaging().sendMulticast(message);
-        console.log("Notificação de criação enviada.");
+        const response = await admin.messaging().sendEachForMulticast(message);
+        console.log(`Sucesso: ${response.successCount}, Falhas: ${response.failureCount}`);
+        
+        // Remove tokens inválidos se houver falhas
+        if (response.failureCount > 0) {
+           // Lógica de limpeza pode ser adicionada futuramente
+           console.log("Alguns tokens falharam (provavelmente antigos).");
+        }
       } catch (error) {
-        console.error("Erro ao enviar criação:", error);
+        console.error("Erro fatal ao enviar notificação:", error);
       }
     });
 
@@ -77,25 +116,24 @@ exports.sendCancellationNotification = onDocumentUpdated(
       if (!isCancelled) return;
 
       const tokens = await getEstablishmentTokens(after.establishmentId);
+      if (tokens.length === 0) return;
 
-      if (tokens.length === 0) {
-        console.log("Nenhum token para notificar cancelamento.");
-        return;
-      }
+      const clientName = after.clientName || "Cliente";
 
       const message = {
         notification: {
           title: "Agendamento Cancelado ❌",
-          body: `${after.clientName} cancelou o agendamento ` +
-              `das ${after.time}.`,
+          body: `${clientName} cancelou o agendamento das ${after.time}.`,
         },
+        android: androidConfig,
+        webpush: webpushConfig,
         tokens: tokens,
       };
 
       try {
-        await admin.messaging().sendMulticast(message);
-        console.log("Notificação de cancelamento enviada.");
+        const response = await admin.messaging().sendEachForMulticast(message);
+        console.log(`Cancelamento enviado. Sucesso: ${response.successCount}`);
       } catch (error) {
-        console.error("Erro ao enviar cancelamento:", error);
+        console.error("Erro fatal ao enviar notificação:", error);
       }
     });

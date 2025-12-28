@@ -18,7 +18,7 @@ export default defineConfig({
         import: resolve(__dirname, 'import.html'),
         publicRegister: resolve(__dirname, 'publicRegister.html'),
         // Se você tiver o arquivo install.html, descomente a linha abaixo:
-        // install: resolve(__dirname, 'install.html'),
+         install: resolve(__dirname, 'install.html'),
       }
     }
   },
