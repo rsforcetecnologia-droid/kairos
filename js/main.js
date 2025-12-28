@@ -1,7 +1,8 @@
 // js/main.js
 
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
-import { auth, db } from './firebase-config.js';
+// FIX: Adicionado setPersistence e browserLocalPersistence
+import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { state, setGlobalState } from './state.js';
@@ -11,11 +12,13 @@ import { getEstablishmentDetails } from './api/establishments.js';
 import { getProfessionals } from './api/professionals.js'; 
 
 // --- IMPORTAÇÃO DO ONBOARDING (GAMIFICAÇÃO) ---
-import { checkAndStartOnboarding } from './ui/onboarding.js'; // <--- ADICIONADO AQUI
+import { checkAndStartOnboarding } from './ui/onboarding.js';
 
-// --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
+// --- IMPORTAÇÃO DAS NOTIFICAÇÕES ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
+// FIX: Importação das notificações Web (PWA) com alias para não confundir com a nativa
+import { initPushNotifications as initWebPush } from './ui/push-notifications.js';
 
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
 
@@ -52,7 +55,7 @@ const logoutButton = document.getElementById('logoutButton');
 const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
 const myProfileLink = document.getElementById('myProfileLink'); 
 
-// --- PALETA DE CORES EXPANDIDA (Deve coincidir com establishment.js) ---
+// --- PALETA DE CORES EXPANDIDA ---
 const colorThemes = {
     indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' }, // Padrão
     blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
@@ -296,7 +299,7 @@ async function loadHeaderKPIs(userPermissions) {
 }
 
 // ####################################################################
-// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS ###
+// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS (NATIVO) ###
 // ####################################################################
 
 async function initializePushNotifications(userUid) {
@@ -359,8 +362,16 @@ async function initializePushNotifications(userUid) {
 }
 
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
-function initialize() {
+async function initialize() {
     
+    // --- FIX: DEFINIR PERSISTÊNCIA LOCAL IMEDIATAMENTE (PWA) ---
+    try {
+        await setPersistence(auth, browserLocalPersistence);
+        console.log("Persistência LOCAL configurada na inicialização.");
+    } catch (e) {
+        console.error("Erro ao definir persistência no main.js", e);
+    }
+
     if (Capacitor.isNativePlatform()) {
         document.body.classList.add('is-app-native');
         console.log('Modo App Nativo detectado: Layout ajustado para Safe Areas.');
@@ -415,6 +426,13 @@ function initialize() {
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             try {
+                // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
+                if (!Capacitor.isNativePlatform()) {
+                    console.log("Inicializando Web Push...");
+                    // Chama a função importada de push-notifications.js
+                    initWebPush(); 
+                }
+
                 const idTokenResult = await user.getIdTokenResult(true);
                 const claims = idTokenResult.claims;
                 if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
@@ -446,7 +464,10 @@ function initialize() {
                     
                     state.userProfessionalId = userProfessionalId; 
                     
-                    initializePushNotifications(user.uid);
+                    // Inicializa notificações nativas apenas se estiver no ambiente nativo
+                    if (Capacitor.isNativePlatform()) {
+                        initializePushNotifications(user.uid);
+                    }
                     
                     const finalUserName = userName || user.email;
                     

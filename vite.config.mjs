@@ -35,7 +35,7 @@ export default defineConfig({
         name: 'Kairos Gestão',
         short_name: 'Kairos',
         description: 'Gestão Profissional para o seu negócio',
-        theme_color: '#4f46e5',
+        theme_color: '#ffffffff',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/login.html',

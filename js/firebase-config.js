@@ -1,16 +1,15 @@
 // js/firebase-config.js
 
-// Importa apenas as funções necessárias do Firebase SDK
+// Importa funções do Firebase SDK
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getAuth, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// 1. ADICIONADO: Imports do Messaging para Notificações Push
+import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 
 /**
  * Este arquivo é responsável por inicializar e configurar a conexão com o Firebase.
- * Ele exporta as instâncias de autenticação (auth) e do Firestore (db) 
- * para que outros módulos possam usá-las.
- * Manter a configuração isolada aqui facilita a atualização das chaves da API sem
- * ter que procurar por elas em todo o código.
+ * Ele exporta as instâncias de autenticação (auth), do Firestore (db) e Messaging.
  */
 
 // --- CONFIGURAÇÃO PARA O KAIROS AGENDA US ---
@@ -26,8 +25,23 @@ const firebaseConfig = {
 // Inicializa o aplicativo Firebase
 const app = initializeApp(firebaseConfig);
 
-// Exporta a instância de autenticação para ser usada em toda a aplicação
+// Inicializa Auth e Firestore
 export const auth = getAuth(app);
-
-// Exporta a instância do Firestore para ser usada em toda a aplicação
 export const db = getFirestore(app);
+
+// 2. ADICIONADO: Inicializa o Messaging
+export const messaging = getMessaging(app);
+
+// --- CONFIGURAÇÃO DE PERSISTÊNCIA (PWA) ---
+// Tenta definir a persistência globalmente logo na inicialização
+(async () => {
+    try {
+        await setPersistence(auth, browserLocalPersistence);
+        console.log("Persistência de sessão configurada para LOCAL (PWA).");
+    } catch (error) {
+        console.error("Erro ao definir persistência:", error);
+    }
+})();
+
+// 3. ADICIONADO: Exporta as funções para serem usadas em outros arquivos
+export { setPersistence, browserLocalPersistence, getToken, onMessage };

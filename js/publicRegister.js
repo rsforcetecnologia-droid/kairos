@@ -1,11 +1,15 @@
 // js/publicRegister.js
 
+// 1. IMPORTS DO FIREBASE (Para Login Automático e Persistência)
+import { auth, setPersistence, browserLocalPersistence } from './firebase-config.js';
+import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
 // CONFIGURAÇÃO: Chave Pública do Stripe
 const STRIPE_PUBLIC_KEY = 'pk_test_51STpHSAIZNC4mWLrbapCgFGi2o6tMg07vyFa22LKwGOpN4nNdO0KzB6S4ioHsz4YiQXWrFPn8dVuYgkl0xnCHl2l000K2JtygR'; 
 const stripe = Stripe(STRIPE_PUBLIC_KEY);
 const elements = stripe.elements();
 
-// 1. Configurar Stripe Elements
+// 2. Configurar Stripe Elements
 const style = {
     base: {
         color: '#ffffff',
@@ -20,7 +24,18 @@ const style = {
 const card = elements.create('card', { style: style, hidePostalCode: true });
 card.mount('#card-element');
 
-// 2. Lógica de Planos e Parcelamento
+// 3. Lógica PWA (Instalação)
+let deferredPrompt;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isAndroid = /Android/.test(navigator.userAgent);
+const isMobile = isIOS || isAndroid;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+});
+
+// 4. Lógica de Planos
 const urlParams = new URLSearchParams(window.location.search);
 const selectedPlanId = urlParams.get('planId');
 
@@ -31,31 +46,25 @@ const PLAN_PRICES = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-    
-    // --- NOVO: CÁLCULO DA DATA DE COBRANÇA (7 DIAS) ---
+    // Cálculo da Data de Cobrança (7 dias)
     const today = new Date();
     const futureDate = new Date(today);
     futureDate.setDate(today.getDate() + 7);
     
     const formattedDate = futureDate.toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+        day: '2-digit', month: '2-digit', year: 'numeric'
     });
 
     const dateDisplay = document.getElementById('charge-date-display');
-    if(dateDisplay) {
-        dateDisplay.innerText = formattedDate;
-    }
-    // ----------------------------------------------------
+    if(dateDisplay) dateDisplay.innerText = formattedDate;
 
     if (!selectedPlanId) {
-        alert("Nenhum plano selecionado.");
-        window.location.href = "index.html#planos";
-        return;
+        // Se não tiver plano, volta para home
+        // window.location.href = "index.html#planos"; 
+        // Comentado para facilitar testes locais
+    } else {
+        updateUIForPlan(selectedPlanId);
     }
-
-    updateUIForPlan(selectedPlanId);
 });
 
 function updateUIForPlan(planId) {
@@ -68,40 +77,36 @@ function updateUIForPlan(planId) {
     let price = PLAN_PRICES[planId] || 0;
     let maxInstallments = 1;
 
-    // Configuração Visual e de Parcelas
+    // Configuração Visual
     if (planId.includes('mensal')) {
-        nameEl.innerText = 'Plano Unlimited - Mensal';
-        priceEl.innerText = 'R$ 85,90';
-        periodEl.innerText = '/mês';
-        installmentsWrapper.classList.remove('visible'); // Esconde parcelamento
-        maxInstallments = 1;
+        if(nameEl) nameEl.innerText = 'Plano Unlimited - Mensal';
+        if(priceEl) priceEl.innerText = 'R$ 85,90';
+        if(periodEl) periodEl.innerText = '/mês';
+        if(installmentsWrapper) installmentsWrapper.classList.remove('visible');
     } 
     else if (planId.includes('semestral')) {
-        nameEl.innerText = 'Plano Unlimited - Semestral';
-        priceEl.innerText = 'R$ 438,09';
-        periodEl.innerText = '/semestre';
-        installmentsWrapper.classList.add('visible'); // Mostra parcelamento
+        if(nameEl) nameEl.innerText = 'Plano Unlimited - Semestral';
+        if(priceEl) priceEl.innerText = 'R$ 438,09';
+        if(periodEl) periodEl.innerText = '/semestre';
+        if(installmentsWrapper) installmentsWrapper.classList.add('visible');
         maxInstallments = 6;
     } 
     else if (planId.includes('anual')) {
-        nameEl.innerText = 'Plano Unlimited - Anual';
-        priceEl.innerText = 'R$ 721,56';
-        periodEl.innerText = '/ano';
-        installmentsWrapper.classList.add('visible'); // Mostra parcelamento
+        if(nameEl) nameEl.innerText = 'Plano Unlimited - Anual';
+        if(priceEl) priceEl.innerText = 'R$ 721,56';
+        if(periodEl) periodEl.innerText = '/ano';
+        if(installmentsWrapper) installmentsWrapper.classList.add('visible');
         maxInstallments = 12;
     }
 
-    // Preencher o Select de Parcelas
-    if (maxInstallments > 1) {
-        installmentsSelect.innerHTML = ''; // Limpa opções
-        
-        // Opção à vista
+    // Preencher Select de Parcelas
+    if (installmentsSelect && maxInstallments > 1) {
+        installmentsSelect.innerHTML = '';
         const opt1 = document.createElement('option');
         opt1.value = 1;
         opt1.text = `1x de R$ ${price.toFixed(2).replace('.', ',')} (À vista)`;
         installmentsSelect.add(opt1);
 
-        // Opções parceladas (2x até Max)
         for (let i = 2; i <= maxInstallments; i++) {
             let installmentValue = price / i;
             const opt = document.createElement('option');
@@ -109,80 +114,137 @@ function updateUIForPlan(planId) {
             opt.text = `${i}x de R$ ${installmentValue.toFixed(2).replace('.', ',')} sem juros`;
             installmentsSelect.add(opt);
         }
-        
-        // Seleciona automaticamente o máximo de parcelas
         installmentsSelect.value = maxInstallments;
     }
 }
 
-// 3. Processar o Registo
-const form = document.getElementById('register-form');
-const submitBtn = document.getElementById('submit-button');
-const btnText = document.getElementById('btn-text');
+// 5. Processar Registro e Pagamento
+const form = document.getElementById('registerForm'); // ID Corrigido conforme HTML anterior
+const submitBtn = document.getElementById('btnRegister'); // ID Corrigido
+const errorMsg = document.getElementById('errorMsg'); // ID Corrigido
 
-form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    submitBtn.disabled = true;
-    btnText.innerText = "Criando sua conta...";
-    
-    const loader = submitBtn.querySelector('.loader');
-    if(loader) loader.style.display = 'inline-block';
+if(form) {
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        
+        // Bloqueia botão
+        submitBtn.disabled = true;
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="ph ph-circle-notch loader" style="display:inline-block"></i> Processando...';
+        if(errorMsg) errorMsg.style.display = 'none';
 
-    const installmentsCount = parseInt(document.getElementById('installmentsCount').value) || 1;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value; // Captura senha para login automático
+        const installmentsCount = parseInt(document.getElementById('installmentsCount')?.value) || 1;
 
-    // 3.1 Criar o Payment Method no Stripe
-    const { paymentMethod, error } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: card,
-        billing_details: {
-            name: document.getElementById('establishmentName').value,
-            email: document.getElementById('ownerEmail').value,
-        },
-    });
+        try {
+            // A. Criar Payment Method no Stripe
+            const { paymentMethod, error } = await stripe.createPaymentMethod({
+                type: 'card',
+                card: card,
+                billing_details: {
+                    name: document.getElementById('name').value,
+                    email: email,
+                    phone: document.getElementById('phone').value
+                },
+            });
 
-    if (error) {
-        document.getElementById('card-errors').textContent = error.message;
-        resetButton();
-        return;
-    }
+            if (error) throw new Error(error.message);
 
-    // 3.2 Enviar para o Backend
-    const formData = {
-        establishmentName: document.getElementById('establishmentName').value,
-        establishmentId: document.getElementById('establishmentId').value,
-        ownerEmail: document.getElementById('ownerEmail').value,
-        ownerPassword: document.getElementById('ownerPassword').value,
-        planId: selectedPlanId,
-        paymentMethodId: paymentMethod.id,
-        installments: installmentsCount, 
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    };
+            // B. Enviar para Backend (Cria Usuário e Assinatura)
+            const formData = {
+                establishmentName: document.getElementById('establishmentName').value,
+                // Se o campo establishmentId não existir no HTML, usa um fallback ou gera no backend
+                establishmentId: document.getElementById('establishmentId')?.value || '', 
+                ownerName: document.getElementById('name').value,
+                ownerEmail: email,
+                ownerPassword: password,
+                phone: document.getElementById('phone').value,
+                planId: selectedPlanId,
+                paymentMethodId: paymentMethod.id,
+                installments: installmentsCount, 
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
 
-    try {
-        const response = await fetch('https://kairos-app-407358446276.us-central1.run.app/api/public/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
+            const response = await fetch('https://kairos-app-407358446276.us-central1.run.app/api/public/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
 
-        const result = await response.json();
+            const result = await response.json();
 
-        if (response.ok) {
-            // Sucesso!
-            window.location.href = result.loginUrl || 'login.html';
-        } else {
-            throw new Error(result.message || "Erro ao criar conta.");
+            if (!response.ok) throw new Error(result.message || "Erro ao processar assinatura.");
+
+            // C. SUCESSO NO BACKEND -> LOGIN AUTOMÁTICO NO FRONTEND
+            // Aqui acontece a mágica: usamos a senha que o usuário acabou de digitar
+            
+            submitBtn.innerHTML = '<i class="ph ph-check"></i> Sucesso! Entrando...';
+
+            // 1. Configura Persistência LOCAL (PWA)
+            await setPersistence(auth, browserLocalPersistence);
+
+            // 2. Faz o Login Silencioso
+            await signInWithEmailAndPassword(auth, email, password);
+
+            // 3. Verifica se deve instalar PWA ou ir para o App
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            
+            if (isMobile && !isStandalone) {
+                showPWAModal(); // Mostra convite para instalar
+            } else {
+                window.location.href = 'app.html'; // Vai direto para o sistema
+            }
+
+        } catch (err) {
+            console.error(err);
+            if(errorMsg) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } else {
+                alert(err.message);
+            }
+            // Restaura botão
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
         }
+    });
+}
 
-    } catch (err) {
-        alert("Erro: " + err.message);
-        resetButton();
+// 6. Função Modal PWA
+function showPWAModal() {
+    const modal = document.getElementById('pwa-success-modal');
+    const btnInstall = document.getElementById('pwa-install-btn');
+    const iosHint = document.getElementById('pwa-ios-hint');
+    const iosArrow = document.getElementById('ios-arrow');
+    const skipBtn = document.getElementById('pwa-skip-btn');
+
+    if(modal) modal.style.display = 'flex';
+
+    if (isIOS) {
+        if(iosHint) iosHint.style.display = 'block';
+        if(iosArrow) iosArrow.style.display = 'block';
+    } else if (isAndroid) {
+        if(btnInstall) {
+            btnInstall.style.display = 'block';
+            btnInstall.onclick = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        setTimeout(() => window.location.href = 'app.html', 2000);
+                    }
+                    deferredPrompt = null;
+                } else {
+                    alert("Toque no menu do navegador e escolha 'Instalar aplicativo'.");
+                }
+            };
+        }
     }
-});
 
-function resetButton() {
-    submitBtn.disabled = false;
-    btnText.innerText = "Começar Teste Grátis de 7 Dias";
-    const loader = submitBtn.querySelector('.loader');
-    if(loader) loader.style.display = 'none';
+    if(skipBtn) {
+        skipBtn.onclick = () => {
+            window.location.href = 'app.html';
+        };
+    }
 }

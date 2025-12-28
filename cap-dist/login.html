@@ -235,9 +235,9 @@
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
-  <script type="module" crossorigin src="/assets/login-CW8OPV5O.js"></script>
+  <script type="module" crossorigin src="/assets/login-cpWl0Ab_.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/assets/firebase-config-BCzB3QOS.js">
+  <link rel="modulepreload" crossorigin href="/assets/firebase-config-Ce-OSwao.js">
   <link rel="stylesheet" crossorigin href="/assets/styles-C2rNCo-U.css">
   <link rel="stylesheet" crossorigin href="/assets/landing-BHhgDzEx.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
@@ -246,7 +246,7 @@
     <div class="login-overlay"></div>
 
     <div class="login-card">
-        <img src="images/logo_login_estab-2eqVtqnT.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
+        <img src="/assets/logo_login_estab-2eqVtqnT.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
         
         <h1 class="login-title">Bem-vindo</h1>
         <p class="login-subtitle">Faça login para gerenciar seu negócio</p>
@@ -304,16 +304,11 @@
             const emailLogin = document.getElementById('email');
             const emailReset = document.getElementById('resetEmail');
 
-            // Função para abrir o modal FORÇANDO o estilo
+            // Função para abrir o modal
             if (trigger && modal) {
                 trigger.onclick = function(e) {
                     e.preventDefault();
-                    console.log("--> Tentando abrir modal (Modo Forçado) <--");
-                    
-                    // Copia o email
                     if(emailLogin && emailReset) emailReset.value = emailLogin.value;
-
-                    // AQUI ESTÁ O TRUQUE: Injeta o estilo direto no HTML, ignorando classes
                     modal.style.cssText = "display: flex !important; opacity: 1 !important; visibility: visible !important;";
                 };
             }

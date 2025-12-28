@@ -164,5 +164,18 @@
 
     <script type="module" src="js/main.js"></script>
 
+    <script type="module">
+        import { initPushNotifications } from './js/ui/push-notifications.js';
+        import { auth } from './js/firebase-config.js';
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // Inicializa notificações PWA (Web Push)
+                initPushNotifications();
+            }
+        });
+    </script>
+
 </body>
 </html>

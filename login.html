@@ -243,7 +243,7 @@
     <div class="login-overlay"></div>
 
     <div class="login-card">
-        <img src="images/logo_login_estab-2eqVtqnT.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
+        <img src="images/logo_login_estab.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
         
         <h1 class="login-title">Bem-vindo</h1>
         <p class="login-subtitle">Faça login para gerenciar seu negócio</p>
@@ -301,16 +301,11 @@
             const emailLogin = document.getElementById('email');
             const emailReset = document.getElementById('resetEmail');
 
-            // Função para abrir o modal FORÇANDO o estilo
+            // Função para abrir o modal
             if (trigger && modal) {
                 trigger.onclick = function(e) {
                     e.preventDefault();
-                    console.log("--> Tentando abrir modal (Modo Forçado) <--");
-                    
-                    // Copia o email
                     if(emailLogin && emailReset) emailReset.value = emailLogin.value;
-
-                    // AQUI ESTÁ O TRUQUE: Injeta o estilo direto no HTML, ignorando classes
                     modal.style.cssText = "display: flex !important; opacity: 1 !important; visibility: visible !important;";
                 };
             }
@@ -335,7 +330,14 @@
 
     <script type="module">
         import { auth } from './js/firebase-config.js';
-        import { signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Importa setPersistence e browserLocalPersistence para fixar o login
+        import { 
+            signInWithEmailAndPassword, 
+            sendPasswordResetEmail, 
+            signOut,
+            setPersistence, 
+            browserLocalPersistence 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         const loginForm = document.getElementById('loginForm');
         const loginButton = document.getElementById('btn-login');
@@ -351,12 +353,17 @@
                 const email = document.getElementById('email').value;
                 const password = document.getElementById('password').value;
 
+                // --- FIX CRÍTICO: FORÇAR PERSISTÊNCIA LOCAL ---
+                // Isso garante que o usuário continue logado ao fechar o PWA/Navegador
+                await setPersistence(auth, browserLocalPersistence);
+
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                const idTokenResult = await user.getIdTokenResult();
+                
+                // Força a atualização do token para pegar as claims mais recentes
+                const idTokenResult = await user.getIdTokenResult(true);
                 
                 if (idTokenResult.claims.establishmentId) {
-                    // CORREÇÃO 2: Redireciona para o APP (app.html) e não para o site
                     window.location.href = 'app.html';
                 } else {
                     throw new Error('PERMISSAO_NEGADA');
@@ -365,8 +372,9 @@
                 console.error(error);
                 errorMessage.style.display = 'block';
                 errorMessage.textContent = error.message === 'PERMISSAO_NEGADA' 
-                    ? 'Usuário sem permissão.' 
-                    : 'Erro ao entrar. Verifique dados.';
+                    ? 'Usuário sem permissão de acesso.' 
+                    : 'Erro ao entrar. Verifique e-mail e senha.';
+                
                 if(error.message === 'PERMISSAO_NEGADA') await signOut(auth);
             } finally {
                 loginButton.disabled = false;
@@ -374,7 +382,7 @@
             }
         });
 
-        // Reset Password Logic
+        // Lógica de Redefinição de Senha
         const resetForm = document.getElementById('resetForm');
         const btnSendReset = document.getElementById('btn-send-reset');
         const resetMessage = document.getElementById('resetMessage');
