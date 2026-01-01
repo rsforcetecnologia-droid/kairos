@@ -17,8 +17,7 @@ export default defineConfig({
         cliente: resolve(__dirname, 'cliente.html'),
         import: resolve(__dirname, 'import.html'),
         publicRegister: resolve(__dirname, 'publicRegister.html'),
-        // Se você tiver o arquivo install.html, descomente a linha abaixo:
-         install: resolve(__dirname, 'install.html'),
+        install: resolve(__dirname, 'install.html'),
       }
     }
   },
@@ -60,9 +59,13 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // --- AQUI ESTÁ A MÁGICA ---
+        // Isso importa o teu arquivo Firebase para dentro do SW principal do PWA
+        importScripts: ['/firebase-background.js'], 
+        // --------------------------
+        
         navigateFallback: null,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg}'],
-        // AUMENTADO PARA 5MB PARA ACEITAR SUAS IMAGENS DE FUNDO
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024 
       }
     })

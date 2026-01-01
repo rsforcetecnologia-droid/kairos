@@ -27,27 +27,21 @@ export async function initPushNotifications() {
     }
 
     try {
-        // 2. Registra o Service Worker explicitamente (ESSENCIAL PARA PWA)
-        // Sem isso, o PWA no celular não sabe qual arquivo acordar quando a notificação chega.
-        let registration;
-        if ('serviceWorker' in navigator) {
-            try {
-                registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                console.log("[Push] Service Worker registrado com escopo:", registration.scope);
-            } catch (err) {
-                console.error("[Push] Falha ao registrar Service Worker:", err);
-                // Continua tentando, pois em alguns casos o navegador já tem um registro implícito
-            }
-        }
-
-        // 3. Solicita permissão ao usuário
+        // 2. Solicita permissão ao usuário
         const permission = await Notification.requestPermission();
         
         if (permission === 'granted') {
             console.log('[Push] Permissão concedida.');
             
+            // 3. OBTÉM O REGISTO DO SERVICE WORKER PRINCIPAL (CORREÇÃO)
+            // Em vez de registrar um novo arquivo, usamos o que o VitePWA já criou.
+            // O .ready aguarda até que o SW esteja ativo.
+            const registration = await navigator.serviceWorker.ready;
+            
+            console.log("[Push] Usando Service Worker principal (VitePWA):", registration.scope);
+
             // 4. Obtém o Token de Registro do FCM
-            // IMPORTANTE: Passamos o registration aqui para vincular o SW ao token
+            // Vinculamos o token ao Service Worker principal
             const token = await getToken(messaging, { 
                 vapidKey: VAPID_KEY,
                 serviceWorkerRegistration: registration 
@@ -69,25 +63,27 @@ export async function initPushNotifications() {
     }
 
     // 6. Configura o ouvinte para mensagens quando o app está ABERTO (Foreground)
+    // Aqui tratamos a exibição visual caso o app esteja aberto, pois o SW só age no background
     onMessage(messaging, (payload) => {
         console.log('[Push] Mensagem recebida em foreground:', payload);
         
-        const title = payload.notification?.title || 'Nova Notificação';
-        const body = payload.notification?.body || '';
+        // Extrai dados priorizando a estrutura 'data' (que configuramos no backend)
+        const data = payload.data || {};
+        const notification = payload.notification || {};
+
+        const title = data.title || notification.title || 'Nova Notificação';
+        const body = data.body || notification.body || '';
         
         // Exibe notificação visual do sistema mesmo com o app aberto
         if (Notification.permission === "granted") {
             try {
-                // Tenta tocar um som (alguns navegadores bloqueiam som sem interação)
-                // const audio = new Audio('/assets/notification.mp3'); 
-                // audio.play().catch(e => console.log('Autoplay bloqueado'));
-
+                // Cria a notificação visual manualmente
                 new Notification(title, {
                     body: body,
                     icon: '/assets/icon.png',
                     badge: '/assets/icon.png',
-                    vibrate: [200, 100, 200], // Vibração manual para foreground
-                    requireInteraction: true // Mantém na tela
+                    vibrate: [200, 100, 200], // Vibração para chamar atenção
+                    requireInteraction: false // Em foreground pode sumir sozinha
                 });
             } catch (err) {
                 console.error("Erro ao exibir notificação foreground:", err);
@@ -110,7 +106,7 @@ async function saveTokenToFirestore(token) {
     try {
         const userRef = doc(db, 'users', user.uid);
         
-        // Atualiza o documento usando arrayUnion para não apagar tokens de outros dispositivos (ex: PC do escritório)
+        // Atualiza o documento usando arrayUnion para não apagar tokens de outros dispositivos
         await updateDoc(userRef, {
             fcmTokens: arrayUnion(token),
             lastLoginAt: new Date().toISOString(),

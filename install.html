@@ -8,6 +8,7 @@
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="apple-touch-icon" href="assets/icon.png">
+    <link rel="theme-color" content="#0F172A">
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -27,12 +28,14 @@
             padding: 20px;
         }
 
-        .logo { width: 120px; margin-bottom: 20px; }
+        .logo { width: 120px; margin-bottom: 20px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
         
         h1 { font-size: 1.8rem; margin-bottom: 10px; line-height: 1.2; }
         p { color: #94A3B8; margin-bottom: 30px; font-size: 0.95rem; }
 
         .btn-install {
+            /* Começa oculto até o navegador permitir a instalação */
+            display: none; 
             background: #4f46e5;
             color: white;
             border: none;
@@ -40,7 +43,6 @@
             border-radius: 12px;
             font-size: 1rem;
             font-weight: 700;
-            display: flex;
             align-items: center;
             gap: 10px;
             cursor: pointer;
@@ -52,17 +54,18 @@
         }
         .btn-install:active { transform: scale(0.98); }
 
-        /* Instruções iOS */
-        .ios-instructions {
-            display: none; /* Escondido por padrão */
+        /* Instruções iOS e Manual */
+        .manual-instructions {
+            display: none;
             background: rgba(255,255,255,0.1);
             padding: 20px;
             border-radius: 16px;
             margin-top: 20px;
             border: 1px solid rgba(255,255,255,0.1);
             animation: fadeIn 0.5s;
+            max-width: 320px;
         }
-        .ios-step {
+        .step {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -70,35 +73,44 @@
             text-align: left;
             font-size: 0.9rem;
         }
-        .ios-icon {
-            font-size: 1.5rem;
-            color: #4f46e5;
-        }
+        .step-icon { font-size: 1.5rem; color: #4f46e5; }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-    <img src="assets/icon.png" alt="Logo" class="logo" style="border-radius: 20px;">
+    <img src="assets/icon.png" alt="Logo" class="logo">
     
-    <h1>Instale o Kairos<br>no seu celular</h1>
-    <p>Acesse sua agenda e financeiro de forma rápida e segura, sem ocupar espaço.</p>
+    <h1 id="mainTitle">Instale o Kairos<br>no seu celular</h1>
+    <p id="mainDesc">Acesse sua agenda e financeiro de forma rápida e segura.</p>
 
     <button id="installBtn" class="btn-install">
         <i class="ph ph-download-simple" style="font-size: 1.2rem;"></i>
         Instalar Aplicativo
     </button>
 
-    <div id="iosHelp" class="ios-instructions">
+    <div id="iosHelp" class="manual-instructions">
         <p style="margin-bottom: 15px; color: white; font-weight: 600;">Para instalar no iPhone:</p>
-        <div class="ios-step">
-            <i class="ph ph-export ios-icon"></i>
+        <div class="step">
+            <i class="ph ph-export step-icon"></i>
             <span>1. Toque no botão <strong>Compartilhar</strong> na barra inferior.</span>
         </div>
-        <div class="ios-step">
-            <i class="ph ph-plus-square ios-icon"></i>
-            <span>2. Role para cima e escolha <strong>Adicionar à Tela de Início</strong>.</span>
+        <div class="step">
+            <i class="ph ph-plus-square step-icon"></i>
+            <span>2. Escolha <strong>Adicionar à Tela de Início</strong>.</span>
+        </div>
+    </div>
+
+    <div id="androidHelp" class="manual-instructions">
+        <p style="margin-bottom: 15px; color: white; font-weight: 600;">Instalação Manual:</p>
+        <div class="step">
+            <i class="ph ph-dots-three-vertical step-icon"></i>
+            <span>1. Toque nos <strong>três pontos</strong> do navegador.</span>
+        </div>
+        <div class="step">
+            <i class="ph ph-download-simple step-icon"></i>
+            <span>2. Escolha <strong>Instalar aplicativo</strong>.</span>
         </div>
     </div>
 
@@ -106,46 +118,83 @@
         let deferredPrompt;
         const installBtn = document.getElementById('installBtn');
         const iosHelp = document.getElementById('iosHelp');
+        const androidHelp = document.getElementById('androidHelp');
 
-        // Detectar se é iOS (iPhone/iPad)
+        // Detectar iOS
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-        // Lógica para Android / Desktop (Chrome/Edge)
+        // 1. REGISTRA O SERVICE WORKER (CRUCIAL PARA O BOTÃO FUNCIONAR)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Usa o SW gerado pelo VitePWA na raiz
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW registrado no install.html:', reg.scope))
+                    .catch(err => console.error('Falha SW:', err));
+            });
+        }
+
+        // 2. CAPTURA O EVENTO DE INSTALAÇÃO (ANDROID/DESKTOP)
         window.addEventListener('beforeinstallprompt', (e) => {
-            // Impede o navegador de mostrar o prompt padrão imediatamente
+            // Impede o prompt automático para controlarmos via botão
             e.preventDefault();
             deferredPrompt = e;
             
-            // Atualiza o botão para "Instalar Agora"
+            // Mostra o botão e esconde ajudas manuais
             installBtn.style.display = 'flex';
-            
-            installBtn.addEventListener('click', async () => {
-                if (deferredPrompt) {
-                    deferredPrompt.prompt();
-                    const { outcome } = await deferredPrompt.userChoice;
-                    console.log(`User response: ${outcome}`);
-                    deferredPrompt = null;
-                }
-            });
+            androidHelp.style.display = 'none';
+            console.log("Evento beforeinstallprompt capturado!");
         });
 
-        // Lógica para iOS
+        // 3. AÇÃO DO BOTÃO (Agora fora do listener do evento)
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`Escolha do usuário: ${outcome}`);
+                deferredPrompt = null;
+                // Esconde botão se aceitou
+                if(outcome === 'accepted') {
+                    installBtn.style.display = 'none';
+                }
+            } else {
+                // Se o botão aparecer mas o evento se perder (raro), mostra ajuda
+                installBtn.style.display = 'none';
+                androidHelp.style.display = 'block';
+            }
+        });
+
+        // 4. LÓGICA DE EXIBIÇÃO INICIAL
         if (isIOS) {
-            // No iOS, escondemos o botão de clique automático (pois não funciona)
-            // e mostramos as instruções visuais.
-            installBtn.style.display = 'none'; 
+            // iOS não suporta botão de instalação programática
+            installBtn.style.display = 'none';
             iosHelp.style.display = 'block';
-        } 
-        
-        // Caso já esteja instalado (Standalone)
+        } else {
+            // Android/PC: Se o botão não aparecer em 3 segundos, mostrar ajuda manual
+            // Isso ajuda caso o navegador ache que o site não cumpre os requisitos
+            setTimeout(() => {
+                if (!deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+                    androidHelp.style.display = 'block';
+                }
+            }, 3000);
+        }
+
+        // 5. JÁ INSTALADO (Standalone)
         if (window.matchMedia('(display-mode: standalone)').matches) {
-            document.querySelector('h1').innerText = "App Instalado!";
-            document.querySelector('p').innerText = "Toque abaixo para abrir.";
+            document.getElementById('mainTitle').innerText = "App Instalado!";
+            document.getElementById('mainDesc').innerText = "O Kairos já está pronto para uso.";
             installBtn.style.display = 'flex';
             installBtn.innerHTML = "Abrir Sistema";
-            installBtn.onclick = () => window.location.href = "/login.html"; // Redireciona para o login
+            installBtn.onclick = () => window.location.href = "/login.html";
+            
             iosHelp.style.display = 'none';
+            androidHelp.style.display = 'none';
         }
+
+        // 6. EVENTO DE INSTALAÇÃO CONCLUÍDA
+        window.addEventListener('appinstalled', () => {
+            console.log('App instalado com sucesso');
+            window.location.href = "/login.html";
+        });
     </script>
 
 </body>

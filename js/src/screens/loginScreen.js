@@ -1,23 +1,23 @@
-
 //src\screens\login.Screen.js
 import React, { useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
+// --- CORREÇÃO 1: Adicionamos setPersistence e browserLocalPersistence aos imports ---
+import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 
 // Registar os componentes do Chart.js que vamos usar
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// --- CONFIGURAÇÃO DO FIREBASE ---
+// --- CORREÇÃO 2: CONFIGURAÇÃO UNIFICADA DO FIREBASE (kairos-agenda-us) ---
+// Esta configuração DEVE ser a mesma do firebase-messaging-sw.js e do firebase-config.js
 const firebaseConfig = {
-    apiKey: "AIzaSyAlJaPEW5-yOb-8wkB8EJZhAML2M2yI8Ao",
-    authDomain: "kairos-system.firebaseapp.com",
-    projectId: "kairos-system",
-    storageBucket: "kairos-system.appspot.com",
-    messagingSenderId: "603994960586",
-    appId: "1:603994960586:web:30d2c030eed3c55eccfa33",
-    measurementId: "G-SVHFXKV5EC"
+    apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+    authDomain: "kairos-agenda-us.firebaseapp.com",
+    projectId: "kairos-agenda-us",
+    storageBucket: "kairos-agenda-us.firebasestorage.app",
+    messagingSenderId: "407358446276",
+    appId: "1:407358446276:web:c6229ea999b56701558791"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -68,6 +68,10 @@ const LoginScreen = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+        // --- CORREÇÃO 3: Persistência Local ---
+        // Garante que o login sobreviva ao fechar o PWA no celular
+        await setPersistence(auth, browserLocalPersistence);
+
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         const idTokenResult = await user.getIdTokenResult();

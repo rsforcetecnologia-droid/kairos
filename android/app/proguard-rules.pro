@@ -1,21 +1,27 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Manter todas as classes do Capacitor
+-keep class com.getcapacitor.** { *; }
+-keep interface com.getcapacitor.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Manter classes dos Plugins oficiais (Push, Camera, etc)
+-keep class com.capacitorjs.** { *; }
+-keep interface com.capacitorjs.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
+# Manter qualquer classe que estenda Plugin (Para plugins de terceiros)
+-keep public class * extends com.getcapacitor.Plugin
+
+# Manter anotações (CRITICO: O erro de NullPointer acontece porque isso está faltando ou sendo removido)
+-keepattributes *Annotation*
 -keepattributes SourceFile,LineNumberTable
+-keep public class * extends java.lang.annotation.Annotation
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Manter referências do WebView e Javascript Interface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepattributes JavascriptInterface
+
+# Regras gerais do Android para evitar quebras em bibliotecas comuns
+-dontwarn android.support.**
+-keep class android.support.v7.widget.** { *; }
+-keep class android.support.v4.widget.** { *; }
+-keep class android.support.v4.view.** { *; }

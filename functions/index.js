@@ -1,11 +1,11 @@
-const {onDocumentCreated, onDocumentUpdated} =
-    require("firebase-functions/v2/firestore");
+const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 
 /**
- * Busca tokens de notificação dos usuários do estabelecimento.
+ * Busca tokens de notificação dos utilizadores do estabelecimento.
+ * Mantém a lógica original para suportar arrays ou tokens únicos.
  * @param {string} establishmentId O ID do estabelecimento.
  * @return {Promise<Array<string>>} Lista de tokens únicos.
  */
@@ -18,13 +18,14 @@ async function getEstablishmentTokens(establishmentId) {
       .get();
 
   if (snapshotUsers.empty) {
-    console.log(`Nenhum usuário encontrado para: ${establishmentId}`);
+    console.log(`Nenhum utilizador encontrado para: ${establishmentId}`);
     return [];
   }
 
   const tokens = [];
   snapshotUsers.forEach((doc) => {
     const userData = doc.data();
+    // Suporte para estrutura antiga (fcmToken) e nova (fcmTokens array)
     if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
       tokens.push(...userData.fcmTokens);
     } else if (userData.fcmToken) {
@@ -37,33 +38,26 @@ async function getEstablishmentTokens(establishmentId) {
   return uniqueTokens;
 }
 
-// Configuração de "Alerta Máximo"
+// --- Configurações de Alta Prioridade para PWA/Android ---
+
 const androidConfig = {
   priority: "high",
-  notification: {
-    channelId: "kairos_appointments",
-    priority: "max",
-    defaultSound: true,
-    defaultVibrateTimings: true,
-    visibility: "public",
-  },
+  ttl: 3600 * 24, // Tenta entregar durante 24h se o telemóvel estiver desligado
 };
 
 const webpushConfig = {
   headers: {
-    "Urgency": "high", // Importante para acordar o Android
+    "Urgency": "high", // Crítico para garantir que o Android acorda o SW
   },
   fcmOptions: {
     link: "/app.html",
-  },
-  notification: {
-    icon: "https://kairos-agenda-us.web.app/assets/icon.png",
-    badge: "https://kairos-agenda-us.web.app/assets/icon.png",
-    requireInteraction: true, // A notificação fica na tela até o usuário clicar
-    vibrate: [200, 100, 200, 100, 200], // Padrão de vibração
-  },
+  }
 };
 
+/**
+ * Função: Notificação de Novo Agendamento
+ * Gatilho: Criação de documento em 'appointments/{id}'
+ */
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
@@ -79,36 +73,44 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
       const clientName = appointment.clientName || "Cliente";
       const serviceName = appointment.serviceName || "serviço";
 
+      // MUDANÇA IMPORTANTE: Usamos apenas 'data' (sem 'notification')
+      // Isto delega a exibição visual exclusivamente para o Service Worker
       const message = {
-        notification: {
+        data: {
+          type: "new_appointment",
           title: "Novo Agendamento! 📅",
           body: `${clientName} agendou ${serviceName} às ${appointment.time}.`,
+          url: "/app.html"
         },
-        android: androidConfig, // Configuração nativa Android
-        webpush: webpushConfig, // Configuração PWA
-        tokens: tokens,
+        android: androidConfig,
+        webpush: webpushConfig,
+        tokens: tokens, // Envia para todos os tokens encontrados
       };
 
       try {
         const response = await admin.messaging().sendEachForMulticast(message);
         console.log(`Sucesso: ${response.successCount}, Falhas: ${response.failureCount}`);
         
-        // Remove tokens inválidos se houver falhas
         if (response.failureCount > 0) {
-           // Lógica de limpeza pode ser adicionada futuramente
-           console.log("Alguns tokens falharam (provavelmente antigos).");
+           console.log("Alguns tokens falharam (provavelmente inválidos ou antigos).");
+           // Aqui poderias adicionar lógica para limpar tokens inválidos do Firestore se necessário
         }
       } catch (error) {
-        console.error("Erro fatal ao enviar notificação:", error);
+        console.error("Erro fatal ao enviar notificação de novo agendamento:", error);
       }
     });
 
+/**
+ * Função: Notificação de Cancelamento
+ * Gatilho: Atualização de documento em 'appointments/{id}'
+ */
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
     async (event) => {
       const before = event.data.before.data();
       const after = event.data.after.data();
 
+      // Verifica se o status mudou para cancelado
       const isCancelled = (after.status === "cancelled" ||
           after.status === "cancelado") &&
           (before.status !== "cancelled" && before.status !== "cancelado");
@@ -121,9 +123,11 @@ exports.sendCancellationNotification = onDocumentUpdated(
       const clientName = after.clientName || "Cliente";
 
       const message = {
-        notification: {
+        data: {
+          type: "cancellation",
           title: "Agendamento Cancelado ❌",
           body: `${clientName} cancelou o agendamento das ${after.time}.`,
+          url: "/app.html"
         },
         android: androidConfig,
         webpush: webpushConfig,
@@ -132,8 +136,8 @@ exports.sendCancellationNotification = onDocumentUpdated(
 
       try {
         const response = await admin.messaging().sendEachForMulticast(message);
-        console.log(`Cancelamento enviado. Sucesso: ${response.successCount}`);
+        console.log(`Notificação de cancelamento enviada. Sucesso: ${response.successCount}`);
       } catch (error) {
-        console.error("Erro fatal ao enviar notificação:", error);
+        console.error("Erro fatal ao enviar notificação de cancelamento:", error);
       }
     });
