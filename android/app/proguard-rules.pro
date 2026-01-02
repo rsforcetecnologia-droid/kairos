@@ -1,76 +1,21 @@
-# ==========================================
-# 🛡️ REGRAS GERAIS E CAPACITOR
-# ==========================================
+# Add project specific ProGuard rules here.
+# You can control the set of applied configuration files using the
+# proguardFiles setting in build.gradle.
+#
+# For more details, see
+#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# Manter classes principais do Capacitor e Bridge
--keep class com.getcapacitor.** { *; }
--keep interface com.getcapacitor.** { *; }
+# If your project uses WebView with JS, uncomment the following
+# and specify the fully qualified class name to the JavaScript interface
+# class:
+#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
+#   public *;
+#}
 
-# Manter classes dos Plugins oficiais (Push, Camera, etc)
--keep class com.capacitorjs.** { *; }
--keep interface com.capacitorjs.** { *; }
-
-# Manter qualquer classe que estenda Plugin (Plugins de terceiros e customizados)
--keep public class * extends com.getcapacitor.Plugin
-
-# Manter compatibilidade com Cordova (se usares plugins legados)
--keep class org.apache.cordova.** { *; }
--keep interface org.apache.cordova.** { *; }
-
-# ==========================================
-# 🔥 REGRAS DO FIREBASE E GOOGLE SERVICES
-# ==========================================
-
-# Protege todo o Firebase (Auth, Firestore, Analytics, Crashlytics)
--keep class com.google.firebase.** { *; }
-
-# Específico para NOTIFICAÇÕES PUSH (Messaging & InstanceID)
--keep class com.google.firebase.messaging.** { *; }
--keep class com.google.firebase.iid.** { *; }
--keep class com.google.firebase.installations.** { *; }
--keep class com.google.firebase.provider.FirebaseInitProvider { *; }
-
-# Manter serviços do Google Play (Login Google, Mapas, etc)
--keep class com.google.android.gms.** { *; }
-
-# Evitar problemas com modelos de dados e JSON (Gson)
--keep class com.google.gson.** { *; }
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
-
-# ==========================================
-# 📱 REGRAS DO ANDROID E WEBVIEW
-# ==========================================
-
-# Manter anotações (Essencial para não dar erro de NullPointer)
--keepattributes *Annotation*
+# Uncomment this to preserve the line number information for
+# debugging stack traces.
 -keepattributes SourceFile,LineNumberTable
--keep public class * extends java.lang.annotation.Annotation
 
-# Manter a ponte entre JavaScript e Android (WebView)
--keepclassmembers class * {
-    @android.webkit.JavascriptInterface <methods>;
-}
--keepattributes JavascriptInterface
-
-# Regras de compatibilidade AndroidX e Support
--dontwarn android.support.**
--keep class android.support.v7.widget.** { *; }
--keep class android.support.v4.widget.** { *; }
--keep class android.support.v4.view.** { *; }
--keep class androidx.** { *; }
-
-# ==========================================
-# 🌐 REDE E OUTROS
-# ==========================================
-
-# OkHttp e Okio (usados internamente pelo Capacitor/Firebase)
--keep class okhttp3.** { *; }
--keep class okio.** { *; }
--dontwarn okhttp3.**
--dontwarn okio.**
-
-# Ignorar avisos que não afetam a execução (limpa o log de build)
--dontwarn com.google.errorprone.annotations.**
--dontwarn javax.annotation.**
+# If you keep the line number information, uncomment this to
+# hide the original source file name.
+#-renamesourcefileattribute SourceFile

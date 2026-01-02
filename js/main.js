@@ -3,7 +3,8 @@
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+// [IMPORTANTE] Adicionado 'arrayUnion' para salvar tokens corretamente
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
@@ -13,10 +14,12 @@ import { getProfessionals } from './api/professionals.js';
 // --- IMPORTAÇÃO DO ONBOARDING (GAMIFICAÇÃO) ---
 import { checkAndStartOnboarding } from './ui/onboarding.js';
 
-// --- IMPORTAÇÃO DAS NOTIFICAÇÕES ---
+// --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
-// FIX: Importação das notificações Web (PWA) com alias para não confundir com a nativa
+
+// --- IMPORTAÇÃO DAS NOTIFICAÇÕES WEB (PWA) ---
+// Usamos 'as initWebPush' para não confundir com a função nativa
 import { initPushNotifications as initWebPush } from './ui/push-notifications.js';
 
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
@@ -56,11 +59,11 @@ const myProfileLink = document.getElementById('myProfileLink');
 
 // --- PALETA DE CORES EXPANDIDA ---
 const colorThemes = {
-    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' }, // Padrão
+    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' },
     blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
     sky:    { main: '#0284c7', hover: '#0369a1', light: '#e0f2fe', text: '#ffffff' },
     teal:   { main: '#0d9488', hover: '#0f766e', light: '#ccfbf1', text: '#ffffff' },
-    emerald:{ main: '#059669', hover: '#047857', light: '#d1fae5', text: '#ffffff' }, // Verde Escuro
+    emerald:{ main: '#059669', hover: '#047857', light: '#d1fae5', text: '#ffffff' },
     green:  { main: '#16a34a', hover: '#15803d', light: '#dcfce7', text: '#ffffff' },
     lime:   { main: '#65a30d', hover: '#4d7c0f', light: '#ecfccb', text: '#ffffff' },
     amber:  { main: '#d97706', hover: '#b45309', light: '#fef3c7', text: '#1f2937' },
@@ -102,18 +105,14 @@ const pageLoader = {
 
 function applyTheme(themeKey) {
     const theme = colorThemes[themeKey] || colorThemes.indigo;
-    
     const hexToRgb = (hex) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
     };
-    
     const mainRgb = hexToRgb(theme.main);
-    
     document.body.style.setProperty('--theme-main', theme.main);
-
-    const styleSheet = document.getElementById('dynamic-theme-styles');
     
+    const styleSheet = document.getElementById('dynamic-theme-styles');
     styleSheet.innerHTML = `
         :root {
             --theme-color-main: ${theme.main};
@@ -121,8 +120,6 @@ function applyTheme(themeKey) {
             --theme-color-light: ${theme.light};
             --theme-rgb: ${mainRgb};
         }
-
-        /* 1. Sidebar Links Ativos */
         .sidebar-link.active { 
             background-color: var(--theme-color-main) !important; 
             color: ${theme.text} !important; 
@@ -131,27 +128,17 @@ function applyTheme(themeKey) {
             background-color: rgba(var(--theme-rgb), 0.1) !important;
             color: var(--theme-color-main) !important;
         }
-
-        /* 2. Sobrescrevendo Botões e Textos 'Indigo' Padrão do Tailwind */
         .bg-indigo-600 { background-color: var(--theme-color-main) !important; }
         .hover\\:bg-indigo-700:hover { background-color: var(--theme-color-hover) !important; }
         .hover\\:bg-indigo-50:hover { background-color: rgba(var(--theme-rgb), 0.1) !important; }
-        
         .text-indigo-600 { color: var(--theme-color-main) !important; }
         .hover\\:text-indigo-800:hover { color: var(--theme-color-hover) !important; }
         .hover\\:text-indigo-600:hover { color: var(--theme-color-main) !important; }
-
         .border-indigo-600 { border-color: var(--theme-color-main) !important; }
         .focus\\:ring-indigo-500:focus { --tw-ring-color: rgba(var(--theme-rgb), 0.5) !important; }
-        
-        /* 3. Elementos Específicos do Sistema */
         .loading-bar-fill { background-color: var(--theme-color-main) !important; }
         .time-slot-card.selected { background-color: var(--theme-color-main) !important; border-color: var(--theme-color-main) !important; }
-        
-        /* Checkboxes e Toggles */
         input:checked + .toggle-bg { background-color: var(--theme-color-main) !important; }
-        
-        /* Badges e Tags */
         .bg-indigo-100 { background-color: var(--theme-color-light) !important; }
         .text-indigo-800 { color: var(--theme-color-hover) !important; }
     `;
@@ -159,19 +146,16 @@ function applyTheme(themeKey) {
 
 function renderNotificationPanel() {
     const unreadCount = notifications.filter(n => !n.read).length;
-
     if (unreadCount > 0) {
         notificationBadge.textContent = unreadCount;
         notificationBadge.classList.remove('hidden');
     } else {
         notificationBadge.classList.add('hidden');
     }
-
     if (notifications.length === 0) {
         notificationList.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhuma notificação.</p>';
         return;
     }
-
     notificationList.innerHTML = notifications.map(n => `
     <div class="notification-item ${n.read ? '' : 'unread'}">
     <p class="font-semibold">${n.title}</p>
@@ -185,7 +169,6 @@ function setupRealtimeListeners(establishmentId) {
     if (unsubscribeNotificationsListener) {
         unsubscribeNotificationsListener();
     }
-    
     const notificationsRef = collection(db, 'establishments', establishmentId, 'notifications');
     const q = query(notificationsRef, where("timestamp", ">=", new Date()), orderBy("timestamp", "desc"));
 
@@ -193,17 +176,14 @@ function setupRealtimeListeners(establishmentId) {
         snapshot.docChanges().forEach((change) => {
             if (change.type === "added") {
                 const notification = change.doc.data();
-                
                 notifications.unshift({
                     title: notification.title,
                     message: notification.message,
                     time: notification.timestamp.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
                     read: false
                 });
-
                 showNotification(notification.title, notification.message, 'info', true);
                 renderNotificationPanel();
-
                 const activeLink = document.querySelector('.sidebar-link.active');
                 if (activeLink && activeLink.dataset.target === 'agenda-section') {
                     if (notification.type === 'cancellation' || notification.type === 'new_appointment') {
@@ -215,28 +195,22 @@ function setupRealtimeListeners(establishmentId) {
         });
     }, (error) => {
         console.error("Erro no listener de notificações em tempo real:", error);
-        showNotification("Erro de Conexão", "Não foi possível receber atualizações em tempo real. Verifique as regras de segurança do Firestore.", "error");
     });
 }
 
-
-// --- 5. FUNÇÃO DE NAVEGAÇÃO PRINCIPAL ---
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
-
     if (sectionId === 'my-profile-section') {
          // Apenas carrega a página
     } else {
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
-        
         if (!isModuleEnabled || !hasEmployeePermission) {
             contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
             return;
         }
     }
-    
     const loadPage = pageLoader[sectionId];
     if (loadPage) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -245,16 +219,13 @@ export function navigateTo(sectionId, params = {}) {
         if (sectionId === 'my-profile-section') {
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
         }
-        
         contentDiv.innerHTML = '';
         loadPage(params);
     } else {
         contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold">Página em Construção</h2><p class="text-gray-600">O módulo para "${sectionId}" ainda não foi implementado.</p></div>`;
-        console.warn(`Nenhum carregador de página definido para: ${sectionId}`);
     }
 }
 
-// --- FUNÇÃO DE KPIs DO HEADER ---
 async function loadHeaderKPIs(userPermissions) {
     const kpiAppointmentsWrapper = document.getElementById('kpi-appointments-wrapper');
     const kpiFinancialWrapper = document.getElementById('kpi-financial-wrapper');
@@ -277,27 +248,26 @@ async function loadHeaderKPIs(userPermissions) {
 
     try {
         const kpis = await getSummaryKPIs();
-        
         if (canViewAgenda && kpiAppointmentsEl) {
             kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
         }
         if (canViewFinancial && kpiRevenueEl) {
             kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
         }
-        
     } catch (error) {
         console.error("Erro ao carregar KPIs do cabeçalho:", error);
-        if (canViewAgenda && kpiAppointmentsEl) kpiAppointmentsEl.textContent = "Erro";
-        if (canViewFinancial && kpiRevenueEl) kpiRevenueEl.textContent = "Erro";
     }
 }
 
 // ####################################################################
-// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS (NATIVO) ###
+// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS (NATIVO - COM DIAGNÓSTICO) ###
 // ####################################################################
 
 async function initializePushNotifications(userUid) {
     try {
+        // [DIAGNÓSTICO] Para saber que a função iniciou
+        console.log('[Nativo] Iniciando configuração de Push...');
+
         if (Capacitor.getPlatform() === 'android') {
             await PushNotifications.createChannel({
                 id: 'default', 
@@ -307,7 +277,7 @@ async function initializePushNotifications(userUid) {
                 visibility: 1, 
                 vibration: true
             });
-            console.log('Canal de notificação Android criado com sucesso.');
+            console.log('Canal Android criado.');
         }
 
         let permStatus = await PushNotifications.checkPermissions();
@@ -317,31 +287,45 @@ async function initializePushNotifications(userUid) {
         }
 
         if (permStatus.receive !== 'granted') {
-            console.warn('Permissão de notificação push foi negada pelo utilizador.');
+            // [DIAGNÓSTICO] Alerta se a permissão for negada
+            alert('ERRO: Permissão de notificações negada!');
             return;
         }
 
+        // Tenta registrar no GCM/FCM
         await PushNotifications.register();
 
         PushNotifications.addListener('registration', async (token) => {
             console.log('Push Token gerado:', token.value);
+            
+            // [DIAGNÓSTICO CRÍTICO] Mostra se o token foi gerado com sucesso
+            alert('SUCESSO: Token gerado! ' + token.value.substring(0, 10) + '...');
+
             try {
                 const userRef = doc(db, 'users', userUid);
+                
+                // [CORREÇÃO] Usar arrayUnion para não sobrescrever tokens do PWA (web)
                 await updateDoc(userRef, {
-                    fcmToken: token.value
+                    fcmTokens: arrayUnion(token.value),
+                    platform: 'native_mobile'
                 });
-                console.log('Token FCM salvo no perfil do utilizador.');
+                
+                console.log('Token FCM salvo no perfil do utilizador (Nativo).');
             } catch (error) {
+                alert('Erro ao salvar no Banco: ' + error.message);
                 console.error("Erro ao salvar token FCM:", error);
             }
         });
 
         PushNotifications.addListener('registrationError', (error) => {
+             // [DIAGNÓSTICO CRÍTICO] Se falhar (ex: FIS_AUTH_ERROR), este alerta vai aparecer
+             alert('FALHA DE REGISTO: ' + JSON.stringify(error));
              console.error('Erro no registo de push notifications:', error);
         });
 
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
             console.log('Notificação Push recebida:', notification);
+            // Em Android Foreground, mostramos um toast ou alerta visual customizado
             showNotification(notification.title, notification.body, 'info', true);
         });
 
@@ -351,6 +335,7 @@ async function initializePushNotifications(userUid) {
         });
 
     } catch (e) {
+        alert('Erro Fatal Push: ' + e.message);
         console.log('Push Notifications não suportado/inicializado:', e);
     }
 }
@@ -359,7 +344,6 @@ async function initializePushNotifications(userUid) {
 async function initialize() {
     
     // --- FIX: DEFINIR PERSISTÊNCIA LOCAL IMEDIATAMENTE (PWA) ---
-    // Isso garante que o navegador tente recuperar a sessão antes de qualquer outra coisa
     try {
         await setPersistence(auth, browserLocalPersistence);
         console.log("Persistência LOCAL configurada na inicialização.");
@@ -423,7 +407,7 @@ async function initialize() {
             console.log("Usuário detectado:", user.email);
 
             // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
-            // Se estiver no navegador/PWA (não nativo), inicia o push e renova o token se necessário
+            // Se estiver no navegador/PWA (não nativo), inicia o push web
             if (!Capacitor.isNativePlatform()) {
                 console.log("Inicializando Web Push (PWA)...");
                 initWebPush(); 
@@ -437,12 +421,10 @@ async function initialize() {
                     const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
                     state.enabledModules = establishmentDetails.modules;
                     
-                    // APLICA O TEMA DEFINIDO NO BANCO DE DADOS
                     applyTheme(establishmentDetails.themeColor || 'indigo');
 
                     let userPermissions = null;
                     let userName = user.displayName; 
-                    
                     let userProfessionalId = null; 
 
                     if (claims.role === 'employee' || claims.role === 'owner') {
@@ -463,6 +445,7 @@ async function initialize() {
                     
                     // Inicializa notificações nativas apenas se estiver no ambiente nativo (Android/iOS via Loja)
                     if (Capacitor.isNativePlatform()) {
+                        // Passamos o UID para vincular o token
                         initializePushNotifications(user.uid);
                     }
                     
@@ -490,19 +473,16 @@ async function initialize() {
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
                     
-                    // Animação de saída do loading
                     loadingScreen.classList.add('fade-out');
                     dashboardContent.style.display = 'flex';
                     setTimeout(() => {
                         loadingScreen.style.display = 'none';
                     }, 500);
 
-                    // --- INÍCIO DA VERIFICAÇÃO DE ONBOARDING (GAMIFICAÇÃO) ---
                     console.log("Verificando Onboarding...");
                     setTimeout(() => {
                         checkAndStartOnboarding();
-                    }, 1500); // Delay para garantir carregamento da UI
-                    // --------------------------------------------------------
+                    }, 1500); 
 
                     navigateTo('agenda-section');
                 } else {

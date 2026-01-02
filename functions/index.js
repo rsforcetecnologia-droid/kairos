@@ -72,19 +72,29 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 
       const clientName = appointment.clientName || "Cliente";
       const serviceName = appointment.serviceName || "serviço";
+      
+      // Definição das variáveis de texto
+      const title = "Novo Agendamento! 📅";
+      const body = `${clientName} agendou ${serviceName} às ${appointment.time}.`;
 
-      // MUDANÇA IMPORTANTE: Usamos apenas 'data' (sem 'notification')
-      // Isto delega a exibição visual exclusivamente para o Service Worker
       const message = {
+        // --- INÍCIO DA CORREÇÃO ---
+        // Este bloco é OBRIGATÓRIO para o App Nativo mostrar o alerta
+        notification: {
+          title: title,
+          body: body,
+        },
+        // --- FIM DA CORREÇÃO ---
+
         data: {
           type: "new_appointment",
-          title: "Novo Agendamento! 📅",
-          body: `${clientName} agendou ${serviceName} às ${appointment.time}.`,
+          title: title,
+          body: body,
           url: "/app.html"
         },
         android: androidConfig,
         webpush: webpushConfig,
-        tokens: tokens, // Envia para todos os tokens encontrados
+        tokens: tokens,
       };
 
       try {
@@ -121,12 +131,19 @@ exports.sendCancellationNotification = onDocumentUpdated(
       if (tokens.length === 0) return;
 
       const clientName = after.clientName || "Cliente";
+      
+      const title = "Agendamento Cancelado ❌";
+      const body = `${clientName} cancelou o agendamento das ${after.time}.`;
 
       const message = {
+        notification: {
+          title: title,
+          body: body,
+        },
         data: {
           type: "cancellation",
-          title: "Agendamento Cancelado ❌",
-          body: `${clientName} cancelou o agendamento das ${after.time}.`,
+          title: title,
+          body: body,
           url: "/app.html"
         },
         android: androidConfig,
