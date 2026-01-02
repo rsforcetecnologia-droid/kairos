@@ -1,4 +1,4 @@
-// js/ui/professionals.js (Versão Completa e Blindada)
+// js/ui/professionals.js (Versão Completa e Blindada + Resize Otimizado)
 
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
@@ -6,7 +6,8 @@ import * as servicesApi from '../api/services.js';
 import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
-import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
+// CORREÇÃO: Importamos resizeAndCompressImage para centralizar a lógica e evitar duplicação
+import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -158,7 +159,7 @@ function fillCadastroTab(prof, services) {
     
     const currentStatus = prof.status || 'active';
 
-    // BLINDAGEM XSS: Escapar valores para o atributo value="" e textarea
+    // BLINDAGEM XSS
     const safeName = escapeHTML(prof.name || '');
     const safeSpecialty = escapeHTML(prof.specialty || '');
     const safePhone = escapeHTML(prof.phone || '');
@@ -222,8 +223,19 @@ function fillCadastroTab(prof, services) {
              const file = photoInput.files[0];
              if (!file) return;
              photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...';
+             
              try {
-                 const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 'image/jpeg', 0.8);
+                 // OTIMIZAÇÃO: Usa função importada, remove argumento de formato para usar o padrão JPEG
+                 const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 0.8);
+                 
+                 const stringLength = resizedBase64.length;
+                 const sizeInBytes = (stringLength * 3) / 4; 
+                 const maxSizeInBytes = 1000 * 1024; // 1MB Hard Limit
+                 
+                 if (sizeInBytes > maxSizeInBytes) {
+                     throw new Error('A imagem é muito grande mesmo após a compressão.');
+                 }
+
                  photoPreview.src = resizedBase64;
                  photoBase64Input.value = resizedBase64;
              } catch (error) {
@@ -236,45 +248,7 @@ function fillCadastroTab(prof, services) {
     }
 }
 
-
-function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 'image/jpeg', quality = 0.8) {
-    return new Promise((resolve, reject) => {
-        if (!file.type.startsWith('image/')) {
-            return reject(new Error('O ficheiro selecionado não é uma imagem.'));
-        }
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height *= maxWidth / width;
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width *= maxHeight / height;
-                        height = maxHeight;
-                    }
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL(format, quality);
-                resolve(dataUrl);
-            };
-            img.onerror = (err) => reject(new Error('Não foi possível carregar a imagem.'));
-            img.src = event.target.result;
-        };
-        reader.onerror = (err) => reject(new Error('Não foi possível ler o ficheiro.'));
-        reader.readAsDataURL(file);
-    });
-}
-
+// NOTA: Função local resizeAndCompressImage removida
 
 function fillJornadaTab(prof) {
     const container = document.getElementById('jornada');
@@ -553,7 +527,7 @@ function setupModalEventListeners(professional) {
                     orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
                     notes: form.querySelector('#profNotes').value,
                     status: form.querySelector('#profStatus').value,
-                    establishmentId: state.establishmentId // CORREÇÃO DE SEGURANÇA: VINCULAÇÃO FORÇADA
+                    establishmentId: state.establishmentId
                 };
 
                 saveButton.disabled = true;
@@ -751,7 +725,6 @@ export async function loadProfessionalsPage() {
     filterAndRenderProfessionals(); 
     
     try {
-        // CORREÇÃO: Usando establishmentId ao carregar dados
         const [professionals, services] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
             servicesApi.getServices(state.establishmentId)

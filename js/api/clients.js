@@ -3,12 +3,21 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Busca a lista completa de clientes de um estabelecimento.
- * @param {string} establishmentId - O ID do estabelecimento.
+ * Busca clientes de um estabelecimento.
+ * Agora suporta um termo de pesquisa para evitar carregar a lista toda.
+ * * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {string} [searchTerm=''] - (Opcional) Nome para pesquisar. Se vazio, retorna os últimos cadastrados.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de clientes.
  */
-export const getClients = (establishmentId) => {
-    return authenticatedFetch(`/api/clients/${establishmentId}`);
+export const getClients = (establishmentId, searchTerm = '') => {
+    // CORREÇÃO DE CUSTO: Constrói a URL com filtro se houver pesquisa
+    let endpoint = `/api/clients/${establishmentId}`;
+    
+    if (searchTerm && searchTerm.trim().length > 0) {
+        endpoint += `?search=${encodeURIComponent(searchTerm.trim())}`;
+    }
+    
+    return authenticatedFetch(endpoint);
 };
 
 /**
@@ -86,4 +95,3 @@ export const redeemReward = (establishmentId, clientName, clientPhone, rewardDat
         body: JSON.stringify({ establishmentId, clientName, clientPhone, rewardData }),
     });
 };
-

@@ -10,7 +10,8 @@ import { navigateTo } from '../main.js';
 // --- IMPORTAÇÕES PARA AUDITORIA E SEGURANÇA ---
 import { logAction } from '../api/audit.js';
 import { auth } from '../firebase-config.js';
-import { escapeHTML } from '../utils.js'; // <--- IMPORTAÇÃO DA FUNÇÃO DE SEGURANÇA
+// CORREÇÃO: Importamos também resizeAndCompressImage para centralizar a lógica
+import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
@@ -184,43 +185,7 @@ async function handleServiceFormSubmit(e) {
     }
 }
 
-function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, format = 'image/jpeg', quality = 0.8) {
-    return new Promise((resolve, reject) => {
-        if (!file.type.startsWith('image/')) {
-            return reject(new Error('O ficheiro selecionado não é uma imagem.'));
-        }
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height *= maxWidth / width;
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width *= maxHeight / height;
-                        height = maxHeight;
-                    }
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL(format, quality);
-                resolve(dataUrl);
-            };
-            img.onerror = (err) => reject(new Error('Não foi possível carregar a imagem.'));
-            img.src = event.target.result;
-        };
-        reader.onerror = (err) => reject(new Error('Não foi possível ler o ficheiro.'));
-        reader.readAsDataURL(file);
-    });
-}
+// OTIMIZAÇÃO: Função local removida. Agora usamos a importada de '../utils.js'
 
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
@@ -467,18 +432,26 @@ function openServiceModal(service = null) {
     
     modal.querySelector('#servicePhotoButton').addEventListener('click', () => photoInput.click());
 
+    // OTIMIZAÇÃO: Usando a função importada de utils.js
     photoInput.onchange = async () => {
         const file = photoInput.files[0];
         if (!file) return;
+        
         photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...'; 
+        
         try {
-            const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 'image/jpeg', 0.8);
+            // Chamada da função otimizada
+            const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 0.8);
+            
+            // Verificação de tamanho
             const stringLength = resizedBase64.length;
             const sizeInBytes = (stringLength * 3) / 4; 
             const maxSizeInBytes = 1000 * 1024; // 1MB
+            
             if (sizeInBytes > maxSizeInBytes) {
                 throw new Error('A imagem é muito grande mesmo após a compressão.');
             }
+            
             photoPreview.src = resizedBase64;
             photoBase64Input.value = resizedBase64;
         } catch (error) {

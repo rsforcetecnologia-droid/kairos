@@ -10,13 +10,14 @@ router.use(verifyToken, hasAccess);
 // --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
+    // Tenta extrair o link de criação de índice se existir
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
     const indexLink = linkMatch ? linkMatch[0] : null;
 
     if (error.message && error.message.includes('requires an index')) {
         return res.status(500).json({ 
             message: `O Firestore precisa de um índice para ${context}.`,
-            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs."
+            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs do servidor."
         });
     }
     res.status(500).json({ message: `Erro ao processar ${context}.` });
@@ -26,15 +27,38 @@ function handleFirestoreError(res, error, context) {
 // 🚀 ROTAS DE CLIENTES
 // =======================================================================
 
-// 1. LISTAR CLIENTES
+// 1. LISTAR CLIENTES (OTIMIZADO PARA BAIXO CUSTO)
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
+    const { search } = req.query; // Recebe o termo de busca da URL
+
     try {
         const { db } = req;
         
-        const snapshot = await db.collection('clients')
-            .where('establishmentId', '==', establishmentId)
-            .get();
+        let query = db.collection('clients')
+            .where('establishmentId', '==', establishmentId);
+
+        // LÓGICA DE OTIMIZAÇÃO DE LEITURA
+        if (search && search.trim().length > 0) {
+            // Se houver busca, filtra pelo nome e limita a 10 resultados
+            // OBS: O Firestore é case-sensitive. O ideal é salvar um campo 'nameLower' no futuro.
+            // Por enquanto, usamos a busca padrão do Firestore.
+            const searchTerm = search.trim();
+            
+            query = query
+                .orderBy('name')
+                .startAt(searchTerm)
+                .endAt(searchTerm + '\uf8ff')
+                .limit(10); // Baixa no máximo 10 clientes (Economia $$)
+        } else {
+            // Se NÃO houver busca, traz apenas os 10 últimos cadastrados
+            // Isso evita baixar a lista inteira de 2.000 clientes ao abrir a tela
+            query = query
+                .orderBy('createdAt', 'desc')
+                .limit(10);
+        }
+
+        const snapshot = await query.get();
 
         if (snapshot.empty) {
             return res.status(200).json([]);
@@ -55,11 +79,12 @@ router.get('/:establishmentId', async (req, res) => {
             };
         });
         
-        clientsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        // Ordenação local secundária caso necessário, mas o Firestore já ordenou
+        // clientsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         res.status(200).json(clientsList);
     } catch (error) {
-        handleFirestoreError(res, error, 'listar clientes');
+        handleFirestoreError(res, error, 'listar clientes (busca otimizada)');
     }
 });
 
@@ -74,6 +99,7 @@ router.post('/', async (req, res) => {
     try {
         const { db } = req;
         
+        // Verifica duplicidade (apenas 1 leitura)
         const existingClientQuery = await db.collection('clients')
             .where('establishmentId', '==', establishmentId)
             .where('phone', '==', phone)
@@ -86,7 +112,7 @@ router.post('/', async (req, res) => {
 
         const newClientData = {
             establishmentId,
-            name,
+            name, // Dica futura: Salvar também nameLower: name.toLowerCase() ajuda na busca
             phone,
             email: email || null,
             dob: dob || null,
@@ -110,6 +136,7 @@ router.put('/:clientId', async (req, res) => {
     const clientData = req.body; 
     
     try {
+        // Protege campos sensíveis ou calculados
         delete clientData.loyaltyPoints; 
         delete clientData.id;
         delete clientData.lastServiceDate;
@@ -129,6 +156,7 @@ router.delete('/:clientId', async (req, res) => {
         const { db } = req;
         const clientRef = db.collection('clients').doc(clientId);
         
+        // Remove subcoleção de histórico de fidelidade primeiro (Batch)
         const subcollectionRef = clientRef.collection('loyaltyHistory');
         const subcollectionSnapshot = await subcollectionRef.get();
         
@@ -147,7 +175,7 @@ router.delete('/:clientId', async (req, res) => {
     }
 });
 
-// 5. HISTÓRICO COMPLETO
+// 5. HISTÓRICO COMPLETO DO CLIENTE
 router.get('/history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -159,6 +187,7 @@ router.get('/history/:establishmentId', async (req, res) => {
     try {
         const { db } = req;
 
+        // Limita leituras a 20 itens de cada coleção para evitar custos altos em históricos gigantes
         const appointmentsPromise = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
@@ -209,9 +238,10 @@ router.get('/history/:establishmentId', async (req, res) => {
             });
         });
 
+        // Ordena memória apenas os 40 itens combinados
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        res.status(200).json(history.slice(0, 50));
+        res.status(200).json(history);
 
     } catch (error) {
         handleFirestoreError(res, error, 'histórico do cliente');
@@ -222,7 +252,7 @@ router.get('/history/:establishmentId', async (req, res) => {
 // 💎 ROTAS DO MÓDULO FIDELIDADE
 // =======================================================================
 
-// 6. HISTÓRICO DE PONTOS (CORRIGIDO)
+// 6. HISTÓRICO DE PONTOS
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
@@ -241,7 +271,6 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
 
         const estData = establishmentDoc.data();
         
-        // CORREÇÃO: Verifica se o módulo está ativo OU se o programa está habilitado nas configurações
         const isLoyaltyActive = 
             (estData.modules && estData.modules['loyalty-section'] === true) || 
             (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);
@@ -262,7 +291,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
         const historySnapshot = await db.collection('clients').doc(clientId)
             .collection('loyaltyHistory')
             .orderBy('timestamp', 'desc')
-            .limit(50)
+            .limit(20) // Limitado a 20 para economia
             .get();
 
         const history = historySnapshot.docs.map(doc => {
@@ -279,7 +308,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
     }
 });
 
-// 7. RESGATAR PRÊMIO MANUALMENTE (CORRIGIDO)
+// 7. RESGATAR PRÊMIO
 router.post('/redeem', async (req, res) => {
     const { establishmentId, clientName, clientPhone, rewardData } = req.body;
     
@@ -297,7 +326,6 @@ router.post('/redeem', async (req, res) => {
 
         const estData = establishmentDoc.data();
 
-        // CORREÇÃO: Mesma verificação flexível
         const isLoyaltyActive = 
             (estData.modules && estData.modules['loyalty-section'] === true) || 
             (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);

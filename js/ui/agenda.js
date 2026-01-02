@@ -1,23 +1,23 @@
-// js/ui/agenda.js (Otimizado + Mobile Friendly Force View + Correção Data Comanda + Blindagem XSS + Correção Erro Navegação)
+// js/ui/agenda.js (Otimizado: Busca de Clientes Lazy + Correções Gerais)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
 import * as blockagesApi from '../api/blockages.js';
-import * as clientsApi from '../api/clients.js';
+import * as clientsApi from '../api/clients.js'; // API Atualizada para busca
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
+import { escapeHTML } from '../utils.js';
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let currentTimeInterval = null;
 let hasContentDelegationInitialized = false; 
 
-// NOVA PALETA DE CORES DE ALTO CONTRASTE
+// PALETA DE CORES
 const colorPalette = [
     { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5' }, // Indigo
     { bg: '#d1fae5', border: '#059669', main: '#059669' }, // Emerald
@@ -32,11 +32,12 @@ const colorPalette = [
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
+// OTIMIZAÇÃO: allClientsData deixa de ser a lista "completa" e passa a ser um cache temporário da busca
 let allClientsData = []; 
 
-// (MODIFICADO) Estado local
+// Estado local
 let localState = {
-    currentView: 'list', // Será sobrescrito no load se for mobile
+    currentView: 'list', 
     weekViewDays: 7, 
     currentDate: new Date(),
     selectedProfessionalId: 'all', 
@@ -45,7 +46,7 @@ let localState = {
     scrollToAppointmentId: null 
 };
 
-// ESTADO CENTRALIZADO DO NOVO FLUXO DE AGENDAMENTO
+// ESTADO DO NOVO AGENDAMENTO
 let newAppointmentState = {
     step: 1, 
     data: {
@@ -82,7 +83,6 @@ function renderProfessionalSelector() {
     const container = document.getElementById('profSelectorContainer');
     const searchTerm = localState.profSearchTerm.toLowerCase();
     
-    // CORREÇÃO: Se o container não existir (usuário navegou), para a execução
     if (!container || !state.professionals) return;
 
     let availableProfs = state.professionals.filter(p => 
@@ -104,12 +104,13 @@ function renderProfessionalSelector() {
         const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
         const isActive = prof.status !== 'inactive';
         
-        // BLINDAGEM XSS
         const safeName = escapeHTML(profName);
         
         const defaultColor = colorPalette[0];
         const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
         
+        // OTIMIZAÇÃO DE IMAGEM: Idealmente, o backend/upload já deveria fornecer thumbnails.
+        // Aqui usamos placeholder ou a URL original.
         const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
         const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
         const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
@@ -144,7 +145,6 @@ function createWhatsAppLink(phone, clientName, serviceName, professionalName, st
 
 function renderListView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
-    // CORREÇÃO: Verifica se o elemento existe antes de prosseguir
     if (!agendaView) return;
 
     allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
@@ -161,7 +161,6 @@ function renderListView(allEvents) {
         const endTimeStr = endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
         
-        // BLINDAGEM XSS
         const safeReason = escapeHTML(event.reason);
         const safeProfName = escapeHTML(event.professionalName);
         const safeClientName = escapeHTML(event.clientName);
@@ -239,7 +238,6 @@ function getActiveWeekDays() {
 
 function renderWeekView(allEvents) {
     const agendaView = document.getElementById('agenda-view');
-    // CORREÇÃO: Verifica se o elemento existe antes de prosseguir
     if (!agendaView) return;
 
     const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
@@ -265,7 +263,6 @@ function renderWeekView(allEvents) {
                 const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
                 const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
                 
-                // BLINDAGEM XSS
                 const safeReason = escapeHTML(event.reason);
                 const safeProfName = escapeHTML(event.professionalName);
                 const safeClientName = escapeHTML(event.clientName);
@@ -343,7 +340,6 @@ function renderAgenda() {
 
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
-    // CORREÇÃO: Verifica se o elemento existe no início
     if (!agendaView) return;
     
     agendaView.innerHTML = '<div class="loader mx-auto my-10"></div>';
@@ -351,7 +347,6 @@ async function fetchAndDisplayAgenda() {
     let start, end;
     const weekRangeSpan = document.getElementById('weekRange');
 
-    // CORREÇÃO: Verifica se os elementos de controle ainda existem
     if (!weekRangeSpan) return;
 
     if (localState.currentView === 'list') {
@@ -385,7 +380,6 @@ async function fetchAndDisplayAgenda() {
             localState.selectedProfessionalId
         );
         
-        // CORREÇÃO: Verifica se o usuário mudou de tela durante o Await (elemento ainda existe?)
         if (!document.getElementById('agenda-view')) return;
 
         const enrichedBlockages = blockagesData.map(b => {
@@ -429,7 +423,6 @@ async function fetchAndDisplayAgenda() {
         }
 
     } catch (error) {
-        // CORREÇÃO: Verifica se o elemento existe antes de tentar manipular
         if (document.getElementById('agenda-view')) {
             document.getElementById('agenda-view').innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
             showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
@@ -439,16 +432,14 @@ async function fetchAndDisplayAgenda() {
 
 async function populateFilters() {
     try {
-        const [profs, services, clients, establishmentDetails] = await Promise.all([
+        const [profs, services, establishmentDetails] = await Promise.all([
             (state.professionals && state.professionals.length > 0) 
                 ? Promise.resolve(state.professionals) 
                 : professionalsApi.getProfessionals(state.establishmentId),
             (state.services && state.services.length > 0) 
                 ? Promise.resolve(state.services)
                 : servicesApi.getServices(state.establishmentId),
-            (allClientsData.length > 0) 
-                ? Promise.resolve(allClientsData)
-                : clientsApi.getClients(state.establishmentId),
+            // OTIMIZAÇÃO: REMOVIDA A CHAMADA QUE BAIXAVA TODOS OS CLIENTES (clientsApi.getClients)
             (loyaltySettingsForModal.enabled !== undefined)
                 ? Promise.resolve(null)
                 : establishmentApi.getEstablishmentDetails(state.establishmentId)
@@ -460,9 +451,10 @@ async function populateFilters() {
         if (!state.services || state.services.length === 0) {
             state.services = services || [];
         }
-        if (allClientsData.length === 0) {
-            allClientsData = clients || [];
-        }
+        
+        // Inicia lista de clientes vazia para busca
+        allClientsData = []; 
+
         if (establishmentDetails) { 
             loyaltySettingsForModal = establishmentDetails.loyaltyProgram || { enabled: false };
         }
@@ -485,9 +477,7 @@ function navigateModalStep(step) {
     openAppointmentModal(null, true); 
 }
 
-// (MODIFICADO) Função para gerir o clique nos cartões de serviço com lógica de Toggle
 function handleServiceCardClick(serviceId, element) {
-    // 1. Verificar se o modo de múltipla seleção está ativo
     const multiToggle = document.getElementById('multiServiceToggle');
     const isMultiSelect = multiToggle && multiToggle.checked;
 
@@ -495,17 +485,11 @@ function handleServiceCardClick(serviceId, element) {
     const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
 
     if (isSelected) {
-        // Se já estava selecionado, removemos (padrão igual para ambos os modos)
         element.classList.remove('selected', 'border-blue-500');
         if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
     } else {
-        // Se NÃO estava selecionado (vamos adicionar)
-        
         if (!isMultiSelect) {
-            // MODO ÚNICO: Removemos todas as seleções anteriores primeiro
-            newAppointmentState.data.selectedServiceIds = []; // Limpa o array de IDs
-            
-            // Remove a classe visual de todos os outros cartões
+            newAppointmentState.data.selectedServiceIds = []; 
             const container = document.getElementById('apptServicesContainer');
             if (container) {
                 container.querySelectorAll('.service-card.selected').forEach(card => {
@@ -513,8 +497,6 @@ function handleServiceCardClick(serviceId, element) {
                 });
             }
         }
-
-        // Adiciona a nova seleção (comum para ambos os modos)
         element.classList.add('selected', 'border-blue-500');
         newAppointmentState.data.selectedServiceIds.push(serviceId);
     }
@@ -543,7 +525,6 @@ function handleTimeSlotClick(slot, element) {
     newAppointmentState.data.time = slot;
 }
 
-// CORREÇÃO: Função atualizada para usar a API correta em vez de fetch direto
 async function updateTimesAndDuration() {
     const totalDurationSpan = document.getElementById('apptTotalDuration');
     const timeContainer = document.getElementById('availableTimesContainer');
@@ -570,7 +551,6 @@ async function updateTimesAndDuration() {
     timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
     
     try {
-        // CORREÇÃO: Usando appointmentsApi.getAvailability em vez de fetch direto
         let slots = await appointmentsApi.getAvailability({
             establishmentId: state.establishmentId,
             professionalId: professionalId,
@@ -617,7 +597,7 @@ function renderLoyaltyRewards() {
     if (!container) return;
 
     const { clientHasRewards, clientLoyaltyPoints, redeemedReward } = newAppointmentState.data;
-    const { enabled, rewards, pointsPerCurrency } = loyaltySettingsForModal;
+    const { enabled, rewards } = loyaltySettingsForModal;
     
     if (!enabled || !clientHasRewards || !rewards || rewards.length === 0) {
         container.classList.add('hidden');
@@ -637,7 +617,6 @@ function renderLoyaltyRewards() {
         rewardsHTML += '<div class="space-y-2">';
         rewardsHTML += availableRewards.map(reward => {
             const isChecked = redeemedReward?.reward === reward.reward;
-            // BLINDAGEM XSS
             const safeReward = escapeHTML(reward.reward);
 
             return `
@@ -741,7 +720,6 @@ async function handleAppointmentFormSubmit(e) {
 
 function renderClientCard(client) {
     const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
-    // BLINDAGEM XSS
     const safeName = escapeHTML(client.name);
     const safePhone = escapeHTML(client.phone);
 
@@ -749,7 +727,9 @@ function renderClientCard(client) {
         <div class="client-search-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-blue-50 ${isSelected ? 'selected border-blue-500' : ''}" 
              data-action="select-client" 
              data-client-name="${safeName}" 
-             data-client-phone="${safePhone}">
+             data-client-phone="${safePhone}"
+             data-client-id="${client.id}"
+             data-loyalty-points="${client.loyaltyPoints || 0}">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${safeName.charAt(0).toUpperCase()}</div>
                 <div>
@@ -761,6 +741,7 @@ function renderClientCard(client) {
     `;
 }
 
+// OTIMIZAÇÃO: Busca no backend em vez de memória
 async function handleClientSearch(searchTerm) {
     const resultsContainer = document.getElementById('clientSearchResults');
     if (!resultsContainer) return;
@@ -772,50 +753,54 @@ async function handleClientSearch(searchTerm) {
         return;
     }
     
-    const filteredClients = allClientsData.filter(client => 
-        client.name.toLowerCase().includes(term) || 
-        client.phone.includes(term)
-    );
+    // Feedback visual de carregamento
+    resultsContainer.innerHTML = '<div class="loader-small mx-auto my-2"></div>';
 
-    if (filteredClients.length === 0) {
-        resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente encontrado com este termo.</p>';
-        return;
-    }
+    try {
+        // CHAMADA API OTIMIZADA
+        const foundClients = await clientsApi.getClients(state.establishmentId, term);
+        
+        // Atualiza o cache local apenas com os resultados (opcional, para uso imediato)
+        allClientsData = foundClients;
 
-    resultsContainer.innerHTML = filteredClients.map(renderClientCard).join('');
-    
-    resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
-        card.addEventListener('click', (e) => {
-            const clientName = card.dataset.clientName;
-            const clientPhone = card.dataset.clientPhone;
-            
-            const client = allClientsData.find(c => c.phone === clientPhone && c.name === clientName);
+        if (foundClients.length === 0) {
+            resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente encontrado com este termo.</p>';
+            return;
+        }
 
-            newAppointmentState.data.clientName = clientName;
-            newAppointmentState.data.clientPhone = clientPhone;
-            
-            if (client) {
+        resultsContainer.innerHTML = foundClients.map(renderClientCard).join('');
+        
+        resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
+            card.addEventListener('click', (e) => {
+                const clientName = card.dataset.clientName;
+                const clientPhone = card.dataset.clientPhone;
+                const loyaltyPoints = parseInt(card.dataset.loyaltyPoints || '0', 10);
+                
+                newAppointmentState.data.clientName = clientName;
+                newAppointmentState.data.clientPhone = clientPhone;
+                newAppointmentState.data.clientLoyaltyPoints = loyaltyPoints;
+                
                 const loyaltyProgram = loyaltySettingsForModal; 
                 const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
                 
-                newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
                 newAppointmentState.data.clientHasRewards = (
                     loyaltyProgram.enabled && 
                     minPointsToRedeem !== Infinity && 
                     newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
                 );
-            } else {
-                newAppointmentState.data.clientHasRewards = false;
-                newAppointmentState.data.clientLoyaltyPoints = 0;
-            }
-            
-            document.getElementById('apptClientName').value = clientName;
-            document.getElementById('apptClientPhone').value = clientPhone;
-            
-            document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
-            card.classList.add('selected', 'border-blue-500');
+                
+                document.getElementById('apptClientName').value = clientName;
+                document.getElementById('apptClientPhone').value = clientPhone;
+                
+                document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
+                card.classList.add('selected', 'border-blue-500');
+            });
         });
-    });
+
+    } catch (error) {
+        console.error("Erro na busca de clientes:", error);
+        resultsContainer.innerHTML = '<p class="text-sm text-red-500">Erro ao buscar clientes.</p>';
+    }
 }
 
 async function handleClientRegistration(e) {
@@ -842,6 +827,7 @@ async function handleClientRegistration(e) {
 
     try {
         await clientsApi.createClient(clientData);
+        // Adiciona ao cache local para seleção imediata
         allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
         
         newAppointmentState.data.clientName = clientData.name;
@@ -937,11 +923,8 @@ function renderStep1_Client(appointment, isNavigating) {
     return { title: title, content: formContent };
 }
 
-// (MODIFICADO) Renderização da Etapa 2 com Toggle de Seleção Múltipla
 function renderStep2_Service() {
     const title = 'Selecionar Serviço';
-    
-    // Verificamos se já temos mais de um serviço selecionado para manter o toggle ativado
     const isMultiSelectedInitial = newAppointmentState.data.selectedServiceIds.length > 1;
 
     const formContent = `
@@ -1034,7 +1017,6 @@ function renderStep4_Schedule(appointment) {
     const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const initialDate = newAppointmentState.data.date || todayString;
     
-    // BLINDAGEM XSS
     const safeClientName = escapeHTML(newAppointmentState.data.clientName);
     const safeProfName = escapeHTML(newAppointmentState.data.professionalName);
 
@@ -1157,9 +1139,26 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
                 clientLoyaltyPoints: 0 
             }
         };
+        
+        // CORREÇÃO: Busca cliente para obter pontos em modo de edição
+        if (appointment && appointment.clientName) {
+             try {
+                 const foundClients = await clientsApi.getClients(state.establishmentId, appointment.clientName);
+                 // Tenta encontrar o cliente exato pelo telefone também para garantir
+                 const matchedClient = foundClients.find(c => c.phone === appointment.clientPhone);
+                 if (matchedClient) {
+                     newAppointmentState.data.clientLoyaltyPoints = matchedClient.loyaltyPoints || 0;
+                     // Atualiza cache temporário
+                     allClientsData = foundClients;
+                 }
+             } catch (e) {
+                 console.warn("Não foi possível carregar pontos do cliente para edição:", e);
+             }
+        }
     }
     
-    if (!state.services || !state.professionals || !allClientsData || loyaltySettingsForModal.enabled === undefined) {
+    // Verificações básicas de carregamento
+    if (!state.services || !state.professionals || loyaltySettingsForModal.enabled === undefined) {
          showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
          return;
     }
@@ -1167,11 +1166,16 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
     availableServicesForModal = state.services;
     availableProfessionalsForModal = state.professionals.filter(p => p.status === 'active');
 
-    if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
-        const client = allClientsData.find(c => c.phone === newAppointmentState.data.clientPhone && c.name === newAppointmentState.data.clientName);
-        if(client) {
-            newAppointmentState.data.clientLoyaltyPoints = client.loyaltyPoints || 0;
-        }
+    // Lógica de Fidelidade
+    if (newAppointmentState.data.clientLoyaltyPoints > 0) {
+        const loyaltyProgram = loyaltySettingsForModal;
+        const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
+        
+        newAppointmentState.data.clientHasRewards = (
+            loyaltyProgram.enabled && 
+            minPointsToRedeem !== Infinity && 
+            newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
+        );
     }
     
     let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
@@ -1268,10 +1272,14 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         const clientSearchInput = modal.querySelector('#clientSearchInput');
         
         if (clientSearchInput) {
+            // BUSCA AGORA É ASSÍNCRONA E CHAMA API
             clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
             
-             if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone) {
-                 handleClientSearch(`${newAppointmentState.data.clientName} ${newAppointmentState.data.clientPhone}`);
+             // Se estamos editando, tenta pré-popular se houver algo no cache
+             if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone && allClientsData.length > 0) {
+                 // Renderiza baseado no cache atual (se houver)
+                 const resultsContainer = document.getElementById('clientSearchResults');
+                 if(resultsContainer) resultsContainer.innerHTML = allClientsData.map(renderClientCard).join('');
              }
         }
 
@@ -1302,7 +1310,6 @@ export async function loadAgendaPage(params = {}) {
     
     localState.profSearchTerm = ''; 
 
-    // NOVO: FORÇA A VISÃO DE LISTA SE FOR MOBILE
     if (window.innerWidth < 768) {
         localState.currentView = 'list';
     }
@@ -1369,7 +1376,6 @@ export async function loadAgendaPage(params = {}) {
             if (localState.currentView === 'week') {
                 weekDaysToggle.style.display = 'flex';
                 
-                // (NOVO) Lógica extra de proteção se redimensionar
                 if (window.innerWidth < 768) {
                     localState.weekViewDays = 3;
                     document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
@@ -1499,7 +1505,6 @@ export async function loadAgendaPage(params = {}) {
                         };
                         
                         if (initialFilter === 'finalizadas') {
-                            // --- CORREÇÃO: Usar Data do Pagamento ---
                             let dateToUse = apptData.startTime;
                             
                             if (apptData.transaction && apptData.transaction.paidAt) {
