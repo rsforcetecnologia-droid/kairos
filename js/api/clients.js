@@ -3,18 +3,30 @@
 import { authenticatedFetch } from './apiService.js';
 
 /**
- * Busca clientes de um estabelecimento.
- * Agora suporta um termo de pesquisa para evitar carregar a lista toda.
+ * Busca clientes de um estabelecimento com otimização de leitura.
+ * Suporta pesquisa por nome e limite de resultados para economizar custos.
  * * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} [searchTerm=''] - (Opcional) Nome para pesquisar. Se vazio, retorna os últimos cadastrados.
+ * @param {string} [searchTerm=''] - (Opcional) Nome para pesquisar. Se fornecido, filtra no servidor.
+ * @param {number|string} [limit=null] - (Opcional) Limite de resultados (padrão é 20 no backend).
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de clientes.
  */
-export const getClients = (establishmentId, searchTerm = '') => {
-    // CORREÇÃO DE CUSTO: Constrói a URL com filtro se houver pesquisa
+export const getClients = (establishmentId, searchTerm = '', limit = null) => {
     let endpoint = `/api/clients/${establishmentId}`;
     
+    // Constrói os parâmetros da query string (search e limit)
+    const params = [];
+    
     if (searchTerm && searchTerm.trim().length > 0) {
-        endpoint += `?search=${encodeURIComponent(searchTerm.trim())}`;
+        params.push(`search=${encodeURIComponent(searchTerm.trim())}`);
+    }
+    
+    if (limit) {
+        params.push(`limit=${limit}`);
+    }
+
+    // Se houver parâmetros, adiciona-os à URL
+    if (params.length > 0) {
+        endpoint += `?${params.join('&')}`;
     }
     
     return authenticatedFetch(endpoint);
@@ -34,7 +46,8 @@ export const createClient = (clientData) => {
 
 /**
  * Atualiza um cliente existente.
- * @param {string} clientId - O ID do cliente.
+ * Permite a atualização de 'loyaltyPoints' se enviado no objeto clientData.
+ * * @param {string} clientId - O ID do cliente.
  * @param {object} clientData - Os novos dados do cliente.
  * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
  */
@@ -47,8 +60,9 @@ export const updateClient = (clientId, clientData) => {
 
 /**
  * Apaga um cliente.
- * @param {string} clientId - O ID do cliente a ser apagado.
- * @returns {Promise<object>} - Uma promessa que resolve com la confirmação.
+ * Remove também o histórico de fidelidade associado.
+ * * @param {string} clientId - O ID do cliente a ser apagado.
+ * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
  */
 export const deleteClient = (clientId) => {
     return authenticatedFetch(`/api/clients/${clientId}`, {
@@ -56,16 +70,19 @@ export const deleteClient = (clientId) => {
     });
 };
 
-
 /**
- * Busca o histórico de agendamentos de um cliente específico.
+ * Busca o histórico de agendamentos e vendas de um cliente específico.
  * @param {string} establishmentId - O ID do estabelecimento.
  * @param {string} clientName - O nome do cliente.
  * @param {string} clientPhone - O telemóvel do cliente.
- * @returns {Promise<Array>} - Uma promessa que resolve com o histórico de visitas do cliente.
+ * @returns {Promise<Array>} - Uma promessa que resolve com o histórico unificado.
  */
 export const getClientHistory = (establishmentId, clientName, clientPhone) => {
-    const endpoint = `/api/clients/history/${establishmentId}?clientName=${encodeURIComponent(clientName)}&clientPhone=${encodeURIComponent(clientPhone)}`;
+    // Codifica os parâmetros para evitar erros com espaços ou caracteres especiais
+    const safeName = encodeURIComponent(clientName);
+    const safePhone = encodeURIComponent(clientPhone);
+    const endpoint = `/api/clients/history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
+    
     return authenticatedFetch(endpoint);
 };
 
@@ -77,13 +94,17 @@ export const getClientHistory = (establishmentId, clientName, clientPhone) => {
  * @returns {Promise<Array>} - Uma promessa que resolve com o histórico de fidelidade.
  */
 export const getClientLoyaltyHistory = (establishmentId, clientName, clientPhone) => {
-    const endpoint = `/api/clients/loyalty-history/${establishmentId}?clientName=${encodeURIComponent(clientName)}&clientPhone=${encodeURIComponent(clientPhone)}`;
+    const safeName = encodeURIComponent(clientName);
+    const safePhone = encodeURIComponent(clientPhone);
+    const endpoint = `/api/clients/loyalty-history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
+    
     return authenticatedFetch(endpoint);
 };
 
 /**
  * Resgata um prémio para um cliente.
- * @param {string} establishmentId - O ID do estabelecimento.
+ * Debita os pontos e regista a transação no histórico.
+ * * @param {string} establishmentId - O ID do estabelecimento.
  * @param {string} clientName - O nome do cliente.
  * @param {string} clientPhone - O telemóvel do cliente.
  * @param {object} rewardData - Dados do prémio { points, reward }.
@@ -92,6 +113,11 @@ export const getClientLoyaltyHistory = (establishmentId, clientName, clientPhone
 export const redeemReward = (establishmentId, clientName, clientPhone, rewardData) => {
     return authenticatedFetch(`/api/clients/redeem`, {
         method: 'POST',
-        body: JSON.stringify({ establishmentId, clientName, clientPhone, rewardData }),
+        body: JSON.stringify({ 
+            establishmentId, 
+            clientName, 
+            clientPhone, 
+            rewardData 
+        }),
     });
 };

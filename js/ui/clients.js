@@ -335,7 +335,7 @@ function renderHistoryTab(history, type) {
     `;
 }
 
-// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE (CORRIGIDO PARA DIVISÃO) ---
+// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE (CORRIGIDO PARA DIVISÃO E SYNC) ---
 
 function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
     // 1. Calcula Pontos Ganhos com base no histórico de vendas
@@ -380,9 +380,25 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
 
     const stats = calculateLoyaltyStats(salesHistory, loyaltyHistory);
     
-    // Atualiza o objeto cliente localmente para sincronia com o card
-    client.loyaltyPoints = stats.currentBalance;
-    client.totalSpent = stats.totalSpent;
+    // === SINCRONIZAÇÃO AUTOMÁTICA (AUTO-SYNC) - ADICIONADO ===
+    // Se o saldo calculado diferir do saldo salvo no cliente, atualiza o backend silenciosamente
+    const storedPoints = parseInt(client.loyaltyPoints || 0);
+    if (storedPoints !== stats.currentBalance) {
+        console.log(`[Auto-Sync] Atualizando pontos de ${client.name}: ${storedPoints} -> ${stats.currentBalance}`);
+        
+        // 1. Atualiza objeto local
+        client.loyaltyPoints = stats.currentBalance;
+        client.totalSpent = stats.totalSpent;
+        
+        // 2. Atualiza na lista global para refletir ao voltar
+        const idx = allClientsData.findIndex(c => c.id === client.id);
+        if (idx >= 0) allClientsData[idx].loyaltyPoints = stats.currentBalance;
+
+        // 3. Atualiza Backend (Sem bloquear a UI)
+        clientsApi.updateClient(client.id, { loyaltyPoints: stats.currentBalance })
+            .catch(err => console.error("Erro no auto-sync de pontos:", err));
+    }
+    // ==========================================================
 
     const rewardsHTML = (loyaltySettings.tiers || []).map(tier => {
         const canRedeem = stats.currentBalance >= tier.points;
@@ -587,7 +603,10 @@ function openClientDetailModal(client) {
         cancelBtn.addEventListener('click', (e) => {
             e.preventDefault();
             document.getElementById('genericModal').style.display = 'none';
-            loadClientsPage(); 
+            // Recarrega a lista para mostrar saldos atualizados (CORREÇÃO DE SYNC)
+            const term = document.getElementById('clientSearchInput')?.value || '';
+            const list = getFilteredClients(term, activeFilterKey);
+            renderClientListWithFilters(list, allClientsData.length);
         });
     }
     
@@ -668,7 +687,8 @@ function renderClientListWithFilters(filteredClients, totalClients) {
             clientCard.className = `bg-white rounded-lg border border-gray-200 shadow-sm p-3 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-full relative group`;
             clientCard.dataset.clientId = client.id;
             
-            const points = client.loyaltyPoints || 0;
+            // CORREÇÃO: Usar parseInt para garantir exibição correta
+            const points = parseInt(client.loyaltyPoints || 0);
             const spent = client.totalSpent || 0;
 
             let whatsappButton = '';
@@ -706,7 +726,7 @@ function renderClientListWithFilters(filteredClients, totalClients) {
                     </div>
                     <div class="text-center">
                         <p class="text-[10px] text-gray-400 uppercase font-semibold">Pontos</p>
-                        <p class="text-xs font-bold text-indigo-600">${points}</p>
+                        <p class="text-xs font-bold ${points > 0 ? 'text-green-600' : 'text-gray-300'}">${points}</p>
                     </div>
                 </div>
             `;
@@ -767,7 +787,11 @@ function getFilteredClients(searchTerm = '', filterKey = 'all') {
             });
             
         case 'credit':
-            return filteredBySearch.filter(c => (c.loyaltyPoints || 0) > 0);
+            // CORREÇÃO CRÍTICA: Parse Int para garantir comparação numérica
+            return filteredBySearch.filter(c => {
+                const pts = parseInt(c.loyaltyPoints || 0);
+                return pts > 0;
+            });
         case 'all':
         default:
             return filteredBySearch;

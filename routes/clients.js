@@ -30,7 +30,7 @@ function handleFirestoreError(res, error, context) {
 // 1. LISTAR CLIENTES (OTIMIZADO PARA BAIXO CUSTO)
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { search } = req.query; // Recebe o termo de busca da URL
+    const { search, limit } = req.query; // Recebe o termo de busca e limite da URL
 
     try {
         const { db } = req;
@@ -40,22 +40,22 @@ router.get('/:establishmentId', async (req, res) => {
 
         // LÓGICA DE OTIMIZAÇÃO DE LEITURA
         if (search && search.trim().length > 0) {
-            // Se houver busca, filtra pelo nome e limita a 10 resultados
-            // OBS: O Firestore é case-sensitive. O ideal é salvar um campo 'nameLower' no futuro.
-            // Por enquanto, usamos a busca padrão do Firestore.
+            // Se houver busca, filtra pelo nome
             const searchTerm = search.trim();
             
             query = query
                 .orderBy('name')
                 .startAt(searchTerm)
                 .endAt(searchTerm + '\uf8ff')
-                .limit(10); // Baixa no máximo 10 clientes (Economia $$)
+                .limit(20); // Limite de segurança na busca
         } else {
-            // Se NÃO houver busca, traz apenas os 10 últimos cadastrados
-            // Isso evita baixar a lista inteira de 2.000 clientes ao abrir a tela
+            // Se NÃO houver busca, traz os últimos cadastrados
+            // Suporta parametro ?limit=all para casos específicos (com cuidado) ou padrão 20
+            const queryLimit = limit === 'all' ? 1000 : 20;
+
             query = query
                 .orderBy('createdAt', 'desc')
-                .limit(10);
+                .limit(queryLimit);
         }
 
         const snapshot = await query.get();
@@ -79,9 +79,6 @@ router.get('/:establishmentId', async (req, res) => {
             };
         });
         
-        // Ordenação local secundária caso necessário, mas o Firestore já ordenou
-        // clientsList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-
         res.status(200).json(clientsList);
     } catch (error) {
         handleFirestoreError(res, error, 'listar clientes (busca otimizada)');
@@ -112,7 +109,7 @@ router.post('/', async (req, res) => {
 
         const newClientData = {
             establishmentId,
-            name, // Dica futura: Salvar também nameLower: name.toLowerCase() ajuda na busca
+            name, 
             phone,
             email: email || null,
             dob: dob || null,
@@ -130,18 +127,19 @@ router.post('/', async (req, res) => {
     }
 });
 
-// 3. ATUALIZAR CLIENTE
+// 3. ATUALIZAR CLIENTE (CORRIGIDO PARA PERMITIR SYNC DE PONTOS)
 router.put('/:clientId', async (req, res) => {
     const { clientId } = req.params;
     const clientData = req.body; 
     
     try {
-        // Protege campos sensíveis ou calculados
-        delete clientData.loyaltyPoints; 
+        // CORREÇÃO: Removido 'delete clientData.loyaltyPoints' para permitir que o frontend atualize o saldo correto.
+        
+        // Protege apenas campos de sistema imutáveis
         delete clientData.id;
-        delete clientData.lastServiceDate;
         delete clientData.createdAt;
-
+        // lastServiceDate pode vir se quisermos forçar atualização, mas geralmente é automático.
+        
         await req.db.collection('clients').doc(clientId).update(clientData); 
         res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
     } catch (error) {
@@ -187,13 +185,13 @@ router.get('/history/:establishmentId', async (req, res) => {
     try {
         const { db } = req;
 
-        // Limita leituras a 20 itens de cada coleção para evitar custos altos em históricos gigantes
+        // Limita leituras a 30 itens de cada coleção (Aumentado levemente de 20 para 30 para melhor histórico)
         const appointmentsPromise = db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
             .orderBy('startTime', 'desc')
-            .limit(20) 
+            .limit(30) 
             .get();
 
         const salesPromise = db.collection('sales')
@@ -201,7 +199,7 @@ router.get('/history/:establishmentId', async (req, res) => {
             .where('clientName', '==', clientName)
             .where('clientPhone', '==', clientPhone)
             .orderBy('startTime', 'desc')
-            .limit(20)
+            .limit(30)
             .get();
 
         const [apptSnapshot, salesSnapshot] = await Promise.all([appointmentsPromise, salesPromise]);
@@ -238,7 +236,7 @@ router.get('/history/:establishmentId', async (req, res) => {
             });
         });
 
-        // Ordena memória apenas os 40 itens combinados
+        // Ordena em memória
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.status(200).json(history);
@@ -291,7 +289,7 @@ router.get('/loyalty-history/:establishmentId', async (req, res) => {
         const historySnapshot = await db.collection('clients').doc(clientId)
             .collection('loyaltyHistory')
             .orderBy('timestamp', 'desc')
-            .limit(20) // Limitado a 20 para economia
+            .limit(50) // Limitado a 50
             .get();
 
         const history = historySnapshot.docs.map(doc => {
