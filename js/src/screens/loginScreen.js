@@ -12,7 +12,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 // --- CORREÇÃO 2: CONFIGURAÇÃO UNIFICADA DO FIREBASE (kairos-agenda-us) ---
 // Esta configuração DEVE ser a mesma do firebase-messaging-sw.js e do firebase-config.js
 const firebaseConfig = {
-    apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+    apiKey: "AIzaSyAxiJ2ssSvD7IlNKF5dXzYYD4lg7Zs4yeo",
     authDomain: "kairos-agenda-us.firebaseapp.com",
     projectId: "kairos-agenda-us",
     storageBucket: "kairos-agenda-us.firebasestorage.app",

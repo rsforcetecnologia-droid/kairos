@@ -23,7 +23,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstati
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
+    apiKey: "AIzaSyAxiJ2ssSvD7IlNKF5dXzYYD4lg7Zs4yeo",
     authDomain: "kairos-agenda-us.firebaseapp.com",
     projectId: "kairos-agenda-us",
     storageBucket: "kairos-agenda-us.firebasestorage.app",
