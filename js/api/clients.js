@@ -2,18 +2,19 @@
 
 import { authenticatedFetch } from './apiService.js';
 
+// --- AJUDANTE: Limpa o telefone para usar como ID (apenas números) ---
+const sanitizeId = (phone) => {
+    if (!phone) return '';
+    return String(phone).replace(/\D/g, '');
+};
+
 /**
  * Busca clientes de um estabelecimento com otimização de leitura.
- * Suporta pesquisa por nome e limite de resultados para economizar custos.
- * * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} [searchTerm=''] - (Opcional) Nome para pesquisar. Se fornecido, filtra no servidor.
- * @param {number|string} [limit=null] - (Opcional) Limite de resultados (padrão é 20 no backend).
- * @returns {Promise<Array>} - Uma promessa que resolve com a lista de clientes.
+ * Suporta pesquisa por nome e limite de resultados.
  */
 export const getClients = (establishmentId, searchTerm = '', limit = null) => {
     let endpoint = `/api/clients/${establishmentId}`;
     
-    // Constrói os parâmetros da query string (search e limit)
     const params = [];
     
     if (searchTerm && searchTerm.trim().length > 0) {
@@ -24,7 +25,6 @@ export const getClients = (establishmentId, searchTerm = '', limit = null) => {
         params.push(`limit=${limit}`);
     }
 
-    // Se houver parâmetros, adiciona-os à URL
     if (params.length > 0) {
         endpoint += `?${params.join('&')}`;
     }
@@ -33,26 +33,43 @@ export const getClients = (establishmentId, searchTerm = '', limit = null) => {
 };
 
 /**
- * Cria um novo cliente.
- * @param {object} clientData - Os dados do cliente a ser criado.
- * @returns {Promise<object>} - Uma promessa que resolve com o cliente criado.
+ * Busca um único cliente pelo ID (que agora é o Telefone).
+ * @param {string} clientId - O ID do cliente (Telefone).
+ */
+export const getClient = (clientId) => {
+    if (!clientId) throw new Error("ID do cliente é obrigatório");
+    const id = sanitizeId(clientId);
+    // Mantém a rota original, mas garante que o ID é o telefone limpo
+    return authenticatedFetch(`/api/clients/id/${id}`);
+};
+
+/**
+ * [MODIFICADO] Cria ou Atualiza um cliente usando o Telefone como ID.
+ * Usa PUT em vez de POST para forçar o ID específico.
+ * @param {object} clientData - Os dados do cliente (deve conter 'phone').
  */
 export const createClient = (clientData) => {
-    return authenticatedFetch('/api/clients', {
-        method: 'POST',
+    if (!clientData.phone) {
+        throw new Error("O telefone é obrigatório para criar o cliente.");
+    }
+
+    const id = sanitizeId(clientData.phone); // O ID será o telefone (ex: 5511999999999)
+
+    // Mudamos para PUT na rota específica do ID. 
+    // Isso funciona como um "Upsert" (Criar ou Atualizar com este ID).
+    return authenticatedFetch(`/api/clients/${id}`, {
+        method: 'PUT',
         body: JSON.stringify(clientData),
     });
 };
 
 /**
  * Atualiza um cliente existente.
- * Permite a atualização de 'loyaltyPoints' se enviado no objeto clientData.
- * * @param {string} clientId - O ID do cliente.
- * @param {object} clientData - Os novos dados do cliente.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ * @param {string} clientId - O ID do cliente (Telefone).
  */
 export const updateClient = (clientId, clientData) => {
-    return authenticatedFetch(`/api/clients/${clientId}`, {
+    const id = sanitizeId(clientId);
+    return authenticatedFetch(`/api/clients/${id}`, {
         method: 'PUT',
         body: JSON.stringify(clientData),
     });
@@ -60,38 +77,30 @@ export const updateClient = (clientId, clientData) => {
 
 /**
  * Apaga um cliente.
- * Remove também o histórico de fidelidade associado.
- * * @param {string} clientId - O ID do cliente a ser apagado.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ * @param {string} clientId - O ID do cliente (Telefone).
  */
 export const deleteClient = (clientId) => {
-    return authenticatedFetch(`/api/clients/${clientId}`, {
+    const id = sanitizeId(clientId);
+    return authenticatedFetch(`/api/clients/${id}`, {
         method: 'DELETE',
     });
 };
 
 /**
- * Busca o histórico de agendamentos e vendas de um cliente específico.
- * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} clientName - O nome do cliente.
- * @param {string} clientPhone - O telemóvel do cliente.
- * @returns {Promise<Array>} - Uma promessa que resolve com o histórico unificado.
+ * Busca histórico.
+ * Nota: Como o ID agora é o telefone, clientPhone e ID são redundantes, 
+ * mas mantemos a assinatura para compatibilidade com o backend.
  */
 export const getClientHistory = (establishmentId, clientName, clientPhone) => {
-    // Codifica os parâmetros para evitar erros com espaços ou caracteres especiais
     const safeName = encodeURIComponent(clientName);
-    const safePhone = encodeURIComponent(clientPhone);
+    const safePhone = encodeURIComponent(clientPhone); // Pode mandar formatado ou limpo, backend decide
     const endpoint = `/api/clients/history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
     
     return authenticatedFetch(endpoint);
 };
 
 /**
- * Busca o histórico de fidelidade (pontos ganhos/resgatados) de um cliente.
- * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} clientName - O nome do cliente.
- * @param {string} clientPhone - O telemóvel do cliente.
- * @returns {Promise<Array>} - Uma promessa que resolve com o histórico de fidelidade.
+ * Busca histórico de fidelidade.
  */
 export const getClientLoyaltyHistory = (establishmentId, clientName, clientPhone) => {
     const safeName = encodeURIComponent(clientName);
@@ -102,13 +111,7 @@ export const getClientLoyaltyHistory = (establishmentId, clientName, clientPhone
 };
 
 /**
- * Resgata um prémio para um cliente.
- * Debita os pontos e regista a transação no histórico.
- * * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string} clientName - O nome do cliente.
- * @param {string} clientPhone - O telemóvel do cliente.
- * @param {object} rewardData - Dados do prémio { points, reward }.
- * @returns {Promise<object>} - Uma promessa que resolve com a confirmação.
+ * Resgata prémio.
  */
 export const redeemReward = (establishmentId, clientName, clientPhone, rewardData) => {
     return authenticatedFetch(`/api/clients/redeem`, {
@@ -120,4 +123,14 @@ export const redeemReward = (establishmentId, clientName, clientPhone, rewardDat
             rewardData 
         }),
     });
+};
+
+/**
+ * [NOVO - HELPER] Busca cliente pelo telefone (atalho para getClient).
+ * Útil para a verificação de duplicidade na UI.
+ */
+export const getClientByPhone = (establishmentId, phone) => {
+    const id = sanitizeId(phone);
+    // Retorna null se der 404 (tratado no apiService ou aqui se necessário)
+    return getClient(id).catch(() => null); 
 };

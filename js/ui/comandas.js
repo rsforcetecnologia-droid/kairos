@@ -10,6 +10,7 @@ import * as clientsApi from '../api/clients.js';
 import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import * as professionalsApi from '../api/professionals.js';
+import * as establishmentsApi from '../api/establishments.js'; // Garantir que está importado
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
@@ -24,6 +25,8 @@ let localState = {
     selectedComandaId: null,
     isCashierOpen: false,
     activeCashierSessionId: null,
+    // NOVO: Cache das regras de fidelidade
+    loyaltySettings: null, 
     paging: {
         page: 1,
         limit: 12,
@@ -371,17 +374,23 @@ function renderComandaDetail() {
                 </div>
             </div>
 
+            <div id="loyalty-container" class="mb-4"></div>
+
             <div class="space-y-3">
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
                 ${Object.values(groupedItems).map(item => `
-                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
+                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${item.isReward ? 'border-yellow-200 bg-yellow-50' : ''}">
                         <div class="flex items-center gap-3">
                             <span class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 font-bold text-sm rounded-lg">
                                 ${item.quantity}x
                             </span>
                             <div>
-                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">${escapeHTML(item.name)}</p>
-                                <p class="text-xs text-gray-500">R$ ${(item.price || 0).toFixed(2)} un.</p>
+                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">
+                                    ${item.isReward ? '🎁 ' : ''}${escapeHTML(item.name)}
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                    ${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}
+                                </p>
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
@@ -420,6 +429,122 @@ function renderComandaDetail() {
             `}
         </footer>
     `;
+
+    // --- CHAMADA PARA RENDERIZAR BANNER DE FIDELIDADE ---
+    if (!isCompleted) {
+        checkAndRenderLoyalty(comanda, detailContainer.querySelector('#loyalty-container'));
+    }
+}
+
+// --- NOVO: LÓGICA DE FIDELIDADE (UI) ---
+
+async function checkAndRenderLoyalty(comanda, containerElement) {
+    if (!containerElement) return;
+    
+    // Verifica se a funcionalidade está habilitada nas configurações (carregadas na init)
+    const settings = localState.loyaltySettings;
+    if (!settings || !settings.enabled) return;
+
+    // Precisamos buscar o cliente para saber o saldo atual
+    // Tenta achar no localState ou busca na API
+    let client = localState.clients.find(c => c.name === comanda.clientName); // Busca simples por nome (ideal seria ID)
+    
+    // Se não achou ou não tem saldo atualizado, busca do servidor
+    if (!client || client.loyaltyPoints === undefined) {
+        try {
+            // Busca lista filtrada pelo nome para ser mais rápido
+            const foundClients = await clientsApi.getClients(state.establishmentId, comanda.clientName);
+            // Pega o primeiro match exato ou aproximado
+            client = foundClients.find(c => c.name === comanda.clientName) || foundClients[0];
+        } catch (e) {
+            console.error("Erro ao buscar fidelidade do cliente", e);
+            return;
+        }
+    }
+
+    if (!client || !client.loyaltyPoints) return;
+
+    // Filtra prémios que o cliente pode pagar com o saldo atual
+    // settings.rewards deve ser um array: [{name: 'Corte', costPoints: 100, serviceId: '...'}]
+    const availableRewards = (settings.rewards || []).filter(r => client.loyaltyPoints >= r.costPoints);
+
+    if (availableRewards.length > 0) {
+        const rewardDiv = document.createElement('div');
+        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 shadow-sm flex justify-between items-center";
+        
+        rewardDiv.innerHTML = `
+            <div class="flex items-center gap-3">
+                <div class="bg-yellow-100 p-2 rounded-full text-yellow-600">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-yellow-800">Prémio Disponível!</p>
+                    <p class="text-xs text-yellow-700">Saldo: <strong>${client.loyaltyPoints} pts</strong></p>
+                </div>
+            </div>
+        `;
+
+        const btn = document.createElement('button');
+        btn.innerText = "Resgatar";
+        btn.className = "text-xs font-bold bg-yellow-500 text-white px-4 py-2 rounded-lg shadow hover:bg-yellow-600 transition-colors";
+        
+        btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
+        
+        rewardDiv.appendChild(btn);
+        containerElement.appendChild(rewardDiv);
+    }
+}
+
+function openRewardSelectionModal(rewards, comanda) {
+    const contentHTML = `
+        <div class="space-y-4">
+            <p class="text-sm text-gray-600 mb-4">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
+            <div class="space-y-2 max-h-96 overflow-y-auto">
+                ${rewards.map(r => `
+                    <button data-action="select-reward" data-reward-id="${r.id}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
+                        <div class="text-left">
+                            <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(r.name)}</p>
+                            <p class="text-xs text-gray-500">Custo: ${r.costPoints} pontos</p>
+                        </div>
+                        <span class="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full">Grátis</span>
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    const { modalElement, close } = showGenericModal({ 
+        title: "🎁 Resgatar Prémio", 
+        contentHTML: contentHTML, 
+        maxWidth: 'max-w-md' 
+    });
+
+    modalElement.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="select-reward"]');
+        if (btn) {
+            const rewardId = btn.dataset.rewardId;
+            const reward = rewards.find(r => r.id == rewardId); // Comparação flexível para string/num
+            if (reward) {
+                addRewardToComanda(reward, comanda);
+                close();
+            }
+        }
+    });
+}
+
+async function addRewardToComanda(reward, comanda) {
+    // Cria um item especial com preço ZERO e flag isReward
+    const rewardItem = {
+        id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
+        name: `${reward.name}`,
+        price: 0.00, // Grátis
+        type: reward.serviceId ? 'service' : 'product',
+        isReward: true,
+        pointsCost: reward.costPoints // Guardamos o custo para descontar no backend
+    };
+
+    // Usa a lógica existente para adicionar, passando quantidade 1
+    await handleAddItemToComanda(rewardItem, 1);
 }
 
 function _comandas_renderClientRegistrationModal() {
@@ -1034,11 +1159,14 @@ async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
+    // Se for prémio, o preço vem 0. Se não, usa o preço normal.
     const itemsToAdd = Array(quantity).fill(0).map(() => ({
         id: itemData.id,
         name: itemData.name,
         price: itemData.price,
-        type: itemData.type
+        type: itemData.type,
+        isReward: itemData.isReward || false, // Flag de fidelidade
+        pointsCost: itemData.pointsCost || 0
     }));
     
     comanda.comandaItems = comanda.comandaItems || [];
@@ -1210,6 +1338,16 @@ async function fetchAndDisplayData() {
             return;
         }
         
+        // Carrega configurações de fidelidade junto com os dados
+        try {
+            const establishmentData = await establishmentsApi.getEstablishment(state.establishmentId);
+            if (establishmentData && establishmentData.loyaltyProgram) {
+                localState.loyaltySettings = establishmentData.loyaltyProgram;
+            }
+        } catch (e) {
+            console.log("Sem config de fidelidade carregada");
+        }
+
         const response = await comandasApi.getComandas(
             state.establishmentId, 
             filterDate,
