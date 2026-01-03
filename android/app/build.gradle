@@ -7,7 +7,7 @@ android {
     applicationId "br.com.rsforce.kairos.pro" // <--- Este é o CPF do app
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 3
+    versionCode 11
     versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
