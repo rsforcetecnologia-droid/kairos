@@ -7,361 +7,232 @@ const { verifyToken, hasAccess } = require('../middlewares/auth');
 
 router.use(verifyToken, hasAccess);
 
+const db = admin.firestore();
+
 // --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
-    // Tenta extrair o link de criação de índice se existir
-    const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
-    const indexLink = linkMatch ? linkMatch[0] : null;
-
-    if (error.message && error.message.includes('requires an index')) {
-        return res.status(500).json({ 
-            message: `O Firestore precisa de um índice para ${context}.`,
-            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs do servidor."
-        });
-    }
-    res.status(500).json({ message: `Erro ao processar ${context}.` });
+    res.status(500).json({ message: `Erro ao processar ${context}: ${error.message}` });
 }
 
 // =======================================================================
-// 🚀 ROTAS DE CLIENTES
+// 🚀 ROTAS DE CLIENTES (MODELO: TELEFONE COMO ID)
 // =======================================================================
 
-// 1. LISTAR CLIENTES (OTIMIZADO PARA BAIXO CUSTO)
+/**
+ * 1. CRIAR OU ATUALIZAR CLIENTE (UPSERT)
+ * Usa o Telefone como ID na URL.
+ * Se não existir, cria. Se existir, atualiza (sem apagar dados antigos).
+ */
+router.put('/:id', async (req, res) => {
+    try {
+        const { id } = req.params; // Este é o telefone (ID)
+        const data = req.body;
+
+        // Validação básica
+        if (!id) return res.status(400).json({ error: 'O ID (telefone) é obrigatório.' });
+
+        // Limpeza: remove campos undefined
+        Object.keys(data).forEach(key => data[key] === undefined && delete data[key]);
+
+        // Datas automáticas
+        const now = new Date().toISOString();
+        if (!data.createdAt) data.createdAt = now; // Apenas se for novo
+        data.updatedAt = now;
+
+        // Garante que o ID no documento é igual ao da URL
+        data.id = id;
+        data.phone = id; 
+
+        // .set com merge: true é o segredo do "Upsert"
+        await db.collection('clients').doc(id).set(data, { merge: true });
+
+        res.status(200).json({ id, ...data, message: 'Cliente salvo com sucesso.' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'salvar cliente');
+    }
+});
+
+/**
+ * 2. LISTAR CLIENTES
+ */
 router.get('/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { search, limit } = req.query; // Recebe o termo de busca e limite da URL
+    const { search, limit } = req.query;
 
     try {
-        const { db } = req;
-        
-        let query = db.collection('clients')
-            .where('establishmentId', '==', establishmentId);
+        let query = db.collection('clients').where('establishmentId', '==', establishmentId);
 
-        // LÓGICA DE OTIMIZAÇÃO DE LEITURA
         if (search && search.trim().length > 0) {
-            // Se houver busca, filtra pelo nome
             const searchTerm = search.trim();
+            // Se a busca for numérica, tenta buscar direto pelo ID (Telefone)
+            // Isso é MUITO mais rápido e barato que buscar texto
+            if (/^\d+$/.test(searchTerm)) {
+                const doc = await db.collection('clients').doc(searchTerm).get();
+                if (doc.exists && doc.data().establishmentId === establishmentId) {
+                    return res.json([{ id: doc.id, ...doc.data() }]);
+                }
+                return res.json([]);
+            }
             
-            query = query
-                .orderBy('name')
-                .startAt(searchTerm)
-                .endAt(searchTerm + '\uf8ff')
-                .limit(20); // Limite de segurança na busca
+            // Busca por nome (texto)
+            query = query.orderBy('name').startAt(searchTerm).endAt(searchTerm + '\uf8ff').limit(20);
         } else {
-            // Se NÃO houver busca, traz os últimos cadastrados
-            // Suporta parametro ?limit=all para casos específicos (com cuidado) ou padrão 20
+            // Listagem padrão
             const queryLimit = limit === 'all' ? 1000 : 20;
-
-            query = query
-                .orderBy('createdAt', 'desc')
-                .limit(queryLimit);
+            query = query.orderBy('name').limit(queryLimit);
         }
 
         const snapshot = await query.get();
+        const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        res.status(200).json(clients);
+    } catch (error) {
+        handleFirestoreError(res, error, 'listar clientes');
+    }
+});
 
-        if (snapshot.empty) {
-            return res.status(200).json([]);
+/**
+ * 3. OBTER CLIENTE PELO ID
+ */
+router.get('/id/:id', async (req, res) => {
+    try {
+        const doc = await db.collection('clients').doc(req.params.id).get();
+        if (!doc.exists) {
+            return res.status(404).json({ error: 'Cliente não encontrado' });
         }
-
-        const clientsList = snapshot.docs.map(doc => {
-            const data = doc.data();
-            
-            let lastService = null;
-            if (data.lastServiceDate) {
-                lastService = data.lastServiceDate.toDate ? data.lastServiceDate.toDate() : new Date(data.lastServiceDate);
-            }
-
-            return {
-                id: doc.id,
-                ...data,
-                lastService: lastService 
-            };
-        });
-        
-        res.status(200).json(clientsList);
+        res.json({ id: doc.id, ...doc.data() });
     } catch (error) {
-        handleFirestoreError(res, error, 'listar clientes (busca otimizada)');
+        handleFirestoreError(res, error, 'obter cliente');
     }
 });
 
-// 2. CRIAR NOVO CLIENTE
-router.post('/', async (req, res) => {
-    const { establishmentId, name, phone, email, dob, notes } = req.body;
-    
-    if (!establishmentId || !name || !phone) {
-        return res.status(400).json({ message: 'Estabelecimento, nome e telefone são obrigatórios.' });
-    }
-
+/**
+ * 4. APAGAR CLIENTE
+ */
+router.delete('/:id', async (req, res) => {
     try {
-        const { db } = req;
+        const clientRef = db.collection('clients').doc(req.params.id);
         
-        // Verifica duplicidade (apenas 1 leitura)
-        const existingClientQuery = await db.collection('clients')
-            .where('establishmentId', '==', establishmentId)
-            .where('phone', '==', phone)
-            .limit(1)
-            .get();
-
-        if (!existingClientQuery.empty) {
-            return res.status(409).json({ message: 'Já existe um cliente com este número de telefone.' });
-        }
-
-        const newClientData = {
-            establishmentId,
-            name, 
-            phone,
-            email: email || null,
-            dob: dob || null,
-            notes: notes || null,
-            loyaltyPoints: 0,
-            lastServiceDate: null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        };
-
-        const docRef = await db.collection('clients').add(newClientData);
-        res.status(201).json({ message: 'Cliente criado com sucesso!', id: docRef.id, ...newClientData });
-
-    } catch (error) {
-        handleFirestoreError(res, error, 'criar cliente');
-    }
-});
-
-// 3. ATUALIZAR CLIENTE (CORRIGIDO PARA PERMITIR SYNC DE PONTOS)
-router.put('/:clientId', async (req, res) => {
-    const { clientId } = req.params;
-    const clientData = req.body; 
-    
-    try {
-        // CORREÇÃO: Removido 'delete clientData.loyaltyPoints' para permitir que o frontend atualize o saldo correto.
-        
-        // Protege apenas campos de sistema imutáveis
-        delete clientData.id;
-        delete clientData.createdAt;
-        // lastServiceDate pode vir se quisermos forçar atualização, mas geralmente é automático.
-        
-        await req.db.collection('clients').doc(clientId).update(clientData); 
-        res.status(200).json({ message: 'Cliente atualizado com sucesso.' });
-    } catch (error) {
-        handleFirestoreError(res, error, 'atualizar cliente');
-    }
-});
-
-// 4. APAGAR CLIENTE
-router.delete('/:clientId', async (req, res) => {
-    const { clientId } = req.params;
-    try {
-        const { db } = req;
-        const clientRef = db.collection('clients').doc(clientId);
-        
-        // Remove subcoleção de histórico de fidelidade primeiro (Batch)
-        const subcollectionRef = clientRef.collection('loyaltyHistory');
-        const subcollectionSnapshot = await subcollectionRef.get();
-        
-        if (!subcollectionSnapshot.empty) {
+        // Apaga histórico de fidelidade primeiro (limpeza)
+        const historySnap = await clientRef.collection('loyaltyHistory').get();
+        if (!historySnap.empty) {
             const batch = db.batch();
-            subcollectionSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+            historySnap.docs.forEach(doc => batch.delete(doc.ref));
             batch.delete(clientRef);
             await batch.commit();
         } else {
             await clientRef.delete();
         }
 
-        res.status(200).json({ message: 'Cliente excluído com sucesso.' });
+        res.json({ message: 'Cliente removido.' });
     } catch (error) {
-        handleFirestoreError(res, error, 'apagar cliente');
+        handleFirestoreError(res, error, 'deletar cliente');
     }
 });
 
-// 5. HISTÓRICO COMPLETO DO CLIENTE
+// =======================================================================
+// 💎 ROTAS AUXILIARES (Histórico e Fidelidade)
+// =======================================================================
+
 router.get('/history/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { clientName, clientPhone } = req.query;
-    
-    if (!clientName || !clientPhone) {
-        return res.status(400).json({ message: 'Nome e telefone do cliente são obrigatórios.' });
-    }
 
     try {
-        const { db } = req;
-
-        // Limita leituras a 30 itens de cada coleção (Aumentado levemente de 20 para 30 para melhor histórico)
-        const appointmentsPromise = db.collection('appointments')
-            .where('establishmentId', '==', establishmentId)
-            .where('clientName', '==', clientName)
-            .where('clientPhone', '==', clientPhone)
-            .orderBy('startTime', 'desc')
-            .limit(30) 
-            .get();
-
-        const salesPromise = db.collection('sales')
-            .where('establishmentId', '==', establishmentId)
-            .where('clientName', '==', clientName)
-            .where('clientPhone', '==', clientPhone)
-            .orderBy('startTime', 'desc')
-            .limit(30)
-            .get();
-
-        const [apptSnapshot, salesSnapshot] = await Promise.all([appointmentsPromise, salesPromise]);
+        // Busca paralela de agendamentos e vendas
+        const [apptSnap, salesSnap] = await Promise.all([
+            db.collection('appointments')
+                .where('establishmentId', '==', establishmentId)
+                .where('clientPhone', '==', clientPhone) // Busca segura pelo telefone
+                .orderBy('startTime', 'desc').limit(20).get(),
+            db.collection('sales')
+                .where('establishmentId', '==', establishmentId)
+                .where('clientPhone', '==', clientPhone) // Busca segura pelo telefone
+                .orderBy('createdAt', 'desc').limit(20).get()
+        ]);
 
         const history = [];
-
-        apptSnapshot.docs.forEach(doc => {
-            const data = doc.data();
+        // Processa Agendamentos
+        apptSnap.forEach(doc => {
+            const d = doc.data();
             history.push({
-                id: doc.id,
-                type: 'appointment',
-                date: data.startTime ? data.startTime.toDate().toISOString() : new Date().toISOString(),
-                serviceName: (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'Serviço Agendado',
-                status: data.status || 'pendente',
-                professionalName: data.professionalName || 'N/A',
-                totalAmount: data.totalAmount || data.price || 0,
-                items: data.services || [] 
+                type: 'Agendamento',
+                date: d.startTime ? d.startTime.toDate().toISOString() : null,
+                summary: d.serviceName || 'Serviço',
+                status: d.status,
+                total: d.totalAmount || 0
+            });
+        });
+        // Processa Vendas
+        salesSnap.forEach(doc => {
+            const d = doc.data();
+            history.push({
+                type: 'Venda',
+                date: d.createdAt ? d.createdAt.toDate().toISOString() : null,
+                summary: 'Produtos/Serviços Avulsos',
+                status: 'Concluído',
+                total: d.totalAmount || 0
             });
         });
 
-        salesSnapshot.docs.forEach(doc => {
-            const data = doc.data();
-            const itemsSummary = (data.items || []).map(i => `${i.quantity || 1}x ${i.name}`).join(', ');
-
-            history.push({
-                id: doc.id,
-                type: 'sale',
-                date: data.startTime ? data.startTime.toDate().toISOString() : (data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString()),
-                serviceName: itemsSummary || 'Comanda / Venda Avulsa',
-                status: data.status || 'completed',
-                professionalName: data.professionalName || 'Balcão',
-                totalAmount: Number(data.totalAmount || 0),
-                items: data.items || []
-            });
-        });
-
-        // Ordena em memória
+        // Ordena por data (mais recente primeiro)
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        res.status(200).json(history);
-
+        res.json(history);
     } catch (error) {
-        handleFirestoreError(res, error, 'histórico do cliente');
+        handleFirestoreError(res, error, 'buscar histórico');
     }
 });
 
-// =======================================================================
-// 💎 ROTAS DO MÓDULO FIDELIDADE
-// =======================================================================
-
-// 6. HISTÓRICO DE PONTOS
 router.get('/loyalty-history/:establishmentId', async (req, res) => {
-    const { establishmentId } = req.params;
-    const { clientName, clientPhone } = req.query;
-
-    if (!clientName || !clientPhone) {
-        return res.status(400).json({ message: 'Dados do cliente obrigatórios.' });
-    }
-
     try {
-        const { db } = req;
-        
-        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        if (!establishmentDoc.exists) {
-            return res.status(404).json({ message: "Estabelecimento não encontrado." });
-        }
+        // ID do cliente é o telefone que vem na query
+        const clientId = req.query.clientPhone; 
+        if (!clientId) return res.json([]);
 
-        const estData = establishmentDoc.data();
-        
-        const isLoyaltyActive = 
-            (estData.modules && estData.modules['loyalty-section'] === true) || 
-            (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);
-
-        if (!isLoyaltyActive) {
-            return res.status(403).json({ message: "Fidelidade inativa." });
-        }
-
-        const clientQuery = await db.collection('clients')
-            .where('establishmentId', '==', establishmentId)
-            .where('phone', '==', clientPhone)
-            .limit(1).get();
-        
-        if (clientQuery.empty) return res.status(200).json([]);
-
-        const clientId = clientQuery.docs[0].id;
-        
-        const historySnapshot = await db.collection('clients').doc(clientId)
+        const snapshot = await db.collection('clients').doc(clientId)
             .collection('loyaltyHistory')
-            .orderBy('timestamp', 'desc')
-            .limit(50) // Limitado a 50
+            .orderBy('date', 'desc')
+            .limit(20)
             .get();
 
-        const history = historySnapshot.docs.map(doc => {
-            const data = doc.data();
-            return { 
-                ...data, 
-                timestamp: data.timestamp ? data.timestamp.toDate().toLocaleDateString('pt-BR') : 'N/A' 
-            };
-        });
-
-        res.status(200).json(history);
+        const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(history);
     } catch (error) {
         handleFirestoreError(res, error, 'histórico fidelidade');
     }
 });
 
-// 7. RESGATAR PRÊMIO
 router.post('/redeem', async (req, res) => {
-    const { establishmentId, clientName, clientPhone, rewardData } = req.body;
-    
-    if (!establishmentId || !clientName || !clientPhone || !rewardData) {
-        return res.status(400).json({ message: 'Dados insuficientes.' });
-    }
-
     try {
-        const { db } = req;
+        const { establishmentId, clientPhone, rewardData } = req.body;
+        const clientRef = db.collection('clients').doc(clientPhone);
 
-        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        if (!establishmentDoc.exists) {
-            return res.status(404).json({ message: "Estabelecimento não encontrado." });
-        }
-
-        const estData = establishmentDoc.data();
-
-        const isLoyaltyActive = 
-            (estData.modules && estData.modules['loyalty-section'] === true) || 
-            (estData.loyaltyProgram && estData.loyaltyProgram.enabled === true);
-
-        if (!isLoyaltyActive) {
-            return res.status(403).json({ message: "Fidelidade inativa." });
-        }
-        
-        const clientQuery = await db.collection('clients')
-            .where('establishmentId', '==', establishmentId)
-            .where('phone', '==', clientPhone)
-            .limit(1).get();
-        
-        if (clientQuery.empty) throw new Error("Cliente não encontrado.");
-
-        const clientRef = clientQuery.docs[0].ref;
-
-        await db.runTransaction(async (transaction) => {
-            const clientDoc = await transaction.get(clientRef);
-            if (!clientDoc.exists) throw new Error("Cliente não encontrado.");
+        await db.runTransaction(async (t) => {
+            const doc = await t.get(clientRef);
+            if (!doc.exists) throw new Error("Cliente não encontrado.");
             
-            const currentPoints = clientDoc.data().loyaltyPoints || 0;
-            if (currentPoints < rewardData.points) throw new Error("Pontos insuficientes.");
-            
-            transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-rewardData.points) });
+            const current = doc.data().loyaltyPoints || 0;
+            const cost = rewardData.points || 0;
+
+            if (current < cost) throw new Error("Saldo insuficiente.");
+
+            t.update(clientRef, { loyaltyPoints: current - cost });
             
             const historyRef = clientRef.collection('loyaltyHistory').doc();
-            transaction.set(historyRef, {
+            t.set(historyRef, {
+                date: new Date().toISOString(),
                 type: 'redeem',
-                points: -rewardData.points,
-                reward: rewardData.reward,
-                timestamp: admin.firestore.FieldValue.serverTimestamp()
+                points: -cost,
+                rewardName: rewardData.reward,
+                establishmentId
             });
         });
 
-        res.status(200).json({ message: 'Prémio resgatado com sucesso!' });
+        res.json({ success: true });
     } catch (error) {
-        handleFirestoreError(res, error, 'resgatar prémio');
+        handleFirestoreError(res, error, 'resgate de prémio');
     }
 });
 

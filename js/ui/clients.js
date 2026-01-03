@@ -5,7 +5,7 @@ import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; // IMPORTAÇÃO DA SEGURANÇA
+import { escapeHTML } from '../utils.js';
 
 const contentDiv = document.getElementById('content');
 let allClientsData = [];
@@ -228,6 +228,12 @@ function renderCadastroTab(client) {
     const safeEmail = escapeHTML(client?.email || '');
     const safePhone = escapeHTML(client?.phone || '');
     const safeNotes = escapeHTML(client?.notes || '');
+    
+    // --- NOVO: Lógica para bloquear edição do ID (Telefone) ---
+    const isEditing = !!client?.id;
+    const phoneDisabled = isEditing ? 'disabled' : '';
+    const phoneClasses = isEditing ? 'mt-1 w-full p-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed' : 'mt-1 w-full p-2 border border-gray-300 rounded-md';
+    const phoneHelper = isEditing ? '<p class="text-xs text-orange-600 mt-1">O telefone é o ID e não pode ser alterado.</p>' : '';
 
     return `
         <form id="client-form" class="p-6 space-y-4">
@@ -242,8 +248,9 @@ function renderCadastroTab(client) {
                     <input type="email" id="clientEmail" value="${safeEmail}" class="mt-1 w-full p-2 border border-gray-300 rounded-md">
                 </div>
                 <div>
-                    <label for="clientPhone" class="block text-sm font-medium text-gray-700">Telefone</label>
-                    <input type="tel" id="clientPhone" value="${safePhone}" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
+                    <label for="clientPhone" class="block text-sm font-medium text-gray-700">Telefone (ID)</label>
+                    <input type="tel" id="clientPhone" value="${safePhone}" class="${phoneClasses}" ${phoneDisabled} required>
+                    ${phoneHelper}
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
@@ -618,17 +625,21 @@ function openClientDetailModal(client) {
     }
 }
 
+// --- FUNÇÃO DE SALVAR AJUSTADA PARA VERIFICAR DUPLICIDADE ---
 async function handleSaveClient() {
     const form = document.getElementById('client-form');
     if (!form) return;
 
-    const clientId = form.querySelector('#clientId').value;
+    const clientId = form.querySelector('#clientId').value; // ID Original (se edição)
+    const phoneInput = form.querySelector('#clientPhone');
+    const rawPhone = phoneInput.value.trim();
+    
     const clientData = {
-        name: form.querySelector('#clientName').value,
-        email: form.querySelector('#clientEmail').value,
-        phone: form.querySelector('#clientPhone').value,
+        name: form.querySelector('#clientName').value.trim(),
+        email: form.querySelector('#clientEmail').value.trim(),
+        phone: rawPhone,
         dob: `${form.querySelector('#clientDobDay').value}/${form.querySelector('#clientDobMonth').value}`,
-        notes: form.querySelector('#clientNotes').value,
+        notes: form.querySelector('#clientNotes').value.trim(),
         establishmentId: state.establishmentId
     };
 
@@ -639,14 +650,42 @@ async function handleSaveClient() {
 
     try {
         if (clientId) {
+            // --- MODO EDIÇÃO ---
+            // O ID é o telefone antigo. Se o backend bloqueia a mudança de ID, 
+            // garantimos que usamos o ID original para o update.
             await clientsApi.updateClient(clientId, clientData);
             showNotification('Sucesso', 'Cliente atualizado com sucesso!', 'success');
+            document.getElementById('genericModal').style.display = 'none';
+            await loadClientsPage();
         } else {
-            await clientsApi.createClient(clientData);
-            showNotification('Sucesso', 'Cliente cadastrado com sucesso!', 'success');
+            // --- MODO CRIAÇÃO ---
+            // 1. Verificar se o telefone (ID) já existe
+            const cleanPhone = rawPhone.replace(/\D/g, '');
+            const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
+
+            if (existingClient) {
+                // 2. Se existe, perguntar se quer fundir/atualizar
+                const confirmOverwrite = await showConfirmation(
+                    'Cliente Já Existe', 
+                    `O número ${rawPhone} já pertence a "${existingClient.name}".\n\nDeseja ATUALIZAR os dados deste cadastro existente? (O histórico será mantido)`
+                );
+
+                if (confirmOverwrite) {
+                    // Atualiza o existente (usando createClient que agora faz Upsert/PUT)
+                    await clientsApi.createClient(clientData);
+                    showNotification('Sucesso', 'Cadastro existente atualizado!', 'success');
+                    document.getElementById('genericModal').style.display = 'none';
+                    await loadClientsPage();
+                }
+                // Se cancelar, não faz nada e mantém o modal aberto para corrigir o número
+            } else {
+                // 3. Se não existe, cria novo
+                await clientsApi.createClient(clientData);
+                showNotification('Sucesso', 'Cliente cadastrado com sucesso!', 'success');
+                document.getElementById('genericModal').style.display = 'none';
+                await loadClientsPage();
+            }
         }
-        document.getElementById('genericModal').style.display = 'none';
-        await loadClientsPage();
     } catch (error) {
         showNotification('Erro', `Não foi possível salvar: ${error.message}`, 'error');
     }
@@ -704,7 +743,7 @@ function renderClientListWithFilters(filteredClients, totalClients) {
                 whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-blue-500 bg-blue-50 p-1 rounded-full z-10 hover:bg-blue-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
             } else if (isBirthdayFilterActive && isClientBirthdayToday(client)) {
                 const whatsappMessage = encodeURIComponent(BIRTHDAY_MESSAGE_TEMPLATE(client.name, establishmentName));
-                whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-green-500 bg-green-50 p-1 rounded-full z-10 hover:bg-green-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M... (mesmo icone)"/></svg></a>`;
+                whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-green-500 bg-green-50 p-1 rounded-full z-10 hover:bg-green-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
             }
 
             clientCard.innerHTML = `

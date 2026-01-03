@@ -10,11 +10,11 @@ import * as clientsApi from '../api/clients.js';
 import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import * as professionalsApi from '../api/professionals.js';
-import * as establishmentsApi from '../api/establishments.js'; // Garantir que está importado
+import * as establishmentsApi from '../api/establishments.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
+import { escapeHTML } from '../utils.js'; 
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
@@ -25,7 +25,6 @@ let localState = {
     selectedComandaId: null,
     isCashierOpen: false,
     activeCashierSessionId: null,
-    // NOVO: Cache das regras de fidelidade
     loyaltySettings: null, 
     paging: {
         page: 1,
@@ -38,42 +37,30 @@ let contentDiv = null;
 
 // --- 3. FUNÇÕES AUXILIARES (MOBILE & UI & LÓGICA) ---
 
-/** * Função BLINDADA para obter itens sem duplicar serviços.
- * Garante que cada Serviço (pelo ID) apareça apenas uma vez.
- */
 function getSafeAllItems(comanda) {
-    // 1. Se finalizada, usa apenas o snapshot final salvo no banco
     if (comanda.status === 'completed') {
         const finalItems = comanda.comandaItems || comanda.items || [];
         if (finalItems.length > 0) return finalItems;
-        // Se vazio (erro legado), tenta usar os serviços originais
         return comanda.services || [];
     }
 
-    // 2. Se aberta, faz a fusão inteligente
     const baseServices = comanda.services || [];
     const extras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
 
-    // Cria uma lista inicial com os serviços base
     let combined = [...baseServices];
 
-    // Adiciona os extras, MAS FILTRA duplicatas de serviços
     extras.forEach(extra => {
-        // Produtos sempre entram
         if (extra.type === 'product') {
             combined.push(extra);
             return;
         }
 
-        // Se for serviço, verifica se JÁ existe na lista 'combined'
-        // (Verifica por ID ou Nome para ser seguro)
         const exists = combined.some(existing => {
             const sameId = existing.id && extra.id && existing.id === extra.id;
             const sameName = existing.name && extra.name && existing.name === extra.name;
             return sameId || sameName;
         });
 
-        // Só adiciona se NÃO existir
         if (!exists) {
             combined.push(extra);
         }
@@ -82,7 +69,6 @@ function getSafeAllItems(comanda) {
     return combined;
 }
 
-/** Ativa o modo de detalhes no mobile */
 function showMobileDetail() {
     const layout = document.getElementById('comandas-layout');
     if (layout) {
@@ -92,7 +78,6 @@ function showMobileDetail() {
     }
 }
 
-/** Volta para a lista no mobile */
 function hideMobileDetail() {
     const layout = document.getElementById('comandas-layout');
     if (layout) {
@@ -209,7 +194,6 @@ function renderComandaList() {
     }
 
     listContainer.innerHTML = filteredComandas.map(comanda => {
-        // CORREÇÃO: Usando getSafeAllItems para garantir total correto na lista
         const allItems = getSafeAllItems(comanda);
         const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
         
@@ -218,7 +202,6 @@ function renderComandaList() {
         
         const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
         
-        // BLINDAGEM XSS
         const safeClientName = escapeHTML(comanda.clientName);
         const safeProfName = escapeHTML(comanda.professionalName);
         
@@ -324,7 +307,6 @@ function renderComandaDetail() {
         return;
     }
 
-    // CORREÇÃO: Usando getSafeAllItems aqui também
     const allItems = getSafeAllItems(comanda);
     
     const isCompleted = comanda.status === 'completed';
@@ -337,7 +319,6 @@ function renderComandaDetail() {
            </button>`
         : '';
 
-    // Agrupa itens
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
         if (!acc[key]) {
@@ -349,7 +330,6 @@ function renderComandaDetail() {
     
     const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
 
-    // BLINDAGEM XSS
     const safeClientName = escapeHTML(comanda.clientName);
     const safeProfName = escapeHTML(comanda.professionalName);
 
@@ -430,7 +410,6 @@ function renderComandaDetail() {
         </footer>
     `;
 
-    // --- CHAMADA PARA RENDERIZAR BANNER DE FIDELIDADE ---
     if (!isCompleted) {
         checkAndRenderLoyalty(comanda, detailContainer.querySelector('#loyalty-container'));
     }
@@ -441,31 +420,41 @@ function renderComandaDetail() {
 async function checkAndRenderLoyalty(comanda, containerElement) {
     if (!containerElement) return;
     
-    // Verifica se a funcionalidade está habilitada nas configurações (carregadas na init)
     const settings = localState.loyaltySettings;
-    if (!settings || !settings.enabled) return;
+    if (!settings || !settings.enabled) {
+        return;
+    }
 
-    // Precisamos buscar o cliente para saber o saldo atual
-    // Tenta achar no localState ou busca na API
-    let client = localState.clients.find(c => c.name === comanda.clientName); // Busca simples por nome (ideal seria ID)
+    // Tenta encontrar o cliente pelo ID (Telefone) ou Nome
+    let client = null;
+    if (comanda.clientId) {
+        client = localState.clients.find(c => c.id === comanda.clientId);
+    } 
     
-    // Se não achou ou não tem saldo atualizado, busca do servidor
+    if (!client) {
+        client = localState.clients.find(c => c.name === comanda.clientName);
+    }
+
+    // Se ainda não temos dados de pontos atualizados, busca
     if (!client || client.loyaltyPoints === undefined) {
         try {
-            // Busca lista filtrada pelo nome para ser mais rápido
-            const foundClients = await clientsApi.getClients(state.establishmentId, comanda.clientName);
-            // Pega o primeiro match exato ou aproximado
-            client = foundClients.find(c => c.name === comanda.clientName) || foundClients[0];
+            // Se tiver ID (telefone), busca direto
+            if (comanda.clientId) {
+                 client = await clientsApi.getClient(comanda.clientId);
+            } else {
+                 // Fallback para busca por nome
+                 const foundClients = await clientsApi.getClients(state.establishmentId, comanda.clientName);
+                 client = foundClients.find(c => c.name === comanda.clientName) || foundClients[0];
+            }
         } catch (e) {
-            console.error("Erro ao buscar fidelidade do cliente", e);
+            console.error("[Fidelidade] Erro ao buscar cliente", e);
             return;
         }
     }
 
     if (!client || !client.loyaltyPoints) return;
 
-    // Filtra prémios que o cliente pode pagar com o saldo atual
-    // settings.rewards deve ser um array: [{name: 'Corte', costPoints: 100, serviceId: '...'}]
+    // Filtra prémios
     const availableRewards = (settings.rewards || []).filter(r => client.loyaltyPoints >= r.costPoints);
 
     if (availableRewards.length > 0) {
@@ -491,6 +480,8 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
         btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
         
         rewardDiv.appendChild(btn);
+        
+        containerElement.innerHTML = '';
         containerElement.appendChild(rewardDiv);
     }
 }
@@ -523,7 +514,7 @@ function openRewardSelectionModal(rewards, comanda) {
         const btn = e.target.closest('[data-action="select-reward"]');
         if (btn) {
             const rewardId = btn.dataset.rewardId;
-            const reward = rewards.find(r => r.id == rewardId); // Comparação flexível para string/num
+            const reward = rewards.find(r => r.id == rewardId); 
             if (reward) {
                 addRewardToComanda(reward, comanda);
                 close();
@@ -533,17 +524,15 @@ function openRewardSelectionModal(rewards, comanda) {
 }
 
 async function addRewardToComanda(reward, comanda) {
-    // Cria um item especial com preço ZERO e flag isReward
     const rewardItem = {
         id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
         name: `${reward.name}`,
-        price: 0.00, // Grátis
+        price: 0.00, 
         type: reward.serviceId ? 'service' : 'product',
         isReward: true,
-        pointsCost: reward.costPoints // Guardamos o custo para descontar no backend
+        pointsCost: reward.costPoints 
     };
 
-    // Usa a lógica existente para adicionar, passando quantidade 1
     await handleAddItemToComanda(rewardItem, 1);
 }
 
@@ -557,8 +546,9 @@ function _comandas_renderClientRegistrationModal() {
                         <input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
                     </div>
                     <div>
-                        <label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label>
+                        <label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone (ID)</label>
                         <input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
+                        <p class="text-xs text-gray-400 mt-1">Use apenas números.</p>
                     </div>
                     <div>
                         <label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail (Opcional)</label>
@@ -600,41 +590,70 @@ function _comandas_renderClientRegistrationModal() {
     }
 }
 
+// --- CADASTRO RÁPIDO COM PROTEÇÃO DE DUPLICIDADE ---
 async function _comandas_handleClientRegistration(e) {
     e.preventDefault();
     const form = document.getElementById('comandas_clientRegistrationForm');
     if (!form) return;
     
     const registerButton = form.querySelector('button[type="submit"]');
+    const nameInput = form.querySelector('#regClientName');
+    const phoneInput = form.querySelector('#regClientPhone');
+
+    const rawPhone = phoneInput.value.trim();
+    // Limpa o telefone para ser o ID
+    const cleanPhone = rawPhone.replace(/\D/g, '');
 
     const clientData = {
         establishmentId: state.establishmentId,
-        name: form.querySelector('#regClientName').value.trim(),
+        name: nameInput.value.trim(),
         email: form.querySelector('#regClientEmail').value.trim() || null,
-        phone: form.querySelector('#regClientPhone').value.trim(),
+        phone: cleanPhone, // Salva o ID limpo
         dob: `${form.querySelector('#regClientDobDay').value.trim()}/${form.querySelector('#regClientDobMonth').value.trim()}`,
         notes: form.querySelector('#regClientNotes').value.trim() || null,
     };
 
-    if (!clientData.name || !clientData.phone) {
-         return showNotification('Erro de Validação', 'Nome e Telefone são obrigatórios.', 'error');
+    if (!clientData.name || !cleanPhone) {
+         return showNotification('Erro de Validação', 'Nome e Telefone (apenas números) são obrigatórios.', 'error');
     }
     
     registerButton.disabled = true;
-    registerButton.textContent = 'A salvar...';
+    registerButton.textContent = 'Verificando...';
 
     try {
-        const newClient = await clientsApi.createClient(clientData);
-        localState.clients.push({ id: newClient.id, ...clientData });
-        showNotification('Cliente cadastrado com sucesso!', 'success');
-        document.getElementById('genericModal').style.display = 'none';
-        openNewSaleModal(newClient.id);
+        // 1. Verifica se já existe pelo ID (Telefone)
+        const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
+
+        if (existingClient) {
+            // CLIENTE EXISTE: Apenas avisa e usa o existente
+            showNotification('Atenção', `Cliente já cadastrado: ${existingClient.name}. Selecionando existente...`, 'info');
+            
+            // Atualiza lista local
+            const inList = localState.clients.find(c => c.id === existingClient.id);
+            if (!inList) localState.clients.push(existingClient);
+
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(existingClient.id); // Abre venda com o ID existente
+
+        } else {
+            // NOVO CLIENTE: Cria
+            registerButton.textContent = 'A salvar...';
+            const newClient = await clientsApi.createClient(clientData);
+            
+            localState.clients.push({ id: newClient.id, ...clientData });
+            showNotification('Cliente cadastrado com sucesso!', 'success');
+            
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(newClient.id);
+        }
 
     } catch (error) {
-        showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
+        showNotification(`Erro ao processar: ${error.message}`, 'error');
     } finally {
-        registerButton.disabled = false;
-        registerButton.textContent = 'Salvar Cliente';
+        if(registerButton) {
+            registerButton.disabled = false;
+            registerButton.textContent = 'Salvar Cliente';
+        }
     }
 }
 
@@ -832,13 +851,10 @@ function openCheckoutModal() {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    // --- CORREÇÃO EXTRA: DEDUPLICAÇÃO FORÇADA NO CHECKOUT ---
-    // Usamos o getSafeAllItems, mas fazemos uma verificação final
     const rawItems = getSafeAllItems(comanda);
     const seenIds = new Set();
     const finalItems = [];
     
-    // Filtro final rigoroso: Se for serviço e já vimos o ID, ignora.
     for (const item of rawItems) {
         if (item.type === 'service' && item.id) {
             if (seenIds.has(item.id)) continue; 
@@ -1159,13 +1175,12 @@ async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    // Se for prémio, o preço vem 0. Se não, usa o preço normal.
     const itemsToAdd = Array(quantity).fill(0).map(() => ({
         id: itemData.id,
         name: itemData.name,
         price: itemData.price,
         type: itemData.type,
-        isReward: itemData.isReward || false, // Flag de fidelidade
+        isReward: itemData.isReward || false, 
         pointsCost: itemData.pointsCost || 0
     }));
     
@@ -1238,15 +1253,13 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 async function handleFinalizeCheckout(comanda, totalAmount, payments) {
     const isAppointment = comanda.type === 'appointment';
     
-    // --- CORREÇÃO FINAL: Limpeza agressiva no envio ---
-    // Mesmo que a UI já esteja limpa, limpamos novamente antes de enviar
     const rawItems = getSafeAllItems(comanda);
     const seenIds = new Set();
     const finalItems = [];
     
     for (const item of rawItems) {
         if (item.type === 'service' && item.id) {
-            if (seenIds.has(item.id)) continue; // Impede envio de duplicata para o backend
+            if (seenIds.has(item.id)) continue; 
             seenIds.add(item.id);
         }
         finalItems.push(item);
@@ -1255,7 +1268,7 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
     const data = {
         payments,
         totalAmount,
-        items: finalItems, // Enviamos a lista limpa
+        items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
     };
 
@@ -1263,8 +1276,8 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         if (isAppointment) {
             await appointmentsApi.checkoutAppointment(comanda.id, data);
         } else {
-            // CORREÇÃO: Adicionado establishmentId ao payload
             data.establishmentId = state.establishmentId;
+            data.clientId = comanda.clientId; // ID (Telefone)
             data.clientName = comanda.clientName;
             data.professionalId = comanda.professionalId;
             data.clientPhone = comanda.clientPhone;
@@ -1286,6 +1299,8 @@ async function handleCreateNewSale(e) {
     e.preventDefault();
     const clientId = document.getElementById('new-sale-client').value;
     const professionalId = document.getElementById('new-sale-professional').value;
+    
+    // Busca na lista local (onde o ID agora é o telefone)
     const client = localState.clients.find(c => c.id === clientId);
     const professional = state.professionals.find(p => p.id === professionalId);
 
@@ -1297,6 +1312,7 @@ async function handleCreateNewSale(e) {
     const newComanda = {
         id: `temp-${Date.now()}`,
         type: 'walk-in',
+        clientId: client.id, // GARANTIDO: ID é o telefone
         clientName: client.name,
         clientPhone: client.phone,
         professionalId: professional.id,
@@ -1338,7 +1354,6 @@ async function fetchAndDisplayData() {
             return;
         }
         
-        // Carrega configurações de fidelidade junto com os dados
         try {
             const establishmentData = await establishmentsApi.getEstablishment(state.establishmentId);
             if (establishmentData && establishmentData.loyaltyProgram) {
