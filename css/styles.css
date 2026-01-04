@@ -1217,3 +1217,136 @@ body.is-app-native .mobile-only-header {
     opacity: 0;
     pointer-events: none;
 }
+/* --- ESTILO MODERNO: LISTA DE CLIENTES --- */
+
+/* O Container da Lista */
+.clients-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* Espaço entre cartões */
+    padding: 10px;
+    padding-bottom: 90px; /* Espaço extra para o botão flutuante não tapar o último item */
+}
+
+/* O Cartão do Cliente */
+.client-list-card {
+    background: white;
+    border-radius: 16px; /* Bordas bem arredondadas (estilo iOS 15+) */
+    padding: 16px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03); /* Sombra super suave */
+    border: 1px solid #f3f4f6;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    position: relative;
+    transition: transform 0.2s, background-color 0.2s;
+}
+
+.client-list-card:active {
+    transform: scale(0.98); /* Efeito de clique tátil */
+    background-color: #fafafa;
+}
+
+/* Avatar com Iniciais */
+.client-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); /* Gradiente Indigo Suave */
+    color: #4f46e5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    flex-shrink: 0; /* Impede que o avatar encolha */
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* Informações de Texto */
+.client-info {
+    flex-grow: 1;
+    min-width: 0; /* Permite que o texto trunque corretamente */
+}
+
+.client-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.client-details {
+    font-size: 13px;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Badges (Etiquetas) */
+.badge-status {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.badge-birthday { background-color: #fce7f3; color: #db2777; }
+.badge-points { background-color: #ecfccb; color: #4d7c0f; }
+
+/* Ações (Botões Laterais) */
+.client-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-icon-action {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-whatsapp-modern {
+    background-color: #dcfce7; /* Verde bem claro */
+    color: #16a34a; /* Verde WhatsApp */
+}
+.btn-whatsapp-modern:hover { background-color: #bbf7d0; }
+
+.btn-phone-modern {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+.btn-phone-modern:hover { background-color: #e5e7eb; }
+
+/* Botão Flutuante (FAB) Modernizado */
+.fab-modern {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 60px;
+    height: 60px;
+    background-color: #4f46e5;
+    color: white;
+    border-radius: 20px; /* Quadrado arredondado (Squircle) */
+    box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    border: none;
+    z-index: 50;
+    transition: transform 0.2s;
+}
+.fab-modern:active { transform: scale(0.90); }
