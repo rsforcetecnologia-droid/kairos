@@ -2,124 +2,67 @@
 
 import { authenticatedFetch } from './apiService.js';
 
-// --- AJUDANTE: Limpa o telefone APENAS para criação de novos registros ---
-const sanitizeId = (phone) => {
+// --- UTILS ---
+const cleanPhone = (phone) => {
     if (!phone) return '';
-    return String(phone).replace(/\D/g, '');
+    return String(phone).replace(/\D/g, ''); // Remove tudo que não for número
 };
 
 /**
- * Busca clientes de um estabelecimento.
+ * Busca lista de clientes
  */
-export const getClients = (establishmentId, searchTerm = '', limit = null) => {
-    let endpoint = `/api/clients/${establishmentId}`;
-    
-    const params = [];
-    
-    if (searchTerm && searchTerm.trim().length > 0) {
-        params.push(`search=${encodeURIComponent(searchTerm.trim())}`);
-    }
-    
-    if (limit) {
-        params.push(`limit=${limit}`);
-    }
+export const getClients = (establishmentId, search = '', limit = 20) => {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (limit) params.append('limit', limit);
 
-    if (params.length > 0) {
-        endpoint += `?${params.join('&')}`;
-    }
-    
-    return authenticatedFetch(endpoint);
+    return authenticatedFetch(`/api/clients/${establishmentId}?${params.toString()}`);
 };
 
 /**
- * Busca um único cliente pelo ID.
- * CORREÇÃO: Não sanitiza mais o ID, pois pode ser legado (alfanumérico).
+ * Cria ou Atualiza cliente
  */
-export const getClient = (clientId) => {
-    if (!clientId) throw new Error("ID do cliente é obrigatório");
-    // encodeURIComponent garante que caracteres especiais no ID não quebrem a URL
-    return authenticatedFetch(`/api/clients/id/${encodeURIComponent(clientId)}`);
-};
-
-/**
- * Cria ou Atualiza um cliente.
- * AQUI mantemos o sanitizeId, pois queremos forçar que NOVOS clientes usem apenas números no ID.
- */
-export const createClient = (clientData) => {
-    if (!clientData.phone) {
-        throw new Error("O telefone é obrigatório para criar o cliente.");
-    }
-
-    const id = sanitizeId(clientData.phone); // ID padronizado para novos (ex: 5511999999999)
+export const saveClient = (clientData) => {
+    if (!clientData.phone) throw new Error('Telefone é obrigatório');
+    
+    const id = cleanPhone(clientData.phone);
+    const payload = { ...clientData, phone: id, id: id }; // Garante consistência
 
     return authenticatedFetch(`/api/clients/${id}`, {
-        method: 'PUT', // Upsert
-        body: JSON.stringify(clientData),
-    });
-};
-
-/**
- * Atualiza um cliente existente.
- * CORREÇÃO: Usa o ID original sem limpar.
- */
-export const updateClient = (clientId, clientData) => {
-    return authenticatedFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
         method: 'PUT',
-        body: JSON.stringify(clientData),
+        body: JSON.stringify(payload)
     });
 };
 
 /**
- * Apaga um cliente.
- * CORREÇÃO CRÍTICA: Removemos o sanitizeId. O ID deve ser passado exatamente como está no banco.
+ * Busca histórico completo (Agendamentos, Vendas, Fidelidade)
  */
-export const deleteClient = (clientId) => {
-    return authenticatedFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
-        method: 'DELETE',
+export const getFullHistory = (establishmentId, clientPhone) => {
+    const id = cleanPhone(clientPhone);
+    return authenticatedFetch(`/api/clients/full-history/${establishmentId}?phone=${id}`);
+};
+
+/**
+ * Deleta cliente
+ */
+export const deleteClient = (clientPhone) => {
+    const id = cleanPhone(clientPhone);
+    return authenticatedFetch(`/api/clients/${id}`, {
+        method: 'DELETE'
     });
 };
 
 /**
- * Busca histórico.
+ * Resgatar Prêmios
  */
-export const getClientHistory = (establishmentId, clientName, clientPhone) => {
-    const safeName = encodeURIComponent(clientName);
-    const safePhone = encodeURIComponent(clientPhone);
-    const endpoint = `/api/clients/history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
-    
-    return authenticatedFetch(endpoint);
-};
-
-/**
- * Busca histórico de fidelidade.
- */
-export const getClientLoyaltyHistory = (establishmentId, clientName, clientPhone) => {
-    const safeName = encodeURIComponent(clientName);
-    const safePhone = encodeURIComponent(clientPhone);
-    const endpoint = `/api/clients/loyalty-history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
-    
-    return authenticatedFetch(endpoint);
-};
-
-/**
- * Resgata prémio.
- */
-export const redeemReward = (establishmentId, clientName, clientPhone, rewardData) => {
-    return authenticatedFetch(`/api/clients/redeem`, {
+export const redeemReward = (establishmentId, clientPhone, points, rewardName) => {
+    return authenticatedFetch('/api/clients/redeem', {
         method: 'POST',
-        body: JSON.stringify({ 
-            establishmentId, 
-            clientName, 
-            clientPhone, 
-            rewardData 
-        }),
+        body: JSON.stringify({
+            establishmentId,
+            clientPhone: cleanPhone(clientPhone),
+            points,
+            rewardName
+        })
     });
-};
-
-/**
- * Helper para verificar duplicidade (mantém sanitize aqui para comparar números puros)
- */
-export const getClientByPhone = (establishmentId, phone) => {
-    const id = sanitizeId(phone);
-    return authenticatedFetch(`/api/clients/id/${id}`).catch(() => null); 
 };
