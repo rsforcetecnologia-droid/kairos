@@ -2,15 +2,14 @@
 
 import { authenticatedFetch } from './apiService.js';
 
-// --- AJUDANTE: Limpa o telefone para usar como ID (apenas números) ---
+// --- AJUDANTE: Limpa o telefone APENAS para criação de novos registros ---
 const sanitizeId = (phone) => {
     if (!phone) return '';
     return String(phone).replace(/\D/g, '');
 };
 
 /**
- * Busca clientes de um estabelecimento com otimização de leitura.
- * Suporta pesquisa por nome e limite de resultados.
+ * Busca clientes de um estabelecimento.
  */
 export const getClients = (establishmentId, searchTerm = '', limit = null) => {
     let endpoint = `/api/clients/${establishmentId}`;
@@ -33,43 +32,38 @@ export const getClients = (establishmentId, searchTerm = '', limit = null) => {
 };
 
 /**
- * Busca um único cliente pelo ID (que agora é o Telefone).
- * @param {string} clientId - O ID do cliente (Telefone).
+ * Busca um único cliente pelo ID.
+ * CORREÇÃO: Não sanitiza mais o ID, pois pode ser legado (alfanumérico).
  */
 export const getClient = (clientId) => {
     if (!clientId) throw new Error("ID do cliente é obrigatório");
-    const id = sanitizeId(clientId);
-    // Mantém a rota original, mas garante que o ID é o telefone limpo
-    return authenticatedFetch(`/api/clients/id/${id}`);
+    // encodeURIComponent garante que caracteres especiais no ID não quebrem a URL
+    return authenticatedFetch(`/api/clients/id/${encodeURIComponent(clientId)}`);
 };
 
 /**
- * [MODIFICADO] Cria ou Atualiza um cliente usando o Telefone como ID.
- * Usa PUT em vez de POST para forçar o ID específico.
- * @param {object} clientData - Os dados do cliente (deve conter 'phone').
+ * Cria ou Atualiza um cliente.
+ * AQUI mantemos o sanitizeId, pois queremos forçar que NOVOS clientes usem apenas números no ID.
  */
 export const createClient = (clientData) => {
     if (!clientData.phone) {
         throw new Error("O telefone é obrigatório para criar o cliente.");
     }
 
-    const id = sanitizeId(clientData.phone); // O ID será o telefone (ex: 5511999999999)
+    const id = sanitizeId(clientData.phone); // ID padronizado para novos (ex: 5511999999999)
 
-    // Mudamos para PUT na rota específica do ID. 
-    // Isso funciona como um "Upsert" (Criar ou Atualizar com este ID).
     return authenticatedFetch(`/api/clients/${id}`, {
-        method: 'PUT',
+        method: 'PUT', // Upsert
         body: JSON.stringify(clientData),
     });
 };
 
 /**
  * Atualiza um cliente existente.
- * @param {string} clientId - O ID do cliente (Telefone).
+ * CORREÇÃO: Usa o ID original sem limpar.
  */
 export const updateClient = (clientId, clientData) => {
-    const id = sanitizeId(clientId);
-    return authenticatedFetch(`/api/clients/${id}`, {
+    return authenticatedFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
         method: 'PUT',
         body: JSON.stringify(clientData),
     });
@@ -77,23 +71,20 @@ export const updateClient = (clientId, clientData) => {
 
 /**
  * Apaga um cliente.
- * @param {string} clientId - O ID do cliente (Telefone).
+ * CORREÇÃO CRÍTICA: Removemos o sanitizeId. O ID deve ser passado exatamente como está no banco.
  */
 export const deleteClient = (clientId) => {
-    const id = sanitizeId(clientId);
-    return authenticatedFetch(`/api/clients/${id}`, {
+    return authenticatedFetch(`/api/clients/${encodeURIComponent(clientId)}`, {
         method: 'DELETE',
     });
 };
 
 /**
  * Busca histórico.
- * Nota: Como o ID agora é o telefone, clientPhone e ID são redundantes, 
- * mas mantemos a assinatura para compatibilidade com o backend.
  */
 export const getClientHistory = (establishmentId, clientName, clientPhone) => {
     const safeName = encodeURIComponent(clientName);
-    const safePhone = encodeURIComponent(clientPhone); // Pode mandar formatado ou limpo, backend decide
+    const safePhone = encodeURIComponent(clientPhone);
     const endpoint = `/api/clients/history/${establishmentId}?clientName=${safeName}&clientPhone=${safePhone}`;
     
     return authenticatedFetch(endpoint);
@@ -126,11 +117,9 @@ export const redeemReward = (establishmentId, clientName, clientPhone, rewardDat
 };
 
 /**
- * [NOVO - HELPER] Busca cliente pelo telefone (atalho para getClient).
- * Útil para a verificação de duplicidade na UI.
+ * Helper para verificar duplicidade (mantém sanitize aqui para comparar números puros)
  */
 export const getClientByPhone = (establishmentId, phone) => {
     const id = sanitizeId(phone);
-    // Retorna null se der 404 (tratado no apiService ou aqui se necessário)
-    return getClient(id).catch(() => null); 
+    return authenticatedFetch(`/api/clients/id/${id}`).catch(() => null); 
 };

@@ -15,6 +15,11 @@ let currentView = 'list'; // 'list' ou 'detail'
 let activeFilterKey = 'all'; // Chave do filtro ativo na barra superior
 let establishmentName = 'O Estabelecimento';
 
+// --- NOVAS VARIÁVEIS DE ESTADO (PAGINAÇÃO E SELEÇÃO) ---
+let currentPage = 1;
+const itemsPerPage = 20; // Quantidade de clientes por página
+let selectedClientIds = new Set(); // Armazena IDs REAIS selecionados para exclusão
+
 // CONSTANTE: Valor padrão para evitar divisão por zero (1 Real = 1 Ponto se não houver regra)
 const DEFAULT_POINTS_DIVISOR = 1;
 
@@ -79,7 +84,7 @@ function getInactiveDaysOptionsHTML() {
     }).join('');
 }
 
-// --- FUNÇÃO DE CÁLCULO DE VALOR (DEFINITIVA) ---
+// --- FUNÇÃO DE CÁLCULO DE VALOR ---
 function getItemTotalValue(item) {
     if (!item) return 0;
 
@@ -223,13 +228,12 @@ async function renderDetailContent(tabId) {
 
 function renderCadastroTab(client) {
     const dob = client?.dob ? client.dob.split('/') : ['',''];
-    // BLINDAGEM DE XSS NOS VALORES DOS INPUTS
     const safeName = escapeHTML(client?.name || '');
     const safeEmail = escapeHTML(client?.email || '');
     const safePhone = escapeHTML(client?.phone || '');
     const safeNotes = escapeHTML(client?.notes || '');
     
-    // --- NOVO: Lógica para bloquear edição do ID (Telefone) ---
+    // --- Lógica para ID/Telefone ---
     const isEditing = !!client?.id;
     const phoneDisabled = isEditing ? 'disabled' : '';
     const phoneClasses = isEditing ? 'mt-1 w-full p-2 border border-gray-300 rounded-md bg-gray-100 text-gray-500 cursor-not-allowed' : 'mt-1 w-full p-2 border border-gray-300 rounded-md';
@@ -288,19 +292,15 @@ function renderHistoryTab(history, type) {
         const isFuture = itemDateZero > today;
         const isPast = itemDateZero < today;
         
-        // Verifica status "Finalizado" (incluindo variações comuns)
         const isCompleted = ['completed', 'finalized', 'finished', 'paid'].includes((item.status || '').toLowerCase());
 
         if (isAgendamentos) {
-            // Se está finalizado, NÃO é agendamento futuro (mesmo que seja hoje)
             return !isCompleted && (isFuture || isToday);
         } else {
-            // Histórico: Passado OU Finalizado
             return isPast || isCompleted;
         }
     });
     
-    // Ordenação
     filteredHistory.sort((a, b) => {
         return isAgendamentos 
             ? new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -316,8 +316,7 @@ function renderHistoryTab(history, type) {
             <h4 class="font-semibold text-lg mb-2 pl-2">${title}</h4>
             ${filteredHistory.map(item => {
                 const isHistoric = type === 'historico';
-                const totalValue = getItemTotalValue(item); // Valor calculado corretamente
-                // BLINDAGEM DE XSS NO HISTÓRICO
+                const totalValue = getItemTotalValue(item);
                 const safeServiceName = escapeHTML(item.serviceName || 'Serviço');
                 const safeProfName = escapeHTML(item.professionalName || '');
 
@@ -342,10 +341,9 @@ function renderHistoryTab(history, type) {
     `;
 }
 
-// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE (CORRIGIDO PARA DIVISÃO E SYNC) ---
+// --- CÁLCULO E RENDERIZAÇÃO DE FIDELIDADE ---
 
 function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
-    // 1. Calcula Pontos Ganhos com base no histórico de vendas
     const validSales = (salesHistory || []).filter(s => {
         const st = (s.status || '').toLowerCase();
         return st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized';
@@ -356,22 +354,18 @@ function calculateLoyaltyStats(salesHistory, loyaltyHistory) {
         totalSpent += getItemTotalValue(sale);
     });
 
-    // CORREÇÃO: Trata o valor como divisor ("A cada X reais = 1 ponto")
     let moneyPerPoint = (loyaltySettings && loyaltySettings.conversionRate) ? parseFloat(loyaltySettings.conversionRate) : DEFAULT_POINTS_DIVISOR;
-    if (moneyPerPoint <= 0) moneyPerPoint = 1; // Proteção contra divisão por zero
+    if (moneyPerPoint <= 0) moneyPerPoint = 1;
 
-    // Ex: Gastou 400 reais. Regra é 40. 400 / 40 = 10 pontos.
     const totalPointsEarned = Math.floor(totalSpent / moneyPerPoint);
 
-    // 2. Calcula Pontos Gastos (Resgates)
     let totalPointsRedeemed = 0;
     (loyaltyHistory || []).forEach(log => {
         if (log.type === 'redeem') {
-            totalPointsRedeemed += (log.points ? Math.abs(log.points) : 0); // Soma o valor positivo dos pontos gastos
+            totalPointsRedeemed += (log.points ? Math.abs(log.points) : 0);
         }
     });
 
-    // 3. Saldo Atual
     const currentBalance = totalPointsEarned - totalPointsRedeemed;
 
     return { totalSpent, totalPointsEarned, totalPointsRedeemed, currentBalance, moneyPerPoint };
@@ -387,29 +381,22 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
 
     const stats = calculateLoyaltyStats(salesHistory, loyaltyHistory);
     
-    // === SINCRONIZAÇÃO AUTOMÁTICA (AUTO-SYNC) - ADICIONADO ===
-    // Se o saldo calculado diferir do saldo salvo no cliente, atualiza o backend silenciosamente
     const storedPoints = parseInt(client.loyaltyPoints || 0);
     if (storedPoints !== stats.currentBalance) {
         console.log(`[Auto-Sync] Atualizando pontos de ${client.name}: ${storedPoints} -> ${stats.currentBalance}`);
         
-        // 1. Atualiza objeto local
         client.loyaltyPoints = stats.currentBalance;
         client.totalSpent = stats.totalSpent;
         
-        // 2. Atualiza na lista global para refletir ao voltar
         const idx = allClientsData.findIndex(c => c.id === client.id);
         if (idx >= 0) allClientsData[idx].loyaltyPoints = stats.currentBalance;
 
-        // 3. Atualiza Backend (Sem bloquear a UI)
         clientsApi.updateClient(client.id, { loyaltyPoints: stats.currentBalance })
             .catch(err => console.error("Erro no auto-sync de pontos:", err));
     }
-    // ==========================================================
 
     const rewardsHTML = (loyaltySettings.tiers || []).map(tier => {
         const canRedeem = stats.currentBalance >= tier.points;
-        // BLINDAGEM XSS
         const safeReward = escapeHTML(tier.reward);
         return `
             <div class="flex justify-between items-center p-3 rounded-lg border ${canRedeem ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}">
@@ -426,13 +413,10 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
 
     const historyEntries = [];
     
-    // Adiciona entradas de vendas (Ganhos) usando a lógica de DIVISÃO
     (salesHistory || []).forEach(sale => {
         const st = (sale.status || '').toLowerCase();
         if (st === 'completed' || st === 'finished' || st === 'paid' || st === 'finalized') {
             const saleValue = getItemTotalValue(sale);
-            
-            // CORREÇÃO AQUI TAMBÉM: Divisão pelo fator configurado
             const pts = Math.floor(saleValue / stats.moneyPerPoint);
             
             if (pts > 0) {
@@ -450,7 +434,7 @@ function renderFidelidadeTab(client, salesHistory, loyaltyHistory) {
         historyEntries.push({
             type: 'redeem',
             desc: `Resgate: ${log.reward || 'Prêmio'}`,
-            points: log.points, // Pontos vêm negativos do backend geralmente, ou ajustamos na exibição
+            points: log.points, 
             date: log.timestamp || log.date
         });
     });
@@ -610,7 +594,7 @@ function openClientDetailModal(client) {
         cancelBtn.addEventListener('click', (e) => {
             e.preventDefault();
             document.getElementById('genericModal').style.display = 'none';
-            // Recarrega a lista para mostrar saldos atualizados (CORREÇÃO DE SYNC)
+            // Recarrega a lista para mostrar saldos atualizados
             const term = document.getElementById('clientSearchInput')?.value || '';
             const list = getFilteredClients(term, activeFilterKey);
             renderClientListWithFilters(list, allClientsData.length);
@@ -625,12 +609,11 @@ function openClientDetailModal(client) {
     }
 }
 
-// --- FUNÇÃO DE SALVAR AJUSTADA PARA VERIFICAR DUPLICIDADE ---
 async function handleSaveClient() {
     const form = document.getElementById('client-form');
     if (!form) return;
 
-    const clientId = form.querySelector('#clientId').value; // ID Original (se edição)
+    const clientId = form.querySelector('#clientId').value;
     const phoneInput = form.querySelector('#clientPhone');
     const rawPhone = phoneInput.value.trim();
     
@@ -650,36 +633,27 @@ async function handleSaveClient() {
 
     try {
         if (clientId) {
-            // --- MODO EDIÇÃO ---
-            // O ID é o telefone antigo. Se o backend bloqueia a mudança de ID, 
-            // garantimos que usamos o ID original para o update.
             await clientsApi.updateClient(clientId, clientData);
             showNotification('Sucesso', 'Cliente atualizado com sucesso!', 'success');
             document.getElementById('genericModal').style.display = 'none';
             await loadClientsPage();
         } else {
-            // --- MODO CRIAÇÃO ---
-            // 1. Verificar se o telefone (ID) já existe
             const cleanPhone = rawPhone.replace(/\D/g, '');
             const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
 
             if (existingClient) {
-                // 2. Se existe, perguntar se quer fundir/atualizar
                 const confirmOverwrite = await showConfirmation(
                     'Cliente Já Existe', 
                     `O número ${rawPhone} já pertence a "${existingClient.name}".\n\nDeseja ATUALIZAR os dados deste cadastro existente? (O histórico será mantido)`
                 );
 
                 if (confirmOverwrite) {
-                    // Atualiza o existente (usando createClient que agora faz Upsert/PUT)
                     await clientsApi.createClient(clientData);
                     showNotification('Sucesso', 'Cadastro existente atualizado!', 'success');
                     document.getElementById('genericModal').style.display = 'none';
                     await loadClientsPage();
                 }
-                // Se cancelar, não faz nada e mantém o modal aberto para corrigir o número
             } else {
-                // 3. Se não existe, cria novo
                 await clientsApi.createClient(clientData);
                 showNotification('Sucesso', 'Cliente cadastrado com sucesso!', 'success');
                 document.getElementById('genericModal').style.display = 'none';
@@ -692,11 +666,14 @@ async function handleSaveClient() {
 }
 
 async function handleDeleteClient() {
-    if (!currentClient || !currentClient.id) return;
+    // CORREÇÃO CRÍTICA: Usar o ID real do documento (se for alfanumérico ou numérico)
+    const idToDelete = currentClient.id; 
+    if (!idToDelete) return;
+
     const confirmed = await showConfirmation('Excluir Cliente', `Tem certeza que deseja excluir ${currentClient.name}? Esta ação é irreversível.`);
     if (confirmed) {
         try {
-            await clientsApi.deleteClient(currentClient.id);
+            await clientsApi.deleteClient(idToDelete);
             showNotification('Sucesso', 'Cliente excluído.', 'success');
             document.getElementById('genericModal').style.display = 'none';
             await loadClientsPage();
@@ -706,49 +683,67 @@ async function handleDeleteClient() {
     }
 }
 
-// --- FUNÇÃO PRINCIPAL E CARREGAMENTO DA PÁGINA ---
+// --- FUNÇÃO PRINCIPAL DE RENDERIZAÇÃO DA LISTA (COM PAGINAÇÃO E SELEÇÃO) ---
 
 function renderClientListWithFilters(filteredClients, totalClients) {
     const listDiv = document.getElementById('clientsList');
     if (!listDiv) return;
 
     listDiv.innerHTML = '';
-    listDiv.className = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 content-start p-2 pb-20";
+    
+    // --- LÓGICA DE PAGINAÇÃO ---
+    const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+    
+    // Garante que a página atual é válida
+    if (currentPage > totalPages) currentPage = totalPages || 1;
+    if (currentPage < 1) currentPage = 1;
 
-    document.getElementById('client-count').textContent = `${filteredClients.length} cliente${filteredClients.length !== 1 ? 's' : ''} | Total: ${totalClients}`;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const clientsToRender = filteredClients.slice(startIndex, endIndex);
 
-    if (filteredClients.length > 0) {
-        const isInactiveFilterActive = activeFilterKey === 'inactive';
-        const isBirthdayFilterActive = activeFilterKey === 'birthdays';
+    // Atualiza contador e controles de seleção
+    updateSelectionHeader(filteredClients.length);
 
-        filteredClients.forEach(client => {
+    // --- RENDERIZAÇÃO DA LISTA ---
+    if (clientsToRender.length > 0) {
+        // Layout grid
+        listDiv.className = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 content-start p-2 pb-20";
+
+        clientsToRender.forEach(client => {
+            // CORREÇÃO: Usar o ID real para seleção
+            const selectionId = client.id;
+            const isSelected = selectedClientIds.has(selectionId);
             const clientCard = document.createElement('div');
-            clientCard.className = `bg-white rounded-lg border border-gray-200 shadow-sm p-3 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-full relative group`;
+            
+            // Adicionamos borda colorida se estiver selecionado
+            const borderClass = isSelected ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white';
+            
+            clientCard.className = `${borderClass} rounded-lg border shadow-sm p-3 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between h-full relative group select-none`;
             clientCard.dataset.clientId = client.id;
             
-            // CORREÇÃO: Usar parseInt para garantir exibição correta
             const points = parseInt(client.loyaltyPoints || 0);
             const spent = client.totalSpent || 0;
-
-            let whatsappButton = '';
-            const cleanedPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
-            const whatsappLinkBase = `https://wa.me/55${cleanedPhone}?text=`;
-            
-            // BLINDAGEM DE XSS NO CARD PRINCIPAL
             const safeName = escapeHTML(client.name);
             const safePhone = escapeHTML(client.phone);
 
-            if (isInactiveFilterActive) {
-                const whatsappMessage = encodeURIComponent(INACTIVE_MESSAGE_TEMPLATE(client.name, establishmentName));
-                whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-blue-500 bg-blue-50 p-1 rounded-full z-10 hover:bg-blue-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
-            } else if (isBirthdayFilterActive && isClientBirthdayToday(client)) {
-                const whatsappMessage = encodeURIComponent(BIRTHDAY_MESSAGE_TEMPLATE(client.name, establishmentName));
-                whatsappButton = `<a href="${whatsappLinkBase + whatsappMessage}" target="_blank" class="absolute top-2 right-2 text-green-500 bg-green-50 p-1 rounded-full z-10 hover:bg-green-100"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
-            }
+            // Checkbox HTML
+            const checkboxHTML = `
+                <div class="absolute top-2 left-2 z-10" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="client-checkbox w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" 
+                        value="${selectionId}" ${isSelected ? 'checked' : ''}>
+                </div>
+            `;
+
+            // WhatsApp Button
+            const cleanedPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
+            const whatsappLinkBase = `https://wa.me/55${cleanedPhone}`;
+            let whatsappIcon = `<a href="${whatsappLinkBase}" target="_blank" onclick="event.stopPropagation()" class="absolute top-2 right-2 text-green-500 bg-white border border-gray-100 p-1 rounded-full z-10 hover:bg-green-50"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM16.64 16.64C16.64 16.64 15.11 17.58 14.54 17.76C13.97 17.94 13.06 18.06 10.66 17.06C8.26 16.06 6.38 13.62 6.38 13.62C6.38 13.62 4.96 11.72 4.96 9.76C4.96 7.8 6.04 6.88 6.04 6.88C6.04 6.88 6.32 6.56 6.6 6.56C6.88 6.56 7.16 6.56 7.16 6.56C7.38 6.56 7.62 6.46 7.86 7.02C8.1 7.58 8.68 9.02 8.68 9.02C8.68 9.02 8.78 9.24 8.64 9.48C8.5 9.72 8.36 9.88 8.16 10.1C7.96 10.32 7.74 10.4 8.02 10.88C8.3 11.36 9.26 12.92 10.68 14.18C11.62 15.02 12.56 15.36 12.94 15.54C13.32 15.72 13.6 15.66 13.84 15.38C14.08 15.1 14.62 14.34 14.62 14.34C14.62 14.34 14.88 14.06 15.18 14.12C15.48 14.18 16.94 14.9 16.94 14.9C16.94 14.9 17.2 15.04 17.3 15.22C17.4 15.4 17.4 16.28 16.64 16.64Z"/></svg></a>`;
 
             clientCard.innerHTML = `
-                ${whatsappButton}
-                <div class="flex items-center gap-3 mb-2">
+                ${checkboxHTML}
+                ${whatsappIcon}
+                <div class="flex items-center gap-3 mb-2 mt-4 ml-1">
                     <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
                         ${safeName.charAt(0).toUpperCase()}
                     </div>
@@ -770,12 +765,170 @@ function renderClientListWithFilters(filteredClients, totalClients) {
                 </div>
             `;
 
-            clientCard.addEventListener('click', () => openClientDetailModal(client));
+            // Lógica de clique no Checkbox
+            const checkbox = clientCard.querySelector('.client-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                toggleClientSelection(selectionId, e.target.checked);
+            });
+
+            // Lógica de clique no Card (abre modal se não clicar no checkbox)
+            clientCard.addEventListener('click', (e) => {
+                if (!e.target.closest('input') && !e.target.closest('a')) {
+                    openClientDetailModal(client);
+                }
+            });
+
             listDiv.appendChild(clientCard);
         });
+
+        // --- CONTROLES DE PAGINAÇÃO (RODAPÉ) ---
+        if (totalPages > 1) {
+            const paginationContainer = document.createElement('div');
+            paginationContainer.className = "col-span-full flex justify-center items-center gap-4 mt-6 mb-10";
+            
+            paginationContainer.innerHTML = `
+                <button id="prevPageBtn" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 1 ? 'disabled' : ''}>
+                    &larr; Anterior
+                </button>
+                <span class="text-sm text-gray-600 font-medium">
+                    Página ${currentPage} de ${totalPages}
+                </span>
+                <button id="nextPageBtn" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === totalPages ? 'disabled' : ''}>
+                    Próximo &rarr;
+                </button>
+            `;
+
+            listDiv.appendChild(paginationContainer);
+
+            // Listeners da paginação
+            document.getElementById('prevPageBtn').addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderClientListWithFilters(filteredClients, totalClients);
+                    document.getElementById('clientsList').scrollTop = 0;
+                }
+            });
+
+            document.getElementById('nextPageBtn').addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderClientListWithFilters(filteredClients, totalClients);
+                    document.getElementById('clientsList').scrollTop = 0;
+                }
+            });
+        }
+
     } else {
         listDiv.innerHTML = `<p class="col-span-full text-center text-gray-500 py-10">Nenhum cliente encontrado com os filtros aplicados.</p>`;
     }
+}
+
+// --- FUNÇÕES DE SELEÇÃO E EXCLUSÃO EM MASSA ---
+
+function updateSelectionHeader(totalVisible) {
+    const countSpan = document.getElementById('client-count');
+    const bulkActionsDiv = document.getElementById('bulk-actions-container');
+    const selectedCount = selectedClientIds.size;
+
+    // Atualiza o texto do contador normal
+    if (countSpan) {
+        countSpan.innerHTML = `
+            <span class="mr-2">${totalVisible} listados</span>
+            ${selectedCount > 0 ? `<span class="font-bold text-indigo-600">(${selectedCount} selecionados)</span>` : ''}
+        `;
+    }
+
+    // Mostra/Esconde barra de ações em massa
+    if (bulkActionsDiv) {
+        if (selectedCount > 0) {
+            bulkActionsDiv.classList.remove('hidden');
+            document.getElementById('selected-count-display').textContent = `${selectedCount} selecionados`;
+        } else {
+            bulkActionsDiv.classList.add('hidden');
+        }
+    }
+    
+    // Atualiza o checkbox "Selecionar Todos" (se existir)
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = selectedCount > 0 && selectedCount === totalVisible;
+        // Checkbox indeterminado se selecionou alguns, mas não todos
+        selectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < totalVisible;
+    }
+}
+
+function toggleClientSelection(clientId, isSelected) {
+    if (isSelected) {
+        selectedClientIds.add(clientId);
+    } else {
+        selectedClientIds.delete(clientId);
+    }
+    
+    const searchTerm = document.getElementById('clientSearchInput')?.value || '';
+    const filtered = getFilteredClients(searchTerm, activeFilterKey);
+    renderClientListWithFilters(filtered, allClientsData.length);
+}
+
+function toggleSelectAll(isChecked) {
+    const searchTerm = document.getElementById('clientSearchInput')?.value || '';
+    const filteredClients = getFilteredClients(searchTerm, activeFilterKey);
+
+    if (isChecked) {
+        // Seleciona todos os FILTRADOS usando ID REAL
+        filteredClients.forEach(c => selectedClientIds.add(c.id));
+    } else {
+        // Remove todos da seleção
+        selectedClientIds.clear();
+    }
+    
+    renderClientListWithFilters(filteredClients, allClientsData.length);
+}
+
+async function handleBulkDelete() {
+    if (selectedClientIds.size === 0) return;
+
+    const confirmed = await showConfirmation(
+        'Excluir em Massa', 
+        `Tem certeza que deseja excluir ${selectedClientIds.size} clientes selecionados? Esta ação não pode ser desfeita.`
+    );
+
+    if (!confirmed) return;
+
+    // Feedback visual de carregamento
+    const btn = document.getElementById('btn-bulk-delete');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<div class="loader w-4 h-4 border-white"></div> Excluindo...`;
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    const idsToDelete = Array.from(selectedClientIds);
+    
+    // Executa em paralelo
+    await Promise.all(idsToDelete.map(async (id) => {
+        try {
+            await clientsApi.deleteClient(id);
+            successCount++;
+        } catch (e) {
+            console.error(`Erro ao excluir ${id}:`, e);
+            errorCount++;
+        }
+    }));
+
+    if (errorCount === 0) {
+        showNotification('Sucesso', `${successCount} clientes excluídos.`, 'success');
+    } else {
+        showNotification('Aviso', `${successCount} excluídos, ${errorCount} falharam.`, 'warning');
+    }
+
+    selectedClientIds.clear();
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+    
+    setTimeout(async () => {
+        await loadClientsPage();
+    }, 500);
 }
 
 function getFilteredClients(searchTerm = '', filterKey = 'all') {
@@ -826,7 +979,6 @@ function getFilteredClients(searchTerm = '', filterKey = 'all') {
             });
             
         case 'credit':
-            // CORREÇÃO CRÍTICA: Parse Int para garantir comparação numérica
             return filteredBySearch.filter(c => {
                 const pts = parseInt(c.loyaltyPoints || 0);
                 return pts > 0;
@@ -859,6 +1011,10 @@ async function handleFilterClick(newFilterKey) {
     if (activeFilterKey === newFilterKey && !isBirthday && !isInactive) return;
     activeFilterKey = newFilterKey;
     
+    // Reseta paginação e seleção ao mudar filtro
+    currentPage = 1;
+    selectedClientIds.clear();
+
     document.querySelectorAll('.client-filter-btn').forEach(btn => {
         btn.classList.remove('bg-white', 'text-indigo-600', 'shadow');
         btn.classList.add('bg-gray-100', 'text-gray-600');
@@ -876,12 +1032,24 @@ async function handleFilterClick(newFilterKey) {
 
 export async function loadClientsPage() {
     currentView = 'list';
+    currentPage = 1; // Reset da paginação ao carregar
+    selectedClientIds.clear(); // Limpa seleção
     
     contentDiv.innerHTML = `
-        <section id="client-list-view" class="flex flex-col h-full bg-gray-50">
+        <section id="client-list-view" class="flex flex-col h-full bg-gray-50 relative">
             
+            <div id="bulk-actions-container" class="hidden absolute top-20 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-xl z-50 flex items-center gap-4 animate-bounce-in">
+                <span id="selected-count-display" class="font-bold text-sm">0 selecionados</span>
+                <div class="h-4 w-px bg-gray-600"></div>
+                <button id="btn-bulk-delete" class="text-red-400 hover:text-red-300 font-semibold text-sm flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    Excluir
+                </button>
+                <button id="btn-clear-selection" class="text-gray-400 hover:text-white text-xs underline">Cancelar</button>
+            </div>
+
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 bg-white shadow-sm border-b sticky top-0 z-20">
-                <div class="flex-grow">
+                <div class="flex-grow flex items-center gap-2">
                     <input type="text" id="clientSearchInput" placeholder="Pesquisar por nome ou telefone..." class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-gray-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 <div class="flex gap-2">
@@ -925,8 +1093,12 @@ export async function loadClientsPage() {
                 </span>
             </div>
             
-            <div class="px-4 py-2 flex justify-between items-center bg-gray-50">
-                <p id="client-count" class="text-xs text-gray-500 font-medium">A carregar clientes...</p>
+            <div class="px-4 py-2 flex justify-between items-center bg-gray-50 border-b border-gray-200">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="selectAllCheckbox" class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer">
+                    <label for="selectAllCheckbox" class="text-xs font-semibold text-gray-600 cursor-pointer select-none">Selecionar Todos</label>
+                </div>
+                <p id="client-count" class="text-xs text-gray-500 font-medium">A carregar...</p>
             </div>
 
             <div id="clientsList" class="flex-1 overflow-y-auto p-2">
@@ -970,10 +1142,12 @@ export async function loadClientsPage() {
     `;
 
     try {
+        // --- BUSCA EXPANDIDA PARA 1000 REGISTROS ---
         const [clients, establishmentData] = await Promise.all([
-            clientsApi.getClients(state.establishmentId),
+            clientsApi.getClients(state.establishmentId, '', 1000), 
             establishmentApi.getEstablishmentDetails(state.establishmentId)
         ]);
+        
         allClientsData = clients;
         loyaltySettings = establishmentData.loyaltyProgram || { enabled: false };
         establishmentName = establishmentData.name || 'O Estabelecimento'; 
@@ -985,6 +1159,17 @@ export async function loadClientsPage() {
         const listDiv = document.getElementById('clientsList');
         if(listDiv) listDiv.innerHTML = '<p class="text-red-500 col-span-full text-center mt-10">Erro ao carregar dados dos clientes.</p>';
     }
+
+    // --- EVENT LISTENERS ---
+
+    // Listener para o "Selecionar Todos"
+    document.getElementById('selectAllCheckbox')?.addEventListener('change', (e) => {
+        toggleSelectAll(e.target.checked);
+    });
+
+    // Listeners da Barra de Ações em Massa
+    document.getElementById('btn-bulk-delete')?.addEventListener('click', handleBulkDelete);
+    document.getElementById('btn-clear-selection')?.addEventListener('click', () => toggleSelectAll(false));
 
     const filterSheet = document.getElementById('filter-sheet');
     const filterOverlay = document.getElementById('filter-overlay');
@@ -1052,6 +1237,7 @@ export async function loadClientsPage() {
 
     contentDiv.addEventListener('input', (e) => {
         if (e.target.id === 'clientSearchInput') {
+            currentPage = 1; // Reseta paginação na busca
             const searchTerm = e.target.value;
             const filtered = getFilteredClients(searchTerm, activeFilterKey);
             renderClientListWithFilters(filtered, allClientsData.length);
