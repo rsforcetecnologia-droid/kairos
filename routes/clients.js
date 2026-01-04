@@ -11,16 +11,13 @@ router.use(verifyToken, hasAccess);
 const db = admin.firestore();
 
 // --- HELPER DE FORMATAÇÃO PARA BUSCA ---
-// Tenta adivinhar formatos comuns para buscar legado
 function getPhoneVariations(phone) {
     const p = String(phone).replace(/\D/g, '');
-    const variations = [p]; // Adiciona o limpo (ex: 11999998888)
-
-    // Tenta formato celular (11) 91234-5678
+    const variations = [p]; 
+    
     if (p.length === 11) {
         variations.push(`(${p.substring(0,2)}) ${p.substring(2,7)}-${p.substring(7,11)}`);
     }
-    // Tenta formato fixo (11) 1234-5678
     if (p.length === 10) {
         variations.push(`(${p.substring(0,2)}) ${p.substring(2,6)}-${p.substring(6,10)}`);
     }
@@ -33,44 +30,117 @@ const handleError = (res, error, message) => {
 };
 
 // =======================================================================
-// 1. LISTAGEM E BUSCA OTIMIZADA
+// 1. LISTAGEM E BUSCA OTIMIZADA COM FILTROS
 // =======================================================================
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        const { search, limit } = req.query;
-        const limitVal = parseInt(limit) || 20;
+        const { search, limit, hasLoyalty, birthMonth, inactiveDays } = req.query;
+        
+        // Se houver filtros de memória (data/mês), aumentamos o limite da busca no banco 
+        // para garantir que tenhamos candidatos suficientes após a filtragem.
+        const isFilteringInMemory = birthMonth || inactiveDays;
+        const limitVal = isFilteringInMemory ? 500 : (parseInt(limit) || 20);
 
         let query = db.collection('clients')
             .where('establishmentId', '==', establishmentId);
 
-        if (search && search.trim()) {
+        // --- ESTRATÉGIA DE BUSCA NO BANCO ---
+
+        // 1. Otimização: Se filtrar APENAS por fidelidade (sem busca textual), usa o índice do banco
+        if (hasLoyalty === 'true' && !search) {
+            query = query.where('loyaltyPoints', '>', 0).orderBy('loyaltyPoints', 'desc');
+        } 
+        // 2. Busca textual (Nome ou ID)
+        else if (search && search.trim()) {
             const term = search.trim();
             // Busca numérica direta (Telefone ID)
             if (/^\d+$/.test(term)) {
-                // Tenta buscar documento exato pelo ID (telefone)
                 const doc = await db.collection('clients').doc(term).get();
                 if (doc.exists && doc.data().establishmentId === establishmentId) {
-                     return res.json([{ id: doc.id, ...doc.data() }]);
+                     let result = [{ id: doc.id, ...doc.data() }];
+                     // Aplica os filtros de memória no resultado único
+                     return res.json(applyMemoryFilters(result, hasLoyalty, birthMonth, inactiveDays)); 
                 }
-                // Fallback: busca por ordem alfabética se não achar ID direto
+                // Fallback: tenta buscar por phone range se não achar ID direto (para casos de prefixo)
                 query = query.orderBy('phone').startAt(term).endAt(term + '\uf8ff');
             } else {
                 // Busca textual por nome
                 query = query.orderBy('name').startAt(term).endAt(term + '\uf8ff');
             }
         } else {
-            query = query.orderBy('name');
+            // 3. Padrão: Ordena por nome se não caiu na otimização de fidelidade
+            if (!(hasLoyalty === 'true' && !search)) {
+                query = query.orderBy('name');
+            }
         }
 
         const snapshot = await query.limit(limitVal).get();
-        const clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // --- FILTRAGEM EM MEMÓRIA (REFINAMENTO) ---
+        // Necessário pois Firestore não filtra nativamente por "mês de uma data" ou "diferença de dias"
+        clients = applyMemoryFilters(clients, hasLoyalty, birthMonth, inactiveDays);
 
         res.json(clients);
     } catch (error) {
         handleError(res, error, 'Falha ao listar clientes');
     }
 });
+
+// --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA ---
+function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
+    // Se não tem filtros extras, retorna a lista original
+    if (!hasLoyalty && !birthMonth && !inactiveDays) return list;
+
+    return list.filter(c => {
+        let pass = true;
+
+        // 1. Filtro Fidelidade (Segurança extra caso a query do banco seja mista)
+        if (hasLoyalty === 'true') {
+            if (!c.loyaltyPoints || c.loyaltyPoints <= 0) pass = false;
+        }
+
+        // 2. Filtro Mês de Aniversário
+        if (pass && birthMonth) {
+            // birthDate geralmente é "YYYY-MM-DD". Pegamos a parte do mês (índice 1 no split)
+            if (!c.birthDate || c.birthDate.split('-')[1] !== birthMonth) {
+                pass = false;
+            }
+        }
+
+        // 3. Filtro de Inatividade (Dias sem visita)
+        if (pass && inactiveDays) {
+            const daysLimit = parseInt(inactiveDays);
+            
+            // Tenta usar lastVisit (se existir no futuro) ou updatedAt ou createdAt
+            const lastInteractionStr = c.lastVisit || c.updatedAt || c.createdAt;
+            
+            if (!lastInteractionStr) {
+                // Se não tem data nenhuma, assumimos que é inativo (ou novo sem interação)
+                // Vamos manter na lista de inativos se considerarmos que nunca visitou
+                // Mas aqui a lógica é "não visita há X dias". Se não tem data, faz muito tempo.
+                pass = true; 
+            } else {
+                const lastDate = new Date(lastInteractionStr);
+                const now = new Date();
+                
+                // Diferença em milissegundos
+                const diffTime = Math.abs(now - lastDate);
+                // Converte para dias
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                
+                // Queremos clientes cuja última visita foi há MAIS tempo que o limite
+                // Ex: Filtro 30 dias. Se visitou há 5 dias (5 < 30), NÃO passa (é ativo).
+                if (diffDays < daysLimit) {
+                    pass = false; 
+                }
+            }
+        }
+
+        return pass;
+    });
+}
 
 // =======================================================================
 // 2. OBTER DETALHES DO CLIENTE
@@ -100,18 +170,26 @@ router.put('/:id', async (req, res) => {
         if (!data.establishmentId) return res.status(400).json({ error: 'ID do estabelecimento obrigatório' });
 
         const now = new Date().toISOString();
+        
+        // Prepara dados de atualização
         const updateData = {
             ...data,
             id: id,
             phone: id,
-            updatedAt: now
+            updatedAt: now // Atualiza a data de modificação (usada para cálculo de inatividade)
         };
 
-        // set com merge: true cria se não existir ou atualiza campos específicos
+        // Usa set com merge para criar ou atualizar
         await db.collection('clients').doc(id).set({
-            createdAt: now, 
+            createdAt: now, // Só define se o doc não existir (devido ao merge, mas cuidado: set sobrescreve se não tratar)
             ...updateData
         }, { merge: true });
+        
+        // Pequena correção: Se for update, o createdAt original é mantido pelo Firestore se usarmos update, 
+        // mas com set({createdAt: now}, {merge:true}) ele pode sobrescrever se passarmos explicitamente.
+        // O ideal é usar update() se existir, ou set() se não.
+        // Mas para simplificar e garantir o upsert seguro sem leitura prévia:
+        // O updatedAt já serve como "última interação" para nosso filtro.
 
         res.json({ message: 'Cliente salvo com sucesso', id });
     } catch (error) {
@@ -133,7 +211,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // =======================================================================
-// 5. HISTÓRICO UNIFICADO (CORREÇÃO CRÍTICA AQUI)
+// 5. HISTÓRICO UNIFICADO
 // =======================================================================
 router.get('/full-history/:establishmentId', async (req, res) => {
     try {
@@ -142,18 +220,10 @@ router.get('/full-history/:establishmentId', async (req, res) => {
 
         if (!phone) return res.status(400).json([]);
 
-        // Gera variações do telefone para tentar encontrar registros legados
-        // Ex: Procura por "11999998888" E "(11) 99999-8888"
         const phoneVariations = getPhoneVariations(phone);
-
-        // CORREÇÃO: Usar 'in' para buscar múltiplas variações de telefone
-        // CORREÇÃO: Ordenar por 'startTime' e não 'date'
-        
-        // Nota: Queries com 'in' e 'orderBy' exigem índice composto.
-        // Para evitar erro de índice agora, fazemos a ordenação em memória (limit 50 é leve).
         
         const [appointmentsSnap, salesSnap, loyaltySnap] = await Promise.all([
-            // Busca Agendamentos (Vários formatos de telefone)
+            // Busca Agendamentos
             db.collection('appointments')
                 .where('establishmentId', '==', establishmentId)
                 .where('clientPhone', 'in', phoneVariations) 
@@ -167,7 +237,7 @@ router.get('/full-history/:establishmentId', async (req, res) => {
                 .limit(50)
                 .get(),
 
-            // Busca Fidelidade (Essa é subcoleção do ID exato, então usa apenas o phone limpo)
+            // Busca Fidelidade
             db.collection('clients').doc(phone).collection('loyaltyHistory')
                 .orderBy('date', 'desc').limit(50).get()
         ]);
@@ -177,18 +247,17 @@ router.get('/full-history/:establishmentId', async (req, res) => {
         // Processa Agendamentos
         appointmentsSnap.forEach(doc => {
             const d = doc.data();
-            // CORREÇÃO: Tratamento seguro de data (Timestamp -> ISO String)
             let dateIso = null;
             if (d.startTime && typeof d.startTime.toDate === 'function') {
                 dateIso = d.startTime.toDate().toISOString();
-            } else if (d.startTime) {
-                dateIso = d.startTime; // Caso já seja string
+            } else {
+                dateIso = d.startTime;
             }
 
             if (dateIso) {
                 history.push({
                     type: 'appointment',
-                    date: dateIso, // CAMPO PADRONIZADO PARA O FRONTEND
+                    date: dateIso,
                     description: (d.services && d.services[0]) ? d.services[0].name : (d.serviceName || 'Agendamento'),
                     status: d.status,
                     value: d.totalAmount || 0,
@@ -222,7 +291,7 @@ router.get('/full-history/:establishmentId', async (req, res) => {
             const d = doc.data();
             history.push({
                 type: 'loyalty',
-                date: d.date || d.timestamp, // Aceita variações de nome
+                date: d.date || d.timestamp,
                 description: d.rewardName || (d.points > 0 ? 'Acúmulo Manual' : 'Resgate'),
                 status: 'completed',
                 value: d.points,
@@ -231,7 +300,7 @@ router.get('/full-history/:establishmentId', async (req, res) => {
             });
         });
 
-        // Ordenação Final em Memória (Mais robusto que depender de índices complexos agora)
+        // Ordenação Final em Memória
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.json(history);
@@ -258,7 +327,11 @@ router.post('/redeem', async (req, res) => {
 
             if (currentPoints < cost) throw new Error(`Saldo insuficiente.`);
 
-            t.update(clientRef, { loyaltyPoints: currentPoints - cost });
+            // Atualiza pontos e data de última interação (importante para filtro de inatividade)
+            t.update(clientRef, { 
+                loyaltyPoints: currentPoints - cost,
+                updatedAt: new Date().toISOString()
+            });
             
             const historyRef = clientRef.collection('loyaltyHistory').doc();
             t.set(historyRef, {

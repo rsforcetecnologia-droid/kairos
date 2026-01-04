@@ -9,12 +9,23 @@ const cleanPhone = (phone) => {
 };
 
 /**
- * Busca lista de clientes
+ * Busca lista de clientes com suporte a filtros
+ * @param {string} establishmentId
+ * @param {string} search
+ * @param {number} limit
+ * @param {object} filters - { hasLoyalty: boolean, birthMonth: string, inactiveDays: number }
  */
-export const getClients = (establishmentId, search = '', limit = 20) => {
+export const getClients = (establishmentId, search = '', limit = 20, filters = {}) => {
     const params = new URLSearchParams();
+
+    // Parâmetros básicos
     if (search) params.append('search', search);
     if (limit) params.append('limit', limit);
+
+    // Novos Filtros
+    if (filters.hasLoyalty) params.append('hasLoyalty', 'true');
+    if (filters.birthMonth) params.append('birthMonth', filters.birthMonth);
+    if (filters.inactiveDays) params.append('inactiveDays', filters.inactiveDays);
 
     return authenticatedFetch(`/api/clients/${establishmentId}?${params.toString()}`);
 };

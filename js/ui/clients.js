@@ -12,7 +12,14 @@ let localState = {
     establishment: null,
     searchTimeout: null,
     currentClient: null, // Cliente aberto no modal
-    history: [] // Histórico do cliente aberto
+    history: [], // Histórico do cliente aberto
+    // Filtros
+    filters: {
+        hasLoyalty: false,
+        birthMonth: '',
+        inactiveDays: ''
+    },
+    showFilters: false
 };
 
 // --- FUNÇÕES AUXILIARES DE FORMATAÇÃO ---
@@ -32,6 +39,48 @@ const formatDate = (dateStr) => {
     // Correção: Garantir que datas ISO sejam lidas corretamente
     const date = new Date(dateStr);
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+// --- CONTROLE DE FILTROS UI ---
+
+const toggleFilterPanel = () => {
+    localState.showFilters = !localState.showFilters;
+    const panel = document.getElementById('filter-panel');
+    if (panel) {
+        if (localState.showFilters) {
+            panel.classList.remove('hidden');
+        } else {
+            panel.classList.add('hidden');
+        }
+    }
+};
+
+const applyFilters = () => {
+    // Captura valores dos inputs
+    const loyaltyEl = document.getElementById('filter-loyalty');
+    const monthEl = document.getElementById('filter-month');
+    const inactiveEl = document.getElementById('filter-inactive');
+
+    localState.filters.hasLoyalty = loyaltyEl ? loyaltyEl.checked : false;
+    localState.filters.birthMonth = monthEl ? monthEl.value : '';
+    localState.filters.inactiveDays = inactiveEl ? inactiveEl.value : '';
+    
+    refreshList(); // Recarrega a lista com os novos parâmetros
+};
+
+const clearFilters = () => {
+    // Reseta inputs
+    const loyaltyEl = document.getElementById('filter-loyalty');
+    const monthEl = document.getElementById('filter-month');
+    const inactiveEl = document.getElementById('filter-inactive');
+
+    if (loyaltyEl) loyaltyEl.checked = false;
+    if (monthEl) monthEl.value = '';
+    if (inactiveEl) inactiveEl.value = '';
+    
+    // Reseta estado
+    localState.filters = { hasLoyalty: false, birthMonth: '', inactiveDays: '' };
+    refreshList();
 };
 
 // --- COMPONENTE: MODAL DE CLIENTE ---
@@ -77,7 +126,6 @@ const openClientModal = async (client = null) => {
         </div>
     `;
 
-    // CORREÇÃO: Passar string vazia no title para não aparecer "null"
     showGenericModal({ title: '', contentHTML: modalContent, maxWidth: 'max-w-3xl' });
     
     // Configura Tabs globais para acesso via onclick string
@@ -153,7 +201,7 @@ const renderTab = (tabName, isNew) => {
             if(phoneInput) phoneInput.oninput = (e) => e.target.value = formatPhone(e.target.value);
         }
 
-    // --- ABA: AGENDAMENTOS FUTUROS (CORREÇÃO: Navegação com scrollToAppointmentId) ---
+    // --- ABA: AGENDAMENTOS FUTUROS ---
     } else if (tabName === 'appointments') {
         const now = new Date();
         
@@ -204,7 +252,6 @@ const renderTab = (tabName, isNew) => {
 
     // --- ABA: HISTÓRICO GERAL ---
     } else if (tabName === 'history') {
-        // Mostra tudo que já passou ou foi finalizado
         const past = localState.history; 
 
         if (!past.length) {
@@ -348,7 +395,11 @@ const renderList = () => {
             <div class="col-span-full flex flex-col items-center justify-center py-20 text-gray-400">
                 <svg class="w-16 h-16 mb-4 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
                 <p class="text-lg">Nenhum cliente encontrado.</p>
-                <button onclick="window.openNewClient()" class="mt-4 text-indigo-600 font-bold hover:underline">Cadastrar novo</button>
+                <div class="mt-2 text-sm text-gray-500">
+                    ${localState.filters.hasLoyalty || localState.filters.birthMonth || localState.filters.inactiveDays ? 
+                    '<button onclick="window.clearFilters()" class="text-indigo-600 font-bold hover:underline">Limpar Filtros</button>' : 
+                    '<button onclick="window.openNewClient()" class="text-indigo-600 font-bold hover:underline">Cadastrar novo</button>'}
+                </div>
             </div>
         `;
         return;
@@ -383,8 +434,16 @@ const refreshList = async (searchTerm = '') => {
     const container = document.getElementById('clients-grid');
     if (container) container.innerHTML = '<div class="col-span-full flex justify-center py-10"><div class="loader"></div></div>';
 
+    // Se searchTerm vier vazio, tentamos pegar do input atual para não perder a busca textual ao aplicar filtros
+    const term = searchTerm || document.getElementById('search-input')?.value || '';
+
     try {
-        localState.clients = await clientsApi.getClients(state.establishmentId, searchTerm);
+        localState.clients = await clientsApi.getClients(
+            state.establishmentId, 
+            term, 
+            20, // Limit default
+            localState.filters // Passa os filtros ativos
+        );
         renderList();
     } catch (e) {
         console.error(e);
@@ -397,22 +456,73 @@ const refreshList = async (searchTerm = '') => {
 export const loadClientsPage = async () => {
     const contentDiv = document.getElementById('content');
     
-    // Setup da estrutura base da página
+    // Setup da estrutura base da página com Header e Painel de Filtros
     contentDiv.innerHTML = `
         <div class="flex flex-col h-full bg-gray-50">
-            <header class="bg-white border-b px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-10">
-                <h1 class="text-2xl font-bold text-gray-800">Clientes</h1>
-                
-                <div class="flex w-full md:w-auto gap-3">
-                    <div class="relative flex-grow md:flex-grow-0 md:w-64">
-                        <input type="text" id="search-input" placeholder="Buscar nome ou telefone..." 
-                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <svg class="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <header class="bg-white border-b sticky top-0 z-20 shadow-sm">
+                <div class="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <h1 class="text-2xl font-bold text-gray-800">Clientes</h1>
+                    
+                    <div class="flex flex-wrap w-full md:w-auto gap-3 items-center">
+                        <div class="relative flex-grow md:flex-grow-0 md:w-64">
+                            <input type="text" id="search-input" placeholder="Buscar nome ou telefone..." 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
+                        
+                        <button onclick="window.toggleFilterPanel()" class="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 border border-gray-200 flex items-center gap-2 transition-colors h-[38px]">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                            <span class="hidden sm:inline">Filtros</span>
+                        </button>
+
+                        <button onclick="window.openNewClient()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 shadow-sm flex items-center gap-2 text-sm whitespace-nowrap h-[38px]">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Novo
+                        </button>
                     </div>
-                    <button onclick="window.openNewClient()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 shadow-sm flex items-center gap-2 text-sm whitespace-nowrap">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        Novo Cliente
-                    </button>
+                </div>
+
+                <div id="filter-panel" class="hidden border-t bg-gray-50 px-6 py-4 transition-all duration-300">
+                    <div class="flex flex-wrap items-end gap-4">
+                        
+                        <div class="flex flex-col gap-1">
+                            <span class="text-xs font-semibold text-gray-500 uppercase">Fidelidade</span>
+                            <label class="flex items-center gap-2 bg-white px-3 py-2 rounded border border-gray-200 cursor-pointer hover:border-indigo-300 h-[38px]">
+                                <input type="checkbox" id="filter-loyalty" class="text-indigo-600 rounded focus:ring-indigo-500">
+                                <span class="text-sm text-gray-700">Com Pontos</span>
+                            </label>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs font-semibold text-gray-500 uppercase">Aniversariantes</label>
+                            <select id="filter-month" class="bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none h-[38px] min-w-[140px]">
+                                <option value="">Todos os meses</option>
+                                <option value="01">Janeiro</option>
+                                <option value="02">Fevereiro</option>
+                                <option value="03">Março</option>
+                                <option value="04">Abril</option>
+                                <option value="05">Maio</option>
+                                <option value="06">Junho</option>
+                                <option value="07">Julho</option>
+                                <option value="08">Agosto</option>
+                                <option value="09">Setembro</option>
+                                <option value="10">Outubro</option>
+                                <option value="11">Novembro</option>
+                                <option value="12">Dezembro</option>
+                            </select>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs font-semibold text-gray-500 uppercase">Ausentes há (+dias)</label>
+                            <input type="number" id="filter-inactive" placeholder="Ex: 30" min="0" 
+                                class="w-32 bg-white border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none h-[38px]">
+                        </div>
+
+                        <div class="flex gap-2 ml-auto">
+                            <button onclick="window.clearFilters()" class="text-sm text-gray-500 hover:text-gray-700 px-3 py-2 underline h-[38px]">Limpar</button>
+                            <button onclick="window.applyFilters()" class="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded hover:bg-indigo-700 h-[38px] shadow-sm">Aplicar Filtros</button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -425,15 +535,20 @@ export const loadClientsPage = async () => {
 
     // Expor funções globais para o HTML string
     window.openNewClient = () => openClientModal(null);
+    window.toggleFilterPanel = toggleFilterPanel;
+    window.applyFilters = applyFilters;
+    window.clearFilters = clearFilters;
 
     // Setup Search com Debounce
     const searchInput = document.getElementById('search-input');
-    searchInput.addEventListener('input', (e) => {
-        clearTimeout(localState.searchTimeout);
-        localState.searchTimeout = setTimeout(() => {
-            refreshList(e.target.value);
-        }, 400); // Espera 400ms após parar de digitar
-    });
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(localState.searchTimeout);
+            localState.searchTimeout = setTimeout(() => {
+                refreshList(e.target.value);
+            }, 400); // Espera 400ms após parar de digitar
+        });
+    }
 
     // Carga inicial
     try {
