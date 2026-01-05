@@ -113,13 +113,13 @@ function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
         if (pass && inactiveDays) {
             const daysLimit = parseInt(inactiveDays);
             
-            // Tenta usar lastVisit (se existir no futuro) ou updatedAt ou createdAt
-            const lastInteractionStr = c.lastVisit || c.updatedAt || c.createdAt;
+            // CORREÇÃO APLICADA AQUI:
+            // Inclui lastServiceDate (usado pelo agendamento novo) na verificação de datas.
+            const lastInteractionStr = c.lastServiceDate || c.lastVisit || c.updatedAt || c.createdAt;
             
             if (!lastInteractionStr) {
                 // Se não tem data nenhuma, assumimos que é inativo (ou novo sem interação)
-                // Vamos manter na lista de inativos se considerarmos que nunca visitou
-                // Mas aqui a lógica é "não visita há X dias". Se não tem data, faz muito tempo.
+                // Mantém na lista se a intenção é achar quem não interage
                 pass = true; 
             } else {
                 const lastDate = new Date(lastInteractionStr);
@@ -185,12 +185,6 @@ router.put('/:id', async (req, res) => {
             ...updateData
         }, { merge: true });
         
-        // Pequena correção: Se for update, o createdAt original é mantido pelo Firestore se usarmos update, 
-        // mas com set({createdAt: now}, {merge:true}) ele pode sobrescrever se passarmos explicitamente.
-        // O ideal é usar update() se existir, ou set() se não.
-        // Mas para simplificar e garantir o upsert seguro sem leitura prévia:
-        // O updatedAt já serve como "última interação" para nosso filtro.
-
         res.json({ message: 'Cliente salvo com sucesso', id });
     } catch (error) {
         handleError(res, error, 'Falha ao salvar cliente');

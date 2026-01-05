@@ -513,14 +513,27 @@ router.post('/:appointmentId/checkout', async (req, res) => {
 
             if (!clientSnap.empty) {
                 const clientRef = clientSnap.docs[0].ref;
-                let clientUpdate = { lastServiceDate: paidAtTimestamp };
+                
+                // --- CORREÇÃO APLICADA AQUI ---
+                // Atualiza todas as referências de data para consistência do filtro de inativos
+                let clientUpdate = { 
+                    lastServiceDate: paidAtTimestamp,
+                    lastVisit: paidAtTimestamp,
+                    updatedAt: paidAtTimestamp
+                };
                 
                 if (establishmentData.modules?.['loyalty-section'] && establishmentData.loyaltyProgram?.enabled) {
                     const points = Math.floor(Number(totalAmount) / establishmentData.loyaltyProgram.pointsPerCurrency);
+                    
+                    // Só atualiza pontos se houver ganho
                     if (points > 0) {
                         clientUpdate.loyaltyPoints = admin.firestore.FieldValue.increment(points);
                         transaction.set(clientRef.collection('loyaltyHistory').doc(), {
-                            type: 'earn', points, appointmentId, amountSpent: Number(totalAmount), timestamp: paidAtTimestamp
+                            type: 'earn', 
+                            points, 
+                            appointmentId, 
+                            amountSpent: Number(totalAmount), 
+                            timestamp: paidAtTimestamp
                         });
                     }
                 }
