@@ -1,7 +1,7 @@
 /**
  * functions/index.js
  * Backend V4: Notificações + Sistema de Fidelidade (Pontos e Resgates).
- * + LOGS DE DIAGNÓSTICO INTEGRADOS
+ * VERSÃO LIMPA (SEM LOGS DE DIAGNÓSTICO VERBOSOS)
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -55,11 +55,9 @@ async function getProfessionalName(professionalId) {
     }
 }
 
-// --- Busca tokens de notificação FILTRADOS (COM LOGS) ---
+// --- Busca tokens de notificação FILTRADOS (LIMPO) ---
 async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     if (!establishmentId) return [];
-
-    console.log(`>>> [Helper] Buscando usuários para Estab: ${establishmentId}`);
 
     const usersRef = db.collection("users");
     const snapshotUsers = await usersRef
@@ -67,7 +65,6 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
         .get();
 
     if (snapshotUsers.empty) {
-        console.log(">>> [Helper] Nenhum usuário encontrado neste estabelecimento.");
         return [];
     }
 
@@ -76,8 +73,13 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     snapshotUsers.forEach((doc) => {
         const userData = doc.data();
         const userProfId = userData.professionalId;
-        const canViewAll = userData.view_all_prof === true || userData.view_all_prof === "true";
-        const hasTokens = (userData.fcmTokens && userData.fcmTokens.length > 0) || userData.fcmToken;
+        const permissions = userData.permissions;
+
+        // Verifica a permissão dentro da estrutura correta 'agenda-section'
+        const canViewAll = 
+            (permissions && permissions['agenda-section'] && permissions['agenda-section'].view_all_prof === true) || 
+            (permissions === null || permissions === undefined) || 
+            (userData.view_all_prof === true || userData.view_all_prof === "true"); 
 
         let shouldReceive = false;
 
@@ -90,11 +92,6 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
             shouldReceive = true;
         }
 
-        // Logs detalhados para debug (pode remover depois)
-        if (shouldReceive && !hasTokens) {
-            console.log(`>>> [Helper] Usuário ${userData.email} deveria receber, mas NÃO TEM TOKENS.`);
-        }
-
         if (shouldReceive) {
             if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
                 tokens.push(...userData.fcmTokens);
@@ -105,7 +102,6 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     });
 
     const uniqueTokens = [...new Set(tokens)];
-    console.log(`>>> [Helper] Total de tokens selecionados: ${uniqueTokens.length}`);
     return uniqueTokens;
 }
 
@@ -139,6 +135,7 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
 
         if (pointsToDeduct === 0 && pointsToAdd === 0) return;
 
+        // Mantive este log pois é útil para auditoria financeira/pontos, mas pode remover se quiser
         console.log(`[Fidelidade] Processando Cliente ${clientId}: -${pointsToDeduct} (Gasto) / +${pointsToAdd} (Ganho)`);
 
         const clientRef = db.collection('clients').doc(clientId);
@@ -187,42 +184,26 @@ const webpushConfig = {
 // ============================================================================
 
 /**
- * Notificação de Novo Agendamento (COM LOGS)
+ * Notificação de Novo Agendamento (LIMPO)
  */
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
-        // [LOG 1] Gatilho acionado
         const appointmentId = event.params.appointmentId;
-        console.log(`>>> [1] INÍCIO: Gatilho disparado para agendamento ID: ${appointmentId}`);
-
         const snapshot = event.data;
-        if (!snapshot) {
-            console.log(">>> [ERRO] Snapshot vazio.");
-            return;
-        }
+        
+        if (!snapshot) return;
 
         const appointment = snapshot.data();
         
-        // [LOG 2] Dados básicos
-        console.log(`>>> [2] Dados: Estab=${appointment.establishmentId}, Prof=${appointment.professionalId}, Cliente=${appointment.clientName}`);
-
         if (!appointment.establishmentId) {
-            console.log(">>> [ERRO] Agendamento sem establishmentId.");
+            console.error(">>> [ERRO] Agendamento sem establishmentId: ", appointmentId);
             return;
         }
 
-        // [LOG 3] Iniciando busca de tokens
-        console.log(">>> [3] Chamando getTargetTokens...");
         const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
         
-        // [LOG 4] Resultado da busca
-        console.log(`>>> [4] Tokens encontrados: ${tokens.length}`, tokens);
-
-        if (tokens.length === 0) {
-            console.log(">>> [AVISO] Nenhum token válido encontrado. A notificação não será enviada.");
-            return;
-        }
+        if (tokens.length === 0) return;
 
         const clientName = appointment.clientName || "Cliente";
         const serviceName = appointment.serviceName || (appointment.services && appointment.services[0]?.name) || "Serviço";
@@ -246,25 +227,19 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
                 ttl: 3600 * 24, // 24 horas
                 notification: {
                     channelId: 'default',
-                    icon: 'ic_stat_notification', // Verifique se este ícone existe na pasta android/res
+                    icon: 'ic_stat_notification', 
                     color: '#4f46e5',
                     defaultSound: true,
                     visibility: 'public',
-                    priority: 'high' // Força o Heads-up no Android
+                    priority: 'high'
                 }
             },
             webpush: webpushConfig,
             tokens: tokens,
         };
 
-        // [LOG 5] Enviando
-        console.log(">>> [5] Enviando payload para FCM...");
-
         try {
             const response = await admin.messaging().sendEachForMulticast(message);
-            
-            // [LOG 6] Resultado final
-            console.log(`>>> [6] FIM: Sucessos: ${response.successCount}, Falhas: ${response.failureCount}`);
             
             if (response.failureCount > 0) {
                 const errors = response.responses

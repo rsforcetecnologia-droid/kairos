@@ -65,8 +65,16 @@ router.get('/:establishmentId', async (req, res) => {
                 // Fallback: tenta buscar por phone range se não achar ID direto (para casos de prefixo)
                 query = query.orderBy('phone').startAt(term).endAt(term + '\uf8ff');
             } else {
-                // Busca textual por nome
-                query = query.orderBy('name').startAt(term).endAt(term + '\uf8ff');
+                // 3. Busca textual por nome (CORREÇÃO CASE SENSITIVE)
+                
+                // Se o termo veio totalmente em minúsculo (ex: "mar"), convertemos a primeira letra
+                // para Maiúscula (ex: "Mar") para aumentar a chance de encontrar nomes próprios (ex: "Maria").
+                let searchTerm = term;
+                if (searchTerm.length > 0 && searchTerm === searchTerm.toLowerCase()) {
+                    searchTerm = searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1);
+                }
+
+                query = query.orderBy('name').startAt(searchTerm).endAt(searchTerm + '\uf8ff');
             }
         } else {
             // 3. Padrão: Ordena por nome se não caiu na otimização de fidelidade

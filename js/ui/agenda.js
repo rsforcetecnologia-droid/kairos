@@ -746,7 +746,7 @@ async function handleClientSearch(searchTerm) {
     const resultsContainer = document.getElementById('clientSearchResults');
     if (!resultsContainer) return;
     
-    const term = searchTerm.toLowerCase().trim();
+    const term = searchTerm.trim();
 
     if (term.length < 3) {
         resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Digite pelo menos 3 caracteres para buscar clientes existentes.</p>';

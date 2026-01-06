@@ -22,6 +22,8 @@ body {
 /* Esta variável lê o tamanho da barra de status do dispositivo (Notch/Ilha Dinâmica) */
 :root {
     --safe-area-top: env(safe-area-inset-top, 0px);
+    /* --- CORREÇÃO IPHONE PRO MAX: Adicionado variável para o rodapé --- */
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* --- NOVO: ESTILOS DA BARRA SUPERIOR (HEADER) --- */
@@ -1350,3 +1352,15 @@ body.is-app-native .mobile-only-header {
     transition: transform 0.2s;
 }
 .fab-modern:active { transform: scale(0.90); }
+
+/* --- CORREÇÃO DE ÁREA SEGURA PARA IPHONE (PWA/WEB) --- */
+
+/* Classe utilitária genérica */
+.safe-area-pb {
+    padding-bottom: calc(1rem + var(--safe-area-bottom, 0px)) !important;
+}
+
+/* Aplicação automática no rodapé da comanda mobile */
+#comanda-detail-container footer {
+    padding-bottom: calc(1rem + var(--safe-area-bottom, 0px)) !important;
+}
