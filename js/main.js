@@ -19,8 +19,8 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
 
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES WEB (PWA) ---
-// Usamos 'as initWebPush' para não confundir com a função nativa
-import { initPushNotifications as initWebPush } from './ui/push-notifications.js';
+// [AJUSTE] Importamos 'requestWebPermission' para ligar ao botão do Toast
+import { initPushNotifications as initWebPush, requestWebPermission } from './ui/push-notifications.js';
 
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
 
@@ -299,7 +299,7 @@ async function initializePushNotifications(userUid) {
             console.log('Push Token gerado:', token.value);
             
             // [DIAGNÓSTICO CRÍTICO] Mostra se o token foi gerado com sucesso
-            alert('SUCESSO: Token gerado! ' + token.value.substring(0, 10) + '...');
+            // alert('SUCESSO: Token gerado! ' + token.value.substring(0, 10) + '...');
 
             try {
                 const userRef = doc(db, 'users', userUid);
@@ -407,10 +407,39 @@ async function initialize() {
             console.log("Usuário detectado:", user.email);
 
             // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
-            // Se estiver no navegador/PWA (não nativo), inicia o push web
             if (!Capacitor.isNativePlatform()) {
                 console.log("Inicializando Web Push (PWA)...");
+                
+                // 1. Tenta conectar silenciosamente (se já permitido)
                 initWebPush(); 
+
+                // 2. Lógica do Toast de Notificação (Se ainda não permitido e for suportado)
+                if ('Notification' in window && Notification.permission === 'default') {
+                    const toast = document.getElementById('toast-notification-request');
+                    const btnEnable = document.getElementById('btn-enable-toast');
+                    const btnDeny = document.getElementById('btn-deny-toast');
+                    const btnClose = document.getElementById('btn-close-toast');
+
+                    // Mostra o toast após 3.5 segundos para não ser intrusivo logo no inicio
+                    setTimeout(() => {
+                        if (toast) toast.style.display = 'block';
+                    }, 3500);
+
+                    // Ação: Botão "Ativar"
+                    if (btnEnable) {
+                        btnEnable.addEventListener('click', async () => {
+                            const granted = await requestWebPermission(); // Função importada
+                            if (granted && toast) {
+                                toast.style.display = 'none';
+                            }
+                        });
+                    }
+
+                    // Ação: Botões de Fechar
+                    const closeAction = () => { if (toast) toast.style.display = 'none'; };
+                    if (btnDeny) btnDeny.addEventListener('click', closeAction);
+                    if (btnClose) btnClose.addEventListener('click', closeAction);
+                }
             }
 
             try {

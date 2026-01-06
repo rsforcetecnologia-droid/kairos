@@ -1,29 +1,37 @@
 // js/ui/push-notifications.js
+// --- MODO DE DIAGNÓSTICO (CORRIGIDO) ---
 
 import { messaging, db, auth } from '../firebase-config.js';
-import { doc, updateDoc, arrayUnion, setDoc } from "firebase/firestore"; 
-import { getToken, onMessage } from "firebase/messaging";
+
+// [CORREÇÃO] Importando do CDN exato para garantir compatibilidade com o objeto 'db'
+import { 
+    doc, 
+    updateDoc, 
+    arrayUnion, 
+    setDoc 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+import { getToken, onMessage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";
 import { PushNotifications } from '@capacitor/push-notifications';
 import { showNotification } from '../components/modal.js';
 
+// Chave VAPID 
 const VAPID_KEY = 'BDA-IaH_jjWBRwHbuFcB56I25jKHpchx34yZtv_6iIo_yV2tz_yIZYS3hfntDaN5Slf4ch8ZEJCIt4D7LIWX4mY'; 
 
-// Variável para controlar se o listener já foi adicionado
 let isMessageListenerAdded = false;
 
 export async function initPushNotifications() {
     const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
 
-    // 1. NATIVO (Android/iOS App Store) - Mantém igual
+    // 1. NATIVO (Android/iOS Store)
     if (isNative) {
-        // ... (seu código nativo existente) ...
         try {
             await PushNotifications.removeAllListeners();
             await PushNotifications.addListener('registration', async token => {
                 saveTokenToFirestore(token.value, true);
             });
             await PushNotifications.addListener('pushNotificationReceived', notification => {
-               // Lógica nativa opcional
+               // Lógica nativa
             });
             let permStatus = await PushNotifications.checkPermissions();
             if (permStatus.receive === 'prompt') {
@@ -39,84 +47,114 @@ export async function initPushNotifications() {
     // 2. WEB / PWA
     if (!('Notification' in window)) return;
 
-    // Se já tiver permissão, inicia direto. Se não, espera o clique do botão.
     if (Notification.permission === 'granted') {
-        registerWebPush();
-    } else if (Notification.permission === 'default') {
-        console.log('[Push Web] Aguardando interação do utilizador para pedir permissão (iOS Requirement).');
-        // Aqui não fazemos nada, o main.js vai mostrar o botão de "Ativar"
-    }
+        registerWebPush(false); 
+    } 
 }
 
-// --- NOVA FUNÇÃO PARA O BOTÃO ---
 export async function requestWebPermission() {
-    console.log('[Push Web] Pedindo permissão via clique...');
+    // Alerta de teste
+    alert('Iniciando pedido de permissão...'); 
+    
     try {
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-            await registerWebPush();
+            alert('Permissão concedida! Gerando token...');
+            await registerWebPush(true);
             return true;
         } else {
-            alert('Você bloqueou as notificações. Ative nas definições do navegador.');
+            alert('Permissão negada.');
             return false;
         }
     } catch (error) {
-        console.error('[Push Web] Erro ao pedir permissão:', error);
+        alert('Erro ao pedir permissão: ' + error.message);
         return false;
     }
 }
 
-// Lógica interna de registo (separada para ser reutilizada)
-async function registerWebPush() {
+async function registerWebPush(showDebugAlerts = false) {
     if ('serviceWorker' in navigator) {
         try {
+            // Regista o Service Worker
             const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            await registration.update(); 
+
+            // Pede o token
             const token = await getToken(messaging, { 
                 vapidKey: VAPID_KEY,
                 serviceWorkerRegistration: registration 
             });
 
             if (token) {
+                if(showDebugAlerts) alert('Token Gerado! Tentando salvar...');
                 console.log('[Push Web] Token:', token);
-                await saveTokenToFirestore(token, false);
+                await saveTokenToFirestore(token, false, showDebugAlerts);
+            } else {
+                if(showDebugAlerts) alert('ERRO: Token veio vazio.');
             }
             
-            // Adiciona o ouvinte de mensagens apenas uma vez
             if (!isMessageListenerAdded) {
                 onMessage(messaging, (payload) => {
                     console.log('[Push Web] Foreground:', payload);
                     if (payload.notification) {
                         showNotification(payload.notification.title, payload.notification.body, 'info', true);
                     }
+                    if (Notification.permission === 'granted' && payload.notification) {
+                        try {
+                            new Notification(payload.notification.title, {
+                                body: payload.notification.body,
+                                icon: '/icon.png',
+                                data: payload.data,
+                                tag: 'kairos-notification'
+                            });
+                        } catch(e) { console.error(e); }
+                    }
                 });
                 isMessageListenerAdded = true;
             }
 
         } catch (err) {
-            console.error('[Push Web] Falha no registo:', err);
+            alert('FALHA CRÍTICA NO REGISTO: ' + err.message);
+            console.error('[Push Web] Falha:', err);
         }
+    } else {
+        if(showDebugAlerts) alert('Navegador não suporta Service Worker.');
     }
 }
 
-async function saveTokenToFirestore(token, isNative) {
+async function saveTokenToFirestore(token, isNative, showDebugAlerts = false) {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+        if(showDebugAlerts) alert('ERRO: Utilizador não identificado.');
+        return;
+    }
+    
     try {
         const userRef = doc(db, 'users', user.uid);
+        
         try {
             await updateDoc(userRef, {
                 fcmTokens: arrayUnion(token),
                 lastLoginAt: new Date().toISOString(),
                 platform: isNative ? 'android_native' : 'pwa_web'
             });
+            if(showDebugAlerts) alert('SUCESSO! Token salvo no banco.');
         } catch (e) {
+            // Se o documento do utilizador não existir, cria-o
             if (e.code === 'not-found') {
                 await setDoc(userRef, {
                     email: user.email,
                     fcmTokens: [token],
-                    platform: isNative ? 'android_native' : 'pwa_web'
+                    platform: isNative ? 'android_native' : 'pwa_web',
+                    createdAt: new Date().toISOString()
                 }, { merge: true });
+                if(showDebugAlerts) alert('SUCESSO (Criado novo user)! Token salvo.');
+            } else {
+                throw e; // Lança outros erros para o catch de baixo
             }
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        if(showDebugAlerts) alert('Erro ao gravar no Firestore: ' + e.message);
+        console.error("Erro Firestore:", e); 
+    }
 }

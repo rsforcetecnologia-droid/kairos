@@ -13,7 +13,100 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <style id="dynamic-theme-styles"></style>
-  <script type="module" crossorigin src="/assets/app-CwHy0Rtq.js"></script>
+
+    <style>
+        .toast-notification {
+            display: none; /* Oculto por padrão */
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            left: 20px; /* Margem em mobile */
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            z-index: 9999;
+            border-left: 5px solid #8B5CF6; /* Cor do seu tema */
+            font-family: 'Inter', sans-serif;
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @media (min-width: 768px) {
+            .toast-notification {
+                left: auto;
+                width: 340px;
+            }
+        }
+
+        .toast-content {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .toast-text strong {
+            display: block;
+            color: #1e293b;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+
+        .toast-text p {
+            margin: 0;
+            color: #64748b;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 0 0 10px;
+        }
+
+        .toast-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-allow {
+            flex: 1;
+            background: #8B5CF6;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-allow:hover { background: #7c3aed; }
+        .btn-allow:active { transform: scale(0.98); }
+
+        .btn-deny {
+            background: transparent;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .btn-deny:hover { background: #f1f5f9; }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/app-DfXRUMjH.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
   <link rel="stylesheet" crossorigin href="/assets/styles-DFe7MW6R.css">
@@ -39,7 +132,6 @@
         <aside id="sidebar" class="w-56 bg-gray-900 text-gray-300 flex flex-col relative">
             
             <div class="p-5 border-b border-gray-800 flex justify-between items-center">
-                
                 <div class="sidebar-text overflow-hidden flex items-center justify-center flex-1 gap-3">
                     <img src="/assets/logo_kairos-qvW0sW2r.png" alt="Kairos System" 
                          id="panelEstablishmentLogo"
@@ -159,11 +251,25 @@
     <div id="comandaModal" class="modal"></div>
     <div id="checkoutModal" class="modal"></div>
     <div id="productModal" class="modal"></div>
-    <div id="categoryModal" class="modal">L</div>
+    <div id="categoryModal" class="modal"></div>
     <div id="serviceModal" class="modal"></div>
     <div id="genericModal" class="modal"></div>
 
     <div id="toast-container"></div>
+
+    <div id="toast-notification-request" class="toast-notification">
+        <div class="toast-content">
+            <div class="toast-text">
+                <strong>Ativar Notificações?</strong>
+                <p>Receba avisos de agendamentos e lembretes importantes diretamente no seu celular.</p>
+            </div>
+            <button id="btn-close-toast" class="toast-close">&times;</button>
+        </div>
+        <div class="toast-actions">
+            <button id="btn-deny-toast" class="btn-deny">Agora não</button>
+            <button id="btn-enable-toast" class="btn-allow">Ativar</button>
+        </div>
+    </div>
 
 
 

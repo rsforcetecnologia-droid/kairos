@@ -1,9 +1,10 @@
 // public/firebase-messaging-sw.js
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// --- 1. Configuração do Firebase (IGUAL à do seu projeto) ---
-// Copie exatamente a mesma config do seu firebase-config.js
+// 1. Usamos a versão 10 (Compat) que é a mais estável para Service Workers atualmente
+importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
+
+// 2. Sua configuração exata
 const firebaseConfig = {
     apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
     authDomain: "kairos-agenda-us.firebaseapp.com",
@@ -13,43 +14,57 @@ const firebaseConfig = {
     appId: "1:407358446276:web:c6229ea999b56701558791"
 };
 
+// Inicializa o Firebase
 firebase.initializeApp(firebaseConfig);
-
 const messaging = firebase.messaging();
 
-// --- 2. Handler de Background (Quando a app está fechada) ---
+// 3. Handler de Background (O Ponto Crítico)
+// Este código roda quando o app está fechado ou minimizado no celular
 messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Notificação recebida em background:', payload);
+  console.log('[SW] Mensagem recebida do servidor:', payload);
 
-  // Personaliza a notificação visual
-  const notificationTitle = payload.notification.title;
+  // Garante que temos título e corpo, mesmo que o servidor mande formato diferente
+  const title = payload.notification?.title || payload.data?.title || 'Novo Agendamento';
+  const body = payload.notification?.body || payload.data?.body || 'Você tem uma nova notificação.';
+  
+  // Configuração visual da notificação nativa do Android
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/icon.png', // Caminho para o ícone do seu app na pasta public
-    badge: '/icon.png', // Ícone pequeno monocromático (opcional)
-    data: payload.data // Guarda dados extras (como URL de destino)
+    body: body,
+    icon: '/icon.png',      // Ícone grande (deve existir em public/icon.png)
+    badge: '/icon.png',     // Ícone pequeno da barra de status
+    
+    // Dados para o clique
+    data: payload.data,     
+    
+    // Comportamento
+    tag: 'kairos-update',   // Substitui notificações antigas para não encher a barra
+    renotify: true,         // Vibra/Toca som novamente
+    requireInteraction: false 
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // [IMPORTANTE] Força a exibição manual da notificação
+  return self.registration.showNotification(title, notificationOptions);
 });
 
-// --- 3. Clique na Notificação ---
+// 4. Clique na Notificação
 self.addEventListener('notificationclick', function(event) {
-  event.notification.close(); // Fecha a notificação
+  console.log('[SW] Notificação clicada.');
+  
+  event.notification.close();
 
-  // Abre a app ao clicar
+  // Tenta focar na janela aberta ou abre uma nova
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Se a aba já estiver aberta, foca nela
+      // Procura aba já aberta
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
-        if (client.url.includes('app.html') && 'focus' in client) {
+        if ((client.url.includes('app.html') || client.url.includes('index.html')) && 'focus' in client) {
           return client.focus();
         }
       }
-      // Se não, abre uma nova
+      // Se não achar, abre o app
       if (clients.openWindow) {
-        return clients.openWindow('/app.html');
+        return clients.openWindow('/app.html'); 
       }
     })
   );

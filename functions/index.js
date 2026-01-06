@@ -1,6 +1,7 @@
 /**
  * functions/index.js
  * Backend V4: Notificações + Sistema de Fidelidade (Pontos e Resgates).
+ * + LOGS DE DIAGNÓSTICO INTEGRADOS
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -37,14 +38,12 @@ function formatDate(dateValue) {
 async function getProfessionalName(professionalId) {
     if (!professionalId) return 'Profissional';
     try {
-        // Tenta buscar na coleção de profissionais primeiro
         const docRef = db.collection('professionals').doc(professionalId);
         const docSnap = await docRef.get();
         if (docSnap.exists) {
             return docSnap.data().name || 'Profissional';
         } 
         
-        // Fallback: Tenta buscar na coleção users
         const userRef = db.collection('users').doc(professionalId);
         const userSnap = await userRef.get();
         if(userSnap.exists) return userSnap.data().name || 'Profissional';
@@ -56,36 +55,44 @@ async function getProfessionalName(professionalId) {
     }
 }
 
-// --- Busca tokens de notificação FILTRADOS ---
+// --- Busca tokens de notificação FILTRADOS (COM LOGS) ---
 async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     if (!establishmentId) return [];
+
+    console.log(`>>> [Helper] Buscando usuários para Estab: ${establishmentId}`);
 
     const usersRef = db.collection("users");
     const snapshotUsers = await usersRef
         .where("establishmentId", "==", establishmentId)
         .get();
 
-    if (snapshotUsers.empty) return [];
+    if (snapshotUsers.empty) {
+        console.log(">>> [Helper] Nenhum usuário encontrado neste estabelecimento.");
+        return [];
+    }
 
     const tokens = [];
     
     snapshotUsers.forEach((doc) => {
         const userData = doc.data();
-        const userProfId = userData.professionalId; // ID do profissional deste user
-        
-        // Verifica se o campo é explicitamente true
+        const userProfId = userData.professionalId;
         const canViewAll = userData.view_all_prof === true || userData.view_all_prof === "true";
+        const hasTokens = (userData.fcmTokens && userData.fcmTokens.length > 0) || userData.fcmToken;
 
         let shouldReceive = false;
 
+        // Regra 1: Dono/Gerente (vê tudo)
         if (canViewAll) {
-            // Regra 1: Tem permissão de ver tudo (Dono/Gerente)
             shouldReceive = true;
-        } else {
-            // Regra 2: É um profissional comum, só vê a sua agenda
-            if (userProfId && userProfId === appointmentProfessionalId) {
-                shouldReceive = true;
-            }
+        } 
+        // Regra 2: Profissional específico do agendamento
+        else if (userProfId && userProfId === appointmentProfessionalId) {
+            shouldReceive = true;
+        }
+
+        // Logs detalhados para debug (pode remover depois)
+        if (shouldReceive && !hasTokens) {
+            console.log(`>>> [Helper] Usuário ${userData.email} deveria receber, mas NÃO TEM TOKENS.`);
         }
 
         if (shouldReceive) {
@@ -97,34 +104,30 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
         }
     });
 
-    return [...new Set(tokens)];
+    const uniqueTokens = [...new Set(tokens)];
+    console.log(`>>> [Helper] Total de tokens selecionados: ${uniqueTokens.length}`);
+    return uniqueTokens;
 }
 
 // --- LÓGICA CENTRAL DE FIDELIDADE ---
-// Calcula e aplica pontos (ganhos e gastos) na conta do cliente
 async function processLoyaltyTransaction(establishmentId, clientId, items, totalAmount, sourceId, sourceType) {
     if (!establishmentId || !clientId) return;
 
     try {
-        // 1. Verificar Configurações do Estabelecimento
         const estabRef = db.collection('establishments').doc(establishmentId);
         const estabSnap = await estabRef.get();
         
         if (!estabSnap.exists) return;
         const config = estabSnap.data().loyaltyProgram;
 
-        // Se não tiver config ou estiver desativado, ignora
         if (!config || !config.enabled) return;
 
-        const pointsFactor = config.pointsFactor || 1; // Padrão: 1 real = 1 ponto
+        const pointsFactor = config.pointsFactor || 1;
 
-        // 2. Calcular Pontos a Descontar (Resgates) e a Somar (Compras)
         let pointsToDeduct = 0;
         
-        // Percorre itens para achar prémios
         if (items && Array.isArray(items)) {
             items.forEach(item => {
-                // O frontend envia flag isReward: true e pointsCost
                 if (item.isReward && item.pointsCost > 0) {
                     const qty = item.quantity || 1;
                     pointsToDeduct += (item.pointsCost * qty);
@@ -132,16 +135,12 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
             });
         }
 
-        // Calcula pontos ganhos sobre o valor pago
-        // (Nota: Itens resgatados têm preço 0, então não geram pontos, o que é correto)
         const pointsToAdd = Math.floor((totalAmount || 0) * pointsFactor);
 
-        if (pointsToDeduct === 0 && pointsToAdd === 0) return; // Nada a fazer
+        if (pointsToDeduct === 0 && pointsToAdd === 0) return;
 
         console.log(`[Fidelidade] Processando Cliente ${clientId}: -${pointsToDeduct} (Gasto) / +${pointsToAdd} (Ganho)`);
 
-        // 3. Atualizar Saldo do Cliente (Transação Atômica)
-        // Nota: Assumimos que os clientes estão na coleção raiz 'clients'
         const clientRef = db.collection('clients').doc(clientId);
 
         await db.runTransaction(async (t) => {
@@ -153,14 +152,10 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
 
             const currentPoints = clientDoc.data().loyaltyPoints || 0;
             const newBalance = currentPoints - pointsToDeduct + pointsToAdd;
-
-            // Se o saldo ficar negativo (erro de sincronia), zeramos ou permitimos (depende da regra, aqui zeramos)
             const finalBalance = newBalance < 0 ? 0 : newBalance;
 
-            // Atualiza o saldo principal
             t.update(clientRef, { loyaltyPoints: finalBalance });
 
-            // Cria o registro no histórico (Subcoleção 'loyaltyHistory')
             const historyRef = clientRef.collection('loyaltyHistory').doc();
             t.set(historyRef, {
                 date: new Date().toISOString(),
@@ -170,7 +165,7 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
                 balanceBefore: currentPoints,
                 balanceAfter: finalBalance,
                 sourceId: sourceId,
-                sourceType: sourceType, // 'sale' ou 'appointment'
+                sourceType: sourceType,
                 description: pointsToDeduct > 0 
                     ? `Resgate de prémio (-${pointsToDeduct}) e Acúmulo (+${pointsToAdd})` 
                     : `Acúmulo de compra (+${pointsToAdd})`
@@ -188,24 +183,46 @@ const webpushConfig = {
 };
 
 // ============================================================================
-// SEÇÃO 2: NOTIFICAÇÕES (Gatilhos Existentes)
+// SEÇÃO 2: NOTIFICAÇÕES (Gatilhos)
 // ============================================================================
 
 /**
- * Notificação de Novo Agendamento
+ * Notificação de Novo Agendamento (COM LOGS)
  */
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
+        // [LOG 1] Gatilho acionado
+        const appointmentId = event.params.appointmentId;
+        console.log(`>>> [1] INÍCIO: Gatilho disparado para agendamento ID: ${appointmentId}`);
+
         const snapshot = event.data;
-        if (!snapshot) return;
+        if (!snapshot) {
+            console.log(">>> [ERRO] Snapshot vazio.");
+            return;
+        }
 
         const appointment = snapshot.data();
-        if (!appointment.establishmentId) return;
+        
+        // [LOG 2] Dados básicos
+        console.log(`>>> [2] Dados: Estab=${appointment.establishmentId}, Prof=${appointment.professionalId}, Cliente=${appointment.clientName}`);
 
+        if (!appointment.establishmentId) {
+            console.log(">>> [ERRO] Agendamento sem establishmentId.");
+            return;
+        }
+
+        // [LOG 3] Iniciando busca de tokens
+        console.log(">>> [3] Chamando getTargetTokens...");
         const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
         
-        if (tokens.length === 0) return;
+        // [LOG 4] Resultado da busca
+        console.log(`>>> [4] Tokens encontrados: ${tokens.length}`, tokens);
+
+        if (tokens.length === 0) {
+            console.log(">>> [AVISO] Nenhum token válido encontrado. A notificação não será enviada.");
+            return;
+        }
 
         const clientName = appointment.clientName || "Cliente";
         const serviceName = appointment.serviceName || (appointment.services && appointment.services[0]?.name) || "Serviço";
@@ -221,33 +238,48 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
                 type: "new_appointment",
                 title,
                 body,
-                url: "/app.html"
+                url: "/app.html",
+                appointmentId: appointmentId
             },
             android: {
                 priority: "high",
-                ttl: 3600 * 24,
+                ttl: 3600 * 24, // 24 horas
                 notification: {
                     channelId: 'default',
-                    icon: 'ic_stat_notification',
+                    icon: 'ic_stat_notification', // Verifique se este ícone existe na pasta android/res
                     color: '#4f46e5',
                     defaultSound: true,
-                    visibility: 'public'
+                    visibility: 'public',
+                    priority: 'high' // Força o Heads-up no Android
                 }
             },
             webpush: webpushConfig,
             tokens: tokens,
         };
 
+        // [LOG 5] Enviando
+        console.log(">>> [5] Enviando payload para FCM...");
+
         try {
-            await admin.messaging().sendEachForMulticast(message);
+            const response = await admin.messaging().sendEachForMulticast(message);
+            
+            // [LOG 6] Resultado final
+            console.log(`>>> [6] FIM: Sucessos: ${response.successCount}, Falhas: ${response.failureCount}`);
+            
+            if (response.failureCount > 0) {
+                const errors = response.responses
+                    .map((res, idx) => res.error ? `Token ${idx}: ${res.error.code} - ${res.error.message}` : null)
+                    .filter(e => e);
+                console.error(">>> [ERRO DETALHADO DO FCM]:", JSON.stringify(errors));
+            }
         } catch (error) {
-            console.error("Erro envio novo agendamento:", error);
+            console.error(">>> [ERRO CRÍTICO] Falha no envio:", error);
         }
-    });
+    }
+);
 
 /**
  * Notificação de Cancelamento
- * + LÓGICA DE FIDELIDADE (Ao completar agendamento)
  */
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
@@ -256,7 +288,7 @@ exports.sendCancellationNotification = onDocumentUpdated(
         const after = event.data.after.data();
         const appointmentId = event.params.appointmentId;
 
-        // --- A. Lógica de Cancelamento (Notificação) ---
+        // --- A. Lógica de Cancelamento ---
         const isCancelled = (after.status === "cancelled" || after.status === "cancelado") &&
                             (before.status !== "cancelled" && before.status !== "cancelado");
 
@@ -290,10 +322,8 @@ exports.sendCancellationNotification = onDocumentUpdated(
             }
         }
 
-        // --- B. Lógica de Fidelidade (Ao Completar/Pagar) ---
-        // Se mudou para 'completed' (finalizado/pago)
+        // --- B. Lógica de Fidelidade (Ao Completar) ---
         if (after.status === 'completed' && before.status !== 'completed') {
-            // Junta serviços e produtos extras numa lista única para processar
             const allItems = [
                 ...(after.services || []),
                 ...(after.comandaItems || []),
@@ -302,23 +332,20 @@ exports.sendCancellationNotification = onDocumentUpdated(
 
             await processLoyaltyTransaction(
                 after.establishmentId,
-                after.clientId, // Importante: O agendamento DEVE ter clientId
+                after.clientId,
                 allItems,
                 after.totalAmount || 0,
                 appointmentId,
                 'appointment'
             );
         }
-    });
+    }
+);
 
 // ============================================================================
 // SEÇÃO 3: NOVOS GATILHOS DE VENDAS
 // ============================================================================
 
-/**
- * Processar Fidelidade em Vendas Avulsas (Sales)
- * Acionado quando um documento é criado na coleção 'sales'
- */
 exports.handleNewSaleLoyalty = onDocumentCreated(
     "sales/{saleId}",
     async (event) => {
@@ -328,15 +355,12 @@ exports.handleNewSaleLoyalty = onDocumentCreated(
         const sale = snapshot.data();
         const saleId = event.params.saleId;
 
-        if (!sale.establishmentId || !sale.clientId) {
-            // Vendas sem cliente identificado não geram pontos
-            return;
-        }
+        if (!sale.establishmentId || !sale.clientId) return;
 
         await processLoyaltyTransaction(
             sale.establishmentId,
             sale.clientId,
-            sale.items || [], // Lista de itens vendidos
+            sale.items || [],
             sale.totalAmount || 0,
             saleId,
             'sale'

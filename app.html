@@ -14,6 +14,99 @@
     
     <link rel="stylesheet" href="css/styles.css">
     <style id="dynamic-theme-styles"></style>
+
+    <style>
+        .toast-notification {
+            display: none; /* Oculto por padrão */
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            left: 20px; /* Margem em mobile */
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            z-index: 9999;
+            border-left: 5px solid #8B5CF6; /* Cor do seu tema */
+            font-family: 'Inter', sans-serif;
+            animation: slideUp 0.4s ease-out;
+        }
+
+        @media (min-width: 768px) {
+            .toast-notification {
+                left: auto;
+                width: 340px;
+            }
+        }
+
+        .toast-content {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .toast-text strong {
+            display: block;
+            color: #1e293b;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+
+        .toast-text p {
+            margin: 0;
+            color: #64748b;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .toast-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0 0 0 10px;
+        }
+
+        .toast-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-allow {
+            flex: 1;
+            background: #8B5CF6;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-allow:hover { background: #7c3aed; }
+        .btn-allow:active { transform: scale(0.98); }
+
+        .btn-deny {
+            background: transparent;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .btn-deny:hover { background: #f1f5f9; }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
 
@@ -36,7 +129,6 @@
         <aside id="sidebar" class="w-56 bg-gray-900 text-gray-300 flex flex-col relative">
             
             <div class="p-5 border-b border-gray-800 flex justify-between items-center">
-                
                 <div class="sidebar-text overflow-hidden flex items-center justify-center flex-1 gap-3">
                     <img src="images/logo_kairos.png" alt="Kairos System" 
                          id="panelEstablishmentLogo"
@@ -156,23 +248,76 @@
     <div id="comandaModal" class="modal"></div>
     <div id="checkoutModal" class="modal"></div>
     <div id="productModal" class="modal"></div>
-    <div id="categoryModal" class="modal">L</div>
+    <div id="categoryModal" class="modal"></div>
     <div id="serviceModal" class="modal"></div>
     <div id="genericModal" class="modal"></div>
 
     <div id="toast-container"></div>
 
+    <div id="toast-notification-request" class="toast-notification">
+        <div class="toast-content">
+            <div class="toast-text">
+                <strong>Ativar Notificações?</strong>
+                <p>Receba avisos de agendamentos e lembretes importantes diretamente no seu celular.</p>
+            </div>
+            <button id="btn-close-toast" class="toast-close">&times;</button>
+        </div>
+        <div class="toast-actions">
+            <button id="btn-deny-toast" class="btn-deny">Agora não</button>
+            <button id="btn-enable-toast" class="btn-allow">Ativar</button>
+        </div>
+    </div>
+
     <script type="module" src="js/main.js"></script>
 
     <script type="module">
-        import { initPushNotifications } from './js/ui/push-notifications.js';
+        import { initPushNotifications, requestWebPermission } from './js/ui/push-notifications.js';
         import { auth } from './js/firebase-config.js';
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
-                // Inicializa notificações PWA (Web Push)
-                initPushNotifications();
+                // 1. Tenta inicializar (se já tiver permissão, conecta silenciosamente)
+                await initPushNotifications();
+
+                // 2. Verifica se é necessário mostrar o aviso de notificação
+                // Só mostra se:
+                // A) O navegador suportar notificações
+                // B) A permissão ainda estiver como 'default' (não perguntada)
+                // C) Estivermos num contexto PWA ou Web Mobile
+                
+                const isSupported = 'Notification' in window;
+                const isDefault = isSupported && Notification.permission === 'default';
+                const isNativeApp = window.Capacitor && window.Capacitor.isNativePlatform();
+
+                // Se for app Nativo (Play Store), o código nativo gere isso.
+                // Se for PWA/Web e ainda não tiver permissão, mostramos o Toast.
+                if (isDefault && !isNativeApp) {
+                    const toast = document.getElementById('toast-notification-request');
+                    const btnEnable = document.getElementById('btn-enable-toast');
+                    const btnDeny = document.getElementById('btn-deny-toast');
+                    const btnClose = document.getElementById('btn-close-toast');
+
+                    // Mostra o toast com um pequeno atraso para não ser intrusivo
+                    setTimeout(() => {
+                        if (toast) toast.style.display = 'block';
+                    }, 3500);
+
+                    // Ação: Ativar
+                    if (btnEnable) {
+                        btnEnable.addEventListener('click', async () => {
+                            const granted = await requestWebPermission();
+                            if (granted && toast) {
+                                toast.style.display = 'none';
+                            }
+                        });
+                    }
+
+                    // Ação: Fechar/Negar
+                    const closeAction = () => { if (toast) toast.style.display = 'none'; };
+                    if (btnDeny) btnDeny.addEventListener('click', closeAction);
+                    if (btnClose) btnClose.addEventListener('click', closeAction);
+                }
             }
         });
     </script>
