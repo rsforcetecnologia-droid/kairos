@@ -1,10 +1,10 @@
 // public/firebase-messaging-sw.js
+// --- VERSÃO ESTÁVEL (COMPAT v10) COM SUPORTE A HEADS-UP NOTIFICATION ---
 
-// 1. Usamos a versão 10 (Compat) que é a mais estável para Service Workers atualmente
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
 
-// 2. Sua configuração exata
+// Configuração do projeto (A que enviaste)
 const firebaseConfig = {
     apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk",
     authDomain: "kairos-agenda-us.firebaseapp.com",
@@ -18,51 +18,51 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// 3. Handler de Background (O Ponto Crítico)
-// Este código roda quando o app está fechado ou minimizado no celular
+// Handler de Background (Quando o App está fechado/minimizado)
 messaging.onBackgroundMessage((payload) => {
-  console.log('[SW] Mensagem recebida do servidor:', payload);
+  console.log('[SW] Mensagem recebida no Background:', payload);
 
-  // Garante que temos título e corpo, mesmo que o servidor mande formato diferente
   const title = payload.notification?.title || payload.data?.title || 'Novo Agendamento';
   const body = payload.notification?.body || payload.data?.body || 'Você tem uma nova notificação.';
   
-  // Configuração visual da notificação nativa do Android
   const notificationOptions = {
     body: body,
-    icon: '/icon.png',      // Ícone grande (deve existir em public/icon.png)
-    badge: '/icon.png',     // Ícone pequeno da barra de status
+    icon: '/icon.png',
+    badge: '/icon.png', // Ícone pequeno monocromático (se tiveres)
     
     // Dados para o clique
     data: payload.data,     
     
-    // Comportamento
-    tag: 'kairos-update',   // Substitui notificações antigas para não encher a barra
-    renotify: true,         // Vibra/Toca som novamente
-    requireInteraction: false 
+    // --- O SEGREDO DO "POP-UP" (HEADS-UP) ESTÁ AQUI ---
+    tag: 'kairos-update',   
+    renotify: true,         // Importante: faz vibrar novamente se chegar outra msg seguida
+    requireInteraction: false, // Mantive false como pediste (fecha sozinho após uns segundos)
+    
+    // [ADICIONADO] Vibração é OBRIGATÓRIA para o Android "acordar" e mostrar o pop-up
+    vibrate: [500, 200, 500] 
   };
 
-  // [IMPORTANTE] Força a exibição manual da notificação
   return self.registration.showNotification(title, notificationOptions);
 });
 
-// 4. Clique na Notificação
+// Clique na Notificação
 self.addEventListener('notificationclick', function(event) {
   console.log('[SW] Notificação clicada.');
   
   event.notification.close();
 
-  // Tenta focar na janela aberta ou abre uma nova
+  // Lógica para focar na janela existente ou abrir nova
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // Procura aba já aberta
+      // 1. Tenta achar uma aba já aberta do app
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
-        if ((client.url.includes('app.html') || client.url.includes('index.html')) && 'focus' in client) {
+        // Verifica se a URL corresponde ao teu app e foca nela
+        if ((client.url.includes('app.html') || client.url.includes('index.html') || client.url === '/') && 'focus' in client) {
           return client.focus();
         }
       }
-      // Se não achar, abre o app
+      // 2. Se não achar, abre o app do zero
       if (clients.openWindow) {
         return clients.openWindow('/app.html'); 
       }
