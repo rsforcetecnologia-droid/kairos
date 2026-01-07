@@ -7,7 +7,7 @@ android {
     applicationId "br.com.rsforce.kairos.pro" // <--- Este é o CPF do app
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 12
+    versionCode 14
     versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -18,10 +18,11 @@ android {
     }
     buildTypes {
         release {
-            // CORREÇÃO: Mudar para 'true' para habilitar a ofuscação
-            minifyEnabled true
-            // CORREÇÃO: Usar a versão otimizada do arquivo de regras
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // [CORREÇÃO] Desativa a minificação para evitar erros nos Plugins Capacitor
+            minifyEnabled false
+            shrinkResources false
+            
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }

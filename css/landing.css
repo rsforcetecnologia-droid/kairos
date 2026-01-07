@@ -48,7 +48,7 @@ ul { list-style: none; }
 }
 .navbar-content { display: flex; justify-content: space-between; align-items: center; }
 .brand { display: flex; align-items: center; gap: 10px; z-index: 1100; }
-.logo-img { height: 30px; width: auto; display: block; object-fit: contain; }
+.logo-img { height: 55px; width: auto; display: block; object-fit: contain; }
 
 /* DESKTOP LINKS (Escondidos no mobile) */
 .nav-links, .nav-actions { display: none; }
