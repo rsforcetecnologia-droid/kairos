@@ -746,46 +746,127 @@ function renderWorkingHoursSection(data, container) {
 }
 
 function renderLoyaltySection(data, container) {
+    const loyaltyProgram = data.loyaltyProgram || {};
+    
+    // Define valores padrão se não existirem
+    const currentType = loyaltyProgram.type || 'amount'; // 'amount' (valor) ou 'visit' (visita)
+    const currentPointsPerCurrency = loyaltyProgram.pointsPerCurrency || 10;
+    const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
+
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
              <div class="flex justify-between items-center mb-6">
                  <h3 class="text-xl font-bold text-gray-800">Plano de Fidelidade</h3>
                  <button type="submit" form="loyalty-form" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600">Salvar</button>
              </div>
-             <form id="loyalty-form" class="space-y-4">
-                 <div class="flex items-center">
-                     <label for="loyaltyEnabled" class="flex items-center cursor-pointer">
+             <form id="loyalty-form" class="space-y-6">
+                 
+                 <div class="flex items-center p-4 bg-gray-50 rounded-lg border border-gray-100">
+                     <label for="loyaltyEnabled" class="flex items-center cursor-pointer w-full">
                          <div class="relative"><input type="checkbox" id="loyaltyEnabled" class="sr-only"><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div>
                          <span class="ml-3 font-medium text-gray-700">Habilitar Programa de Fidelidade</span>
                      </label>
                  </div>
+
                  <div>
-                     <label for="loyaltyPointsPerCurrency" class="block text-sm font-medium text-gray-700">Pontos Ganhos</label>
-                     <div class="mt-1 flex items-center gap-2">
-                         <span>1 Ponto a cada R$</span>
-                         <input type="number" id="loyaltyPointsPerCurrency" value="10" class="w-24 p-2 border rounded-md">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Como o cliente ganha pontos?</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors ${currentType === 'amount' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : ''}">
+                            <input type="radio" name="loyaltyType" value="amount" class="form-radio text-indigo-600 h-4 w-4" ${currentType === 'amount' ? 'checked' : ''}>
+                            <div class="ml-3">
+                                <span class="block text-sm font-medium text-gray-900">Por Valor Gasto (R$)</span>
+                                <span class="block text-xs text-gray-500">Ex: 1 ponto a cada R$ 10,00</span>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors ${currentType === 'visit' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : ''}">
+                            <input type="radio" name="loyaltyType" value="visit" class="form-radio text-indigo-600 h-4 w-4" ${currentType === 'visit' ? 'checked' : ''}>
+                            <div class="ml-3">
+                                <span class="block text-sm font-medium text-gray-900">Por Visita Realizada</span>
+                                <span class="block text-xs text-gray-500">Ex: 10 pontos por atendimento</span>
+                            </div>
+                        </label>
+                    </div>
+                 </div>
+
+                 <div id="loyalty-config-amount" class="${currentType === 'amount' ? '' : 'hidden'} p-4 bg-blue-50 rounded-lg border border-blue-100">
+                     <label for="loyaltyPointsPerCurrency" class="block text-sm font-medium text-blue-800">Regra de Conversão (Valor)</label>
+                     <p class="text-xs text-blue-600 mb-2">Quanto o cliente precisa gastar para ganhar 1 ponto?</p>
+                     <div class="flex items-center gap-2">
+                         <span class="text-gray-600 font-medium">1 Ponto a cada R$</span>
+                         <input type="number" id="loyaltyPointsPerCurrency" value="${currentPointsPerCurrency}" min="1" step="0.01" class="w-28 p-2 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                      </div>
                  </div>
+
+                 <div id="loyalty-config-visit" class="${currentType === 'visit' ? '' : 'hidden'} p-4 bg-purple-50 rounded-lg border border-purple-100">
+                     <label for="loyaltyPointsPerVisit" class="block text-sm font-medium text-purple-800">Regra de Conversão (Visita)</label>
+                     <p class="text-xs text-purple-600 mb-2">Quantos pontos o cliente ganha ao finalizar um atendimento?</p>
+                     <div class="flex items-center gap-2">
+                         <span class="text-gray-600 font-medium">Ganhar</span>
+                         <input type="number" id="loyaltyPointsPerVisit" value="${currentPointsPerVisit}" min="1" step="1" class="w-20 p-2 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-center font-bold">
+                         <span class="text-gray-600 font-medium">pontos por visita</span>
+                     </div>
+                 </div>
+
+                 <hr class="border-gray-200">
+
                  <div>
-                     <label class="block text-sm font-medium text-gray-700 mb-2">Prémios (Níveis de Pontuação)</label>
+                     <label class="block text-sm font-bold text-gray-700 mb-2">Prémios e Recompensas</label>
+                     <p class="text-xs text-gray-500 mb-3">Defina quantos pontos são necessários para resgatar cada prémio.</p>
                      
                      <div class="hidden md:grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
-                         <span>Pontos</span>
+                         <span>Custo (Pontos)</span>
                          <span>Descrição do Prémio</span>
-                         <span>Valor do Desconto (R$)</span>
+                         <span>Valor Equivalente (R$)</span>
                          <span></span>
                      </div>
                      
                      <div id="loyaltyTiersContainer" class="space-y-4 md:space-y-2"></div>
                      
-                     <button type="button" id="add-loyalty-tier" class="mt-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800">+ Adicionar Prémio</button>
+                     <button type="button" id="add-loyalty-tier" class="mt-3 flex items-center gap-1 text-sm font-bold text-indigo-600 hover:text-indigo-800 py-2 px-3 rounded-md hover:bg-indigo-50 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        Adicionar Prémio
+                     </button>
                  </div>
              </form>
         </div>
     `;
-    const loyaltyProgram = data.loyaltyProgram || {};
+
+    // --- Lógica de UI ---
+    
+    // Checkbox Habilitado
     container.querySelector('#loyaltyEnabled').checked = loyaltyProgram.enabled || false;
-    container.querySelector('#loyaltyPointsPerCurrency').value = loyaltyProgram.pointsPerCurrency || 10;
+
+    // Toggle entre Tipos (Valor vs Visita)
+    const radioInputs = container.querySelectorAll('input[name="loyaltyType"]');
+    const amountConfig = container.querySelector('#loyalty-config-amount');
+    const visitConfig = container.querySelector('#loyalty-config-visit');
+
+    radioInputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+            const val = e.target.value;
+            // Atualiza visual dos cards de seleção
+            radioInputs.forEach(r => {
+                const label = r.closest('label');
+                if (r.checked) {
+                    label.classList.add('border-indigo-500', 'bg-indigo-50', 'ring-1', 'ring-indigo-500');
+                } else {
+                    label.classList.remove('border-indigo-500', 'bg-indigo-50', 'ring-1', 'ring-indigo-500');
+                }
+            });
+
+            // Mostra/Esconde configs
+            if (val === 'amount') {
+                amountConfig.classList.remove('hidden');
+                visitConfig.classList.add('hidden');
+            } else {
+                amountConfig.classList.add('hidden');
+                visitConfig.classList.remove('hidden');
+            }
+        });
+    });
+
+    // --- Lógica dos Tiers (Prémios) ---
     const tiersContainer = container.querySelector('#loyaltyTiersContainer');
     
     const createTierRow = (tier = {}) => {
@@ -793,21 +874,29 @@ function renderLoyaltySection(data, container) {
         // BLINDAGEM XSS
         const safeReward = escapeHTML(tier.reward || '');
         
-        newTier.className = 'loyalty-tier-row'; 
+        newTier.className = 'loyalty-tier-row group bg-white md:bg-transparent p-3 md:p-0 border md:border-0 rounded-lg shadow-sm md:shadow-none relative'; 
         newTier.innerHTML = `
-            <div>
-                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Pontos</label>
-                <input type="number" placeholder="Pontos" data-field="points" value="${tier.points || ''}" class="w-full p-2 border rounded-md">
+            <div class="mb-2 md:mb-0">
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Custo em Pontos</label>
+                <div class="relative">
+                    <input type="number" placeholder="Ex: 100" data-field="points" value="${tier.points || ''}" class="w-full p-2 pl-2 border rounded-md font-semibold text-gray-800">
+                    <span class="md:hidden absolute right-3 top-2 text-xs text-gray-400">pts</span>
+                </div>
             </div>
-            <div>
+            <div class="mb-2 md:mb-0">
                 <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Descrição do Prémio</label>
-                <input type="text" placeholder="Descrição do Prémio" data-field="reward" value="${safeReward}" class="w-full p-2 border rounded-md">
+                <input type="text" placeholder="Ex: Corte de Cabelo Grátis" data-field="reward" value="${safeReward}" class="w-full p-2 border rounded-md">
             </div>
-            <div>
-                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Valor do Desconto (R$)</label>
-                <div class="flex items-center"><span class="mr-1">R$</span><input type="number" placeholder="Valor" data-field="discount" value="${tier.discount || ''}" class="w-full p-2 border rounded-md"></div>
+            <div class="mb-2 md:mb-0">
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Desconto (R$)</label>
+                <div class="flex items-center relative">
+                    <span class="absolute left-3 text-gray-500">R$</span>
+                    <input type="number" placeholder="0.00" data-field="discount" value="${tier.discount || ''}" class="w-full p-2 pl-8 border rounded-md">
+                </div>
             </div>
-            <button type="button" class="remove-loyalty-tier bg-red-100 text-red-700 p-2 rounded-md hover:bg-red-200 md:bg-transparent md:text-red-500 md:hover:bg-red-100">&times;</button>
+            <button type="button" class="remove-loyalty-tier absolute top-2 right-2 md:static text-gray-400 hover:text-red-600 p-2 rounded-md hover:bg-red-50 transition-colors" title="Remover">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
         `;
         return newTier;
     };
@@ -827,18 +916,32 @@ function renderLoyaltySection(data, container) {
         }
     });
     
+    // --- Salvar ---
     container.querySelector('#loyalty-form').addEventListener('submit', e => {
         e.preventDefault();
+        
+        const selectedType = container.querySelector('input[name="loyaltyType"]:checked').value;
+
         const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => ({
-            points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0,
+            points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0, // Custo em pontos (antigo costPoints no backend se mapeado assim, mas aqui usaremos points como custo)
             reward: row.querySelector('input[data-field="reward"]').value,
             discount: parseFloat(row.querySelector('input[data-field="discount"]').value) || 0
         }));
+
         const formData = {
             loyaltyProgram: {
                 enabled: container.querySelector('#loyaltyEnabled').checked,
-                pointsPerCurrency: parseFloat(container.querySelector('#loyaltyPointsPerCurrency').value) || 1,
-                tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward)
+                type: selectedType, // 'amount' ou 'visit'
+                pointsPerCurrency: parseFloat(container.querySelector('#loyaltyPointsPerCurrency').value) || 10,
+                pointsPerVisit: parseInt(container.querySelector('#loyaltyPointsPerVisit').value, 10) || 1,
+                // Nota: para manter compatibilidade, 'costPoints' nos tiers deve ser salvo.
+                // Vou mapear 'points' da UI para 'costPoints' (custo do premio) que é o padrão usado em comandas.js
+                tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward).map(t => ({
+                    costPoints: t.points, // Importante: renomeando para manter consistência com o uso em comandas.js
+                    reward: t.reward,
+                    name: t.reward, // Fallback para name
+                    discount: t.discount
+                }))
             }
         };
         handleSave(formData, e);

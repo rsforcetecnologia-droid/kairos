@@ -1364,3 +1364,64 @@ body.is-app-native .mobile-only-header {
 #comanda-detail-container footer {
     padding-bottom: calc(1rem + var(--safe-area-bottom, 0px)) !important;
 }
+/* --- BOTÕES FLUTUANTES (FABs) PARA COMANDAS (MOBILE ONLY) --- */
+
+.mobile-fabs-container {
+    display: none; /* Escondido por padrão (Desktop) */
+    position: fixed;
+    /* Usa a variável de safe area (importante para iPhone) */
+    bottom: calc(1.5rem + var(--safe-area-bottom, 0px));
+    right: 1.5rem;
+    gap: 12px;
+    z-index: 70; /* Acima do footer fixo do mobile */
+    flex-direction: column;
+}
+
+.fab-btn-primary, .fab-btn-secondary {
+    width: 50px; /* Tamanho reduzido conforme solicitado */
+    height: 50px;
+    border-radius: 20px; /* Formato "Squircle" moderno */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.2s;
+}
+
+/* Botão de Check-out (Verde) */
+.fab-btn-primary {
+    background-color: #16a34a; /* green-600 */
+    color: white;
+}
+.fab-btn-primary:active {
+    background-color: #15803d; /* green-700 */
+}
+
+/* Botão de Adicionar (Azul claro) */
+.fab-btn-secondary {
+    background-color: #eff6ff; /* blue-50 */
+    color: #2563eb; /* blue-600 */
+    border: 1px solid #dbeafe; /* blue-100 */
+}
+.fab-btn-secondary:active {
+    background-color: #dbeafe; /* blue-100 */
+}
+
+.fab-btn-primary:active, .fab-btn-secondary:active {
+    transform: scale(0.95);
+}
+
+/* Regras exclusivas para Mobile (telas < 1023px) */
+@media (max-width: 1023px) {
+    /* Esconde os botões originais do rodapé */
+    .mobile-hidden {
+        display: none !important;
+    }
+    
+    /* Mostra os FABs */
+    .mobile-fabs-container {
+        display: flex;
+    }
+}

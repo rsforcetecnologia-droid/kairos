@@ -333,9 +333,35 @@ function renderComandaDetail() {
     const safeClientName = escapeHTML(comanda.clientName);
     const safeProfName = escapeHTML(comanda.professionalName);
 
+    // --- ELEMENTOS DE UI REUTILIZÁVEIS ---
+    
+    // Botões Padrão (Visíveis no Desktop, ocultos no Mobile via classe CSS)
+    const desktopButtons = `
+        <div class="grid grid-cols-2 gap-3 mobile-hidden">
+            <button data-action="add-item" class="py-3.5 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200">
+                + ADICIONAR
+            </button>
+            <button data-action="checkout" class="py-3.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">
+                RECEBER
+            </button>
+        </div>
+    `;
+
+    // Botões Flutuantes (FABs - Visíveis apenas no Mobile via CSS)
+    const mobileFABs = `
+        <div class="mobile-fabs-container">
+            <button data-action="add-item" class="fab-btn-secondary" title="Adicionar Item">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+            <button data-action="checkout" class="fab-btn-primary" title="Receber / Pagar">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </button>
+        </div>
+    `;
+
     detailContainer.innerHTML = `
-        ${mobileHeaderHTML} <div class="flex-grow overflow-y-auto p-4">
-            <div class="flex justify-between items-start mb-6 border-b pb-4">
+        ${mobileHeaderHTML} 
+        <div class="flex-grow overflow-y-auto p-4 pb-24"> <div class="flex justify-between items-start mb-6 border-b pb-4">
                 <div>
                     <h3 class="text-xl font-bold text-gray-800 truncate max-w-[200px]">${safeClientName}</h3>
                     <p class="text-sm text-gray-500 flex items-center gap-1 mt-1">
@@ -387,27 +413,20 @@ function renderComandaDetail() {
         </div>
 
         <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div class="flex justify-between items-end mb-4">
+            <div class="flex flex-col items-start lg:flex-row lg:justify-between lg:items-end mb-4">
                 <span class="text-sm text-gray-500 font-medium">Total a Pagar</span>
-                <span class="text-3xl font-extrabold text-gray-900">R$ ${total.toFixed(2)}</span>
+                <span class="text-4xl lg:text-3xl font-extrabold text-gray-900 mt-1 lg:mt-0">R$ ${total.toFixed(2)}</span>
             </div>
             
-            ${!isCompleted ? `
-                <div class="grid grid-cols-2 gap-3">
-                    <button data-action="add-item" class="py-3.5 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200">
-                        + ADICIONAR
-                    </button>
-                    <button data-action="checkout" class="py-3.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">
-                        RECEBER
-                    </button>
-                </div>` 
-            : `
+            ${!isCompleted ? desktopButtons : `
                 <div class="bg-green-50 text-green-700 text-center py-3 rounded-xl font-bold border border-green-200 flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                     Venda Finalizada
                 </div>
             `}
         </footer>
+
+        ${!isCompleted ? mobileFABs : ''}
     `;
 
     if (!isCompleted) {
@@ -454,8 +473,11 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
 
     if (!client || !client.loyaltyPoints) return;
 
-    // Filtra prémios
-    const availableRewards = (settings.rewards || []).filter(r => client.loyaltyPoints >= r.costPoints);
+    // --- ATUALIZAÇÃO: Suporte à nova estrutura de 'tiers' além de 'rewards' (legado) ---
+    const rewardsList = settings.tiers || settings.rewards || [];
+    
+    // Filtra prémios disponíveis com base nos pontos do cliente
+    const availableRewards = rewardsList.filter(r => client.loyaltyPoints >= r.costPoints);
 
     if (availableRewards.length > 0) {
         const rewardDiv = document.createElement('div');
@@ -492,7 +514,7 @@ function openRewardSelectionModal(rewards, comanda) {
             <p class="text-sm text-gray-600 mb-4">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
             <div class="space-y-2 max-h-96 overflow-y-auto">
                 ${rewards.map(r => `
-                    <button data-action="select-reward" data-reward-id="${r.id}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
+                    <button data-action="select-reward" data-reward-id="${r.id || r.name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
                         <div class="text-left">
                             <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(r.name)}</p>
                             <p class="text-xs text-gray-500">Custo: ${r.costPoints} pontos</p>
@@ -514,7 +536,8 @@ function openRewardSelectionModal(rewards, comanda) {
         const btn = e.target.closest('[data-action="select-reward"]');
         if (btn) {
             const rewardId = btn.dataset.rewardId;
-            const reward = rewards.find(r => r.id == rewardId); 
+            // Busca por ID ou Nome (para compatibilidade com dados antigos/novos)
+            const reward = rewards.find(r => (r.id && r.id == rewardId) || (r.name && r.name == rewardId)); 
             if (reward) {
                 addRewardToComanda(reward, comanda);
                 close();
