@@ -477,7 +477,11 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
     const rewardsList = settings.tiers || settings.rewards || [];
     
     // Filtra prémios disponíveis com base nos pontos do cliente
-    const availableRewards = rewardsList.filter(r => client.loyaltyPoints >= r.costPoints);
+    const availableRewards = rewardsList.filter(r => {
+        // Suporte para ambas nomenclaturas de dados
+        const cost = r.costPoints || r.points || 0; 
+        return client.loyaltyPoints >= cost;
+    });
 
     if (availableRewards.length > 0) {
         const rewardDiv = document.createElement('div');
@@ -513,15 +517,18 @@ function openRewardSelectionModal(rewards, comanda) {
         <div class="space-y-4">
             <p class="text-sm text-gray-600 mb-4">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
             <div class="space-y-2 max-h-96 overflow-y-auto">
-                ${rewards.map(r => `
-                    <button data-action="select-reward" data-reward-id="${r.id || r.name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
+                ${rewards.map(r => {
+                    const cost = r.costPoints || r.points || 0;
+                    const name = r.name || r.reward;
+                    return `
+                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
                         <div class="text-left">
-                            <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(r.name)}</p>
-                            <p class="text-xs text-gray-500">Custo: ${r.costPoints} pontos</p>
+                            <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(name)}</p>
+                            <p class="text-xs text-gray-500">Custo: ${cost} pontos</p>
                         </div>
                         <span class="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full">Grátis</span>
                     </button>
-                `).join('')}
+                `}).join('')}
             </div>
         </div>
     `;
@@ -537,7 +544,7 @@ function openRewardSelectionModal(rewards, comanda) {
         if (btn) {
             const rewardId = btn.dataset.rewardId;
             // Busca por ID ou Nome (para compatibilidade com dados antigos/novos)
-            const reward = rewards.find(r => (r.id && r.id == rewardId) || (r.name && r.name == rewardId)); 
+            const reward = rewards.find(r => (r.id && r.id == rewardId) || ((r.name || r.reward) == rewardId)); 
             if (reward) {
                 addRewardToComanda(reward, comanda);
                 close();
@@ -547,13 +554,16 @@ function openRewardSelectionModal(rewards, comanda) {
 }
 
 async function addRewardToComanda(reward, comanda) {
+    const cost = reward.costPoints || reward.points || 0;
+    const name = reward.name || reward.reward;
+
     const rewardItem = {
         id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
-        name: `${reward.name}`,
+        name: `${name}`,
         price: 0.00, 
         type: reward.serviceId ? 'service' : 'product',
         isReward: true,
-        pointsCost: reward.costPoints 
+        pointsCost: cost
     };
 
     await handleAddItemToComanda(rewardItem, 1);
@@ -1288,11 +1298,28 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
         finalItems.push(item);
     }
     
+    // --- LÓGICA DE CÁLCULO DE PONTOS ---
+    let pointsToAward = 0;
+    const settings = localState.loyaltySettings;
+
+    if (settings && settings.enabled) {
+        if (settings.type === 'visit') {
+            // Regra: Pontos por Visita
+            pointsToAward = settings.pointsPerVisit || 1;
+        } else {
+            // Regra: Pontos por Valor Gasto (Padrão)
+            const divisor = settings.pointsPerCurrency || 10;
+            pointsToAward = Math.floor(totalAmount / divisor);
+        }
+    }
+    // ------------------------------------
+
     const data = {
         payments,
         totalAmount,
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
+        loyaltyPointsEarned: pointsToAward, // ENVIA OS PONTOS PARA O BACKEND
     };
 
     try {
@@ -1306,7 +1333,13 @@ async function handleFinalizeCheckout(comanda, totalAmount, payments) {
             data.clientPhone = comanda.clientPhone;
             await salesApi.createSale(data);
         }
-        showNotification('Sucesso!', 'Venda finalizada com sucesso!', 'success');
+        
+        let msg = 'Venda finalizada com sucesso!';
+        if (pointsToAward > 0) {
+            msg += ` Cliente ganhou ${pointsToAward} pontos.`;
+        }
+
+        showNotification('Sucesso!', msg, 'success');
         document.getElementById('genericModal').style.display = 'none';
 
         hideMobileDetail();
