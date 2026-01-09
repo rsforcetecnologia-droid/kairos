@@ -1,7 +1,7 @@
 /**
  * functions/index.js
  * Backend V4: Notificações + Sistema de Fidelidade (Pontos e Resgates).
- * VERSÃO LIMPA (SEM LOGS DE DIAGNÓSTICO VERBOSOS)
+ * VERSÃO CORRIGIDA: Tratamento de ID de Cliente (Garante busca apenas por números)
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -14,6 +14,12 @@ const db = admin.firestore();
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers)
 // ============================================================================
+
+// --- CORREÇÃO: Função para limpar ID (deixar apenas números) ---
+function cleanId(id) {
+    if (!id) return '';
+    return String(id).replace(/\D/g, '');
+}
 
 // --- Formatação de Data e Hora ---
 function formatDate(dateValue) {
@@ -55,7 +61,7 @@ async function getProfessionalName(professionalId) {
     }
 }
 
-// --- Busca tokens de notificação FILTRADOS (LIMPO) ---
+// --- Busca tokens de notificação FILTRADOS ---
 async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     if (!establishmentId) return [];
 
@@ -105,11 +111,14 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     return uniqueTokens;
 }
 
-// --- LÓGICA CENTRAL DE FIDELIDADE ---
+// --- LÓGICA CENTRAL DE FIDELIDADE (CORRIGIDA) ---
 async function processLoyaltyTransaction(establishmentId, clientId, items, totalAmount, sourceId, sourceType) {
     if (!establishmentId || !clientId) return;
 
     try {
+        // CORREÇÃO: Garante que o ID do cliente seja limpo (apenas números) para bater com o cadastro
+        const safeClientId = cleanId(clientId);
+
         const estabRef = db.collection('establishments').doc(establishmentId);
         const estabSnap = await estabRef.get();
         
@@ -135,15 +144,15 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
 
         if (pointsToDeduct === 0 && pointsToAdd === 0) return;
 
-        // Mantive este log pois é útil para auditoria financeira/pontos, mas pode remover se quiser
-        console.log(`[Fidelidade] Processando Cliente ${clientId}: -${pointsToDeduct} (Gasto) / +${pointsToAdd} (Ganho)`);
+        console.log(`[Fidelidade] Processando Cliente ${safeClientId}: -${pointsToDeduct} (Gasto) / +${pointsToAdd} (Ganho)`);
 
-        const clientRef = db.collection('clients').doc(clientId);
+        // Usa o ID limpo para buscar o documento
+        const clientRef = db.collection('clients').doc(safeClientId);
 
         await db.runTransaction(async (t) => {
             const clientDoc = await t.get(clientRef);
             if (!clientDoc.exists) {
-                console.warn(`[Fidelidade] Cliente ${clientId} não encontrado.`);
+                console.warn(`[Fidelidade] Cliente ${safeClientId} não encontrado.`);
                 return;
             }
 
@@ -184,7 +193,7 @@ const webpushConfig = {
 // ============================================================================
 
 /**
- * Notificação de Novo Agendamento (LIMPO)
+ * Notificação de Novo Agendamento
  */
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
@@ -196,10 +205,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 
         const appointment = snapshot.data();
         
-        if (!appointment.establishmentId) {
-            console.error(">>> [ERRO] Agendamento sem establishmentId: ", appointmentId);
-            return;
-        }
+        if (!appointment.establishmentId) return;
 
         const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
         
@@ -224,7 +230,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
             },
             android: {
                 priority: "high",
-                ttl: 3600 * 24, // 24 horas
+                ttl: 3600 * 24, 
                 notification: {
                     channelId: 'default',
                     icon: 'ic_stat_notification', 
@@ -239,14 +245,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
         };
 
         try {
-            const response = await admin.messaging().sendEachForMulticast(message);
-            
-            if (response.failureCount > 0) {
-                const errors = response.responses
-                    .map((res, idx) => res.error ? `Token ${idx}: ${res.error.code} - ${res.error.message}` : null)
-                    .filter(e => e);
-                console.error(">>> [ERRO DETALHADO DO FCM]:", JSON.stringify(errors));
-            }
+            await admin.messaging().sendEachForMulticast(message);
         } catch (error) {
             console.error(">>> [ERRO CRÍTICO] Falha no envio:", error);
         }
@@ -254,7 +253,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 );
 
 /**
- * Notificação de Cancelamento
+ * Notificação de Cancelamento e Fidelidade em Agendamento
  */
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
@@ -298,7 +297,9 @@ exports.sendCancellationNotification = onDocumentUpdated(
         }
 
         // --- B. Lógica de Fidelidade (Ao Completar) ---
-        if (after.status === 'completed' && before.status !== 'completed') {
+        if ((after.status === 'completed' || after.status === 'finalizado') && 
+            (before.status !== 'completed' && before.status !== 'finalizado')) {
+            
             const allItems = [
                 ...(after.services || []),
                 ...(after.comandaItems || []),
@@ -318,7 +319,7 @@ exports.sendCancellationNotification = onDocumentUpdated(
 );
 
 // ============================================================================
-// SEÇÃO 3: NOVOS GATILHOS DE VENDAS
+// SEÇÃO 3: GATILHOS DE VENDAS
 // ============================================================================
 
 exports.handleNewSaleLoyalty = onDocumentCreated(

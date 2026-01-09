@@ -6,13 +6,19 @@ import { auth } from '../firebase-config.js';
  * de erros de rede e respostas não bem-sucedidas (como 404 ou 500).
  */
 
-// --- CONFIGURAÇÃO DA URL DA API (AJUSTADO PARA PRODUÇÃO) ---
-// Definimos diretamente a URL de produção para garantir que o Android 
-// se conecte ao servidor na nuvem e não tente buscar localhost internamente.
-// SUBSTITUA PELA SUA URL REAL DO CLOUD RUN SE MUDAR
-const API_BASE_URL = 'https://kairos-app-407358446276.us-central1.run.app'; 
+// --- CONFIGURAÇÃO DA URL DA API (DINÂMICA) ---
 
-console.log('🚀 API configurada para Produção (US):', API_BASE_URL);
+// Verifica se o hostname atual é localhost ou IP de loopback
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+// Se for local, usa a porta 8080. Se não, usa a URL de produção do Cloud Run.
+const API_BASE_URL = isLocalhost 
+    ? 'http://localhost:8080' 
+    : 'https://kairos-app-407358446276.us-central1.run.app';
+
+console.log(`🚀 API configurada para modo: ${isLocalhost ? 'LOCAL (Dev)' : 'PRODUÇÃO (Cloud)'}`);
+console.log('📡 URL Base:', API_BASE_URL);
+
 // --- FIM DA CONFIGURAÇÃO ---
 
 
@@ -42,13 +48,13 @@ export async function authenticatedFetch(endpoint, options = {}) {
     }
 
     // --- CORREÇÃO DE URL: REMOÇÃO DE BARRA DUPLA ---
-    // Remove a barra final da URL base, se existir (prevenindo http://host//api)
+    // Remove a barra final da URL base, se existir
     const cleanBaseUrl = API_BASE_URL.replace(/\/$/, '');
     
     // Garante que o endpoint comece com uma barra
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     
-    // Concatena de forma segura: Base (sem barra final) + Endpoint (com barra inicial)
+    // Concatena de forma segura
     const fullUrl = `${cleanBaseUrl}${cleanEndpoint}`;
     // ----------------------------------------------
     
@@ -70,15 +76,12 @@ export async function authenticatedFetch(endpoint, options = {}) {
             const errorMessage = errorData.message || `Erro na API: ${response.status}`;
             
             // --- DETECTOR DE FALTA DE ÍNDICE (FEATURE NOVA) ---
-            // Verifica se é o erro específico de "Índice Faltando" do Firestore
             if (errorMessage.includes('FAILED_PRECONDITION') && errorMessage.includes('requires an index')) {
                 
-                // Extrai apenas o URL da mensagem de erro
                 const urlRegex = /(https:\/\/[^\s]+)/;
                 const match = errorMessage.match(urlRegex);
                 const firebaseUrl = match ? match[0] : 'URL não encontrada na mensagem de erro.';
 
-                // Loga uma mensagem grande e clara no console para o desenvolvedor
                 console.warn(
                     `%c AVISO IMPORTANTE (FIREBASE): ÍNDICE NECESSÁRIO! %c
                     
@@ -108,7 +111,7 @@ Para corrigir isso, clique no link abaixo (com o Firebase logado) e crie o índi
         console.error(`Falha de rede ao tentar acessar ${fullUrl}:`, error.message);
         
         if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique sua conexão com a internet.`);
+             throw new Error(`Não foi possível conectar ao servidor em ${API_BASE_URL}. Verifique se o servidor backend está rodando.`);
         }
         throw error; // Lança o erro original se for outro tipo
     }

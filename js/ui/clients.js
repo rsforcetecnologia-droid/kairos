@@ -5,6 +5,7 @@ import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showGenericModal, showConfirmation } from '../components/modal.js';
 import { navigateTo } from '../main.js';
+import { escapeHTML } from '../utils.js'; // <--- CORREÇÃO: Importação necessária
 
 // --- ESTADO LOCAL ---
 let localState = {
@@ -12,7 +13,8 @@ let localState = {
     establishment: null,
     searchTimeout: null,
     currentClient: null, // Cliente aberto no modal
-    history: [], // Histórico do cliente aberto
+    history: [], // Histórico completo carregado da API
+    historyLimit: 10, // CONTROLE DE PAGINAÇÃO
     // Filtros
     filters: {
         hasLoyalty: false,
@@ -22,7 +24,7 @@ let localState = {
     showFilters: false,
     // Estado para Exclusão em Lote
     selectionMode: false,
-    selectedClients: new Set() // Armazena IDs (telefones) dos selecionados
+    selectedClients: new Set() // Armazena IDs dos selecionados
 };
 
 // --- FUNÇÕES AUXILIARES ---
@@ -73,7 +75,7 @@ const toggleClientSelection = (clientId) => {
     }
     updateSelectionHeader();
     
-    // Atualiza visual do card específico (opcional, para performance)
+    // Atualiza visual do card específico
     const card = document.getElementById(`card-${clientId}`);
     if (card) {
         const checkbox = card.querySelector('.client-checkbox');
@@ -116,7 +118,7 @@ const handleBulkDelete = async () => {
         }
 
         try {
-            // Executa exclusões em paralelo
+            // Executa exclusões em paralelo usando o ID correto
             const deletePromises = Array.from(localState.selectedClients).map(id => clientsApi.deleteClient(id));
             await Promise.all(deletePromises);
 
@@ -124,7 +126,9 @@ const handleBulkDelete = async () => {
             
             // Sai do modo de seleção e recarrega
             toggleSelectionMode(); 
-            refreshList();
+            
+            // Delay para garantir propagação no banco
+            setTimeout(() => refreshList(), 500);
 
         } catch (error) {
             console.error(error);
@@ -166,6 +170,7 @@ const clearFilters = () => {
 
 const openClientModal = async (client = null) => {
     localState.currentClient = client;
+    localState.historyLimit = 10; // RESET NA PAGINAÇÃO
     const isNew = !client;
 
     const renderModalContent = (c) => `
@@ -209,18 +214,24 @@ const openClientModal = async (client = null) => {
     window.switchTab = (tabName) => renderTab(tabName, isNew);
     window.handleSave = submitSave;
     window.handleDelete = submitDelete;
+    window.loadMoreHistory = () => {
+        localState.historyLimit += 10;
+        renderTab('history', isNew);
+    };
 
     if (!isNew && client.id) {
         try {
-            const freshClient = await clientsApi.getClient(client.id);
-            if (freshClient) {
-                localState.currentClient = freshClient;
-                const headerPoints = document.querySelector('.bg-indigo-100.text-indigo-700');
-                if (headerPoints) headerPoints.textContent = `${freshClient.loyaltyPoints || 0} pts`;
+            if (typeof clientsApi.getClient === 'function') {
+                const freshClient = await clientsApi.getClient(state.establishmentId, client.id);
+                if (freshClient) {
+                    localState.currentClient = freshClient;
+                    const headerPoints = document.querySelector('.bg-indigo-100.text-indigo-700');
+                    if (headerPoints) headerPoints.textContent = `${freshClient.loyaltyPoints || 0} pts`;
+                }
             }
             localState.history = await clientsApi.getFullHistory(state.establishmentId, client.phone);
         } catch (e) {
-            console.error("Erro ao carregar dados frescos do cliente", e);
+            console.error("Aviso: Não foi possível atualizar detalhes do cliente", e);
             localState.history = [];
         }
     }
@@ -281,14 +292,19 @@ const renderTab = (tabName, isNew) => {
         const now = new Date();
         const upcoming = localState.history.filter(h => {
             const hDate = new Date(h.date);
-            return h.type === 'appointment' && hDate >= now && h.status !== 'cancelled';
+            return h.type === 'appointment' && 
+                   hDate >= now && 
+                   h.status !== 'cancelled' && 
+                   h.status !== 'cancelado' && 
+                   h.status !== 'completed' && 
+                   h.status !== 'finalizado';
         });
 
         upcoming.sort((a, b) => new Date(a.date) - new Date(b.date));
 
         if (!upcoming.length) {
             container.innerHTML = `<div class="text-center py-10">
-                <p class="text-gray-400 mb-4">Nenhum agendamento futuro.</p>
+                <p class="text-gray-400 mb-4">Nenhum agendamento programado.</p>
                 <button onclick="document.getElementById('genericModal').style.display='none'; navigateTo('agenda-section')" class="text-indigo-600 font-bold hover:underline">Ir para Agenda</button>
             </div>`;
             return;
@@ -297,60 +313,77 @@ const renderTab = (tabName, isNew) => {
         container.innerHTML = `
             <div class="space-y-3">
                 ${upcoming.map(h => `
-                    <div class="flex items-center justify-between p-4 border-l-4 border-indigo-500 bg-white shadow-sm rounded-r-lg hover:shadow-md transition-shadow">
+                    <div onclick="document.getElementById('genericModal').style.display='none'; navigateTo('agenda-section', { targetDate: '${h.date}', scrollToAppointmentId: '${h.id}' })" 
+                         class="flex items-center justify-between p-4 border-l-4 border-indigo-500 bg-white shadow-sm rounded-r-lg hover:shadow-md transition-all cursor-pointer hover:bg-indigo-50 group">
                         <div>
                             <p class="font-bold text-gray-800">${h.description}</p>
                             <p class="text-sm text-gray-600 mt-1">
                                 📅 ${formatDate(h.date)}
                             </p>
-                            <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded mt-2 inline-block">Agendado</span>
+                            <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded mt-2 inline-block font-medium">
+                                ${h.status === 'confirmed' ? 'Confirmado' : 'Agendado'}
+                            </span>
                         </div>
-                        <button onclick="document.getElementById('genericModal').style.display='none'; navigateTo('agenda-section', { targetDate: '${h.date}', scrollToAppointmentId: '${h.id}' })" class="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors group" title="Ver na Agenda">
+                        <div class="p-2 text-indigo-400 group-hover:text-indigo-600 transition-colors">
                             <svg class="w-6 h-6 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 12h14"/></svg>
-                        </button>
+                        </div>
                     </div>
                 `).join('')}
             </div>
         `;
 
     } else if (tabName === 'history') {
-        const past = [...localState.history].sort((a, b) => new Date(b.date) - new Date(a.date)); 
+        const allHistory = [...localState.history].filter(h => 
+            h.type === 'appointment' && (h.status === 'completed' || h.status === 'finalizado')
+        ).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        if (!past.length) {
-            container.innerHTML = `<div class="text-center text-gray-400 mt-10">Histórico vazio.</div>`;
+        const visibleHistory = allHistory.slice(0, localState.historyLimit);
+        const hasMore = allHistory.length > localState.historyLimit;
+
+        if (!visibleHistory.length) {
+            container.innerHTML = `<div class="text-center text-gray-400 mt-10">Nenhum histórico de agendamento finalizado.</div>`;
             return;
         }
         
         container.innerHTML = `
             <div class="space-y-3">
-                ${past.map(h => {
+                ${visibleHistory.map(h => {
                     const sourceId = h.sourceId || h.id; 
-                    const isClickable = h.type === 'sale' || (h.type === 'appointment' && h.status === 'completed');
-                    const clickAction = isClickable ? `onclick="document.getElementById('genericModal').style.display='none'; navigateTo('comandas-section', { selectedAppointmentId: '${sourceId}' })"` : '';
-                    
                     return `
-                    <div ${clickAction} class="flex items-center justify-between p-3 border rounded bg-white ${isClickable ? 'cursor-pointer hover:bg-indigo-50 hover:border-indigo-300 shadow-sm' : 'hover:bg-gray-50'} transition-all">
+                    <div onclick="document.getElementById('genericModal').style.display='none'; navigateTo('comandas-section', { selectedAppointmentId: '${sourceId}' })" 
+                         class="flex items-center justify-between p-3 border rounded bg-white cursor-pointer hover:bg-indigo-50 hover:border-indigo-300 shadow-sm transition-all group">
                         <div class="flex items-center gap-3">
-                            <div class="p-2 rounded-full ${h.type === 'sale' ? 'bg-green-100 text-green-600' : (h.type === 'loyalty' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600')}">
-                                <span class="text-xs font-bold uppercase">${h.type.substring(0,1)}</span>
+                            <div class="p-2 rounded-full bg-green-100 text-green-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
                             </div>
                             <div>
                                 <p class="text-sm font-bold text-gray-800">${h.description}</p>
-                                <div class="flex gap-2 items-center text-xs text-gray-500">
-                                    <span>${formatDate(h.date)}</span>
-                                    ${h.status ? `<span>• ${h.status}</span>` : ''}
+                                <div class="flex flex-col text-xs text-gray-500 mt-1">
+                                    <span>📅 ${formatDate(h.date)}</span>
+                                    <span class="text-gray-600 font-medium">👤 ${h.professionalName || h.workerName || 'Profissional'}</span>
                                 </div>
                             </div>
                         </div>
                         <div class="text-right">
-                             <span class="block text-sm font-bold ${h.isPoints ? 'text-purple-600' : 'text-gray-700'}">
-                                ${h.isPoints ? (h.value > 0 ? `+${h.value} pts` : `${h.value} pts`) : formatCurrency(h.value)}
+                             <span class="block text-sm font-bold text-gray-800">
+                                ${formatCurrency(h.value)}
                              </span>
-                             ${isClickable ? '<span class="text-[10px] text-indigo-500 font-medium">Ver Detalhes</span>' : ''}
+                             <span class="text-[10px] text-indigo-500 font-medium group-hover:underline">Ver Comanda</span>
                         </div>
                     </div>
                 `}).join('')}
             </div>
+            
+            ${hasMore ? `
+                <div class="text-center mt-4 pt-2">
+                    <button onclick="window.loadMoreHistory()" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                        Carregar mais antigos...
+                    </button>
+                    <p class="text-xs text-gray-400 mt-2">Mostrando ${visibleHistory.length} de ${allHistory.length}</p>
+                </div>
+            ` : ''}
         `;
 
     } else if (tabName === 'loyalty') {
@@ -454,13 +487,18 @@ const submitSave = async () => {
 const submitDelete = async () => {
     if (await showConfirmation('Excluir', 'Tem certeza? Isso apagará o histórico deste cliente.')) {
         try {
-            // CORREÇÃO: Garante que o telefone (ID) está limpo e correto
-            const clientId = cleanPhone(localState.currentClient.phone);
+            // CORREÇÃO CRÍTICA: 
+            // Usa o ID do documento se existir, caso contrário tenta o telefone limpo.
+            const clientId = localState.currentClient.id || cleanPhone(localState.currentClient.phone);
+            
             await clientsApi.deleteClient(clientId);
             
             showNotification('Sucesso', 'Cliente removido', 'success');
             document.getElementById('genericModal').style.display = 'none';
-            refreshList();
+            
+            // Pequeno delay para garantir que o Firestore processou a exclusão
+            setTimeout(() => refreshList(), 500);
+            
         } catch (e) {
             showNotification('Erro', 'Erro ao remover', 'error');
             console.error(e);
@@ -491,33 +529,41 @@ const renderList = () => {
 
     localState.clients.forEach(client => {
         const card = document.createElement('div');
-        const isSelected = localState.selectedClients.has(client.phone);
+        // CORREÇÃO: Usa o ID do cliente (ou phone limpo) para controle de seleção e ID do DOM
+        const clientId = client.id || cleanPhone(client.phone);
+        const isSelected = localState.selectedClients.has(clientId);
         
-        card.id = `card-${client.phone}`;
+        card.id = `card-${clientId}`;
         card.className = `bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer flex items-center justify-between group relative ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50' : ''}`;
         
         // Clique no card abre modal, clique no checkbox alterna seleção
         card.onclick = (e) => {
             if (e.target.type === 'checkbox') return;
             if (localState.selectionMode) {
-                toggleClientSelection(client.phone);
+                toggleClientSelection(clientId);
             } else {
                 openClientModal(client);
             }
         };
 
-        // Tratamento robusto para data inválida
+        // --- CORREÇÃO DATA ÚLTIMA VISITA ---
+        // Verifica se existe lastVisit, lastServiceDate ou até lastAppointmentDate
+        const visitDateRaw = client.lastVisit || client.lastServiceDate || client.lastAppointmentDate;
+        
         let lastVisitText = 'Nunca visitou';
-        if (client.lastVisit) {
-            const formatted = formatDate(client.lastVisit);
-            if (formatted !== '-') lastVisitText = `Última visita: ${formatted.split(' ')[0]}`;
+        if (visitDateRaw) {
+            const formatted = formatDate(visitDateRaw);
+            // Verifica se a formatação foi válida (não retornou apenas o traço)
+            if (formatted && formatted !== '-') {
+                lastVisitText = `Última visita: ${formatted.split(' ')[0]}`;
+            }
         }
 
         const checkboxHTML = localState.selectionMode ? `
             <div class="absolute top-2 left-2 z-10" onclick="event.stopPropagation()">
                 <input type="checkbox" class="client-checkbox w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500" 
                     ${isSelected ? 'checked' : ''} 
-                    onchange="window.toggleClientSelection('${client.phone}')">
+                    onchange="window.toggleClientSelection('${clientId}')">
             </div>
         ` : '';
 
@@ -568,9 +614,10 @@ const refreshList = async (searchTerm = '') => {
                 const cutoffDate = new Date(today.setDate(today.getDate() - days));
 
                 localState.clients = localState.clients.filter(client => {
-                    if (!client.lastVisit) return true; // Nunca visitou = Inativo
+                    const vDateRaw = client.lastVisit || client.lastServiceDate;
+                    if (!vDateRaw) return true; // Nunca visitou = Inativo
                     
-                    const visitDate = new Date(client.lastVisit);
+                    const visitDate = new Date(vDateRaw);
                     if (isNaN(visitDate.getTime())) return true; // Data inválida = Inativo
 
                     // Retorna TRUE se a visita foi ANTES da data de corte
@@ -692,6 +739,8 @@ export const loadClientsPage = async () => {
     window.handleBulkDelete = handleBulkDelete;
     window.applyFilters = applyFilters;
     window.clearFilters = clearFilters;
+    // Garante que o navegador encontre a função navigateTo usada no HTML
+    window.navigateTo = navigateTo;
 
     // Setup Search com Debounce
     const searchInput = document.getElementById('search-input');

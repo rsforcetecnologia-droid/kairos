@@ -10,10 +10,6 @@ const cleanPhone = (phone) => {
 
 /**
  * Busca lista de clientes com suporte a filtros
- * @param {string} establishmentId
- * @param {string} search
- * @param {number} limit
- * @param {object} filters - { hasLoyalty: boolean, birthMonth: string, inactiveDays: number }
  */
 export const getClients = (establishmentId, search = '', limit = 20, filters = {}) => {
     const params = new URLSearchParams();
@@ -31,13 +27,24 @@ export const getClients = (establishmentId, search = '', limit = 20, filters = {
 };
 
 /**
+ * Busca detalhes de um único cliente pelo ID
+ * (Esta função é essencial para abrir o modal sem erros)
+ */
+export const getClient = (establishmentId, clientId) => {
+    // encodeURIComponent garante que IDs com caracteres especiais não quebrem a URL
+    const safeId = encodeURIComponent(clientId);
+    return authenticatedFetch(`/api/clients/details/${establishmentId}/${safeId}`);
+};
+
+/**
  * Cria ou Atualiza cliente
  */
 export const saveClient = (clientData) => {
     if (!clientData.phone) throw new Error('Telefone é obrigatório');
     
+    // Na criação/edição, mantemos o padrão de usar o telefone limpo como ID
     const id = cleanPhone(clientData.phone);
-    const payload = { ...clientData, phone: id, id: id }; // Garante consistência
+    const payload = { ...clientData, phone: id, id: id }; 
 
     return authenticatedFetch(`/api/clients/${id}`, {
         method: 'PUT',
@@ -46,7 +53,7 @@ export const saveClient = (clientData) => {
 };
 
 /**
- * Busca histórico completo (Agendamentos, Vendas, Fidelidade)
+ * Busca histórico completo
  */
 export const getFullHistory = (establishmentId, clientPhone) => {
     const id = cleanPhone(clientPhone);
@@ -55,10 +62,12 @@ export const getFullHistory = (establishmentId, clientPhone) => {
 
 /**
  * Deleta cliente
+ * CORREÇÃO: Aceita o ID direto sem limpar, para garantir que deleta o documento exato
  */
-export const deleteClient = (clientPhone) => {
-    const id = cleanPhone(clientPhone);
-    return authenticatedFetch(`/api/clients/${id}`, {
+export const deleteClient = (clientId) => {
+    // encodeURIComponent é uma boa prática para garantir que o ID chegue correto ao backend
+    const safeId = encodeURIComponent(clientId);
+    return authenticatedFetch(`/api/clients/${safeId}`, {
         method: 'DELETE'
     });
 };
