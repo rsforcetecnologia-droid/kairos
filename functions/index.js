@@ -1,7 +1,7 @@
 /**
  * functions/index.js
  * Backend V4: Notificações + Sistema de Fidelidade (Pontos e Resgates).
- * VERSÃO CORRIGIDA: Tratamento de ID de Cliente (Garante busca apenas por números)
+ * VERSÃO CORRIGIDA E CENTRALIZADA
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -111,14 +111,18 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     return uniqueTokens;
 }
 
-// --- LÓGICA CENTRAL DE FIDELIDADE (CORRIGIDA) ---
+// --- LÓGICA CENTRAL DE FIDELIDADE (ROBUSTA) ---
 async function processLoyaltyTransaction(establishmentId, clientId, items, totalAmount, sourceId, sourceType) {
-    if (!establishmentId || !clientId) return;
+    if (!establishmentId) return;
+    
+    // CORREÇÃO: Garante que temos um ID válido (numérico)
+    const safeClientId = cleanId(clientId);
+    if (!safeClientId) {
+        console.warn("[Fidelidade] Ignorado: ID do cliente inválido ou não fornecido.");
+        return;
+    }
 
     try {
-        // CORREÇÃO: Garante que o ID do cliente seja limpo (apenas números) para bater com o cadastro
-        const safeClientId = cleanId(clientId);
-
         const estabRef = db.collection('establishments').doc(establishmentId);
         const estabSnap = await estabRef.get();
         
@@ -128,9 +132,17 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
         if (!config || !config.enabled) return;
 
         const pointsFactor = config.pointsFactor || 1;
+        
+        // Cálculo de pontos a adicionar
+        let pointsToAdd = 0;
+        if (config.type === 'currency' && config.pointsPerCurrency > 0) {
+             pointsToAdd = Math.floor((totalAmount || 0) / config.pointsPerCurrency);
+        } else {
+             // Fallback para fator multiplicador (padrão antigo ou visita)
+             pointsToAdd = Math.floor((totalAmount || 0) * pointsFactor);
+        }
 
         let pointsToDeduct = 0;
-        
         if (items && Array.isArray(items)) {
             items.forEach(item => {
                 if (item.isReward && item.pointsCost > 0) {
@@ -139,8 +151,6 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
                 }
             });
         }
-
-        const pointsToAdd = Math.floor((totalAmount || 0) * pointsFactor);
 
         if (pointsToDeduct === 0 && pointsToAdd === 0) return;
 
@@ -152,7 +162,7 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
         await db.runTransaction(async (t) => {
             const clientDoc = await t.get(clientRef);
             if (!clientDoc.exists) {
-                console.warn(`[Fidelidade] Cliente ${safeClientId} não encontrado.`);
+                console.warn(`[Fidelidade] Cliente ${safeClientId} não encontrado no banco.`);
                 return;
             }
 
@@ -173,7 +183,7 @@ async function processLoyaltyTransaction(establishmentId, clientId, items, total
                 sourceId: sourceId,
                 sourceType: sourceType,
                 description: pointsToDeduct > 0 
-                    ? `Resgate de prémio (-${pointsToDeduct}) e Acúmulo (+${pointsToAdd})` 
+                    ? `Resgate e Acúmulo (+${pointsToAdd})` 
                     : `Acúmulo de compra (+${pointsToAdd})`
             });
         });
@@ -205,7 +215,10 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 
         const appointment = snapshot.data();
         
-        if (!appointment.establishmentId) return;
+        if (!appointment.establishmentId) {
+            console.error(">>> [ERRO] Agendamento sem establishmentId: ", appointmentId);
+            return;
+        }
 
         const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
         
@@ -230,7 +243,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
             },
             android: {
                 priority: "high",
-                ttl: 3600 * 24, 
+                ttl: 3600 * 24, // 24 horas
                 notification: {
                     channelId: 'default',
                     icon: 'ic_stat_notification', 
@@ -253,7 +266,7 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 );
 
 /**
- * Notificação de Cancelamento e Fidelidade em Agendamento
+ * Notificação de Cancelamento (APENAS)
  */
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
@@ -296,30 +309,12 @@ exports.sendCancellationNotification = onDocumentUpdated(
             }
         }
 
-        // --- B. Lógica de Fidelidade (Ao Completar) ---
-        if ((after.status === 'completed' || after.status === 'finalizado') && 
-            (before.status !== 'completed' && before.status !== 'finalizado')) {
-            
-            const allItems = [
-                ...(after.services || []),
-                ...(after.comandaItems || []),
-                ...(after.items || [])
-            ];
-
-            await processLoyaltyTransaction(
-                after.establishmentId,
-                after.clientId,
-                allItems,
-                after.totalAmount || 0,
-                appointmentId,
-                'appointment'
-            );
-        }
+        // OBS: A lógica de fidelidade ao completar foi removida daqui para evitar conflito com o gatilho de Vendas.
     }
 );
 
 // ============================================================================
-// SEÇÃO 3: GATILHOS DE VENDAS
+// SEÇÃO 3: GATILHO DE VENDAS (FONTE ÚNICA DE FIDELIDADE)
 // ============================================================================
 
 exports.handleNewSaleLoyalty = onDocumentCreated(
@@ -331,11 +326,20 @@ exports.handleNewSaleLoyalty = onDocumentCreated(
         const sale = snapshot.data();
         const saleId = event.params.saleId;
 
-        if (!sale.establishmentId || !sale.clientId) return;
+        if (!sale.establishmentId) return;
+
+        // Tenta pegar o ID do cliente. Se não tiver, usa o telefone limpo como fallback.
+        // A rota de checkout corrigida enviará 'clientId', mas mantemos o fallback por segurança.
+        const clientIdToUse = sale.clientId || cleanId(sale.clientPhone);
+
+        if (!clientIdToUse) {
+            console.log(`[Fidelidade] Venda ${saleId} ignorada: Sem cliente vinculado.`);
+            return;
+        }
 
         await processLoyaltyTransaction(
             sale.establishmentId,
-            sale.clientId,
+            clientIdToUse, // ID seguro e limpo
             sale.items || [],
             sale.totalAmount || 0,
             saleId,

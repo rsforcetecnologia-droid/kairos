@@ -9,6 +9,12 @@ const { verifyToken, hasAccess, isOwner } = require('../middlewares/auth');
 // 🛠️ FUNÇÕES AUXILIARES
 // =======================================================================
 
+// --- CORREÇÃO: Helper para limpar ID (garante formato numérico) ---
+function cleanId(id) {
+    if (!id) return '';
+    return String(id).replace(/\D/g, '');
+}
+
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
@@ -26,19 +32,20 @@ function handleFirestoreError(res, error, context) {
 async function checkClientRewards(db, clientName, clientPhone, establishmentId) {
     if (!clientName || !clientPhone || !establishmentId) return false;
     try {
-        const clientQuery = await db.collection('clients')
-            .where('establishmentId', '==', establishmentId)
-            .where('phone', '==', clientPhone)
-            .limit(1).get();
-
+        // CORREÇÃO: Busca pelo ID direto (mais performático e seguro)
+        const safeId = cleanId(clientPhone);
+        const clientDoc = await db.collection('clients').doc(safeId).get();
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
 
-        if (clientQuery.empty || !establishmentDoc.exists) return false;
+        if (!clientDoc.exists || !establishmentDoc.exists) return false;
         
-        const clientData = clientQuery.docs[0].data();
-        const establishmentData = establishmentDoc.data(); 
+        const clientData = clientDoc.data();
+        // Segurança: verifica se o cliente pertence mesmo a este estabelecimento
+        if (clientData.establishmentId !== establishmentId) return false;
 
+        const establishmentData = establishmentDoc.data(); 
         const loyaltyProgram = establishmentData.loyaltyProgram;
+        
         if (!establishmentData.modules?.['loyalty-section'] || !loyaltyProgram?.enabled || !loyaltyProgram.tiers?.length) {
             return false;
         }
@@ -55,12 +62,10 @@ async function checkClientRewards(db, clientName, clientPhone, establishmentId) 
     }
 }
 
-// *** CORREÇÃO PRINCIPAL: FILTRO DE ESTABELECIMENTO REFORÇADO ***
 async function sendPushNotificationToEstablishment(db, establishmentId, title, body) {
-    if (!establishmentId) return; // Segurança básica
+    if (!establishmentId) return; 
 
     try {
-        // 1. Busca usuários filtrando pelo ID do estabelecimento
         const usersSnapshot = await db.collection('users')
             .where('establishmentId', '==', establishmentId)
             .get();
@@ -68,7 +73,6 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
         const tokens = [];
         usersSnapshot.forEach(doc => {
             const data = doc.data();
-            // 2. Verificação Dupla (Defensiva): Garante que o usuário tem token E pertence ao estabelecimento
             if (data.fcmToken && data.establishmentId === establishmentId) {
                 tokens.push(data.fcmToken);
             }
@@ -76,18 +80,16 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
 
         if (tokens.length === 0) return;
 
-        // 3. Adiciona 'data' com o ID. O App Mobile deve verificar isso ao receber!
         const message = { 
             notification: { title, body }, 
             tokens,
             data: {
-                establishmentId: establishmentId, // O App deve checar: if (currentUser.establishmentId !== payload.establishmentId) return;
+                establishmentId: establishmentId, 
                 type: 'appointment_update'
             }
         };
         
         await admin.messaging().sendEachForMulticast(message);
-        console.log(`Push enviado para ${establishmentId}: ${title}`);
     } catch (error) {
         console.error("Erro Push:", error);
     }
@@ -115,7 +117,7 @@ router.post('/', async (req, res) => {
         if (!professionalDoc.exists) throw new Error('Profissional inválido.');
         const professionalName = professionalDoc.data().name;
 
-        // Validar Serviços e Calcular Total
+        // Validar Serviços
         let totalDuration = 0;
         let totalAmount = 0;
         const servicesDetails = [];
@@ -135,21 +137,18 @@ router.post('/', async (req, res) => {
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
         const newAppointmentRef = db.collection('appointments').doc();
         
-        const hasRewards = await checkClientRewards(db, clientName, clientPhone, establishmentId);
+        // CORREÇÃO: Garante ID seguro para buscar/criar cliente
+        const safeClientId = cleanId(clientPhone);
+        const hasRewards = await checkClientRewards(db, clientName, safeClientId, establishmentId);
+        
         let notificationTitle = "", notificationBody = "";
 
         await db.runTransaction(async (transaction) => {
-            const clientQuery = db.collection('clients').where('establishmentId', '==', establishmentId).where('phone', '==', clientPhone).limit(1);
-            const clientSnap = await transaction.get(clientQuery);
-            let clientRef, clientDocForReward;
-
-            if (clientSnap.empty) {
-                clientRef = db.collection('clients').doc();
-            } else {
-                clientRef = clientSnap.docs[0].ref;
-                clientDocForReward = clientSnap.docs[0]; 
-            }
-
+            // CORREÇÃO: Usa o ID direto em vez de query (evita duplicidade e garante padrão)
+            const clientRef = db.collection('clients').doc(safeClientId);
+            const clientDoc = await transaction.get(clientRef);
+            
+            // Verifica conflitos de agenda
             const conflictQuery = db.collection('appointments')
                 .where('professionalId', '==', professionalId)
                 .where('startTime', '<', admin.firestore.Timestamp.fromDate(endDate));
@@ -160,13 +159,22 @@ router.post('/', async (req, res) => {
             );
             if (actualConflicts.length > 0) throw new Error('Horário indisponível.');
 
-            if (clientSnap.empty) {
+            // Cria ou Atualiza Cliente
+            if (!clientDoc.exists) {
+                // Cliente NOVO: Cria com ID igual ao telefone limpo
                 transaction.set(clientRef, {
-                    establishmentId, name: clientName, phone: clientPhone, 
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(), loyaltyPoints: 0
+                    establishmentId, 
+                    name: clientName, 
+                    phone: clientPhone, // Mantém formatação original visual
+                    id: safeClientId, // ID explícito
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(), 
+                    loyaltyPoints: 0
                 });
-            } else if (clientSnap.docs[0].data().name !== clientName) {
-                transaction.update(clientRef, { name: clientName });
+            } else {
+                // Cliente EXISTE: Atualiza nome se mudou
+                if (clientDoc.data().name !== clientName) {
+                    transaction.update(clientRef, { name: clientName });
+                }
             }
             
             let newAppointment = {
@@ -179,9 +187,10 @@ router.post('/', async (req, res) => {
                 totalAmount: totalAmount 
             };
 
+            // Lógica de Resgate (se houver)
             if (redeemedReward && redeemedReward.points > 0) {
-                if (!clientDocForReward) throw new Error("Cliente novo não pode resgatar pontos.");
-                const currentPoints = clientDocForReward.data().loyaltyPoints || 0;
+                if (!clientDoc.exists) throw new Error("Cliente novo não pode resgatar pontos.");
+                const currentPoints = clientDoc.data().loyaltyPoints || 0;
                 if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes.");
                 
                 transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
@@ -194,6 +203,7 @@ router.post('/', async (req, res) => {
             
             transaction.set(newAppointmentRef, newAppointment);
 
+            // Notificação Interna
             const dateString = startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: timezone });
             const timeString = startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
             const serviceNames = servicesDetails.map(s => s.name).join(', ');
@@ -207,7 +217,6 @@ router.post('/', async (req, res) => {
             });
         });
 
-        // Envia notificação segura
         sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
             .catch(e => console.error("Falha push:", e));
 
@@ -259,6 +268,8 @@ router.get('/:establishmentId', async (req, res) => {
         if (appointmentsSnapshot.empty) return res.status(200).json([]);
 
         const professionalsMap = new Map(professionalsSnapshot.docs.map(d => [d.id, d.data().name]));
+        
+        // Cache para evitar múltiplas chamadas ao banco para o mesmo cliente na mesma listagem
         const clientRewardsCache = new Map();
 
         const enrichedAppointments = await Promise.all(appointmentsSnapshot.docs.map(async (doc) => {
@@ -267,6 +278,7 @@ router.get('/:establishmentId', async (req, res) => {
             
             let hasRewards = data.hasRewards;
 
+            // Se não tiver info de rewards salva, verifica em cache ou busca
             if (hasRewards === undefined) {
                 const identifier = `${data.clientPhone}`;
                 if (clientRewardsCache.has(identifier)) {
@@ -319,7 +331,7 @@ router.get('/cancelled/:establishmentId', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'cancelados'); }
 });
 
-// 4. DELETAR AGENDAMENTO (Com Notificação de Cancelamento)
+// 4. DELETAR AGENDAMENTO
 router.delete('/:appointmentId', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
@@ -332,15 +344,11 @@ router.delete('/:appointmentId', async (req, res) => {
             if (!doc.exists) throw new Error("Não encontrado.");
             
             const data = doc.data();
-            
-            // Salva dados para notificação
-            if (data.establishmentId) {
-                notificationData = {
-                    establishmentId: data.establishmentId,
-                    clientName: data.clientName || 'Cliente',
-                    date: data.startTime.toDate()
-                };
-            }
+            notificationData = {
+                establishmentId: data.establishmentId,
+                clientName: data.clientName || 'Cliente',
+                date: data.startTime.toDate()
+            };
 
             const items = data.comandaItems || [];
             const products = items.filter(i => i.type === 'product');
@@ -353,7 +361,6 @@ router.delete('/:appointmentId', async (req, res) => {
             transaction.delete(ref);
         });
 
-        // Envia notificação após exclusão bem sucedida
         if (notificationData) {
             const dateStr = notificationData.date.toLocaleDateString('pt-BR');
             const timeStr = notificationData.date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
@@ -405,9 +412,15 @@ router.put('/:appointmentId', async (req, res) => {
             const hasConflict = conflicts.docs.some(d => d.id !== appointmentId && d.data().endTime.toDate() > start && d.data().status !== 'cancelled');
             if (hasConflict) throw new Error('Horário indisponível.');
 
-            const clientQ = await transaction.get(db.collection('clients').where('establishmentId', '==', oldData.establishmentId).where('phone', '==', clientPhone).limit(1));
-            let clientRef = !clientQ.empty ? clientQ.docs[0].ref : null;
-            if (clientRef && clientQ.docs[0].data().name !== clientName) transaction.update(clientRef, { name: clientName });
+            // CORREÇÃO: Busca cliente por ID limpo
+            const safeClientId = cleanId(clientPhone);
+            const clientRef = db.collection('clients').doc(safeClientId);
+            const clientDoc = await transaction.get(clientRef);
+            
+            // Atualiza nome se necessário
+            if (clientDoc.exists && clientDoc.data().name !== clientName) {
+                transaction.update(clientRef, { name: clientName });
+            }
 
             let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
             
@@ -418,13 +431,14 @@ router.put('/:appointmentId', async (req, res) => {
                 totalAmount: totalAmount 
             };
 
+            // Lógica de Reembolso/Gasto de pontos ao editar
             if (redeemedReward && !oldData.redeemedReward) {
-                if (clientRef) {
+                if (clientDoc.exists) {
                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
                     transaction.set(clientRef.collection('loyaltyHistory').doc(), { type: 'redeem', points: -redeemedReward.points, reward: redeemedReward.reward, timestamp: admin.firestore.FieldValue.serverTimestamp() });
                 }
             } else if (oldData.redeemedReward && !redeemedReward) {
-                if (clientRef) transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(oldData.redeemedReward.points) });
+                if (clientDoc.exists) transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(oldData.redeemedReward.points) });
             }
 
             transaction.update(ref, updatePayload);
@@ -464,7 +478,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT
+// 7. CHECKOUT (CORRIGIDO PARA FIDELIDADE CENTRALIZADA)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -488,12 +502,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const apptData = appointmentDoc.data();
 
-            const clientQuery = db.collection('clients')
-                .where('establishmentId', '==', establishmentId)
-                .where('phone', '==', apptData.clientPhone).limit(1);
-            
-            const clientSnap = await transaction.get(clientQuery);
-
+            // 1. Atualiza Agendamento
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
@@ -502,44 +511,41 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
             });
 
+            // 2. Prepara ID do Cliente Seguro
+            const safeClientId = cleanId(apptData.clientPhone);
+
+            // 3. Cria Venda (CRÍTICO: Inclui clientId para o gatilho funcionar)
             transaction.set(saleRef, {
-                type: 'appointment', appointmentId, establishmentId, items,
+                type: 'appointment', 
+                appointmentId, 
+                establishmentId, 
+                items,
                 totalAmount: Number(totalAmount), 
-                clientName: apptData.clientName, clientPhone: apptData.clientPhone,
-                professionalId: apptData.professionalId, professionalName: apptData.professionalName,
-                createdBy: uid, createdAt: paidAtTimestamp, cashierSessionId: cashierSessionId || null,
+                clientName: apptData.clientName, 
+                clientPhone: apptData.clientPhone,
+                clientId: safeClientId, // <--- OBRIGATÓRIO PARA FIDELIDADE
+                professionalId: apptData.professionalId, 
+                professionalName: apptData.professionalName,
+                createdBy: uid, 
+                createdAt: paidAtTimestamp, 
+                cashierSessionId: cashierSessionId || null,
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            if (!clientSnap.empty) {
-                const clientRef = clientSnap.docs[0].ref;
-                
-                // --- CORREÇÃO APLICADA AQUI ---
-                // Atualiza todas as referências de data para consistência do filtro de inativos
-                let clientUpdate = { 
-                    lastServiceDate: paidAtTimestamp,
-                    lastVisit: paidAtTimestamp,
-                    updatedAt: paidAtTimestamp
-                };
-                
-                if (establishmentData.modules?.['loyalty-section'] && establishmentData.loyaltyProgram?.enabled) {
-                    const points = Math.floor(Number(totalAmount) / establishmentData.loyaltyProgram.pointsPerCurrency);
-                    
-                    // Só atualiza pontos se houver ganho
-                    if (points > 0) {
-                        clientUpdate.loyaltyPoints = admin.firestore.FieldValue.increment(points);
-                        transaction.set(clientRef.collection('loyaltyHistory').doc(), {
-                            type: 'earn', 
-                            points, 
-                            appointmentId, 
-                            amountSpent: Number(totalAmount), 
-                            timestamp: paidAtTimestamp
-                        });
-                    }
+            // 4. Atualiza Última Visita (Pontos são processados pelo Trigger do Backend)
+            if (safeClientId) {
+                const clientRef = db.collection('clients').doc(safeClientId);
+                const clientDoc = await transaction.get(clientRef);
+                if (clientDoc.exists) {
+                    transaction.update(clientRef, { 
+                        lastServiceDate: paidAtTimestamp,
+                        lastVisit: paidAtTimestamp,
+                        updatedAt: paidAtTimestamp
+                    });
                 }
-                transaction.update(clientRef, clientUpdate);
             }
 
+            // 5. Financeiro
             const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
             payments.forEach(payment => {
                 const finRef = db.collection('financial_receivables').doc();
@@ -578,6 +584,9 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 financialDocs = finsSnapshot.docs;
             }
 
+            // Deletar a venda reverte os pontos automaticamente?
+            // NÃO. Para reverter pontos, precisaria de um gatilho de onDelete em 'sales'.
+            // Por enquanto, apenas apaga o registro de venda.
             if (saleId) {
                 t.delete(db.collection('sales').doc(saleId)); 
                 financialDocs.forEach(f => t.delete(f.ref));  
@@ -598,7 +607,7 @@ router.post('/:appointmentId/awaiting-payment', async (req, res) => {
     catch(e){ handleFirestoreError(res, e, 'status'); }
 });
 
-// 9. ALTERAR STATUS (Com Notificação de Cancelamento)
+// 9. ALTERAR STATUS
 router.patch('/:appointmentId/status', async (req, res) => {
     try { 
         const { appointmentId } = req.params;
@@ -607,7 +616,6 @@ router.patch('/:appointmentId/status', async (req, res) => {
         
         await ref.update({ status }); 
 
-        // Se for cancelamento, busca os dados para notificar
         if (status === 'cancelled') {
             const doc = await ref.get();
             const data = doc.data();
@@ -622,7 +630,6 @@ router.patch('/:appointmentId/status', async (req, res) => {
                     `${data.clientName || 'Cliente'} cancelou o horário de ${dateStr} às ${timeStr}.`
                 ).catch(e => console.error("Erro push cancelamento:", e));
                 
-                // Grava notificação no painel do estabelecimento
                 await req.db.collection('establishments').doc(data.establishmentId).collection('notifications').add({
                     title: "Cancelamento", 
                     message: `${data.clientName} cancelou o agendamento de ${dateStr} às ${timeStr}`,
@@ -633,7 +640,6 @@ router.patch('/:appointmentId/status', async (req, res) => {
                 });
             }
         }
-
         res.status(200).json({message:'ok'}); 
     }
     catch(e){ handleFirestoreError(res, e, 'status patch'); }

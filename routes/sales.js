@@ -4,12 +4,18 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
+// --- CORREÇÃO: Helper para limpar ID (deixar apenas números) ---
+function cleanId(id) {
+    if (!id) return '';
+    return String(id).replace(/\D/g, '');
+}
+
 // Listar vendas (não implementado)
 router.get('/', async (req, res) => {
     res.status(501).json({ message: 'Ainda não implementado' });
 });
 
-// Criar nova venda avulsa (PDV) - COM INTEGRAÇÃO FINANCEIRA CORRIGIDA
+// Criar nova venda avulsa (PDV) - COM INTEGRAÇÃO FINANCEIRA E FIDELIDADE CORRIGIDA
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
@@ -34,6 +40,9 @@ router.post('/', async (req, res) => {
         const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
 
+        // CORREÇÃO: Gera um ID limpo para garantir a fidelidade
+        const safeClientId = cleanId(clientPhone);
+
         const saleData = {
             type: 'walk-in',
             establishmentId,
@@ -41,6 +50,7 @@ router.post('/', async (req, res) => {
             totalAmount: Number(totalAmount),
             clientName: clientName || "Cliente Avulso",
             clientPhone: clientPhone || null,
+            clientId: safeClientId || null, // <--- CAMPO CRÍTICO: Permite o backend somar pontos
             professionalId: professionalId || null,
             professionalName: professionalName,
             cashierSessionId: cashierSessionId || null,
@@ -85,7 +95,7 @@ router.post('/', async (req, res) => {
             // 2. Criar Registro de Venda
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA (JÁ EXISTENTE E CORRETA)
+            // 3. INTEGRAÇÃO FINANCEIRA
             payments.forEach(payment => {
                 const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
                 const paymentMethod = payment.method.toLowerCase();
@@ -238,7 +248,7 @@ router.post('/:saleId/reopen', async (req, res) => {
 // ROTA PARA EXCLUIR VENDA AVULSA (APENAS 'walk-in')
 router.delete('/:saleId', async (req, res) => {
     const { saleId } = req.params;
-    const { establishmentId } = req.user; // Pega o ID do estabelecimento do token
+    const { establishmentId } = req.user; 
     const { db } = req;
     
     const saleRef = db.collection('sales').doc(saleId);
@@ -251,10 +261,6 @@ router.delete('/:saleId', async (req, res) => {
             
             const saleData = saleDoc.data();
             
-            // VERIFICAÇÃO DE SEGURANÇA:
-            // 1. Só pode excluir se for do mesmo estabelecimento
-            // 2. Só pode excluir se for 'walk-in'
-            // 3. Só pode excluir se o status for 'confirmed' (em atendimento), NÃO 'completed'
             if (saleData.establishmentId !== establishmentId) {
                 throw new Error("Acesso negado.");
             }
@@ -265,7 +271,6 @@ router.delete('/:saleId', async (req, res) => {
                 throw new Error("Não é possível excluir uma venda avulsa já finalizada. Use a função 'Reabrir'.");
             }
 
-            // Lógica de reverter estoque (igual à de reabrir)
             const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
                 productsToRestock.forEach(item => {
@@ -277,23 +282,19 @@ router.delete('/:saleId', async (req, res) => {
                 
                 productDocs.forEach(doc => {
                     if (doc.exists) {
-                        // Devolve 1 unidade ao estoque para cada item
                         transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(1) });
                     }
                 });
             }
             
-            // Procura e marca para deletar lançamentos financeiros (embora vendas 'confirmed' não devam ter)
             const financialSnapshot = await db.collection('financial_receivables')
                 .where('transactionId', '==', saleId)
                 .get();
             financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
             
-            // Deleta a venda
             transaction.delete(saleRef);
         });
 
-        // Deleta os lançamentos financeiros fora da transação principal
         const batchDeleteFinancial = db.batch();
         financialEntriesToDelete.forEach(id => {
             batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
