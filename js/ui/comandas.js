@@ -10,63 +10,141 @@ import * as clientsApi from '../api/clients.js';
 import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import * as professionalsApi from '../api/professionals.js';
-import * as establishmentsApi from '../api/establishments.js'; 
+import * as establishmentsApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; 
+import { escapeHTML } from '../utils.js';
 
 // --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
     allComandas: [],
     catalog: { services: [], products: [], packages: [] },
-    clients: [],
     activeFilter: 'atendimento',
     selectedComandaId: null,
+    viewMode: 'items', // 'items' ou 'checkout'
     isCashierOpen: false,
     activeCashierSessionId: null,
-    loyaltySettings: null, 
+    loyaltySettings: null,
     paging: {
         page: 1,
-        limit: 12,
+        limit: 10,
         total: 0,
     },
+    checkoutState: {
+        payments: [],
+        selectedMethod: 'dinheiro',
+        installments: 1,
+        amountReceived: ''
+    }
 };
+
 let pageEventListener = null;
 let contentDiv = null;
+let searchDebounceTimeout = null;
 
-// --- 3. FUNÇÕES AUXILIARES (MOBILE & UI & LÓGICA) ---
+// --- 3. FUNÇÕES AUXILIARES ---
 
-function getSafeAllItems(comanda) {
-    if (comanda.status === 'completed') {
-        const finalItems = comanda.comandaItems || comanda.items || [];
-        if (finalItems.length > 0) return finalItems;
-        return comanda.services || [];
+function debounce(func, wait) {
+    return function(...args) {
+        clearTimeout(searchDebounceTimeout);
+        searchDebounceTimeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
+// NOVA FUNÇÃO: Executa o salvamento com Loading na tela
+async function executeSaveAction(comanda, nextStep = 'stay') {
+    if (!comanda || !comanda.id) return;
+
+    // 1. FORÇA ATUALIZAÇÃO LOCAL ANTES DE TUDO
+    // Isso garante que o card e o checkout leiam os dados mais recentes
+    comanda._localUpdatedAt = Date.now();
+    comanda._cachedItems = null; // Limpa cache para forçar recálculo
+
+    // Atualiza visualmente a lista (card) imediatamente com o novo valor
+    renderComandaList();
+
+    // 2. Se for checkout, prepara o estado e muda a tela IMEDIATAMENTE (UI Otimista)
+    if (nextStep === 'checkout') {
+        localState.viewMode = 'checkout';
+        
+        // Reinicia estado do checkout se for uma nova entrada
+        // Mas mantemos pagamentos parciais se já existirem
+        if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
+        localState.checkoutState.selectedMethod = 'dinheiro';
+        localState.checkoutState.amountReceived = ''; 
+        
+        // Renderiza a tela de checkout imediatamente
+        renderComandaDetail();
     }
 
-    const baseServices = comanda.services || [];
-    const extras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
+    // 3. Cria e mostra o overlay de carregamento (não bloqueia a UI do checkout se já renderizou, mas avisa)
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.id = 'saving-overlay';
+    loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.innerHTML = `
+        <div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center animate-fade-in">
+            <div class="loader mb-4 border-t-indigo-600"></div>
+            <p class="text-gray-800 font-bold text-lg">Sincronizando...</p>
+        </div>
+    `;
+    document.body.appendChild(loadingOverlay);
 
-    let combined = [...baseServices];
-
-    extras.forEach(extra => {
-        if (extra.type === 'product') {
-            combined.push(extra);
-            return;
+    try {
+        // 4. Envia para o servidor
+        if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
+             // Lógica para temp se necessário
         }
 
-        const exists = combined.some(existing => {
-            const sameId = existing.id && extra.id && existing.id === extra.id;
-            const sameName = existing.name && extra.name && existing.name === extra.name;
-            return sameId || sameName;
-        });
-
-        if (!exists) {
-            combined.push(extra);
+        // Envia o objeto comanda atualizado (que contém os novos items em comandaItems)
+        await appointmentsApi.updateAppointment(comanda.id, comanda);
+        
+        // Remove overlay
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
         }
-    });
 
-    return combined;
+        if (nextStep !== 'checkout') {
+            showNotification('Sucesso', 'Comanda atualizada!', 'success');
+            // Garante que a lista está sincronizada com o retorno do servidor se necessário
+            // Mas confiamos na atualização local feita no passo 1
+        }
+
+    } catch (error) {
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
+        }
+        console.error("Erro ao salvar:", error);
+        
+        // Se der erro e estavamos indo para o checkout, talvez devêssemos voltar?
+        // Por enquanto, apenas avisa. O usuário pode tentar finalizar assim mesmo ou voltar.
+        showNotification('Erro', 'Falha ao salvar no servidor (Verifique conexão): ' + error.message, 'warning');
+    }
+}
+
+function getSafeAllItems(comanda) {
+    // Se o cache foi limpo (null), força recálculo
+    if (!comanda._cachedItems) {
+        let result = [];
+        if (comanda.status === 'completed') {
+            const finalItems = comanda.comandaItems || comanda.items || [];
+            result = finalItems.length > 0 ? finalItems : (comanda.services || []);
+        } else {
+            const baseServices = (comanda.services || []).map(s => ({...s, _source: 'original_service'}));
+            // Garante que comandaItems e items sejam arrays antes de espalhar
+            const extraItems = comanda.comandaItems || [];
+            const legacyItems = comanda.items || [];
+            
+            const extras = [...extraItems, ...legacyItems].map(i => ({...i, _source: 'extra'}));
+            result = [...baseServices, ...extras];
+        }
+        
+        comanda._cachedItems = result;
+        comanda._cachedTimestamp = Date.now();
+        return result;
+    }
+
+    return comanda._cachedItems;
 }
 
 function showMobileDetail() {
@@ -94,29 +172,20 @@ function renderPageLayout() {
         <section class="h-full flex flex-col">
             <div class="flex flex-wrap justify-between items-center mb-4 gap-4 px-1">
                 <h2 class="text-2xl md:text-3xl font-bold text-gray-800">Ponto de Venda</h2>
-                <div id="cashier-controls" class="flex items-center gap-2"></div>
+                <div id="cashier-controls" class="flex items-center gap-2">
+                    <div class="loader-sm"></div>
+                </div>
             </div>
 
-            ${!localState.isCashierOpen ? `
-                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg">
-                    <div class="flex">
-                        <div class="flex-shrink-0">⚠️</div>
-                        <div class="ml-3">
-                            <p class="text-sm text-yellow-700">
-                                <strong>Caixa Fechado!</strong> Abra o caixa para realizar vendas.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            ` : ''}
+            <div id="cashier-alert-box"></div>
 
             <div id="comandas-layout">
-                <div id="comandas-list-column">
-                    <div class="p-4 pb-2 sticky top-0 bg-white z-10 border-b border-gray-100">
+                <div id="comandas-list-column" class="flex flex-col h-full">
+                    <div class="p-4 pb-2 sticky top-0 bg-white z-10 border-b border-gray-100 shadow-sm flex-shrink-0">
                         <button 
+                            id="btn-new-sale"
                             data-action="new-sale" 
-                            class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-md flex items-center justify-center gap-2 mb-3 ${!localState.isCashierOpen ? 'opacity-50 cursor-not-allowed' : ''}"
-                            ${!localState.isCashierOpen ? 'disabled' : ''}
+                            class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-md flex items-center justify-center gap-2 mb-3"
                         >
                             <span>+</span> NOVA VENDA
                         </button>
@@ -127,14 +196,16 @@ function renderPageLayout() {
                         </div>
                     </div>
 
-                    <div id="finalizadas-datepicker" class="hidden px-4 py-2 bg-gray-50 border-b">
+                    <div id="finalizadas-datepicker" class="hidden px-4 py-2 bg-gray-50 border-b flex-shrink-0">
                         <label for="filter-date" class="text-xs font-semibold text-gray-500 uppercase">Data:</label>
                         <input type="date" id="filter-date" value="${todayStr}" class="w-full mt-1 p-2 border rounded-md bg-white text-sm">
                     </div>
 
-                    <div id="comandas-list" class="p-3 space-y-2 pb-20">
+                    <div id="comandas-list" class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-grow">
                         <div class="loader mx-auto mt-10"></div>
                     </div>
+                    
+                    <div id="pagination-container" class="p-2 border-t bg-gray-50 flex-shrink-0 min-h-[50px] flex justify-center items-center"></div>
                 </div>
 
                 <div id="comanda-detail-container">
@@ -145,37 +216,74 @@ function renderPageLayout() {
             </div>
         </section>
     `;
+    updateCashierUIState();
+}
+
+function updateCashierUIState() {
+    const alertBox = document.getElementById('cashier-alert-box');
+    const newSaleBtn = document.getElementById('btn-new-sale');
+
+    if (!localState.isCashierOpen) {
+        if (alertBox) alertBox.innerHTML = `
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg animate-fade-in">
+                <div class="flex">
+                    <div class="flex-shrink-0">⚠️</div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            <strong>Caixa Fechado!</strong> Abra o caixa para realizar vendas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        `;
+        if (newSaleBtn) {
+            newSaleBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            newSaleBtn.disabled = true;
+        }
+    } else {
+        if (alertBox) alertBox.innerHTML = '';
+        if (newSaleBtn) {
+            newSaleBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            newSaleBtn.disabled = false;
+        }
+    }
+    renderCashierControls();
 }
 
 function renderCashierControls() {
     const container = document.getElementById('cashier-controls');
     if (!container) return;
+    
     if (localState.isCashierOpen) {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-sm font-medium text-green-700 bg-green-100 py-1 px-3 rounded-full">Caixa Aberto</span>
-            <button data-action="close-cashier" class="py-2 px-4 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 text-sm">Fechar Caixa</button>
-            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm">Relatório</button>
+            <span class="hidden sm:inline-block text-sm font-medium text-green-700 bg-green-100 py-1 px-3 rounded-full border border-green-200">Caixa Aberto</span>
+            <button data-action="close-cashier" class="py-2 px-4 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 text-sm transition">Fechar Caixa</button>
+            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
         `;
     } else {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-sm font-medium text-red-700 bg-red-100 py-1 px-3 rounded-full">Caixa Fechado</span>
-            <button data-action="open-cashier" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 text-sm">Abrir Caixa</button>
-            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm">Relatório</button>
+            <span class="hidden sm:inline-block text-sm font-medium text-red-700 bg-red-100 py-1 px-3 rounded-full border border-red-200">Caixa Fechado</span>
+            <button data-action="open-cashier" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 text-sm shadow transition">Abrir Caixa</button>
+            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
         `;
     }
 }
 
 function renderComandaList() {
     const listContainer = document.getElementById('comandas-list');
+    const paginationContainer = document.getElementById('pagination-container');
+    
     if (!listContainer) return;
     
     if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
         listContainer.innerHTML = `
             <div class="text-center py-10 opacity-60">
+                <svg class="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                 <p class="text-sm font-medium text-gray-700">Caixa Fechado</p>
                 <p class="text-xs text-gray-500">Abra o caixa para ver as vendas</p>
             </div>
         `;
+        if (paginationContainer) paginationContainer.innerHTML = '';
         return;
     }
     
@@ -184,86 +292,79 @@ function renderComandaList() {
         finalizadas: 'completed'
     };
     const currentStatus = statusMap[localState.activeFilter];
-    
     const filteredComandas = localState.allComandas.filter(c => c.status === currentStatus);
 
     if (filteredComandas.length === 0) {
-        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda encontrada.</p>`;
-        renderPaginationControls(listContainer);
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda nesta página.</p>`;
+        renderPaginationControls(paginationContainer);
         return;
     }
 
-    listContainer.innerHTML = filteredComandas.map(comanda => {
+    const fragment = document.createDocumentFragment();
+
+    filteredComandas.forEach(comanda => {
+        // Usa getSafeAllItems que agora recalcula corretamente se o cache foi limpo
         const allItems = getSafeAllItems(comanda);
         const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
-        
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        
-        const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
-        
-        const safeClientName = escapeHTML(comanda.clientName);
-        const safeProfName = escapeHTML(comanda.professionalName);
-        
+        const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
+        const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
+        const safeProfName = escapeHTML(comanda.professionalName || 'Sem profissional');
         const typeIndicator = isWalkIn
-            ? `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md">Avulso</span>`
-            : `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md">Agendado</span>`;
+            ? `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">Avulso</span>`
+            : `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">Agenda</span>`;
 
-        return `
-            <div data-action="select-comanda" data-comanda-id="${comanda.id}" 
-                 class="comanda-card cursor-pointer ${isSelected ? 'selected' : ''}">
-                
-                <div class="flex justify-between items-start mb-1">
-                    <p class="font-bold text-gray-800 truncate max-w-[70%]">${safeClientName}</p>
-                    <p class="font-bold text-gray-900">R$ ${total.toFixed(2)}</p>
+        const div = document.createElement('div');
+        div.className = `comanda-card cursor-pointer ${isSelected ? 'selected' : ''}`;
+        div.dataset.action = 'select-comanda';
+        div.dataset.comandaId = comanda.id;
+        div.innerHTML = `
+            <div class="flex justify-between items-start mb-1 pointer-events-none">
+                <p class="font-bold text-gray-800 truncate max-w-[70%] text-sm">${safeClientName}</p>
+                <p class="font-bold text-gray-900 text-sm">R$ ${total.toFixed(2)}</p>
+            </div>
+            <div class="flex justify-between items-center mt-1 pointer-events-none">
+                <div class="flex items-center gap-2">
+                    ${typeIndicator}
+                    <p class="text-xs text-gray-500 truncate max-w-[100px]">${safeProfName}</p>
                 </div>
-                
-                <div class="flex justify-between items-center mt-1">
-                    <div class="flex items-center gap-2">
-                        ${typeIndicator}
-                        <p class="text-xs text-gray-500 truncate max-w-[100px]">${safeProfName}</p>
-                    </div>
-                    <p class="text-xs text-gray-400 font-medium">${time}</p> 
-                </div>
+                <p class="text-xs text-gray-400 font-medium">${time}</p> 
             </div>
         `;
-    }).join('');
+        fragment.appendChild(div);
+    });
 
-    renderPaginationControls(listContainer);
+    listContainer.innerHTML = '';
+    listContainer.appendChild(fragment);
+    renderPaginationControls(paginationContainer);
 }
 
 function renderPaginationControls(container) {
+    if (!container) return;
+    container.innerHTML = '';
+
     const { page, total, limit } = localState.paging;
     const totalPages = Math.ceil((total || 0) / limit);
-    
-    if (totalPages <= 1) return;
+    if (totalPages === 0) return;
 
-    let paginationHtml = `<div class="flex gap-2 justify-center mt-4 flex-wrap pb-4">`;
-    
-    if (page > 1) {
-        paginationHtml += `<button data-page="${page - 1}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 text-sm">&laquo;</button>`;
-    }
-    
-    for (let i = 1; i <= totalPages; i++) {
-        if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
-            paginationHtml += `<button data-page="${i}" class="px-3 py-1 rounded text-sm ${i === page ? 'bg-indigo-600 text-white font-bold' : 'bg-gray-200 hover:bg-gray-300'}">${i}</button>`;
-        } else if (i === page - 3 || i === page + 3) {
-            paginationHtml += `<span class="px-2 text-gray-400">...</span>`;
-        }
-    }
-    
-    if (page < totalPages) {
-        paginationHtml += `<button data-page="${page + 1}" class="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 text-sm">&raquo;</button>`;
-    }
-    
-    paginationHtml += `</div>`;
-    container.innerHTML += paginationHtml;
+    const div = document.createElement('div');
+    div.className = "flex gap-2 justify-center items-center w-full";
+    div.innerHTML = `
+        <button data-page="${page - 1}" class="px-3 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 text-sm font-medium ${page <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${page <= 1 ? 'disabled' : ''}>&laquo;</button>
+        <span class="text-xs font-semibold text-gray-600 mx-2">Pág ${page} de ${totalPages || 1}</span>
+        <button data-page="${page + 1}" class="px-3 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 text-sm font-medium ${page >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${page >= totalPages ? 'disabled' : ''}>&raquo;</button>
+    `;
+    container.appendChild(div);
 
-    container.querySelectorAll('button[data-page]').forEach(btn => {
+    div.querySelectorAll('button[data-page]').forEach(btn => {
         btn.onclick = (e) => {
             e.stopPropagation(); 
-            localState.paging.page = parseInt(btn.dataset.page, 10);
-            fetchAndDisplayData();
+            const newPage = parseInt(btn.dataset.page, 10);
+            if (newPage > 0 && newPage <= totalPages) {
+                localState.paging.page = newPage;
+                fetchAndDisplayData();
+            }
         };
     });
 }
@@ -271,6 +372,14 @@ function renderPaginationControls(container) {
 function renderComandaDetail() {
     const detailContainer = document.getElementById('comanda-detail-container');
     if (!detailContainer) return;
+    
+    // VERIFICA SE ESTÁ NO MODO CHECKOUT (ESTÁGIO 2)
+    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+
+    if (localState.viewMode === 'checkout' && comanda) {
+        renderCheckoutView(comanda, detailContainer);
+        return;
+    }
     
     const mobileHeaderHTML = `
         <div class="mobile-only-header">
@@ -287,14 +396,11 @@ function renderComandaDetail() {
             <div class="flex flex-col items-center justify-center h-full text-center text-gray-500 p-6">
                 <div class="bg-gray-100 p-4 rounded-full mb-4">🔒</div>
                 <p class="font-semibold text-lg">Caixa Fechado</p>
-                <p class="text-sm mb-6">Abra o caixa para ver detalhes.</p>
-                <button data-action="open-cashier" class="py-2 px-6 bg-green-600 text-white font-bold rounded-lg">Abrir Caixa</button>
+                <button data-action="open-cashier" class="py-2 px-6 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow mt-4">Abrir Caixa</button>
             </div>
         `;
         return;
     }
-    
-    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
     if (!comanda) {
         detailContainer.innerHTML = `
@@ -308,67 +414,66 @@ function renderComandaDetail() {
     }
 
     const allItems = getSafeAllItems(comanda);
-    
     const isCompleted = comanda.status === 'completed';
-    const isWalkIn = comanda.type === 'walk-in' || comanda.id.startsWith('temp-');
+    const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
-    const goToAppointmentBtn = !isWalkIn
-        ? `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" 
-                class="text-indigo-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-1">
-             Ir para Agendamento <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-           </button>`
-        : '';
-
     const groupedItems = allItems.reduce((acc, item) => {
         const key = `${item.type}-${item.id || item.name}`;
-        if (!acc[key]) {
-            acc[key] = { ...item, quantity: 0 };
-        }
+        if (!acc[key]) acc[key] = { ...item, quantity: 0, sources: [] };
         acc[key].quantity += 1;
+        if(item._source) acc[key].sources.push(item._source);
         return acc;
     }, {});
     
     const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
+    const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
+    const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
-    const safeClientName = escapeHTML(comanda.clientName);
-    const safeProfName = escapeHTML(comanda.professionalName);
-
-    // --- ELEMENTOS DE UI REUTILIZÁVEIS ---
-    
-    // Botões Padrão (Visíveis no Desktop, ocultos no Mobile via classe CSS)
+    // --- BOTÕES ESTÁGIO 1 (ITENS) ---
     const desktopButtons = `
-        <div class="grid grid-cols-2 gap-3 mobile-hidden">
-            <button data-action="add-item" class="py-3.5 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200">
-                + ADICIONAR
+        <div class="grid grid-cols-3 gap-3 mobile-hidden pt-2">
+            <button data-action="add-item" class="col-span-1 py-3 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200 text-sm">
+                + Item
             </button>
-            <button data-action="checkout" class="py-3.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">
-                RECEBER
+            <button data-action="save-comanda" class="col-span-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition border border-gray-300 text-sm">
+                Salvar
+            </button>
+            <button data-action="go-to-checkout" class="col-span-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 text-sm">
+                Receber
             </button>
         </div>
     `;
 
-    // Botões Flutuantes (FABs - Visíveis apenas no Mobile via CSS)
+    // Botões Flutuantes (Mobile): Add, Save, Checkout
     const mobileFABs = `
         <div class="mobile-fabs-container">
             <button data-action="add-item" class="fab-btn-secondary" title="Adicionar Item">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             </button>
-            <button data-action="checkout" class="fab-btn-primary" title="Receber / Pagar">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            <button data-action="save-comanda" class="fab-btn-secondary bg-gray-600 text-white hover:bg-gray-700" title="Salvar Alterações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+            </button>
+            <button data-action="go-to-checkout" class="fab-btn-primary" title="Receber / Pagar">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
         </div>
     `;
 
     detailContainer.innerHTML = `
         ${mobileHeaderHTML} 
-        <div class="flex-grow overflow-y-auto p-4 pb-24"> <div class="flex justify-between items-start mb-6 border-b pb-4">
+        <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar"> 
+            <div class="flex justify-between items-start mb-6 border-b pb-4">
                 <div>
                     <h3 class="text-xl font-bold text-gray-800 truncate max-w-[200px]">${safeClientName}</h3>
                     <p class="text-sm text-gray-500 flex items-center gap-1 mt-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                         ${safeProfName}
                     </p>
-                    ${isWalkIn ? `<span class="mt-2 inline-block px-2 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-md">Venda Avulsa</span>` : goToAppointmentBtn}
+                    ${!isWalkIn ? 
+                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-2">
+                             Ver na Agenda <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                         </button>` 
+                         : `<span class="mt-2 inline-block px-2 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-md">Venda Avulsa</span>`}
                 </div>
                 <div class="flex gap-2">
                     ${isCompleted ? 
@@ -384,30 +489,30 @@ function renderComandaDetail() {
 
             <div class="space-y-3">
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
-                ${Object.values(groupedItems).map(item => `
+                ${Object.values(groupedItems).map(item => {
+                    const hasOriginalSource = item.sources && item.sources.includes('original_service');
+                    const isProtected = hasOriginalSource && item.quantity <= 1;
+
+                    return `
                     <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${item.isReward ? 'border-yellow-200 bg-yellow-50' : ''}">
-                        <div class="flex items-center gap-3">
-                            <span class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 font-bold text-sm rounded-lg">
-                                ${item.quantity}x
-                            </span>
-                            <div>
-                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">
-                                    ${item.isReward ? '🎁 ' : ''}${escapeHTML(item.name)}
-                                </p>
-                                <p class="text-xs text-gray-500">
-                                    ${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}
-                                </p>
+                        <div class="flex items-center gap-3 w-full">
+                            <div class="flex-grow min-w-0">
+                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">${item.isReward ? '🎁 ' : ''}${escapeHTML(item.name)}</p>
+                                <p class="text-xs text-gray-500">${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
+                            </div>
+                            ${!isCompleted ? `
+                                <div class="flex items-center bg-gray-100 rounded-lg p-1 gap-3">
+                                    <button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-600" ${isProtected ? 'disabled title="Mínimo 1"' : ''}>-</button>
+                                    <span class="text-sm font-bold text-gray-800 w-4 text-center">${item.quantity}</span>
+                                    <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-green-50 hover:text-green-600">+</button>
+                                </div>
+                            ` : `<span class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 font-bold text-sm rounded-lg">${item.quantity}x</span>`}
+                            <div class="flex items-center justify-end w-20">
+                                <span class="font-bold text-gray-900 whitespace-nowrap">R$ ${(item.price * item.quantity).toFixed(2)}</span>
                             </div>
                         </div>
-                        <div class="flex items-center gap-3">
-                            <span class="font-bold text-gray-900">R$ ${(item.price * item.quantity).toFixed(2)}</span>
-                            ${!isCompleted ? 
-                                `<button data-action="remove-item" data-item-id="${item.id}" data-item-type="${item.type}" class="text-red-400 hover:text-red-600 p-1 rounded-full hover:bg-red-50"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` 
-                                : ''}
-                        </div>
                     </div>
-                `).join('')}
-                
+                `}).join('')}
                 ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg text-sm">Nenhum item adicionado</div>' : ''}
             </div>
         </div>
@@ -417,7 +522,6 @@ function renderComandaDetail() {
                 <span class="text-sm text-gray-500 font-medium">Total a Pagar</span>
                 <span class="text-4xl lg:text-3xl font-extrabold text-gray-900 mt-1 lg:mt-0">R$ ${total.toFixed(2)}</span>
             </div>
-            
             ${!isCompleted ? desktopButtons : `
                 <div class="bg-green-50 text-green-700 text-center py-3 rounded-xl font-bold border border-green-200 flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -429,64 +533,143 @@ function renderComandaDetail() {
         ${!isCompleted ? mobileFABs : ''}
     `;
 
-    if (!isCompleted) {
+    if (!isCompleted && (comanda.clientId || comanda.clientName)) {
         checkAndRenderLoyalty(comanda, detailContainer.querySelector('#loyalty-container'));
     }
 }
 
-// --- NOVO: LÓGICA DE FIDELIDADE (UI) ---
+// --- ESTÁGIO 2: TELA DE CHECKOUT (ESTÁTICA) ---
+function renderCheckoutView(comanda, container) {
+    // 1. OBTÉM ITENS FRESCOS (ignora cache se foi setado para null recentemente)
+    const rawItems = getSafeAllItems(comanda);
+    
+    // 2. CALCULA O TOTAL EM TEMPO REAL
+    const total = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+    const checkoutState = localState.checkoutState;
+    
+    // Atualiza saldo restante com base nos pagamentos já adicionados
+    const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
+    const remaining = Math.max(0, total - totalPaid);
+    
+    // Auto-preenche o campo de valor se estiver vazio ou se o restante for maior que 0
+    // Isso garante que quando você entra na tela, o valor a pagar já esteja lá
+    if (!checkoutState.amountReceived || remaining > 0) {
+         checkoutState.amountReceived = remaining.toFixed(2);
+    }
+
+    const mobileHeaderHTML = `
+        <div class="mobile-only-header">
+            <button data-action="back-to-items" class="btn-back-mobile">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <h3 class="font-bold text-lg text-gray-800 ml-2">Pagamento</h3>
+        </div>
+    `;
+
+    container.innerHTML = `
+        ${mobileHeaderHTML}
+        <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar">
+            <div class="text-center mb-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Valor Total</p>
+                <p class="text-5xl font-extrabold text-gray-800 mt-2">R$ ${total.toFixed(2)}</p>
+                ${remaining <= 0.01 
+                    ? '<p class="text-green-600 font-bold mt-2 text-lg">Pago</p>' 
+                    : `<p class="text-red-500 font-medium mt-2">Faltam: R$ ${remaining.toFixed(2)}</p>`
+                }
+            </div>
+
+            <div class="space-y-3 mb-6">
+                ${checkoutState.payments.map((p, index) => `
+                    <div class="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 shadow-sm animate-fade-in-fast">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-gray-100 p-2 rounded-lg">
+                                <span class="font-bold text-xs uppercase text-gray-600">${p.method}</span>
+                             </div>
+                             ${p.installments > 1 ? `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">${p.installments}x</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-gray-900">R$ ${p.value.toFixed(2)}</span>
+                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-red-400 hover:text-red-600 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+
+            ${remaining > 0.01 ? `
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-3">Adicionar Pagamento</label>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    ${['dinheiro', 'pix', 'debito', 'credito', 'crediario'].map(m => `
+                        <button data-action="select-method" data-method="${m}" class="p-2 rounded-lg border text-xs font-bold uppercase transition ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}">
+                            ${m}
+                        </button>
+                    `).join('')}
+                </div>
+                
+                ${['credito', 'crediario'].includes(checkoutState.selectedMethod) ? `
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-500">Parcelas</label>
+                        <select id="checkout-installments" class="w-full mt-1 p-2 border rounded-lg text-sm bg-gray-50">
+                            ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${checkoutState.installments === i+1 ? 'selected' : ''}>${i+1}x</option>`).join('')}
+                        </select>
+                    </div>
+                ` : ''}
+
+                <div class="flex items-end gap-2">
+                    <div class="flex-grow">
+                        <label class="text-xs text-gray-500">Valor</label>
+                        <input type="number" id="checkout-amount" step="0.01" class="w-full p-2 border rounded-lg text-lg font-bold" value="${remaining.toFixed(2)}">
+                    </div>
+                    <button data-action="add-payment-checkout" class="h-[46px] px-4 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-900 transition">OK</button>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-3">
+            <button data-action="back-to-items" class="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition">Voltar</button>
+            <button data-action="finalize-checkout" class="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed" ${remaining > 0.01 ? 'disabled' : ''}>Finalizar</button>
+        </footer>
+    `;
+
+    container.querySelector('#checkout-amount')?.addEventListener('input', (e) => {
+        checkoutState.amountReceived = e.target.value;
+    });
+    
+    container.querySelector('#checkout-installments')?.addEventListener('change', (e) => {
+        checkoutState.installments = parseInt(e.target.value, 10);
+    });
+}
+
+// --- FIDELIDADE E MODAIS ---
 
 async function checkAndRenderLoyalty(comanda, containerElement) {
     if (!containerElement) return;
-    
     const settings = localState.loyaltySettings;
-    if (!settings || !settings.enabled) {
-        return;
-    }
+    if (!settings || !settings.enabled) return;
 
-    // Tenta encontrar o cliente pelo ID (Telefone) ou Nome
-    let client = null;
-    if (comanda.clientId) {
-        client = localState.clients.find(c => c.id === comanda.clientId);
-    } 
-    
-    if (!client) {
-        client = localState.clients.find(c => c.name === comanda.clientName);
-    }
-
-    // Se ainda não temos dados de pontos atualizados, busca
-    if (!client || client.loyaltyPoints === undefined) {
-        try {
-            // Se tiver ID (telefone), busca direto
-            if (comanda.clientId) {
-                 client = await clientsApi.getClient(comanda.clientId);
-            } else {
-                 // Fallback para busca por nome
-                 const foundClients = await clientsApi.getClients(state.establishmentId, comanda.clientName);
-                 client = foundClients.find(c => c.name === comanda.clientName) || foundClients[0];
-            }
-        } catch (e) {
-            console.error("[Fidelidade] Erro ao buscar cliente", e);
-            return;
+    let clientData = null;
+    try {
+        if (comanda.clientId) {
+            clientData = await clientsApi.getClient(state.establishmentId, comanda.clientId);
+        } else if (comanda.clientName) {
+            const search = await clientsApi.getClients(state.establishmentId, comanda.clientName, 1);
+            if (search && search.length > 0) clientData = search[0];
         }
-    }
+    } catch (e) { console.warn("Erro ao buscar dados de fidelidade", e); }
 
-    if (!client || !client.loyaltyPoints) return;
+    if (!clientData || clientData.loyaltyPoints === undefined) return;
 
-    // --- ATUALIZAÇÃO: Suporte à nova estrutura de 'tiers' além de 'rewards' (legado) ---
+    const currentPoints = Number(clientData.loyaltyPoints) || 0;
     const rewardsList = settings.tiers || settings.rewards || [];
-    
-    // Filtra prémios disponíveis com base nos pontos do cliente
     const availableRewards = rewardsList.filter(r => {
-        // Suporte para ambas nomenclaturas de dados
-        const cost = r.costPoints || r.points || 0; 
-        return client.loyaltyPoints >= cost;
+        const cost = Number(r.costPoints || r.points || 0); 
+        return cost > 0 && currentPoints >= cost;
     });
 
     if (availableRewards.length > 0) {
         const rewardDiv = document.createElement('div');
-        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 shadow-sm flex justify-between items-center";
-        
+        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 shadow-sm flex justify-between items-center animate-fade-in";
         rewardDiv.innerHTML = `
             <div class="flex items-center gap-3">
                 <div class="bg-yellow-100 p-2 rounded-full text-yellow-600">
@@ -494,19 +677,15 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
                 </div>
                 <div>
                     <p class="text-sm font-bold text-yellow-800">Prémio Disponível!</p>
-                    <p class="text-xs text-yellow-700">Saldo: <strong>${client.loyaltyPoints} pts</strong></p>
+                    <p class="text-xs text-yellow-700">Saldo: <strong>${currentPoints} pts</strong></p>
                 </div>
             </div>
         `;
-
         const btn = document.createElement('button');
         btn.innerText = "Resgatar";
         btn.className = "text-xs font-bold bg-yellow-500 text-white px-4 py-2 rounded-lg shadow hover:bg-yellow-600 transition-colors";
-        
         btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
-        
         rewardDiv.appendChild(btn);
-        
         containerElement.innerHTML = '';
         containerElement.appendChild(rewardDiv);
     }
@@ -516,7 +695,7 @@ function openRewardSelectionModal(rewards, comanda) {
     const contentHTML = `
         <div class="space-y-4">
             <p class="text-sm text-gray-600 mb-4">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
-            <div class="space-y-2 max-h-96 overflow-y-auto">
+            <div class="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
                 ${rewards.map(r => {
                     const cost = r.costPoints || r.points || 0;
                     const name = r.name || r.reward;
@@ -532,31 +711,20 @@ function openRewardSelectionModal(rewards, comanda) {
             </div>
         </div>
     `;
-
-    const { modalElement, close } = showGenericModal({ 
-        title: "🎁 Resgatar Prémio", 
-        contentHTML: contentHTML, 
-        maxWidth: 'max-w-md' 
-    });
-
+    const { modalElement, close } = showGenericModal({ title: "🎁 Resgatar Prémio", contentHTML: contentHTML, maxWidth: 'max-w-md' });
     modalElement.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-action="select-reward"]');
         if (btn) {
             const rewardId = btn.dataset.rewardId;
-            // Busca por ID ou Nome (para compatibilidade com dados antigos/novos)
             const reward = rewards.find(r => (r.id && r.id == rewardId) || ((r.name || r.reward) == rewardId)); 
-            if (reward) {
-                addRewardToComanda(reward, comanda);
-                close();
-            }
+            if (reward) { addRewardToComanda(reward, comanda); close(); }
         }
     });
 }
 
 async function addRewardToComanda(reward, comanda) {
-    const cost = reward.costPoints || reward.points || 0;
+    const cost = Number(reward.costPoints || reward.points || 0);
     const name = reward.name || reward.reward;
-
     const rewardItem = {
         id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
         name: `${name}`,
@@ -565,495 +733,207 @@ async function addRewardToComanda(reward, comanda) {
         isReward: true,
         pointsCost: cost
     };
-
     await handleAddItemToComanda(rewardItem, 1);
 }
 
-function _comandas_renderClientRegistrationModal() {
-    const modalContent = `
-        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full">
-            <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label>
-                        <input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
-                    </div>
-                    <div>
-                        <label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone (ID)</label>
-                        <input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
-                        <p class="text-xs text-gray-400 mt-1">Use apenas números.</p>
-                    </div>
-                    <div>
-                        <label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail (Opcional)</label>
-                        <input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Dia Nasc.</label>
-                            <input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
-                        </div>
-                        <div>
-                            <label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Mês Nasc.</label>
-                            <input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm">
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label>
-                    <textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea>
-                </div>
-            </div>
-            
-            <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-                <button type="button" data-action="close-modal" data-target="genericModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar Cliente</button>
-            </footer>
-        </form>
-    `;
-
-    showGenericModal({
-        title: 'Cadastrar Novo Cliente',
-        contentHTML: modalContent,
-        maxWidth: 'max-w-2xl'
-    });
-    
-    const form = document.getElementById('comandas_clientRegistrationForm');
-    if (form) {
-         form.addEventListener('submit', _comandas_handleClientRegistration);
-    }
-}
-
-// --- CADASTRO RÁPIDO COM PROTEÇÃO DE DUPLICIDADE ---
-async function _comandas_handleClientRegistration(e) {
-    e.preventDefault();
-    const form = document.getElementById('comandas_clientRegistrationForm');
-    if (!form) return;
-    
-    const registerButton = form.querySelector('button[type="submit"]');
-    const nameInput = form.querySelector('#regClientName');
-    const phoneInput = form.querySelector('#regClientPhone');
-
-    const rawPhone = phoneInput.value.trim();
-    // Limpa o telefone para ser o ID
-    const cleanPhone = rawPhone.replace(/\D/g, '');
-
-    const clientData = {
-        establishmentId: state.establishmentId,
-        name: nameInput.value.trim(),
-        email: form.querySelector('#regClientEmail').value.trim() || null,
-        phone: cleanPhone, // Salva o ID limpo
-        dob: `${form.querySelector('#regClientDobDay').value.trim()}/${form.querySelector('#regClientDobMonth').value.trim()}`,
-        notes: form.querySelector('#regClientNotes').value.trim() || null,
-    };
-
-    if (!clientData.name || !cleanPhone) {
-         return showNotification('Erro de Validação', 'Nome e Telefone (apenas números) são obrigatórios.', 'error');
-    }
-    
-    registerButton.disabled = true;
-    registerButton.textContent = 'Verificando...';
-
-    try {
-        // 1. Verifica se já existe pelo ID (Telefone)
-        const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
-
-        if (existingClient) {
-            // CLIENTE EXISTE: Apenas avisa e usa o existente
-            showNotification('Atenção', `Cliente já cadastrado: ${existingClient.name}. Selecionando existente...`, 'info');
-            
-            // Atualiza lista local
-            const inList = localState.clients.find(c => c.id === existingClient.id);
-            if (!inList) localState.clients.push(existingClient);
-
-            document.getElementById('genericModal').style.display = 'none';
-            openNewSaleModal(existingClient.id); // Abre venda com o ID existente
-
-        } else {
-            // NOVO CLIENTE: Cria
-            registerButton.textContent = 'A salvar...';
-            const newClient = await clientsApi.createClient(clientData);
-            
-            localState.clients.push({ id: newClient.id, ...clientData });
-            showNotification('Cliente cadastrado com sucesso!', 'success');
-            
-            document.getElementById('genericModal').style.display = 'none';
-            openNewSaleModal(newClient.id);
-        }
-
-    } catch (error) {
-        showNotification(`Erro ao processar: ${error.message}`, 'error');
-    } finally {
-        if(registerButton) {
-            registerButton.disabled = false;
-            registerButton.textContent = 'Salvar Cliente';
-        }
-    }
-}
-
 function openAddItemModal() {
-    if (!localState.isCashierOpen) {
-        showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
-        return;
-    }
-    
-    const { modalElement, close } = showGenericModal({ 
-        title: "Adicionar Item à Comanda", 
-        contentHTML: '<div id="add-item-content"></div>', 
-        maxWidth: 'max-w-4xl' 
-    });
+    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
+    const { modalElement, close } = showGenericModal({ title: "Adicionar Item à Comanda", contentHTML: '<div id="add-item-content"></div>', maxWidth: 'max-w-4xl' });
 
     const renderCatalogView = () => {
-        let searchTerm = '';
         const contentContainer = modalElement.querySelector('#add-item-content');
-
-        const icons = {
-            service: '<svg class="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v4.512a9.04 9.04 0 00-3 5.012M12 12a9.04 9.04 0 01-3-5.012V5l-1-1z" /></svg>',
-            product: '<svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>',
-            package: '<svg class="w-6 h-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-14L4 7m8 4v10M4 7v10l8 4" /></svg>'
-        };
-
-        const renderLists = () => {
-            const term = searchTerm.toLowerCase();
-            const filterItems = (items) => items.filter(item => item.name.toLowerCase().includes(term));
-
-            const lists = {
-                'modal-service-list': { items: filterItems(localState.catalog.services), type: 'service' },
-                'modal-product-list': { items: filterItems(localState.catalog.products), type: 'product' },
-                'modal-package-list': { items: filterItems(localState.catalog.packages), type: 'package' }
-            };
-
-            for (const [listId, { items, type }] of Object.entries(lists)) {
-                const listEl = contentContainer.querySelector(`#${listId}`);
-                if (listEl) {
-                    listEl.innerHTML = items.map(item => `
-                        <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border rounded-lg hover:bg-gray-50 transition">
-                            <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100">${icons[type]}</div>
-                            <span class="flex-grow text-left min-w-0 truncate">${escapeHTML(item.name)}</span>
-                            <span class="font-semibold flex-shrink-0">R$ ${item.price.toFixed(2)}</span>
-                        </button>
-                    `).join('') || `<p class="text-xs text-gray-400 text-center p-4">Nenhum item.</p>`;
-                }
-            }
-        };
-
         contentContainer.innerHTML = `
-            <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 mb-4 border rounded-lg">
+            <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
-                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
-                <div><h4 class="font-semibold mb-2 text-center text-purple-600">Pacotes</h4><div id="modal-package-list" class="space-y-2 max-h-96 overflow-y-auto"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-purple-600">Pacotes</h4><div id="modal-package-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
             </div>`;
-        
-        renderLists();
-        contentContainer.querySelector('#item-search-input').addEventListener('input', (e) => {
-            searchTerm = e.target.value;
-            renderLists();
-        });
+
+        const filterAndRender = (term = '') => {
+            const lowerTerm = term.toLowerCase();
+            const icons = {
+                service: '<svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v4.512a9.04 9.04 0 00-3 5.012M12 12a9.04 9.04 0 01-3-5.012V5l-1-1z" /></svg>',
+                product: '<svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>',
+                package: '<svg class="w-5 h-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-14L4 7m8 4v10M4 7v10l8 4" /></svg>'
+            };
+            const lists = {
+                'modal-service-list': { items: localState.catalog.services, type: 'service' },
+                'modal-product-list': { items: localState.catalog.products, type: 'product' },
+                'modal-package-list': { items: localState.catalog.packages, type: 'package' }
+            };
+            Object.entries(lists).forEach(([id, { items, type }]) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
+                el.innerHTML = filtered.map(item => `
+                    <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-2 w-full p-2 bg-white border rounded hover:bg-gray-50 transition text-left">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-50">${icons[type]}</div>
+                        <span class="flex-grow text-sm truncate">${escapeHTML(item.name)}</span>
+                        <span class="font-bold text-xs text-gray-700">R$ ${item.price.toFixed(2)}</span>
+                    </button>
+                `).join('') || `<p class="text-xs text-gray-400 text-center py-2">Nada encontrado</p>`;
+            });
+        };
+
+        filterAndRender(); 
+        const searchInput = document.getElementById('item-search-input');
+        searchInput.addEventListener('input', debounce((e) => { filterAndRender(e.target.value); }, 300));
+        setTimeout(() => searchInput.focus(), 100);
     };
 
     const renderQuantityView = (item) => {
         let quantity = 1;
         const contentContainer = modalElement.querySelector('#add-item-content');
-        
         const updateDisplay = () => {
             document.getElementById('quantity-display').textContent = quantity;
             document.getElementById('quantity-minus-btn').disabled = quantity <= 1;
         };
-
         contentContainer.innerHTML = `
             <div class="text-center p-8 relative">
-                <button data-action="back-to-catalog" class="absolute top-5 left-5 text-gray-600 hover:text-gray-900">&larr; Voltar</button>
-                <h3 class="font-bold text-2xl text-gray-800">${escapeHTML(item.name)}</h3>
-                <p class="text-lg text-gray-500">R$ ${item.price.toFixed(2)}</p>
-                <div class="my-8 flex items-center justify-center gap-4">
-                    <button id="quantity-minus-btn" class="w-12 h-12 rounded-full bg-gray-200 text-3xl font-bold text-gray-600 hover:bg-gray-300">-</button>
-                    <span id="quantity-display" class="text-4xl font-bold w-20 text-center">${quantity}</span>
-                    <button id="quantity-plus-btn" class="w-12 h-12 rounded-full bg-gray-200 text-3xl font-bold text-gray-600 hover:bg-gray-300">+</button>
+                <button data-action="back-to-catalog" class="absolute top-0 left-0 text-gray-600 hover:text-gray-900 font-medium flex items-center gap-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Voltar
+                </button>
+                <h3 class="font-bold text-2xl text-gray-800 mt-4">${escapeHTML(item.name)}</h3>
+                <p class="text-lg text-gray-500 font-medium">R$ ${item.price.toFixed(2)}</p>
+                <div class="my-8 flex items-center justify-center gap-6">
+                    <button id="quantity-minus-btn" class="w-14 h-14 rounded-full bg-gray-100 text-2xl font-bold text-gray-600 hover:bg-gray-200 transition disabled:opacity-50">-</button>
+                    <span id="quantity-display" class="text-5xl font-bold w-24 text-center text-indigo-700">${quantity}</span>
+                    <button id="quantity-plus-btn" class="w-14 h-14 rounded-full bg-gray-100 text-2xl font-bold text-gray-600 hover:bg-gray-200 transition">+</button>
                 </div>
-                <button data-action="confirm-add-item" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700">Adicionar à Comanda</button>
+                <button data-action="confirm-add-item" class="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg text-lg">Adicionar à Comanda</button>
             </div>
         `;
+        document.getElementById('quantity-minus-btn').onclick = () => { if (quantity > 1) { quantity--; updateDisplay(); } };
+        document.getElementById('quantity-plus-btn').onclick = () => { quantity++; updateDisplay(); };
         
-        document.getElementById('quantity-minus-btn').onclick = () => {
-            if (quantity > 1) {
-                quantity--;
-                updateDisplay();
-            }
-        };
-        document.getElementById('quantity-plus-btn').onclick = () => {
-            quantity++;
-            updateDisplay();
-        };
-        document.querySelector('[data-action="confirm-add-item"]').onclick = async () => {
+        document.querySelector('[data-action="confirm-add-item"]').onclick = async () => { 
             await handleAddItemToComanda(item, quantity);
-            close();
+            close(); 
         };
     };
 
     modalElement.addEventListener('click', (e) => {
         const selectBtn = e.target.closest('[data-action="select-item-for-quantity"]');
         const backBtn = e.target.closest('[data-action="back-to-catalog"]');
-
         if (selectBtn) {
             const { itemType, itemId } = selectBtn.dataset;
             const catalog = localState.catalog[itemType + 's'] || [];
             const item = catalog.find(i => i.id === itemId);
             if (item) renderQuantityView({...item, type: itemType});
-        } else if (backBtn) {
-            renderCatalogView();
-        }
+        } else if (backBtn) renderCatalogView();
     });
-
     renderCatalogView();
 }
 
-async function openNewSaleModal(newClientId = null) {
-    if (!localState.isCashierOpen) {
-        showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
-        return;
-    }
-    
-    if (!localState.clients || localState.clients.length === 0) {
-        try {
-             localState.clients = await clientsApi.getClients(state.establishmentId);
-        } catch (err) {
-            showNotification('Erro', 'Não foi possível carregar dados de clientes.', 'error');
-            return;
-        }
-    }
+async function openNewSaleModal(preSelectedClient = null) {
+    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
     if (!state.professionals || state.professionals.length === 0) {
-         try {
-             state.professionals = await professionalsApi.getProfessionals(state.establishmentId);
-        } catch (err) {
-            showNotification('Erro', 'Não foi possível carregar dados de profissionais.', 'error');
-            return;
-        }
+         try { state.professionals = await professionalsApi.getProfessionals(state.establishmentId); } 
+         catch (err) { return showNotification('Erro', 'Não foi possível carregar profissionais.', 'error'); }
     }
-    
-    const clientsOptions = localState.clients.map(c => {
-        const isSelected = c.id === newClientId ? 'selected' : '';
-        // BLINDAGEM XSS
-        return `<option value="${c.id}" ${isSelected}>${escapeHTML(c.name)} - ${escapeHTML(c.phone)}</option>`;
-    }).join('');
-    
     const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
-
     const contentHTML = `
         <form id="new-sale-form" class="space-y-4">
-            <div>
-                <label for="new-sale-client" class="block text-sm font-medium text-gray-700">Cliente</label>
-                <select id="new-sale-client" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um cliente...</option>
-                    ${clientsOptions}
-                </select>
-                <button type="button" data-action="new-client-from-sale" class="text-sm text-blue-600 hover:underline mt-1">ou Cadastrar Novo Cliente</button>
+            <div class="relative">
+                <label class="block text-sm font-medium text-gray-700">Cliente</label>
+                <input type="text" id="client-search" class="mt-1 w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500" placeholder="Digite nome ou telefone..." autocomplete="off">
+                <input type="hidden" id="selected-client-id" required>
+                <ul id="client-suggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1"></ul>
+                <button type="button" data-action="new-client-from-sale" class="text-xs text-blue-600 hover:underline mt-1 font-medium inline-block">+ Cadastrar Novo Cliente</button>
             </div>
             <div>
-                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional Responsável</label>
-                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white">
-                    <option value="">Selecione um profissional...</option>
-                    ${professionalsOptions}
-                </select>
+                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional</label>
+                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Selecione...</option>${professionalsOptions}</select>
             </div>
-             <div class="pt-4 border-t">
-                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700">Iniciar Venda</button>
-            </div>
+            <div class="pt-4 border-t"><button type="submit" id="btn-start-sale" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">Iniciar Venda</button></div>
         </form>
     `;
-
-    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML, maxWidth: 'max-w-md' });
-
-    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
+    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML: contentHTML, maxWidth: 'max-w-md' });
+    const searchInput = modalElement.querySelector('#client-search');
+    const suggestionsList = modalElement.querySelector('#client-suggestions');
+    const hiddenIdInput = modalElement.querySelector('#selected-client-id');
     
-    const newClientBtn = modalElement.querySelector('[data-action="new-client-from-sale"]');
-    if (newClientBtn) {
-        newClientBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            modalElement.style.display = 'none'; 
-            _comandas_renderClientRegistrationModal(); 
-        });
+    if (preSelectedClient) {
+        hiddenIdInput.value = preSelectedClient.id;
+        searchInput.value = `${preSelectedClient.name} (${preSelectedClient.phone || 'Sem tel'})`;
+        searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
     }
+
+    searchInput.addEventListener('input', debounce(async (e) => {
+        const term = e.target.value.trim();
+        hiddenIdInput.value = ''; searchInput.classList.remove('bg-green-50', 'border-green-300', 'text-green-800');
+        if (term.length < 2) { suggestionsList.classList.add('hidden'); return; }
+        try {
+            suggestionsList.innerHTML = '<li class="p-2 text-xs text-gray-500">Buscando...</li>';
+            suggestionsList.classList.remove('hidden');
+            const results = await clientsApi.getClients(state.establishmentId, term, 10);
+            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-2 text-xs text-gray-500">Nenhum cliente encontrado</li>';
+            else {
+                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-2 hover:bg-indigo-50 cursor-pointer border-b last:border-0 transition-colors"><div class="font-bold text-sm text-gray-800">${escapeHTML(c.name)}</div><div class="text-xs text-gray-500">${c.phone || 'Sem telefone'}</div></li>`).join('');
+            }
+        } catch (err) { suggestionsList.classList.add('hidden'); }
+    }, 400));
+
+    suggestionsList.addEventListener('click', (e) => {
+        const li = e.target.closest('li[data-client-id]');
+        if (li) {
+            hiddenIdInput.value = li.dataset.clientId;
+            hiddenIdInput.dataset.name = li.dataset.clientName;
+            hiddenIdInput.dataset.phone = li.dataset.clientPhone;
+            searchInput.value = `${li.dataset.clientName}`;
+            searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+            suggestionsList.classList.add('hidden');
+        }
+    });
+    document.addEventListener('click', (e) => { if (!searchInput.contains(e.target) && !suggestionsList.contains(e.target)) suggestionsList.classList.add('hidden'); });
+    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
+    const newClientBtn = modalElement.querySelector('[data-action="new-client-from-sale"]');
+    if (newClientBtn) newClientBtn.addEventListener('click', (e) => { e.preventDefault(); modalElement.style.display = 'none'; _comandas_renderClientRegistrationModal(); });
 }
 
-function openCheckoutModal() {
-    if (!localState.isCashierOpen) {
-        showNotification('Caixa Fechado', 'Abra o caixa antes de finalizar pagamentos.', 'error');
-        return;
-    }
-    
-    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
-    if (!comanda) return;
-
-    const rawItems = getSafeAllItems(comanda);
-    const seenIds = new Set();
-    const finalItems = [];
-    
-    for (const item of rawItems) {
-        if (item.type === 'service' && item.id) {
-            if (seenIds.has(item.id)) continue; 
-            seenIds.add(item.id);
-        }
-        finalItems.push(item);
-    }
-
-    const total = finalItems.reduce((acc, item) => acc + (item.price || 0), 0);
-
-    let payments = [];
-    let modalInternalState = {
-        remainingAmount: total,
-        selectedMethod: 'dinheiro',
-        installments: 1,
-        amountReceived: ''
-    };
-
-    const render = () => {
-        const paymentList = document.getElementById('payment-list');
-        const remainingEl = document.getElementById('remaining-amount');
-        const finalizeBtn = document.getElementById('finalize-checkout-btn');
-        const changeContainer = document.getElementById('change-container');
-        const installmentsContainer = document.getElementById('installments-container');
-        const paymentValueInput = document.getElementById('payment-value');
-        const paymentControls = document.getElementById('payment-controls');
-
-        const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
-        modalInternalState.remainingAmount = total - totalPaid;
-
-        paymentList.innerHTML = payments.map((p, index) => `
-            <div class="flex justify-between items-center bg-gray-100 p-2 rounded-md animate-fade-in-fast">
-                <span class="font-medium text-sm">${p.method.charAt(0).toUpperCase() + p.method.slice(1)} ${p.installments > 1 ? `(${p.installments}x)`: ''}</span>
-                <div class="flex items-center gap-2">
-                    <span class="font-semibold">R$ ${p.value.toFixed(2)}</span>
-                    <button data-action="remove-payment" data-payment-index="${index}" class="text-red-500 font-bold">&times;</button>
+function _comandas_renderClientRegistrationModal() {
+    const modalContent = `
+        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar" style="max-height: 80vh;">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">Nome *</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Telefone (ID) *</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Apenas números"></div>
                 </div>
-            </div>`).join('');
-
-        if (modalInternalState.remainingAmount <= 0.001) {
-            remainingEl.textContent = 'Total Pago!';
-            remainingEl.className = `text-lg font-bold text-center mb-4 text-green-600`;
-            paymentValueInput.value = ''; 
-            finalizeBtn.disabled = false;
-            if (paymentControls) paymentControls.style.display = 'none';
-        } else {
-            remainingEl.textContent = `Faltam: R$ ${modalInternalState.remainingAmount.toFixed(2)}`;
-            remainingEl.className = `text-lg font-bold text-center mb-4 text-red-600`;
-            paymentValueInput.value = modalInternalState.remainingAmount.toFixed(2);
-            finalizeBtn.disabled = true;
-            if (paymentControls) paymentControls.style.display = 'block';
-        }
-        
-        document.querySelectorAll('.payment-method-btn').forEach(btn => {
-            btn.classList.toggle('ring-2', btn.dataset.method === modalInternalState.selectedMethod);
-            btn.classList.toggle('ring-offset-2', btn.dataset.method === modalInternalState.selectedMethod);
-        });
-
-        installmentsContainer.style.display = ['credito', 'crediario'].includes(modalInternalState.selectedMethod) ? 'block' : 'none';
-        changeContainer.style.display = modalInternalState.selectedMethod === 'dinheiro' && modalInternalState.remainingAmount > 0 ? 'block' : 'none';
-
-        const change = parseFloat(modalInternalState.amountReceived) - modalInternalState.remainingAmount;
-        document.getElementById('change-value').textContent = `R$ ${change > 0 ? change.toFixed(2) : '0.00'}`;
-    };
-
-    const addPayment = () => {
-        const valueInput = document.getElementById('payment-value');
-        let value = parseFloat(valueInput.value);
-        
-        if (isNaN(value) || value <= 0) {
-            showNotification('Valor Inválido', 'Insira um valor de pagamento válido e maior que zero.', 'error');
-            return;
-        }
-        
-        if (value > modalInternalState.remainingAmount + 0.001) {
-             showNotification('Valor Inválido', 'O valor excede o saldo restante.', 'error');
-            return;
-        }
-        
-        const newPayment = { 
-            method: modalInternalState.selectedMethod, 
-            value: value,
-        };
-
-        if (['credito', 'crediario'].includes(modalInternalState.selectedMethod) && modalInternalState.installments > 1) {
-            newPayment.installments = modalInternalState.installments;
-        }
-        
-        payments.push(newPayment);
-        modalInternalState.selectedMethod = 'dinheiro';
-        modalInternalState.installments = 1;
-        document.getElementById('installments-select').value = 1;
-        render();
-    };
-
-    const contentHTML = `
-        <div class="text-center mb-4">
-            <p class="text-lg text-gray-600">Valor Total</p>
-            <p class="text-4xl font-bold text-gray-800 my-2">R$ ${total.toFixed(2)}</p>
-        </div>
-        <div id="payment-list" class="space-y-2 mb-4"></div>
-        <div id="remaining-amount"></div>
-        
-        <div id="payment-controls" class="space-y-4 border-t pt-4">
-            <div class="grid grid-cols-3 gap-1">
-                <button data-method="dinheiro" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-green-400 bg-green-50 ring-green-500">
-                    <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                    <span class="text-[11px] mt-0.5 font-semibold">Dinheiro</span>
-                </button>
-                <button data-method="pix" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-cyan-400 bg-cyan-50 ring-cyan-500">
-                    <svg class="w-5 h-5 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    <span class="text-[11px] mt-0.5 font-semibold">PIX</span>
-                </button>
-                <button data-method="debito" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-blue-400 bg-blue-50 ring-blue-500">
-                    <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                    <span class="text-[11px] mt-0.5 font-semibold">Débito</span>
-                </button>
-                <button data-method="credito" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-purple-400 bg-purple-50 ring-purple-500">
-                    <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                    <span class="text-[11px] mt-0.5 font-semibold">Crédito</span>
-                </button>
-                <button data-method="crediario" class="payment-method-btn flex flex-col items-center p-1 rounded-lg border-2 border-orange-400 bg-orange-50 ring-orange-500">
-                    <svg class="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    <span class="text-[11px] mt-0.5 font-semibold">Fiado</span>
-                </button>
             </div>
-            <div id="installments-container" class="hidden"><label class="text-sm font-medium">Parcelas</label><select id="installments-select" class="w-full p-2 border rounded-md bg-white mt-1">${Array.from({length: 12}, (_, i) => `<option value="${i+1}">${i+1}x</option>`).join('')}</select></div>
-            <div class="flex items-end gap-2">
-                <div class="flex-grow"><label class="text-sm font-medium">Valor a Adicionar</label><input type="number" step="0.01" id="payment-value" class="w-full p-2 border rounded-md text-lg font-bold"></div>
-                <button id="add-payment-btn" class="py-2 px-4 bg-gray-700 text-white font-semibold rounded-md hover:bg-gray-800">Adicionar</button>
-            </div>
-            <div id="change-container" class="hidden mt-2 p-3 bg-blue-50 rounded-lg"><label class="text-sm">Valor Recebido</label><input type="number" id="amount-received" class="w-full p-2 border rounded-md text-lg" /><p class="flex justify-between mt-2 font-semibold"><span>Troco:</span><strong id="change-value" class="text-blue-600">R$ 0.00</strong></p></div>
-        </div>
-        <div class="mt-6 pt-4 border-t"><button id="finalize-checkout-btn" class="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-400" disabled>Finalizar</button></div>
+            <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
+                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar Cliente</button>
+            </footer>
+        </form>
     `;
+    showGenericModal({ title: 'Cadastrar Novo Cliente', contentHTML: modalContent, maxWidth: 'max-w-2xl' });
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (form) form.addEventListener('submit', _comandas_handleClientRegistration);
+}
 
-    const { modalElement } = showGenericModal({ title: "Finalizar Pagamento", contentHTML, maxWidth: 'max-w-md' });
-    document.getElementById('payment-value').value = modalInternalState.remainingAmount.toFixed(2);
-    
-    modalElement.addEventListener('click', (e) => {
-        const methodBtn = e.target.closest('.payment-method-btn');
-        if (methodBtn) {
-            modalInternalState.selectedMethod = methodBtn.dataset.method;
-            modalInternalState.installments = 1;
-            document.getElementById('installments-select').value = 1;
-            render();
-        }
-        if (e.target.closest('#add-payment-btn')) addPayment();
-        if (e.target.closest('[data-action="remove-payment"]')) {
-            payments.splice(parseInt(e.target.closest('[data-action="remove-payment"]').dataset.paymentIndex, 10), 1);
-            render();
-        }
-        if (e.target.closest('#finalize-checkout-btn')) handleFinalizeCheckout(comanda, total, payments);
-    });
+async function _comandas_handleClientRegistration(e) {
+    e.preventDefault();
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (!form) return;
+    const nameInput = form.querySelector('#regClientName');
+    const phoneInput = form.querySelector('#regClientPhone');
+    const cleanPhone = phoneInput.value.replace(/\D/g, '');
 
-    modalElement.addEventListener('change', e => {
-        if(e.target.id === 'installments-select') modalInternalState.installments = parseInt(e.target.value, 10);
-    });
-    modalElement.addEventListener('input', e => {
-        if(e.target.id === 'amount-received') {
-            modalInternalState.amountReceived = e.target.value;
-            render();
-        }
-    });
+    if (!nameInput.value || !cleanPhone) return showNotification('Erro', 'Nome e Telefone são obrigatórios.', 'error');
 
-    render();
+    try {
+        const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
+        if (existingClient) {
+            showNotification('Atenção', `Cliente já cadastrado.`, 'info');
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(existingClient); 
+        } else {
+            const newClient = await clientsApi.createClient({ establishmentId: state.establishmentId, name: nameInput.value, phone: cleanPhone });
+            showNotification('Sucesso', 'Cliente cadastrado!', 'success');
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(newClient);
+        }
+    } catch (error) { showNotification(`Erro`, error.message, 'error'); }
 }
 
 async function openCashierModal() {
@@ -1061,149 +941,81 @@ async function openCashierModal() {
         <form id="open-cashier-form" class="space-y-4">
             <div>
                 <label for="initial-amount" class="block text-sm font-medium text-gray-700">Valor Inicial do Caixa</label>
-                <div class="mt-1 relative">
-                    <span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span>
-                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="0.00">
-                </div>
-                <p class="text-xs text-gray-500 mt-1">Digite o valor inicial disponível no caixa (pode ser R$ 0,00)</p>
+                <div class="mt-1 relative"><span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span><input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="0.00"></div>
             </div>
-            <div>
-                <label for="cashier-notes" class="block text-sm font-medium text-gray-700">Observações (opcional)</label>
-                <textarea id="cashier-notes" rows="3" class="mt-1 w-full p-2 border rounded-md" placeholder="Notas sobre a abertura do caixa..."></textarea>
-            </div>
-            <div class="pt-4 border-t">
-                <button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition">Abrir Caixa</button>
-            </div>
+            <div class="pt-4 border-t"><button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition shadow-md">Confirmar Abertura</button></div>
         </form>
     `;
-
     const { modalElement } = showGenericModal({ title: "Abrir Caixa", contentHTML, maxWidth: 'max-w-md' });
-
     modalElement.querySelector('#open-cashier-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
-        const initialAmountInput = document.getElementById('initial-amount');
-        const initialAmountValue = initialAmountInput.value.trim();
-        const notes = document.getElementById('cashier-notes').value.trim();
-        const initialAmount = parseFloat(initialAmountValue);
-
-        if (initialAmountValue === '' || isNaN(initialAmount) || initialAmount < 0) {
-            showNotification('Valor Inválido', 'Por favor, insira um valor inicial válido (maior ou igual a R$ 0,00).', 'error');
-            initialAmountInput.focus();
-            return;
-        }
-
+        const initialAmount = parseFloat(document.getElementById('initial-amount').value);
+        if (isNaN(initialAmount) || initialAmount < 0) return showNotification('Valor Inválido', 'Insira um valor válido.', 'error');
         try {
-            const payload = {
-                establishmentId: state.establishmentId,
-                initialAmount: parseFloat(initialAmount.toFixed(2)),
-            };
-            if (notes) payload.notes = notes;
-
-            const session = await cashierApi.openCashier(payload);
-            localState.isCashierOpen = true;
-            localState.activeCashierSessionId = session.id;
-            
-            await loadComandasPage();
-            document.getElementById('genericModal').style.display = 'none';
-            showNotification('Sucesso!', `Caixa aberto com valor inicial de R$ ${initialAmount.toFixed(2)}`, 'success');
-        } catch (error) {
-            showNotification('Erro', `Não foi possível abrir o caixa: ${error.message}`, 'error');
-        }
+            const session = await cashierApi.openCashier({ establishmentId: state.establishmentId, initialAmount: parseFloat(initialAmount.toFixed(2)) });
+            localState.isCashierOpen = true; localState.activeCashierSessionId = session.id; document.getElementById('genericModal').style.display = 'none'; showNotification('Sucesso!', `Caixa aberto (R$ ${initialAmount.toFixed(2)})`, 'success'); updateCashierUIState(); await fetchAndDisplayData();
+        } catch (error) { showNotification('Erro', `Falha ao abrir caixa: ${error.message}`, 'error'); }
     });
 }
 
 async function handleOpenCloseCashierModal() {
     const sessionId = localState.activeCashierSessionId;
     if (!sessionId) return;
-
     try {
         const report = await cashierApi.getCloseCashierReport(sessionId);
         const contentHTML = `
             <form id="close-cashier-form" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4 text-center">
-                    <div class="bg-blue-50 p-3 rounded-lg">
-                        <p class="text-sm text-gray-600">Valor de Abertura</p>
-                        <p class="text-2xl font-bold text-blue-600">R$ ${report.initialAmount.toFixed(2)}</p>
-                    </div>
-                    <div class="bg-green-50 p-3 rounded-lg">
-                        <p class="text-sm text-gray-600">Vendas em Dinheiro</p>
-                        <p class="text-2xl font-bold text-green-600">R$ ${report.cashSales.toFixed(2)}</p>
-                    </div>
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-100"><p class="text-xs text-gray-500 uppercase font-bold">Abertura</p><p class="text-xl font-bold text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
+                    <div class="bg-green-50 p-3 rounded-lg border border-green-100"><p class="text-xs text-gray-500 uppercase font-bold">Vendas Dinheiro</p><p class="text-xl font-bold text-green-700">R$ ${report.cashSales.toFixed(2)}</p></div>
                 </div>
-                <div class="bg-gray-100 p-4 rounded-lg text-center">
-                    <p class="text-sm font-medium text-gray-700">Valor Esperado em Caixa</p>
-                    <p class="text-3xl font-bold text-gray-900">R$ ${report.expectedAmount.toFixed(2)}</p>
-                </div>
+                <div class="bg-gray-800 text-white p-4 rounded-lg text-center shadow-lg"><p class="text-sm font-medium opacity-80">Valor Esperado em Caixa</p><p class="text-3xl font-bold">R$ ${report.expectedAmount.toFixed(2)}</p></div>
                 <hr>
                 <div>
-                    <label for="final-amount" class="block text-sm font-medium text-gray-700">Valor Final (Contado no Caixa)</label>
-                    <div class="mt-1 relative">
-                        <span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span>
-                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
-                    </div>
+                    <label for="final-amount" class="block text-sm font-bold text-gray-700">Valor Final (Contado)</label>
+                    <div class="mt-1 relative"><span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span><input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold border-gray-300 focus:ring-2 focus:ring-red-500" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}"></div>
                 </div>
-                <div class="pt-4 border-t">
-                    <button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition">Confirmar e Fechar Caixa</button>
-                </div>
+                <div class="pt-4 border-t"><button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition shadow-md">Confirmar e Fechar</button></div>
             </form>
         `;
-
         const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-md' });
-
         modalElement.querySelector('#close-cashier-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const finalAmount = parseFloat(document.getElementById('final-amount').value);
-            if (isNaN(finalAmount) || finalAmount < 0) {
-                showNotification('Valor Inválido', 'Insira um valor final válido.', 'error');
-                return;
-            }
-
+            if (isNaN(finalAmount) || finalAmount < 0) return showNotification('Valor Inválido', 'Insira um valor final válido.', 'error');
             try {
                 await cashierApi.closeCashier(sessionId, finalAmount);
-                localState.isCashierOpen = false;
-                localState.activeCashierSessionId = null;
-                document.getElementById('genericModal').style.display = 'none';
-                await loadComandasPage();
-                showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
-            } catch (error) {
-                showNotification('Erro', `Não foi possível fechar o caixa: ${error.message}`, 'error');
-            }
+                localState.isCashierOpen = false; localState.activeCashierSessionId = null; document.getElementById('genericModal').style.display = 'none'; updateCashierUIState(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
+            } catch (error) { showNotification('Erro', `Falha ao fechar caixa: ${error.message}`, 'error'); }
         });
-        
-    } catch (error) {
-        showNotification('Erro', `Não foi possível carregar o relatório de fecho: ${error.message}`, 'error');
-    }
+    } catch (error) { showNotification('Erro', `Falha ao carregar relatório: ${error.message}`, 'error'); }
 }
 
-// --- 6. HANDLERS ---
+// --- HANDLERS E OPERAÇÕES CRÍTICAS ---
 
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
     localState.activeFilter = filter;
     localState.paging.page = 1;
-    
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
     document.querySelector(`[data-filter="${filter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
-    
     document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
-    
     hideMobileDetail();
-
     await fetchAndDisplayData();
     localState.selectedComandaId = null;
-    
+    localState.viewMode = 'items';
     renderComandaDetail();
 }
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
+    localState.viewMode = 'items';
     renderComandaList(); 
     showMobileDetail();
     renderComandaDetail();
 }
 
-
+// --- OTIMIZAÇÃO: ATUALIZAÇÃO IMEDIATA (Optimistic UI) ---
 async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
@@ -1219,158 +1031,132 @@ async function handleAddItemToComanda(itemData, quantity) {
     
     comanda.comandaItems = comanda.comandaItems || [];
     comanda.comandaItems.push(...itemsToAdd);
-
-    if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
-        showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
-        renderComandaDetail(); 
-        renderComandaList();
-        return; 
-    }
-
-    try {
-        await appointmentsApi.updateAppointment(comanda.id, comanda);
-        showNotification('Sucesso', `${quantity}x ${itemData.name} adicionado(s)!`, 'success');
-        renderComandaDetail();
-        renderComandaList();
-    } catch (error) {
-        showNotification('Erro', `Não foi possível adicionar o item: ${error.message}`, 'error');
-        comanda.comandaItems.splice(comanda.comandaItems.length - quantity, quantity);
-    }
+    
+    // 1. Limpa o cache para garantir que os novos itens sejam lidos
+    comanda._cachedItems = null;
+    // 2. Atualiza timestamp
+    comanda._localUpdatedAt = Date.now();
+    
+    // 3. Força renderização IMEDIATA para feedback visual
+    renderComandaDetail();
+    renderComandaList(); // Atualiza o total no card da esquerda
 }
-
 
 async function handleRemoveItemFromComanda(itemId, itemType) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    let itemRemoved = false;
+    let modified = false;
 
-    let comandaItemIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
-    if (comandaItemIndex > -1) {
-        comanda.comandaItems.splice(comandaItemIndex, 1);
-        itemRemoved = true;
+    // Prioridade 1: Remover dos Extras (Itens Adicionados Manualmente)
+    let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
+    
+    if (extraIndex > -1) {
+        comanda.comandaItems.splice(extraIndex, 1);
+        modified = true;
     } else {
+        // Prioridade 2: Remover do Original (somente se não for o último)
         let serviceIndex = (comanda.services || []).findIndex(item => item.id === itemId);
         if (serviceIndex > -1) {
-            comanda.services.splice(serviceIndex, 1);
-            itemRemoved = true;
-        } else {
-             let saleItemIndex = (comanda.items || []).findIndex(item => item.id === itemId && item.type === itemType);
-             if (saleItemIndex > -1) {
-                comanda.items.splice(saleItemIndex, 1);
-                itemRemoved = true;
+            const countInServices = comanda.services.filter(s => s.id === itemId).length;
+            if (countInServices > 1) {
+                comanda.services.splice(serviceIndex, 1);
+                modified = true;
             }
         }
     }
-    
-    if (itemRemoved) {
-        if (comanda.type === 'walk-in' && comanda.id.startsWith('temp-')) {
-             showNotification('Sucesso', 'Item removido!', 'success');
-             renderComandaDetail();
-             renderComandaList();
-             return;
-        }
+
+    if (modified) {
+        // 1. Limpa o cache
+        comanda._cachedItems = null;
+        // 2. Atualiza timestamp
+        comanda._localUpdatedAt = Date.now();
         
-        try {
-            await appointmentsApi.updateAppointment(comanda.id, comanda);
-            showNotification('Sucesso', 'Item removido!', 'success');
-            renderComandaDetail();
-            renderComandaList();
-        } catch (error) {
-            showNotification('Erro', `Não foi possível remover o item: ${error.message}`, 'error');
-            await fetchAndDisplayData();
-        }
+        // 3. Força renderização IMEDIATA
+        renderComandaDetail();
+        renderComandaList();
     }
 }
 
-async function handleFinalizeCheckout(comanda, totalAmount, payments) {
+async function handleFinalizeCheckout(comanda) {
+    if (localState.isProcessing) return;
+    localState.isProcessing = true;
+
     const isAppointment = comanda.type === 'appointment';
-    
-    const rawItems = getSafeAllItems(comanda);
-    const seenIds = new Set();
-    const finalItems = [];
-    
-    for (const item of rawItems) {
-        if (item.type === 'service' && item.id) {
-            if (seenIds.has(item.id)) continue; 
-            seenIds.add(item.id);
-        }
-        finalItems.push(item);
-    }
-    
-    // --- LÓGICA DE CÁLCULO DE PONTOS ---
+    const rawItems = getSafeAllItems(comanda); // Usa os itens atualizados
+    const finalItems = rawItems; 
+
+    const { payments } = localState.checkoutState;
+    const totalAmount = payments.reduce((acc, p) => acc + p.value, 0);
+
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
-
     if (settings && settings.enabled) {
-        if (settings.type === 'visit') {
-            // Regra: Pontos por Visita
-            pointsToAward = settings.pointsPerVisit || 1;
-        } else {
-            // Regra: Pontos por Valor Gasto (Padrão)
-            const divisor = settings.pointsPerCurrency || 10;
-            pointsToAward = Math.floor(totalAmount / divisor);
+        if (settings.type === 'visit') pointsToAward = Number(settings.pointsPerVisit) || 1;
+        else {
+            const divisor = Number(settings.pointsPerCurrency) || 10;
+            if (divisor > 0) pointsToAward = Math.floor(totalAmount / divisor);
         }
     }
-    // ------------------------------------
 
     const data = {
         payments,
-        totalAmount,
+        totalAmount: Number(totalAmount),
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
-        loyaltyPointsEarned: pointsToAward, // ENVIA OS PONTOS PARA O BACKEND
+        loyaltyPointsEarned: pointsToAward,
     };
 
+    // Loading overlay
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.innerHTML = '<div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center"><div class="loader mb-4 border-t-indigo-600"></div><p>Finalizando venda...</p></div>';
+    document.body.appendChild(loadingOverlay);
+
     try {
-        if (isAppointment) {
-            await appointmentsApi.checkoutAppointment(comanda.id, data);
-        } else {
+        if (isAppointment) await appointmentsApi.checkoutAppointment(comanda.id, data);
+        else {
             data.establishmentId = state.establishmentId;
-            data.clientId = comanda.clientId; // ID (Telefone)
-            data.clientName = comanda.clientName;
-            data.professionalId = comanda.professionalId;
-            data.clientPhone = comanda.clientPhone;
+            data.clientId = comanda.clientId; data.clientName = comanda.clientName; data.professionalId = comanda.professionalId;
+            if (comanda.clientPhone) data.clientPhone = comanda.clientPhone;
             await salesApi.createSale(data);
         }
         
         let msg = 'Venda finalizada com sucesso!';
-        if (pointsToAward > 0) {
-            msg += ` Cliente ganhou ${pointsToAward} pontos.`;
-        }
+        if (pointsToAward > 0) msg += ` Cliente ganhou ${pointsToAward} pontos!`;
 
         showNotification('Sucesso!', msg, 'success');
-        document.getElementById('genericModal').style.display = 'none';
-
-        hideMobileDetail();
         
+        hideMobileDetail();
         localState.selectedComandaId = null;
+        localState.viewMode = 'items';
         await fetchAndDisplayData();
-    } catch (error) {
-        showNotification('Erro no Checkout', error.message, 'error');
+    } catch (error) { 
+        showNotification('Erro no Checkout', error.message, 'error'); 
+    } finally { 
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
+        localState.isProcessing = false; 
     }
 }
 
 async function handleCreateNewSale(e) {
     e.preventDefault();
-    const clientId = document.getElementById('new-sale-client').value;
+    const hiddenIdInput = document.getElementById('selected-client-id');
     const professionalId = document.getElementById('new-sale-professional').value;
-    
-    // Busca na lista local (onde o ID agora é o telefone)
-    const client = localState.clients.find(c => c.id === clientId);
-    const professional = state.professionals.find(p => p.id === professionalId);
+    const clientId = hiddenIdInput.value;
+    const clientName = document.getElementById('client-search').value;
+    const clientPhone = hiddenIdInput.dataset.phone || '';
 
-    if (!client || !professional) {
-        showNotification('Erro', 'Selecione um cliente e um profissional válidos.', 'error');
-        return;
-    }
+    if (!clientId) return showNotification('Erro', 'Selecione um cliente válido.', 'error');
+    const professional = state.professionals.find(p => p.id === professionalId);
+    if (!professional) return showNotification('Erro', 'Selecione um profissional válido.', 'error');
     
     const newComanda = {
         id: `temp-${Date.now()}`,
         type: 'walk-in',
-        clientId: client.id, // GARANTIDO: ID é o telefone
-        clientName: client.name,
-        clientPhone: client.phone,
+        clientId: clientId, 
+        clientName: clientName.split('(')[0].trim(),
+        clientPhone: clientPhone,
         professionalId: professional.id,
         professionalName: professional.name,
         startTime: new Date(),
@@ -1381,28 +1167,24 @@ async function handleCreateNewSale(e) {
 
     localState.allComandas.unshift(newComanda);
     localState.selectedComandaId = newComanda.id;
-    
+    localState.viewMode = 'items';
     document.getElementById('genericModal').style.display = 'none';
-    
     handleComandaClick(newComanda.id);
 }
 
-// --- 7. INICIALIZAÇÃO ---
+// --- INICIALIZAÇÃO ---
 
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
-    listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+    if (!listContainer.hasChildNodes() || listContainer.innerHTML.includes('loader')) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     
-    const filterDate = localState.activeFilter === 'finalizadas' 
-        ? document.getElementById('filter-date').value 
-        : null;
+    const filterDate = localState.activeFilter === 'finalizadas' ? document.getElementById('filter-date').value : null;
 
     try {
         const activeSession = await cashierApi.getActiveSession();
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
-        
-        renderCashierControls();
+        updateCashierUIState();
         
         if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
             renderComandaList();
@@ -1412,63 +1194,36 @@ async function fetchAndDisplayData() {
         
         try {
             const establishmentData = await establishmentsApi.getEstablishment(state.establishmentId);
-            if (establishmentData && establishmentData.loyaltyProgram) {
-                localState.loyaltySettings = establishmentData.loyaltyProgram;
-            }
-        } catch (e) {
-            console.log("Sem config de fidelidade carregada");
-        }
+            if (establishmentData && establishmentData.loyaltyProgram) localState.loyaltySettings = establishmentData.loyaltyProgram;
+        } catch (e) {}
 
-        const response = await comandasApi.getComandas(
-            state.establishmentId, 
-            filterDate,
-            localState.paging.page,
-            localState.paging.limit
-        );
-        
+        const response = await comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
         localState.allComandas = response.data || response;
         localState.paging.total = response.total || response.length;
         
         if (localState.catalog.services.length === 0) {
-            const [services, products, packages, clients, professionals] = await Promise.all([
+            const [services, products, packages, professionals] = await Promise.all([
                 servicesApi.getServices(state.establishmentId),
                 productsApi.getProducts(state.establishmentId),
                 packagesApi.getPackages(state.establishmentId),
-                clientsApi.getClients(state.establishmentId),
                 professionalsApi.getProfessionals(state.establishmentId)
             ]);
             localState.catalog = { services, products, packages };
-            localState.clients = clients;
             state.professionals = professionals;
         }
         
         renderComandaList();
-        
-        if (localState.selectedComandaId) {
-             renderComandaDetail();
-        } else {
-             renderComandaDetail(); 
-        }
+        renderComandaDetail();
 
     } catch (error) {
-        showNotification('Erro de Carregamento', `Não foi possível carregar os dados: ${error.message}`, 'error');
-        listContainer.innerHTML = `<p class="text-red-500 p-4">${error.message}</p>`;
+        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
     }
 }
 
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
-    
-    try {
-        const activeSession = await cashierApi.getActiveSession();
-        localState.isCashierOpen = !!activeSession;
-        localState.activeCashierSessionId = activeSession ? activeSession.id : null;
-    } catch (error) {
-        console.error('Erro ao verificar caixa:', error);
-        localState.isCashierOpen = false;
-    }
-    
     localState.selectedComandaId = params.selectedAppointmentId || null;
+    localState.viewMode = 'items';
     
     renderPageLayout();
 
@@ -1478,9 +1233,10 @@ export async function loadComandasPage(params = {}) {
     }
 
     pageEventListener = async (e) => {
-        const target = e.target.closest('[data-action], [data-filter], [data-comanda-id], [data-id]');
-        
-        if (e.target.id === 'filter-date' && localState.activeFilter === 'finalizadas') {
+        const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
+        const dateInput = e.target.id === 'filter-date';
+
+        if (dateInput && localState.activeFilter === 'finalizadas') {
              localState.paging.page = 1;
              await fetchAndDisplayData();
              return;
@@ -1491,114 +1247,122 @@ export async function loadComandasPage(params = {}) {
         if (target.matches('[data-filter]')) {
             handleFilterClick(target.dataset.filter);
         } else if (target.matches('[data-comanda-id]')) {
-            if (e.target.closest('[data-action="go-to-appointment"]')) {
-                e.stopPropagation();
-                return;
-            }
+            if (e.target.closest('[data-action="go-to-appointment"]')) { e.stopPropagation(); return; }
             handleComandaClick(target.dataset.comandaId);
         } else if (target.matches('[data-action]')) {
             const action = target.dataset.action;
             const comandaId = target.dataset.id || localState.selectedComandaId;
-            
+            const comanda = localState.allComandas.find(c => c.id === comandaId);
+
             switch (action) {
-                case 'back-to-list': {
-                    hideMobileDetail();
-                    localState.selectedComandaId = null;
-                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected'));
-                    renderComandaDetail(); 
+                case 'back-to-list': hideMobileDetail(); localState.selectedComandaId = null; document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected')); renderComandaDetail(); break;
+                case 'new-sale': openNewSaleModal(); break;
+                case 'add-item': openAddItemModal(); break;
+                case 'open-cashier': openCashierModal(); break;
+                case 'close-cashier': await handleOpenCloseCashierModal(); break;
+                case 'view-sales-report': navigateTo('sales-report-section'); break;
+                
+                // --- NOVAS NAVEGAÇÕES ---
+                case 'go-to-checkout':
+                    await executeSaveAction(comanda, 'checkout');
+                    break;
+                    
+                case 'back-to-items':
+                    localState.viewMode = 'items';
+                    renderComandaDetail();
+                    break;
+
+                case 'save-comanda':
+                    await executeSaveAction(comanda, 'stay');
+                    break;
+
+                // --- AÇÕES DE CHECKOUT ---
+                case 'select-method':
+                    localState.checkoutState.selectedMethod = target.dataset.method;
+                    localState.checkoutState.installments = 1;
+                    renderComandaDetail();
+                    break;
+                
+                case 'add-payment-checkout':
+                    const amountInput = document.getElementById('checkout-amount');
+                    let value = parseFloat(amountInput.value);
+                    const rawItems = getSafeAllItems(comanda);
+                    const total = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+                    const currentPaid = localState.checkoutState.payments.reduce((acc,p)=>acc+p.value,0);
+                    const remaining = total - currentPaid;
+
+                    if (isNaN(value) || value <= 0) { showNotification('Valor inválido', 'Insira um valor maior que zero.', 'error'); break; }
+                    if (value > remaining + 0.05) { showNotification('Valor inválido', 'Valor excede o restante.', 'error'); break; }
+
+                    const newPayment = { 
+                        method: localState.checkoutState.selectedMethod, 
+                        value: value 
+                    };
+                    if (['credito', 'crediario'].includes(localState.checkoutState.selectedMethod) && localState.checkoutState.installments > 1) {
+                        newPayment.installments = localState.checkoutState.installments;
+                    }
+                    
+                    localState.checkoutState.payments.push(newPayment);
+                    localState.checkoutState.selectedMethod = 'dinheiro'; // Reset
+                    localState.checkoutState.installments = 1;
+                    localState.checkoutState.amountReceived = '';
+                    renderComandaDetail();
+                    break;
+
+                case 'remove-payment-checkout':
+                    const idx = parseInt(target.dataset.index, 10);
+                    localState.checkoutState.payments.splice(idx, 1);
+                    renderComandaDetail();
+                    break;
+
+                case 'finalize-checkout':
+                    await handleFinalizeCheckout(comanda);
+                    break;
+
+                // --- AÇÕES DE QUANTIDADE COM DEBOUNCE ---
+                case 'increase-qty': {
+                    const catalog = localState.catalog[target.dataset.itemType + 's'] || [];
+                    const item = catalog.find(i => i.id === target.dataset.itemId);
+                    const safeItem = item || { id: target.dataset.itemId, name: 'Item', price: 0, type: target.dataset.itemType };
+                    await handleAddItemToComanda(safeItem, 1);
                     break;
                 }
-                case 'new-sale': 
-                    openNewSaleModal(); 
-                    break;
-                case 'add-item': 
-                    openAddItemModal(); 
-                    break;
-                case 'checkout': 
-                    openCheckoutModal(); 
-                    break;
-                case 'open-cashier':
-                    openCashierModal();
-                    break;
-                case 'close-cashier':
-                    await handleOpenCloseCashierModal();
-                    break;
-                case 'view-sales-report':
-                    navigateTo('sales-report-section'); 
-                    break;
-                case 'remove-item':
+                case 'decrease-qty': {
                     await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
                     break;
+                }
+                case 'remove-item': await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType); break;
+                
                 case 'reopen-appointment': {
-                    const confirmed = await showConfirmation('Reabrir Comanda', 'Tem certeza? O pagamento será estornado e os produtos devolvidos ao estoque.');
+                    const confirmed = await showConfirmation('Reabrir Comanda', 'Tem certeza? O pagamento será estornado.');
                     if (confirmed) {
                         try {
                             await appointmentsApi.reopenAppointment(comandaId);
-                            const reopenedComandaIndex = localState.allComandas.findIndex(c => c.id === comandaId);
-                            if (reopenedComandaIndex !== -1) {
-                                delete localState.allComandas[reopenedComandaIndex].transaction; 
-                                delete localState.allComandas[reopenedComandaIndex].cashierSessionId; 
-                                delete localState.allComandas[reopenedComandaIndex].redeemedReward;
-                                localState.allComandas[reopenedComandaIndex].status = 'confirmed';
-                            }
-                            
-                            localState.selectedComandaId = null; 
-                            hideMobileDetail();
-
-                            showNotification('Sucesso!', 'Comanda reaberta para edição.', 'success');
-                            await fetchAndDisplayData(); 
-                        } catch (error) {
-                            showNotification('Erro', `Não foi possível reabrir: ${error.message}`, 'error');
-                        }
-                    }
-                    break;
-                }
-                case 'reopen-walk-in': {
-                    const confirmed = await showConfirmation('Reabrir Venda', 'Tem certeza? A venda será cancelada e os produtos devolvidos ao estoque.');
-                    if (confirmed) {
-                        try {
-                            await salesApi.reopenSale(comandaId);
-                            showNotification('Sucesso!', 'Venda revertida.');
-                            
-                            hideMobileDetail();
-                            localState.selectedComandaId = null;
-
-                            await fetchAndDisplayData();
-                        } catch (error) {
-                            showNotification('Erro', `Não foi possível reabrir: ${error.message}`, 'error');
-                        }
+                            const idx = localState.allComandas.findIndex(c => c.id === comandaId);
+                            if (idx !== -1) { localState.allComandas[idx].status = 'confirmed'; delete localState.allComandas[idx].transaction; }
+                            localState.selectedComandaId = null; hideMobileDetail(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Comanda reaberta.', 'success');
+                        } catch (error) { showNotification('Erro', error.message, 'error'); }
                     }
                     break;
                 }
                 case 'go-to-appointment': {
                     const appointmentId = target.dataset.id;
                     const startTime = target.dataset.date;
-                    navigateTo('agenda-section', {
-                        scrollToAppointmentId: appointmentId,
-                        targetDate: new Date(startTime) 
-                    });
+                    navigateTo('agenda-section', { scrollToAppointmentId: appointmentId, targetDate: new Date(startTime) });
                     break;
                 }
                 case 'delete-walk-in': {
-                    const confirmed = await showConfirmation('Excluir Venda', 'Tem certeza que deseja excluir esta venda avulsa? O estoque dos produtos será devolvido.');
+                    const confirmed = await showConfirmation('Excluir Venda', 'Confirma a exclusão desta venda avulsa?');
                     if (confirmed) {
                         if (comandaId.startsWith('temp-')) {
                             localState.allComandas = localState.allComandas.filter(c => c.id !== comandaId);
-                            localState.selectedComandaId = null;
-                            renderComandaList();
-                            renderComandaDetail(); 
-                            showNotification('Sucesso', 'Venda avulsa removida.', 'success');
-                            hideMobileDetail();
+                            localState.selectedComandaId = null; renderComandaList(); renderComandaDetail(); hideMobileDetail();
                         } else {
                             try {
                                 await salesApi.deleteSale(comandaId);
-                                showNotification('Sucesso', 'Venda avulsa excluída com sucesso.', 'success');
-                                localState.selectedComandaId = null;
-                                hideMobileDetail();
-                                await fetchAndDisplayData();
-                            } catch (error) {
-                                showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
-                            }
+                                showNotification('Sucesso', 'Venda excluída.', 'success');
+                                localState.selectedComandaId = null; hideMobileDetail(); await fetchAndDisplayData();
+                            } catch (error) { showNotification('Erro', error.message, 'error'); }
                         }
                     }
                     break;
@@ -1610,24 +1374,13 @@ export async function loadComandasPage(params = {}) {
     contentDiv.addEventListener('click', pageEventListener);
     contentDiv.addEventListener('change', pageEventListener);
 
-    if (params.initialFilter) {
-        localState.activeFilter = params.initialFilter === 'finalizadas' ? 'finalizadas' : 'atendimento';
-    }
-     if (params.selectedAppointmentId) {
-        localState.selectedComandaId = params.selectedAppointmentId;
-    }
+    if (params.initialFilter) localState.activeFilter = params.initialFilter === 'finalizadas' ? 'finalizadas' : 'atendimento';
+    if (params.selectedAppointmentId) localState.selectedComandaId = params.selectedAppointmentId;
     
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
     document.querySelector(`[data-filter="${localState.activeFilter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
     document.getElementById('finalizadas-datepicker').classList.toggle('hidden', localState.activeFilter !== 'finalizadas');
-    
-    if (params.filterDate) {
-        document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
-    }
+    if (params.filterDate) document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
 
     await fetchAndDisplayData();
-
-    if (localState.selectedComandaId) {
-        handleComandaClick(localState.selectedComandaId);
-    }
 }

@@ -1,11 +1,11 @@
-// js/ui/agenda.js (Otimizado: Busca de Clientes Lazy + Correções Gerais)
+// js/ui/agenda.js (Otimizado: Busca de Clientes Lazy + Correções Gerais + Exclusão em Lote)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
 import * as blockagesApi from '../api/blockages.js';
-import * as clientsApi from '../api/clients.js'; // API Atualizada para busca
+import * as clientsApi from '../api/clients.js';
 import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
@@ -32,7 +32,6 @@ const colorPalette = [
 let availableServicesForModal = [];
 let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
-// OTIMIZAÇÃO: allClientsData deixa de ser a lista "completa" e passa a ser um cache temporário da busca
 let allClientsData = []; 
 
 // Estado local
@@ -43,7 +42,10 @@ let localState = {
     selectedProfessionalId: 'all', 
     profSearchTerm: '', 
     showInactiveProfs: false, 
-    scrollToAppointmentId: null 
+    scrollToAppointmentId: null,
+    // NOVOS ESTADOS PARA SELEÇÃO EM LOTE
+    isSelectionMode: false,
+    selectedItems: new Set() 
 };
 
 // ESTADO DO NOVO AGENDAMENTO
@@ -109,8 +111,6 @@ function renderProfessionalSelector() {
         const defaultColor = colorPalette[0];
         const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
         
-        // OTIMIZAÇÃO DE IMAGEM: Idealmente, o backend/upload já deveria fornecer thumbnails.
-        // Aqui usamos placeholder ou a URL original.
         const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
         const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
         const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
@@ -166,9 +166,21 @@ function renderListView(allEvents) {
         const safeClientName = escapeHTML(event.clientName);
         const safeServiceName = escapeHTML(event.serviceName);
 
+        // --- CHECKBOX DE SELEÇÃO ---
+        const isSelected = localState.selectedItems.has(event.id);
+        const checkboxHTML = localState.isSelectionMode 
+            ? `<div class="flex items-center justify-center pr-3 border-r border-gray-200 mr-3">
+                 <input type="checkbox" class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer" 
+                        data-action="toggle-select-item" 
+                        data-id="${event.id}" 
+                        ${isSelected ? 'checked' : ''}>
+               </div>` 
+            : '';
+
         if (event.type === 'blockage') {
             return `
                 <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
+                    ${checkboxHTML}
                     <div class="time-info">
                         <p class="font-bold text-md">${startTimeStr}</p>
                         <p class="text-xs text-gray-500">${endTimeStr}</p>
@@ -192,16 +204,20 @@ function renderListView(allEvents) {
         const hasRewards = event.hasRewards && !isRedeemed;
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
 
+        // Se estiver em modo de seleção, desativa interações de clique no card para evitar abrir o comanda
+        const cardAction = localState.isSelectionMode ? '' : 'data-action="open-comanda"';
 
         return `
             <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
                 
-                <div class="time-info" data-action="open-comanda">
+                ${checkboxHTML}
+
+                <div class="time-info" ${cardAction}>
                     <p class="font-bold text-md">${startTimeStr}</p>
                     <p class="text-xs text-gray-500">${endTimeStr}</p>
                 </div>
 
-                <div class="details-info min-w-0" data-action="open-comanda">
+                <div class="details-info min-w-0" ${cardAction}>
                     <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
                     <p class="text-sm text-gray-600 truncate">${safeServiceName}</p>
                     <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
@@ -225,7 +241,10 @@ function renderListView(allEvents) {
                 </div>
             </div>`;
     }).join('');
-    agendaView.innerHTML = `<div class="list-view-container">${cardsHTML}</div>`;
+    
+    // --- CORREÇÃO DE SOBREPOSIÇÃO ---
+    // Adicionado pb-24 (padding-bottom: 6rem) para garantir que o último item não fique atrás do botão flutuante
+    agendaView.innerHTML = `<div class="list-view-container space-y-2 pb-24">${cardsHTML}</div>`;
 }
 
 function getActiveWeekDays() {
@@ -336,11 +355,42 @@ function renderAgenda() {
     } else {
         renderWeekView(filteredEvents);
     }
+    
+    updateBatchDeleteUI();
+}
+
+// Atualiza a barra flutuante de exclusão em lote
+function updateBatchDeleteUI() {
+    const container = document.getElementById('batch-delete-container');
+    const fabButton = document.querySelector('[data-action="new-appointment"]');
+    
+    if (!container) return;
+
+    if (localState.isSelectionMode && localState.selectedItems.size > 0) {
+        container.innerHTML = `
+            <div class="bg-white p-4 rounded-xl shadow-2xl border border-red-100 flex items-center justify-between gap-4">
+                <span class="font-bold text-gray-800">${localState.selectedItems.size} selecionado(s)</span>
+                <button data-action="batch-delete" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 shadow-md flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    Excluir
+                </button>
+            </div>
+        `;
+        container.style.display = 'block';
+        if (fabButton) fabButton.style.display = 'none'; // Esconde botão +
+    } else {
+        container.style.display = 'none';
+        if (fabButton) fabButton.style.display = 'flex'; // Mostra botão +
+    }
 }
 
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
     if (!agendaView) return;
+    
+    // Limpa seleção ao mudar datas
+    localState.selectedItems.clear();
+    updateBatchDeleteUI();
     
     agendaView.innerHTML = '<div class="loader mx-auto my-10"></div>';
 
@@ -439,7 +489,6 @@ async function populateFilters() {
             (state.services && state.services.length > 0) 
                 ? Promise.resolve(state.services)
                 : servicesApi.getServices(state.establishmentId),
-            // OTIMIZAÇÃO: REMOVIDA A CHAMADA QUE BAIXAVA TODOS OS CLIENTES (clientsApi.getClients)
             (loyaltySettingsForModal.enabled !== undefined)
                 ? Promise.resolve(null)
                 : establishmentApi.getEstablishmentDetails(state.establishmentId)
@@ -452,7 +501,6 @@ async function populateFilters() {
             state.services = services || [];
         }
         
-        // Inicia lista de clientes vazia para busca
         allClientsData = []; 
 
         if (establishmentDetails) { 
@@ -741,7 +789,6 @@ function renderClientCard(client) {
     `;
 }
 
-// OTIMIZAÇÃO: Busca no backend em vez de memória
 async function handleClientSearch(searchTerm) {
     const resultsContainer = document.getElementById('clientSearchResults');
     if (!resultsContainer) return;
@@ -753,14 +800,10 @@ async function handleClientSearch(searchTerm) {
         return;
     }
     
-    // Feedback visual de carregamento
     resultsContainer.innerHTML = '<div class="loader-small mx-auto my-2"></div>';
 
     try {
-        // CHAMADA API OTIMIZADA
         const foundClients = await clientsApi.getClients(state.establishmentId, term);
-        
-        // Atualiza o cache local apenas com os resultados (opcional, para uso imediato)
         allClientsData = foundClients;
 
         if (foundClients.length === 0) {
@@ -827,7 +870,6 @@ async function handleClientRegistration(e) {
 
     try {
         await clientsApi.createClient(clientData);
-        // Adiciona ao cache local para seleção imediata
         allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
         
         newAppointmentState.data.clientName = clientData.name;
@@ -1140,15 +1182,12 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             }
         };
         
-        // CORREÇÃO: Busca cliente para obter pontos em modo de edição
         if (appointment && appointment.clientName) {
              try {
                  const foundClients = await clientsApi.getClients(state.establishmentId, appointment.clientName);
-                 // Tenta encontrar o cliente exato pelo telefone também para garantir
                  const matchedClient = foundClients.find(c => c.phone === appointment.clientPhone);
                  if (matchedClient) {
                      newAppointmentState.data.clientLoyaltyPoints = matchedClient.loyaltyPoints || 0;
-                     // Atualiza cache temporário
                      allClientsData = foundClients;
                  }
              } catch (e) {
@@ -1157,7 +1196,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         }
     }
     
-    // Verificações básicas de carregamento
     if (!state.services || !state.professionals || loyaltySettingsForModal.enabled === undefined) {
          showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
          return;
@@ -1166,7 +1204,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
     availableServicesForModal = state.services;
     availableProfessionalsForModal = state.professionals.filter(p => p.status === 'active');
 
-    // Lógica de Fidelidade
     if (newAppointmentState.data.clientLoyaltyPoints > 0) {
         const loyaltyProgram = loyaltySettingsForModal;
         const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
@@ -1272,12 +1309,9 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         const clientSearchInput = modal.querySelector('#clientSearchInput');
         
         if (clientSearchInput) {
-            // BUSCA AGORA É ASSÍNCRONA E CHAMA API
             clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
             
-             // Se estamos editando, tenta pré-popular se houver algo no cache
              if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone && allClientsData.length > 0) {
-                 // Renderiza baseado no cache atual (se houver)
                  const resultsContainer = document.getElementById('clientSearchResults');
                  if(resultsContainer) resultsContainer.innerHTML = allClientsData.map(renderClientCard).join('');
              }
@@ -1309,6 +1343,8 @@ export async function loadAgendaPage(params = {}) {
     localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
     
     localState.profSearchTerm = ''; 
+    localState.isSelectionMode = false;
+    localState.selectedItems.clear();
 
     if (window.innerWidth < 768) {
         localState.currentView = 'list';
@@ -1321,6 +1357,11 @@ export async function loadAgendaPage(params = {}) {
                 <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-4 gap-4">
                     <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
                     <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
+                        <button id="btn-toggle-select" class="p-2 border rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1" title="Selecionar Múltiplos">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                            <span class="hidden sm:inline">Selecionar</span>
+                        </button>
+                        
                         <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
                             <button data-view="list" class="view-btn ${localState.currentView === 'list' ? 'active' : ''}">Lista</button>
                             <button data-view="week" class="view-btn ${localState.currentView === 'week' ? 'active' : ''}">Semana</button>
@@ -1357,14 +1398,36 @@ export async function loadAgendaPage(params = {}) {
                      </div>
                 </div>
 
-            </div> <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
+            </div> 
             
-            <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition">
+            <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
+            
+            <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition z-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
             </button>
+
+            <div id="batch-delete-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
         </section>`;
+
+    // --- SELEÇÃO DE ITENS E AÇÕES EM LOTE ---
+    
+    // Toggle Mode
+    const toggleSelectBtn = document.getElementById('btn-toggle-select');
+    toggleSelectBtn.addEventListener('click', () => {
+        localState.isSelectionMode = !localState.isSelectionMode;
+        if (!localState.isSelectionMode) {
+            localState.selectedItems.clear();
+        }
+        
+        toggleSelectBtn.classList.toggle('bg-blue-100', localState.isSelectionMode);
+        toggleSelectBtn.classList.toggle('text-blue-700', localState.isSelectionMode);
+        
+        renderAgenda(); 
+    });
+
+    // --- EVENTOS GERAIS DA PÁGINA ---
 
     document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1433,6 +1496,51 @@ export async function loadAgendaPage(params = {}) {
         contentDiv.addEventListener('click', async (e) => {
             const targetElement = e.target.closest('[data-action]');
             
+            // Tratamento de Seleção em Lote (Checkbox)
+            if (e.target.dataset.action === 'toggle-select-item') {
+                const id = e.target.dataset.id;
+                if (e.target.checked) {
+                    localState.selectedItems.add(id);
+                } else {
+                    localState.selectedItems.delete(id);
+                }
+                updateBatchDeleteUI();
+                return;
+            }
+
+            // Ação de Excluir em Lote
+            if (targetElement && targetElement.dataset.action === 'batch-delete') {
+                const count = localState.selectedItems.size;
+                const confirmed = await showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
+                
+                if (confirmed) {
+                    const ids = Array.from(localState.selectedItems);
+                    let successCount = 0;
+                    
+                    // Exclusão paralela
+                    try {
+                        await Promise.all(ids.map(async (id) => {
+                            try {
+                                await appointmentsApi.deleteAppointment(id);
+                                successCount++;
+                            } catch (err) {
+                                console.error(`Falha ao excluir ${id}`, err);
+                            }
+                        }));
+                        
+                        showNotification(`${successCount} agendamento(s) excluído(s).`, 'success');
+                        localState.selectedItems.clear();
+                        localState.isSelectionMode = false;
+                        document.getElementById('btn-toggle-select').classList.remove('bg-blue-100', 'text-blue-700');
+                        fetchAndDisplayAgenda();
+                        
+                    } catch (error) {
+                        showNotification('Erro ao processar exclusão em lote.', 'error');
+                    }
+                }
+                return;
+            }
+            
             if (e.target.closest('[data-action="select-professional"]')) {
                 const selectedProfCard = e.target.closest('[data-action="select-professional"]');
                 const profId = selectedProfCard.dataset.profId;
@@ -1467,6 +1575,7 @@ export async function loadAgendaPage(params = {}) {
                     openAppointmentModal();
                     break;
                 case 'edit-appointment':
+                    if (localState.isSelectionMode) return; // Bloqueia edição em modo de seleção
                     if (!apptData) return;
                     if (apptData.status === 'completed') {
                         showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
@@ -1480,6 +1589,7 @@ export async function loadAgendaPage(params = {}) {
                     openAppointmentModal(apptData);
                     break;
                 case 'delete-appointment': {
+                    if (localState.isSelectionMode) return;
                     const id = targetElement.dataset.id;
                     const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem a certeza que deseja apagar este agendamento?');
                     if (confirmed) {
@@ -1494,6 +1604,7 @@ export async function loadAgendaPage(params = {}) {
                     break;
                 }
                 case 'open-comanda':
+                    if (localState.isSelectionMode) return; // Impede abrir comanda ao selecionar
                     if (apptData) {
                         if (apptData.hasRewards && !apptData.redeemedReward && apptData.status !== 'completed') {
                              showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos de fidelidade para resgatar.', 'info');

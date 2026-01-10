@@ -478,7 +478,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT (CORRIGIDO PARA FIDELIDADE CENTRALIZADA)
+// 7. CHECKOUT (CORRIGIDO - ORDEM DE LEITURA/ESCRITA)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -492,17 +492,31 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         const saleRef = db.collection('sales').doc();
         const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
+        // Leitura fora da transação (ok, pois não precisa de consistência atômica com a escrita)
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const establishmentData = establishmentDoc.data() || {};
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
 
         await db.runTransaction(async (transaction) => {
+            // --- 1. LEITURAS (DEVEM VIR PRIMEIRO) ---
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const apptData = appointmentDoc.data();
 
-            // 1. Atualiza Agendamento
+            // Prepara ID do Cliente para buscar
+            const safeClientId = cleanId(apptData.clientPhone);
+            let clientRef = null;
+            let clientDoc = null;
+
+            if (safeClientId) {
+                clientRef = db.collection('clients').doc(safeClientId);
+                clientDoc = await transaction.get(clientRef); // <--- CORREÇÃO: Leitura movida para cá
+            }
+
+            // --- 2. ESCRITAS (APÓS TODAS AS LEITURAS) ---
+
+            // Atualiza Agendamento
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
@@ -511,10 +525,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
             });
 
-            // 2. Prepara ID do Cliente Seguro
-            const safeClientId = cleanId(apptData.clientPhone);
-
-            // 3. Cria Venda (CRÍTICO: Inclui clientId para o gatilho funcionar)
+            // Cria Venda
             transaction.set(saleRef, {
                 type: 'appointment', 
                 appointmentId, 
@@ -523,7 +534,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 totalAmount: Number(totalAmount), 
                 clientName: apptData.clientName, 
                 clientPhone: apptData.clientPhone,
-                clientId: safeClientId, // <--- OBRIGATÓRIO PARA FIDELIDADE
+                clientId: safeClientId, 
                 professionalId: apptData.professionalId, 
                 professionalName: apptData.professionalName,
                 createdBy: uid, 
@@ -532,20 +543,16 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            // 4. Atualiza Última Visita (Pontos são processados pelo Trigger do Backend)
-            if (safeClientId) {
-                const clientRef = db.collection('clients').doc(safeClientId);
-                const clientDoc = await transaction.get(clientRef);
-                if (clientDoc.exists) {
-                    transaction.update(clientRef, { 
-                        lastServiceDate: paidAtTimestamp,
-                        lastVisit: paidAtTimestamp,
-                        updatedAt: paidAtTimestamp
-                    });
-                }
+            // Atualiza Última Visita do Cliente (se existir)
+            if (clientDoc && clientDoc.exists) {
+                transaction.update(clientRef, { 
+                    lastServiceDate: paidAtTimestamp,
+                    lastVisit: paidAtTimestamp,
+                    updatedAt: paidAtTimestamp
+                });
             }
 
-            // 5. Financeiro
+            // Financeiro
             const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
             payments.forEach(payment => {
                 const finRef = db.collection('financial_receivables').doc();
