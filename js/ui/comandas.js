@@ -57,9 +57,9 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     if (!comanda || !comanda.id) return;
 
     // 1. FORÇA ATUALIZAÇÃO LOCAL ANTES DE TUDO
-    // Isso garante que o card e o checkout leiam os dados mais recentes
     comanda._localUpdatedAt = Date.now();
     comanda._cachedItems = null; // Limpa cache para forçar recálculo
+    comanda._hasUnsavedChanges = false; // Remove a marcação de não salvo
 
     // Atualiza visualmente a lista (card) imediatamente com o novo valor
     renderComandaList();
@@ -69,16 +69,14 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         localState.viewMode = 'checkout';
         
         // Reinicia estado do checkout se for uma nova entrada
-        // Mas mantemos pagamentos parciais se já existirem
         if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
         localState.checkoutState.selectedMethod = 'dinheiro';
         localState.checkoutState.amountReceived = ''; 
         
-        // Renderiza a tela de checkout imediatamente
         renderComandaDetail();
     }
 
-    // 3. Cria e mostra o overlay de carregamento (não bloqueia a UI do checkout se já renderizou, mas avisa)
+    // 3. Cria e mostra o overlay de carregamento
     const loadingOverlay = document.createElement('div');
     loadingOverlay.id = 'saving-overlay';
     loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
@@ -92,22 +90,15 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
 
     try {
         // 4. Envia para o servidor
-        if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
-             // Lógica para temp se necessário
-        }
-
-        // Envia o objeto comanda atualizado (que contém os novos items em comandaItems)
         await appointmentsApi.updateAppointment(comanda.id, comanda);
         
-        // Remove overlay
         if(document.body.contains(loadingOverlay)) {
             document.body.removeChild(loadingOverlay);
         }
 
         if (nextStep !== 'checkout') {
             showNotification('Sucesso', 'Comanda atualizada!', 'success');
-            // Garante que a lista está sincronizada com o retorno do servidor se necessário
-            // Mas confiamos na atualização local feita no passo 1
+            renderComandaDetail();
         }
 
     } catch (error) {
@@ -116,25 +107,25 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         }
         console.error("Erro ao salvar:", error);
         
-        // Se der erro e estavamos indo para o checkout, talvez devêssemos voltar?
-        // Por enquanto, apenas avisa. O usuário pode tentar finalizar assim mesmo ou voltar.
-        showNotification('Erro', 'Falha ao salvar no servidor (Verifique conexão): ' + error.message, 'warning');
+        comanda._hasUnsavedChanges = true; // Volta a flag se der erro
+        renderComandaDetail();
+        showNotification('Erro', 'Falha ao salvar no servidor: ' + error.message, 'warning');
     }
 }
 
 function getSafeAllItems(comanda) {
-    // Se o cache foi limpo (null), força recálculo
     if (!comanda._cachedItems) {
         let result = [];
         if (comanda.status === 'completed') {
             const finalItems = comanda.comandaItems || comanda.items || [];
             result = finalItems.length > 0 ? finalItems : (comanda.services || []);
         } else {
+            // Marca itens originais com source 'original_service'
             const baseServices = (comanda.services || []).map(s => ({...s, _source: 'original_service'}));
-            // Garante que comandaItems e items sejam arrays antes de espalhar
             const extraItems = comanda.comandaItems || [];
             const legacyItems = comanda.items || [];
             
+            // Marca itens extras com source 'extra'
             const extras = [...extraItems, ...legacyItems].map(i => ({...i, _source: 'extra'}));
             result = [...baseServices, ...extras];
         }
@@ -143,7 +134,6 @@ function getSafeAllItems(comanda) {
         comanda._cachedTimestamp = Date.now();
         return result;
     }
-
     return comanda._cachedItems;
 }
 
@@ -303,9 +293,8 @@ function renderComandaList() {
     const fragment = document.createDocumentFragment();
 
     filteredComandas.forEach(comanda => {
-        // Usa getSafeAllItems que agora recalcula corretamente se o cache foi limpo
         const allItems = getSafeAllItems(comanda);
-        const total = allItems.reduce((acc, item) => acc + (item.price || 0), 0);
+        const total = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
@@ -373,7 +362,6 @@ function renderComandaDetail() {
     const detailContainer = document.getElementById('comanda-detail-container');
     if (!detailContainer) return;
     
-    // VERIFICA SE ESTÁ NO MODO CHECKOUT (ESTÁGIO 2)
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
     if (localState.viewMode === 'checkout' && comanda) {
@@ -417,8 +405,15 @@ function renderComandaDetail() {
     const isCompleted = comanda.status === 'completed';
     const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
+    // --- LÓGICA DE GRUPAMENTO AJUSTADA ---
+    // Agora separamos itens 'original_service' de 'extra' mesmo que tenham o mesmo ID/Tipo
+    // Isso impede que um serviço adicionado manualmente se misture com o original bloqueado
     const groupedItems = allItems.reduce((acc, item) => {
-        const key = `${item.type}-${item.id || item.name}`;
+        const isOriginal = item._source === 'original_service';
+        const key = isOriginal 
+            ? `original-${item.id}` // Chave exclusiva para originais
+            : `${item.type}-${item.id || item.name}`; // Chave padrão para extras
+            
         if (!acc[key]) acc[key] = { ...item, quantity: 0, sources: [] };
         acc[key].quantity += 1;
         if(item._source) acc[key].sources.push(item._source);
@@ -429,14 +424,20 @@ function renderComandaDetail() {
     const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
     const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
-    // --- BOTÕES ESTÁGIO 1 (ITENS) ---
+    const hasUnsaved = comanda._hasUnsavedChanges;
+    const saveBtnClass = hasUnsaved 
+        ? "bg-amber-500 text-white hover:bg-amber-600 shadow-lg animate-pulse" 
+        : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"; 
+    
+    const saveBtnText = hasUnsaved ? "Salvar Alterações*" : "Salvar";
+
     const desktopButtons = `
         <div class="grid grid-cols-3 gap-3 mobile-hidden pt-2">
             <button data-action="add-item" class="col-span-1 py-3 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200 text-sm">
                 + Item
             </button>
-            <button data-action="save-comanda" class="col-span-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition border border-gray-300 text-sm">
-                Salvar
+            <button data-action="save-comanda" class="col-span-1 py-3 font-bold rounded-xl transition text-sm ${saveBtnClass}">
+                ${saveBtnText}
             </button>
             <button data-action="go-to-checkout" class="col-span-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 text-sm">
                 Receber
@@ -444,13 +445,12 @@ function renderComandaDetail() {
         </div>
     `;
 
-    // Botões Flutuantes (Mobile): Add, Save, Checkout
     const mobileFABs = `
         <div class="mobile-fabs-container">
             <button data-action="add-item" class="fab-btn-secondary" title="Adicionar Item">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             </button>
-            <button data-action="save-comanda" class="fab-btn-secondary bg-gray-600 text-white hover:bg-gray-700" title="Salvar Alterações">
+            <button data-action="save-comanda" class="fab-btn-secondary ${hasUnsaved ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-600 text-white hover:bg-gray-700'}" title="Salvar Alterações">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
             </button>
             <button data-action="go-to-checkout" class="fab-btn-primary" title="Receber / Pagar">
@@ -490,21 +490,31 @@ function renderComandaDetail() {
             <div class="space-y-3">
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
                 ${Object.values(groupedItems).map(item => {
-                    const hasOriginalSource = item.sources && item.sources.includes('original_service');
-                    const isProtected = hasOriginalSource && item.quantity <= 1;
-
+                    // Verifica se o item é original do agendamento
+                    const isOriginal = item.sources && item.sources.includes('original_service');
+                    
                     return `
                     <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${item.isReward ? 'border-yellow-200 bg-yellow-50' : ''}">
                         <div class="flex items-center gap-3 w-full">
                             <div class="flex-grow min-w-0">
-                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">${item.isReward ? '🎁 ' : ''}${escapeHTML(item.name)}</p>
+                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">
+                                    ${item.isReward ? '🎁 ' : ''}
+                                    ${escapeHTML(item.name)}
+                                    ${isOriginal ? '<span class="text-[10px] text-indigo-600 bg-indigo-50 px-1 rounded border border-indigo-100 ml-1">Original</span>' : ''}
+                                </p>
                                 <p class="text-xs text-gray-500">${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
                             </div>
                             ${!isCompleted ? `
                                 <div class="flex items-center bg-gray-100 rounded-lg p-1 gap-3">
-                                    <button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-600" ${isProtected ? 'disabled title="Mínimo 1"' : ''}>-</button>
-                                    <span class="text-sm font-bold text-gray-800 w-4 text-center">${item.quantity}</span>
-                                    <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-green-50 hover:text-green-600">+</button>
+                                    ${isOriginal ? 
+                                        // Se for original, exibe apenas a quantidade fixa (sem botões)
+                                        `<span class="text-sm font-bold text-gray-500 w-16 text-center py-1 bg-gray-200 rounded text-[10px] uppercase">Fixo: ${item.quantity}</span>` 
+                                        : 
+                                        // Se for extra, exibe botões normais
+                                        `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-600">-</button>
+                                         <span class="text-sm font-bold text-gray-800 w-4 text-center">${item.quantity}</span>
+                                         <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-green-50 hover:text-green-600">+</button>`
+                                    }
                                 </div>
                             ` : `<span class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 font-bold text-sm rounded-lg">${item.quantity}x</span>`}
                             <div class="flex items-center justify-end w-20">
@@ -540,19 +550,15 @@ function renderComandaDetail() {
 
 // --- ESTÁGIO 2: TELA DE CHECKOUT (ESTÁTICA) ---
 function renderCheckoutView(comanda, container) {
-    // 1. OBTÉM ITENS FRESCOS (ignora cache se foi setado para null recentemente)
     const rawItems = getSafeAllItems(comanda);
     
-    // 2. CALCULA O TOTAL EM TEMPO REAL
-    const total = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+    // CORREÇÃO: Força Number() para evitar concatenação de strings
+    const total = rawItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
     const checkoutState = localState.checkoutState;
     
-    // Atualiza saldo restante com base nos pagamentos já adicionados
     const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
     const remaining = Math.max(0, total - totalPaid);
     
-    // Auto-preenche o campo de valor se estiver vazio ou se o restante for maior que 0
-    // Isso garante que quando você entra na tela, o valor a pagar já esteja lá
     if (!checkoutState.amountReceived || remaining > 0) {
          checkoutState.amountReceived = remaining.toFixed(2);
     }
@@ -1020,10 +1026,13 @@ async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
+    // CORREÇÃO: Assegurar que o preço é um número para evitar erros de soma
+    const numericPrice = parseFloat(itemData.price) || 0;
+
     const itemsToAdd = Array(quantity).fill(0).map(() => ({
         id: itemData.id,
         name: itemData.name,
-        price: itemData.price,
+        price: numericPrice, // Usa o valor numérico garantido
         type: itemData.type,
         isReward: itemData.isReward || false, 
         pointsCost: itemData.pointsCost || 0
@@ -1034,12 +1043,12 @@ async function handleAddItemToComanda(itemData, quantity) {
     
     // 1. Limpa o cache para garantir que os novos itens sejam lidos
     comanda._cachedItems = null;
-    // 2. Atualiza timestamp
-    comanda._localUpdatedAt = Date.now();
+    // 2. Marca como não salvo
+    comanda._hasUnsavedChanges = true; 
     
-    // 3. Força renderização IMEDIATA para feedback visual
+    // 3. Força renderização IMEDIATA para feedback visual APENAS DO DETALHE
+    // NÃO CHAMAMOS renderComandaList() aqui para evitar lag
     renderComandaDetail();
-    renderComandaList(); // Atualiza o total no card da esquerda
 }
 
 async function handleRemoveItemFromComanda(itemId, itemType) {
@@ -1048,33 +1057,25 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     let modified = false;
 
-    // Prioridade 1: Remover dos Extras (Itens Adicionados Manualmente)
-    let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id === itemId && item.type === itemType);
+    // CORREÇÃO: Removemos a opção de deletar 'services' (originais).
+    // O sistema só permitirá remover itens que estão em 'comandaItems' (extras).
+    // Comparação de ID flexível (==) para suportar String vs Number
+    let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id == itemId && item.type === itemType);
     
     if (extraIndex > -1) {
         comanda.comandaItems.splice(extraIndex, 1);
         modified = true;
-    } else {
-        // Prioridade 2: Remover do Original (somente se não for o último)
-        let serviceIndex = (comanda.services || []).findIndex(item => item.id === itemId);
-        if (serviceIndex > -1) {
-            const countInServices = comanda.services.filter(s => s.id === itemId).length;
-            if (countInServices > 1) {
-                comanda.services.splice(serviceIndex, 1);
-                modified = true;
-            }
-        }
-    }
+    } 
+    // Bloco "else" removido: não removemos mais itens originais (comanda.services)
 
     if (modified) {
         // 1. Limpa o cache
         comanda._cachedItems = null;
-        // 2. Atualiza timestamp
-        comanda._localUpdatedAt = Date.now();
+        // 2. Marca como não salvo
+        comanda._hasUnsavedChanges = true;
         
-        // 3. Força renderização IMEDIATA
+        // 3. Força renderização IMEDIATA APENAS DO DETALHE
         renderComandaDetail();
-        renderComandaList();
     }
 }
 
@@ -1319,11 +1320,37 @@ export async function loadComandasPage(params = {}) {
                     await handleFinalizeCheckout(comanda);
                     break;
 
-                // --- AÇÕES DE QUANTIDADE COM DEBOUNCE ---
+                // --- AÇÕES DE QUANTIDADE COM DEBOUNCE (CORRIGIDAS) ---
                 case 'increase-qty': {
-                    const catalog = localState.catalog[target.dataset.itemType + 's'] || [];
-                    const item = catalog.find(i => i.id === target.dataset.itemId);
-                    const safeItem = item || { id: target.dataset.itemId, name: 'Item', price: 0, type: target.dataset.itemType };
+                    const itemId = target.dataset.itemId;
+                    const itemType = target.dataset.itemType;
+                    
+                    // 1. Tenta achar no próprio agendamento primeiro (para manter preço/nome originais)
+                    // e usa comparação flexível (==) para IDs
+                    const existingItems = getSafeAllItems(comanda);
+                    let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
+
+                    // 2. Se não achar, tenta no catálogo
+                    if (!itemToClone) {
+                        const catalog = localState.catalog[itemType + 's'] || [];
+                        itemToClone = catalog.find(i => i.id == itemId);
+                    }
+
+                    // 3. Fallback seguro que tenta preservar preço
+                    const safeItem = itemToClone 
+                        ? { 
+                            id: itemToClone.id, 
+                            name: itemToClone.name, 
+                            price: Number(itemToClone.price), 
+                            type: itemToClone.type 
+                          } 
+                        : { 
+                            id: itemId, 
+                            name: 'Item Indisponível', 
+                            price: 0, 
+                            type: itemType 
+                          };
+
                     await handleAddItemToComanda(safeItem, 1);
                     break;
                 }
