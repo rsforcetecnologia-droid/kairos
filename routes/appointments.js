@@ -459,16 +459,39 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             if(!doc.exists) throw new Error("Não encontrado.");
             
             const oldItems = doc.data().comandaItems || [];
-            const count = (list) => list.filter(i=>i.type==='product').reduce((acc,i)=>{ acc[i.itemId]=(acc[i.itemId]||0)+(i.quantity||1); return acc; }, {});
+            
+            // Lógica de contagem de stock com proteção contra undefined
+            const count = (list) => list.filter(i => i.type === 'product').reduce((acc, i) => { 
+                // Tenta encontrar o ID em várias propriedades possíveis
+                const pid = i.productId || i.itemId || i.id;
+                // Só conta se o ID for válido e não for a string 'undefined'
+                if (pid && pid !== 'undefined' && pid !== 'null') {
+                    acc[pid] = (acc[pid] || 0) + (i.quantity || 1); 
+                }
+                return acc; 
+            }, {});
+
             const oldC = count(oldItems);
             const newC = count(newItems);
             
             const ids = new Set([...Object.keys(oldC), ...Object.keys(newC)]);
             for(const id of ids) {
-                const change = (newC[id]||0) - (oldC[id]||0);
-                if(change !== 0) {
-                    const pRef = req.db.collection('products').doc(id);
-                    t.update(pRef, { currentStock: admin.firestore.FieldValue.increment(-change) });
+                // Proteção adicional para garantir que não tentamos atualizar 'undefined'
+                if (id && id !== 'undefined' && id !== 'null') {
+                    const change = (newC[id] || 0) - (oldC[id] || 0);
+                    if(change !== 0) {
+                        const pRef = req.db.collection('products').doc(id);
+                        // Verifica se o documento existe antes de tentar atualizar?
+                        // O método t.update falha se não existir. 
+                        // Como estamos dentro de uma transação, uma falha aqui reverte tudo.
+                        // Assumimos que o produto existe. Se não existir, vai dar erro, o que é o correto
+                        // para integridade referencial, MAS o ID deve ser válido.
+                        try {
+                            t.update(pRef, { currentStock: admin.firestore.FieldValue.increment(-change) });
+                        } catch (e) {
+                            console.warn(`Produto ${id} não encontrado para update de stock, ignorando.`);
+                        }
+                    }
                 }
             }
             

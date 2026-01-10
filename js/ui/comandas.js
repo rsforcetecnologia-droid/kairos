@@ -61,18 +61,15 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     comanda._cachedItems = null; // Limpa cache para forçar recálculo
     comanda._hasUnsavedChanges = false; // Remove a marcação de não salvo
 
-    // Atualiza visualmente a lista (card) imediatamente com o novo valor
+    // Atualiza visualmente a lista (card) imediatamente
     renderComandaList();
 
-    // 2. Se for checkout, prepara o estado e muda a tela IMEDIATAMENTE (UI Otimista)
+    // 2. Se for checkout, muda a tela IMEDIATAMENTE (UI Otimista)
     if (nextStep === 'checkout') {
         localState.viewMode = 'checkout';
-        
-        // Reinicia estado do checkout se for uma nova entrada
         if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
         localState.checkoutState.selectedMethod = 'dinheiro';
         localState.checkoutState.amountReceived = ''; 
-        
         renderComandaDetail();
     }
 
@@ -89,15 +86,49 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     document.body.appendChild(loadingOverlay);
 
     try {
-        // 4. Envia para o servidor
-        await appointmentsApi.updateAppointment(comanda.id, comanda);
+        // 4. PREPARAÇÃO DOS DADOS (CORREÇÃO CRÍTICA PARA ERRO 500)
+        // Filtra itens inválidos e garante que productId exista
+        const itemsToSave = (comanda.comandaItems || [])
+            .filter(i => i && i.id && String(i.id) !== 'undefined' && String(i.id) !== 'null')
+            .map(i => {
+                const itemPayload = { ...i };
+                
+                // Converte ID para string para evitar problemas de tipo
+                itemPayload.id = String(i.id);
+
+                // CORREÇÃO: Preenche productId E product_id para compatibilidade total com o backend
+                if (itemPayload.type === 'product') {
+                    const pid = itemPayload.id;
+                    if (!itemPayload.productId) itemPayload.productId = pid;
+                    if (!itemPayload.product_id) itemPayload.product_id = pid; // Snake case fallback
+                }
+                
+                if (itemPayload.type === 'service') {
+                    const sid = itemPayload.id;
+                    if (!itemPayload.serviceId) itemPayload.serviceId = sid;
+                    if (!itemPayload.service_id) itemPayload.service_id = sid; // Snake case fallback
+                }
+                
+                return itemPayload;
+            });
+
+        console.log("Enviando itens para salvar:", itemsToSave); // Log para debug
+
+        // 5. Envia para o servidor
+        if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
+             // Vendas avulsas temporárias são salvas na finalização do checkout
+        } else {
+            // Usa endpoint específico de itens para garantir persistência correta
+            await comandasApi.updateComandaItems(comanda.id, itemsToSave);
+        }
         
+        // Remove overlay
         if(document.body.contains(loadingOverlay)) {
             document.body.removeChild(loadingOverlay);
         }
 
         if (nextStep !== 'checkout') {
-            showNotification('Sucesso', 'Comanda atualizada!', 'success');
+            showNotification('Sucesso', 'Comanda salva com sucesso!', 'success');
             renderComandaDetail();
         }
 
@@ -405,14 +436,15 @@ function renderComandaDetail() {
     const isCompleted = comanda.status === 'completed';
     const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
-    // --- LÓGICA DE GRUPAMENTO AJUSTADA ---
-    // Agora separamos itens 'original_service' de 'extra' mesmo que tenham o mesmo ID/Tipo
-    // Isso impede que um serviço adicionado manualmente se misture com o original bloqueado
+    // --- LÓGICA DE GRUPAMENTO ---
     const groupedItems = allItems.reduce((acc, item) => {
         const isOriginal = item._source === 'original_service';
+        // Garante que o ID existe, se não usa o nome como fallback para evitar "undefined"
+        const safeId = item.id || item.name;
+        
         const key = isOriginal 
-            ? `original-${item.id}` // Chave exclusiva para originais
-            : `${item.type}-${item.id || item.name}`; // Chave padrão para extras
+            ? `original-${safeId}` // Chave exclusiva para originais
+            : `${item.type}-${safeId}`; // Chave padrão para extras
             
         if (!acc[key]) acc[key] = { ...item, quantity: 0, sources: [] };
         acc[key].quantity += 1;
@@ -420,7 +452,7 @@ function renderComandaDetail() {
         return acc;
     }, {});
     
-    const total = Object.values(groupedItems).reduce((acc, item) => acc + (item.price || 0) * item.quantity, 0);
+    const total = Object.values(groupedItems).reduce((acc, item) => acc + Number(item.price || 0) * item.quantity, 0);
     const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
     const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
@@ -552,7 +584,6 @@ function renderComandaDetail() {
 function renderCheckoutView(comanda, container) {
     const rawItems = getSafeAllItems(comanda);
     
-    // CORREÇÃO: Força Number() para evitar concatenação de strings
     const total = rawItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
     const checkoutState = localState.checkoutState;
     
@@ -772,13 +803,17 @@ function openAddItemModal() {
                 const el = document.getElementById(id);
                 if (!el) return;
                 const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
-                el.innerHTML = filtered.map(item => `
+                el.innerHTML = filtered.map(item => {
+                    // Proteção: não renderiza itens sem ID para evitar erros futuros
+                    if (!item.id) return '';
+                    
+                    return `
                     <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-2 w-full p-2 bg-white border rounded hover:bg-gray-50 transition text-left">
                         <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-50">${icons[type]}</div>
                         <span class="flex-grow text-sm truncate">${escapeHTML(item.name)}</span>
                         <span class="font-bold text-xs text-gray-700">R$ ${item.price.toFixed(2)}</span>
                     </button>
-                `).join('') || `<p class="text-xs text-gray-400 text-center py-2">Nada encontrado</p>`;
+                `}).join('') || `<p class="text-xs text-gray-400 text-center py-2">Nada encontrado</p>`;
             });
         };
 
@@ -1026,17 +1061,38 @@ async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
+    // PROTEÇÃO: Impede a adição de itens sem ID válido
+    if (!itemData.id || String(itemData.id) === 'undefined') {
+        console.error("Tentativa de adicionar item sem ID:", itemData);
+        showNotification('Erro', 'Item sem identificador. Não foi possível adicionar.', 'error');
+        return;
+    }
+
     // CORREÇÃO: Assegurar que o preço é um número para evitar erros de soma
     const numericPrice = parseFloat(itemData.price) || 0;
 
-    const itemsToAdd = Array(quantity).fill(0).map(() => ({
-        id: itemData.id,
-        name: itemData.name,
-        price: numericPrice, // Usa o valor numérico garantido
-        type: itemData.type,
-        isReward: itemData.isReward || false, 
-        pointsCost: itemData.pointsCost || 0
-    }));
+    const itemsToAdd = Array(quantity).fill(0).map(() => {
+        const baseItem = {
+            id: String(itemData.id), // Garante string
+            name: itemData.name,
+            price: numericPrice, // Usa o valor numérico garantido
+            type: itemData.type,
+            isReward: itemData.isReward || false, 
+            pointsCost: itemData.pointsCost || 0
+        };
+        
+        // Redundância: Garante que productId e serviceId existem para evitar erro 500
+        // Preenche AMBOS os padrões (camelCase e snake_case) para garantir
+        if (itemData.type === 'product') {
+            baseItem.productId = baseItem.id;
+            baseItem.product_id = baseItem.id;
+        } else if (itemData.type === 'service') {
+            baseItem.serviceId = baseItem.id;
+            baseItem.service_id = baseItem.id;
+        }
+        
+        return baseItem;
+    });
     
     comanda.comandaItems = comanda.comandaItems || [];
     comanda.comandaItems.push(...itemsToAdd);
@@ -1047,7 +1103,6 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda._hasUnsavedChanges = true; 
     
     // 3. Força renderização IMEDIATA para feedback visual APENAS DO DETALHE
-    // NÃO CHAMAMOS renderComandaList() aqui para evitar lag
     renderComandaDetail();
 }
 
@@ -1059,14 +1114,13 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
     // CORREÇÃO: Removemos a opção de deletar 'services' (originais).
     // O sistema só permitirá remover itens que estão em 'comandaItems' (extras).
-    // Comparação de ID flexível (==) para suportar String vs Number
+    // Usa == para comparar string vs number
     let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id == itemId && item.type === itemType);
     
     if (extraIndex > -1) {
         comanda.comandaItems.splice(extraIndex, 1);
         modified = true;
     } 
-    // Bloco "else" removido: não removemos mais itens originais (comanda.services)
 
     if (modified) {
         // 1. Limpa o cache
@@ -1325,8 +1379,13 @@ export async function loadComandasPage(params = {}) {
                     const itemId = target.dataset.itemId;
                     const itemType = target.dataset.itemType;
                     
-                    // 1. Tenta achar no próprio agendamento primeiro (para manter preço/nome originais)
-                    // e usa comparação flexível (==) para IDs
+                    // PROTEÇÃO: Impede operações com ID inválido
+                    if (!itemId || itemId === 'undefined' || itemId === 'null') {
+                        showNotification('Erro', 'Item inválido para adição.', 'error');
+                        return;
+                    }
+                    
+                    // 1. Tenta achar no próprio agendamento primeiro
                     const existingItems = getSafeAllItems(comanda);
                     let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
 
@@ -1336,7 +1395,7 @@ export async function loadComandasPage(params = {}) {
                         itemToClone = catalog.find(i => i.id == itemId);
                     }
 
-                    // 3. Fallback seguro que tenta preservar preço
+                    // 3. Fallback seguro
                     const safeItem = itemToClone 
                         ? { 
                             id: itemToClone.id, 
