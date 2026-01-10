@@ -5,7 +5,7 @@ import * as establishmentApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showGenericModal, showConfirmation } from '../components/modal.js';
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; // <--- CORREÇÃO: Importação necessária
+import { escapeHTML } from '../utils.js'; 
 
 // --- ESTADO LOCAL ---
 let localState = {

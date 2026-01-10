@@ -3,6 +3,7 @@
 import { authenticatedFetch } from './apiService.js';
 import { state } from '../state.js';
 
+
 /**
  * Busca os detalhes completos de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
@@ -78,5 +79,23 @@ export const updateOwnerEmail = (establishmentId, newEmail) => {
     return authenticatedFetch(`/api/establishments/${id}/owner-email`, {
         method: 'PATCH',
         body: JSON.stringify({ newEmail: newEmail }),
+    });
+};
+
+/**
+ * Salva as configurações do programa de fidelidade.
+ * @param {string} establishmentId - O ID do estabelecimento.
+ * @param {object} loyaltySettings - Objeto contendo { enabled, type, pointsPerVisit, pointsPerCurrency, tiers: [] }
+ * @returns {Promise<object>} A resposta da API.
+ */
+export const saveLoyaltyProgram = (establishmentId, loyaltySettings) => {
+    const id = establishmentId || state.establishmentId;
+    if (!id) {
+        return Promise.reject(new Error("ID do estabelecimento não fornecido."));
+    }
+
+    return authenticatedFetch(`/api/establishments/${id}/loyalty`, {
+        method: 'PUT',
+        body: JSON.stringify({ loyaltyProgram: loyaltySettings })
     });
 };

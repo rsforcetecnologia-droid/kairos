@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// --- CORREÇÃO: Helper para limpar ID (deixar apenas números) ---
+// --- Helper para limpar ID ---
 function cleanId(id) {
     if (!id) return '';
     return String(id).replace(/\D/g, '');
@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
     res.status(501).json({ message: 'Ainda não implementado' });
 });
 
-// Criar nova venda avulsa (PDV) - COM INTEGRAÇÃO FINANCEIRA E FIDELIDADE CORRIGIDA
+// Criar nova venda avulsa (PDV) - COM FIDELIDADE DINÂMICA
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
@@ -36,11 +36,31 @@ router.post('/', async (req, res) => {
             }
         }
         
+        // 1. Buscar dados do Estabelecimento (Financeiro e Fidelidade)
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        const financialIntegration = establishmentDoc.data()?.financialIntegration || {};
+        const establishmentData = establishmentDoc.data() || {};
+        
+        const financialIntegration = establishmentData.financialIntegration || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
+        
+        // Configurações de Fidelidade
+        const loyaltyProgram = establishmentData.loyaltyProgram || {};
 
-        // CORREÇÃO: Gera um ID limpo para garantir a fidelidade
+        // 2. Calcular Pontos de Fidelidade com base na regra
+        let pointsToAward = 0;
+        if (loyaltyProgram.enabled) {
+            if (loyaltyProgram.type === 'visit') {
+                // Regra por Visita: Valor fixo por venda
+                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
+            } else {
+                // Regra por Valor: Total / Divisor (ex: R$ 100 / 10 = 10 pontos)
+                const divisor = parseFloat(loyaltyProgram.pointsPerCurrency || 10);
+                if (divisor > 0) {
+                    pointsToAward = Math.floor(Number(totalAmount) / divisor);
+                }
+            }
+        }
+
         const safeClientId = cleanId(clientPhone);
 
         const saleData = {
@@ -50,25 +70,28 @@ router.post('/', async (req, res) => {
             totalAmount: Number(totalAmount),
             clientName: clientName || "Cliente Avulso",
             clientPhone: clientPhone || null,
-            clientId: safeClientId || null, // <--- CAMPO CRÍTICO: Permite o backend somar pontos
+            clientId: safeClientId || null,
             professionalId: professionalId || null,
             professionalName: professionalName,
             cashierSessionId: cashierSessionId || null,
             createdBy: uid,
             status: 'completed', 
             startTime: paidAtTimestamp,
+            // Armazena quantos pontos gerou para registro histórico
+            loyaltyPointsEarned: pointsToAward, 
             transaction: {
                 paidAt: paidAtTimestamp,
                 payments: payments,
                 totalAmount: Number(totalAmount)
             }
         };
+        
         const saleRef = db.collection('sales').doc();
 
         await db.runTransaction(async (transaction) => {
             const productsToUpdate = items.filter(item => item.type === 'product');
             
-            // 1. Validar e Atualizar Estoque
+            // 3. Validar e Atualizar Estoque
             if (productsToUpdate.length > 0) {
                 productsToUpdate.forEach((item, index) => {
                     if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
@@ -84,27 +107,52 @@ router.post('/', async (req, res) => {
                     const productDoc = productDocs[i];
                     const productItem = productsToUpdate[i];
                     if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
-                    const newStock = (productDoc.data().currentStock || 0) - 1; 
-                    if (newStock < 0) throw new Error(`Stock insuficiente para o produto ${productItem.name}.`);
+                    const newStock = (productDoc.data().currentStock || 0) - (productItem.quantity || 1); 
+                    // Nota: Removi a verificação < 0 para permitir estoque negativo se necessário, ou descomente abaixo:
+                    // if (newStock < 0) throw new Error(`Stock insuficiente para o produto ${productItem.name}.`);
                     updates.push({ ref: productDoc.ref, newStock: newStock });
                 }
                 
                 updates.forEach(update => transaction.update(update.ref, { currentStock: update.newStock }));
             }
             
-            // 2. Criar Registro de Venda
+            // 4. ATUALIZAR PONTOS DO CLIENTE (SE EXISTIR)
+            if (safeClientId && pointsToAward > 0) {
+                const clientRef = db.collection('clients').doc(safeClientId);
+                const clientDoc = await transaction.get(clientRef);
+                
+                if (clientDoc.exists) {
+                    // Incrementa pontos
+                    transaction.update(clientRef, { 
+                        loyaltyPoints: admin.firestore.FieldValue.increment(pointsToAward),
+                        lastVisit: paidAtTimestamp
+                    });
+
+                    // Registra no histórico de fidelidade do cliente
+                    const historyRef = clientRef.collection('loyaltyHistory').doc();
+                    transaction.set(historyRef, {
+                        type: 'earn',
+                        points: pointsToAward,
+                        source: 'sale', // ou 'walk-in'
+                        description: 'Compra Avulsa (PDV)',
+                        transactionId: saleRef.id,
+                        timestamp: paidAtTimestamp
+                    });
+                }
+            }
+
+            // 5. Criar Registro de Venda
             transaction.set(saleRef, saleData);
 
-            // 3. INTEGRAÇÃO FINANCEIRA
+            // 6. INTEGRAÇÃO FINANCEIRA
             payments.forEach(payment => {
                 const installmentCount = payment.installments && payment.installments > 1 ? payment.installments : 1;
                 const paymentMethod = payment.method.toLowerCase();
                 const paidDate = new Date().toISOString().split('T')[0];
 
-                // CRÉDITO: SEMPRE entra à vista, independente de parcelas
+                // CRÉDITO
                 if (paymentMethod === 'credito') {
                     const financialRef = db.collection('financial_receivables').doc();
-                    
                     const notes = installmentCount > 1 
                         ? `Parcelado em ${installmentCount}x no cartão de crédito (estabelecimento recebe à vista)`
                         : 'Pagamento à vista no cartão de crédito';
@@ -112,7 +160,7 @@ router.post('/', async (req, res) => {
                     transaction.set(financialRef, {
                         establishmentId,
                         description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Crédito ${installmentCount}x)`,
-                        amount: payment.value, // VALOR TOTAL À VISTA
+                        amount: payment.value,
                         dueDate: paidDate, 
                         paymentDate: paidDate,
                         status: 'paid',
@@ -121,15 +169,12 @@ router.post('/', async (req, res) => {
                         naturezaId: defaultNaturezaId || null,
                         centroDeCustoId: defaultCentroDeCustoId || null,
                         notes: notes,
-                        paymentDetails: {
-                            method: 'credito',
-                            installments: installmentCount
-                        }
+                        paymentDetails: { method: 'credito', installments: installmentCount }
                     });
-                    return; // Não processa mais nada para crédito
+                    return;
                 }
 
-                // CREDIÁRIO/FIADO: SEMPRE projeta parcelas
+                // CREDIÁRIO
                 if (paymentMethod === 'crediario') {
                     const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
                     let totalButLast = installmentValue * (installmentCount - 1);
@@ -157,10 +202,10 @@ router.post('/', async (req, res) => {
                             centroDeCustoId: defaultCentroDeCustoId || null,
                         });
                     }
-                    return; // Já processou crediário
+                    return;
                 }
 
-                // OUTROS MÉTODOS (Dinheiro, PIX, Débito): SEMPRE à vista
+                // OUTROS (Dinheiro, PIX, Débito)
                 const financialRef = db.collection('financial_receivables').doc();
                 transaction.set(financialRef, {
                     establishmentId,
@@ -177,7 +222,7 @@ router.post('/', async (req, res) => {
             });
         });
         
-        res.status(201).json({ message: 'Venda criada com sucesso!', saleId: saleRef.id });
+        res.status(201).json({ message: 'Venda criada com sucesso!', saleId: saleRef.id, pointsEarned: pointsToAward });
 
     } catch (error) {
         console.error("Erro ao criar venda:", error);
@@ -201,32 +246,57 @@ router.post('/:saleId/reopen', async (req, res) => {
             const saleData = saleDoc.data();
             if (saleData.type !== 'walk-in') throw new Error("Esta função só pode ser usada para reabrir vendas avulsas.");
 
+            // Buscar lançamentos financeiros para deletar
             const financialSnapshot = await db.collection('financial_receivables')
                 .where('transactionId', '==', saleId)
                 .get();
             financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
             
+            // Estornar Stock
             const productsToRestock = saleData.items.filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                productsToRestock.forEach(item => {
-                    if (!item.id) throw new Error('Item de produto na venda sem ID, não é possível devolver ao stock.');
-                });
-
-                const productRefs = productsToRestock.map(item => db.collection('products').doc(item.id));
-                const productDocs = await transaction.getAll(...productRefs);
+                const productRefs = productsToRestock
+                    .filter(item => item.id)
+                    .map(item => db.collection('products').doc(item.id));
                 
-                productDocs.forEach(doc => {
-                    if (doc.exists) {
-                        transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(1) });
-                    }
-                });
+                if (productRefs.length > 0) {
+                    const productDocs = await transaction.getAll(...productRefs);
+                    productDocs.forEach((doc, index) => {
+                        if (doc.exists) {
+                            const qty = productsToRestock[index].quantity || 1;
+                            transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(qty) });
+                        }
+                    });
+                }
+            }
+
+            // Estornar Pontos de Fidelidade (Se houver cliente vinculado)
+            if (saleData.clientId && saleData.loyaltyPointsEarned > 0) {
+                const clientRef = db.collection('clients').doc(saleData.clientId);
+                const clientDoc = await transaction.get(clientRef);
+                if (clientDoc.exists) {
+                    transaction.update(clientRef, { 
+                        loyaltyPoints: admin.firestore.FieldValue.increment(-saleData.loyaltyPointsEarned) 
+                    });
+                    
+                    // Opcional: Registrar estorno no histórico
+                    const historyRef = clientRef.collection('loyaltyHistory').doc();
+                    transaction.set(historyRef, {
+                        type: 'revert',
+                        points: -saleData.loyaltyPointsEarned,
+                        source: 'sale_reopen',
+                        description: 'Estorno de Venda Avulsa',
+                        transactionId: saleId,
+                        timestamp: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
             }
 
             transaction.delete(saleRef);
-            
             return saleData;
         });
 
+        // Deletar financeiro fora da transação principal (ou em batch)
         const batchDeleteFinancial = db.batch();
         financialEntriesToDelete.forEach(id => {
             batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
@@ -236,7 +306,7 @@ router.post('/:saleId/reopen', async (req, res) => {
         }
 
         res.status(200).json({ 
-            message: 'Venda revertida com sucesso. A comanda foi carregada para edição.',
+            message: 'Venda revertida com sucesso.',
             reopenedSale: reopenedSaleData 
         });
     } catch (error) {
@@ -245,7 +315,7 @@ router.post('/:saleId/reopen', async (req, res) => {
     }
 });
 
-// ROTA PARA EXCLUIR VENDA AVULSA (APENAS 'walk-in')
+// ROTA PARA EXCLUIR VENDA AVULSA
 router.delete('/:saleId', async (req, res) => {
     const { saleId } = req.params;
     const { establishmentId } = req.user; 
@@ -261,47 +331,32 @@ router.delete('/:saleId', async (req, res) => {
             
             const saleData = saleDoc.data();
             
-            if (saleData.establishmentId !== establishmentId) {
-                throw new Error("Acesso negado.");
-            }
-            if (saleData.type !== 'walk-in') {
-                throw new Error("Não é possível excluir uma comanda de agendamento por aqui. Exclua pela agenda.");
-            }
-            if (saleData.status === 'completed') {
-                throw new Error("Não é possível excluir uma venda avulsa já finalizada. Use a função 'Reabrir'.");
-            }
+            if (saleData.establishmentId !== establishmentId) throw new Error("Acesso negado.");
+            if (saleData.type !== 'walk-in') throw new Error("Exclua agendamentos pela agenda.");
+            if (saleData.status === 'completed') throw new Error("Venda finalizada: Use 'Reabrir' para estornar valores corretamente.");
 
+            // Devolver estoque se necessário (para vendas pendentes ou canceladas via delete)
             const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                productsToRestock.forEach(item => {
-                    if (!item.id) throw new Error('Item de produto na venda sem ID, não é possível devolver ao stock.');
-                });
-
-                const productRefs = productsToRestock.map(item => db.collection('products').doc(item.id));
+                const productRefs = productsToRestock.filter(i => i.id).map(item => db.collection('products').doc(item.id));
                 const productDocs = await transaction.getAll(...productRefs);
-                
-                productDocs.forEach(doc => {
+                productDocs.forEach((doc, index) => {
                     if (doc.exists) {
-                        transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(1) });
+                        const qty = productsToRestock[index].quantity || 1;
+                        transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(qty) });
                     }
                 });
             }
             
-            const financialSnapshot = await db.collection('financial_receivables')
-                .where('transactionId', '==', saleId)
-                .get();
+            const financialSnapshot = await db.collection('financial_receivables').where('transactionId', '==', saleId).get();
             financialSnapshot.forEach(doc => financialEntriesToDelete.push(doc.id));
             
             transaction.delete(saleRef);
         });
 
-        const batchDeleteFinancial = db.batch();
-        financialEntriesToDelete.forEach(id => {
-            batchDeleteFinancial.delete(db.collection('financial_receivables').doc(id));
-        });
-        if (financialEntriesToDelete.length > 0) {
-             await batchDeleteFinancial.commit();
-        }
+        const batch = db.batch();
+        financialEntriesToDelete.forEach(id => batch.delete(db.collection('financial_receivables').doc(id)));
+        if (financialEntriesToDelete.length > 0) await batch.commit();
 
         res.status(200).json({ message: 'Venda avulsa excluída com sucesso.' });
     } catch (error) {

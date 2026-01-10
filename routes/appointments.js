@@ -32,7 +32,6 @@ function handleFirestoreError(res, error, context) {
 async function checkClientRewards(db, clientName, clientPhone, establishmentId) {
     if (!clientName || !clientPhone || !establishmentId) return false;
     try {
-        // CORREÇÃO: Busca pelo ID direto (mais performático e seguro)
         const safeId = cleanId(clientPhone);
         const clientDoc = await db.collection('clients').doc(safeId).get();
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
@@ -40,7 +39,6 @@ async function checkClientRewards(db, clientName, clientPhone, establishmentId) 
         if (!clientDoc.exists || !establishmentDoc.exists) return false;
         
         const clientData = clientDoc.data();
-        // Segurança: verifica se o cliente pertence mesmo a este estabelecimento
         if (clientData.establishmentId !== establishmentId) return false;
 
         const establishmentData = establishmentDoc.data(); 
@@ -144,7 +142,6 @@ router.post('/', async (req, res) => {
         let notificationTitle = "", notificationBody = "";
 
         await db.runTransaction(async (transaction) => {
-            // CORREÇÃO: Usa o ID direto em vez de query (evita duplicidade e garante padrão)
             const clientRef = db.collection('clients').doc(safeClientId);
             const clientDoc = await transaction.get(clientRef);
             
@@ -161,17 +158,15 @@ router.post('/', async (req, res) => {
 
             // Cria ou Atualiza Cliente
             if (!clientDoc.exists) {
-                // Cliente NOVO: Cria com ID igual ao telefone limpo
                 transaction.set(clientRef, {
                     establishmentId, 
                     name: clientName, 
-                    phone: clientPhone, // Mantém formatação original visual
-                    id: safeClientId, // ID explícito
+                    phone: clientPhone, 
+                    id: safeClientId, 
                     createdAt: admin.firestore.FieldValue.serverTimestamp(), 
                     loyaltyPoints: 0
                 });
             } else {
-                // Cliente EXISTE: Atualiza nome se mudou
                 if (clientDoc.data().name !== clientName) {
                     transaction.update(clientRef, { name: clientName });
                 }
@@ -187,7 +182,6 @@ router.post('/', async (req, res) => {
                 totalAmount: totalAmount 
             };
 
-            // Lógica de Resgate (se houver)
             if (redeemedReward && redeemedReward.points > 0) {
                 if (!clientDoc.exists) throw new Error("Cliente novo não pode resgatar pontos.");
                 const currentPoints = clientDoc.data().loyaltyPoints || 0;
@@ -203,7 +197,6 @@ router.post('/', async (req, res) => {
             
             transaction.set(newAppointmentRef, newAppointment);
 
-            // Notificação Interna
             const dateString = startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: timezone });
             const timeString = startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
             const serviceNames = servicesDetails.map(s => s.name).join(', ');
@@ -268,17 +261,13 @@ router.get('/:establishmentId', async (req, res) => {
         if (appointmentsSnapshot.empty) return res.status(200).json([]);
 
         const professionalsMap = new Map(professionalsSnapshot.docs.map(d => [d.id, d.data().name]));
-        
-        // Cache para evitar múltiplas chamadas ao banco para o mesmo cliente na mesma listagem
         const clientRewardsCache = new Map();
 
         const enrichedAppointments = await Promise.all(appointmentsSnapshot.docs.map(async (doc) => {
             const data = doc.data();
             const serviceName = (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'N/A';
-            
             let hasRewards = data.hasRewards;
 
-            // Se não tiver info de rewards salva, verifica em cache ou busca
             if (hasRewards === undefined) {
                 const identifier = `${data.clientPhone}`;
                 if (clientRewardsCache.has(identifier)) {
@@ -412,12 +401,10 @@ router.put('/:appointmentId', async (req, res) => {
             const hasConflict = conflicts.docs.some(d => d.id !== appointmentId && d.data().endTime.toDate() > start && d.data().status !== 'cancelled');
             if (hasConflict) throw new Error('Horário indisponível.');
 
-            // CORREÇÃO: Busca cliente por ID limpo
             const safeClientId = cleanId(clientPhone);
             const clientRef = db.collection('clients').doc(safeClientId);
             const clientDoc = await transaction.get(clientRef);
             
-            // Atualiza nome se necessário
             if (clientDoc.exists && clientDoc.data().name !== clientName) {
                 transaction.update(clientRef, { name: clientName });
             }
@@ -431,7 +418,6 @@ router.put('/:appointmentId', async (req, res) => {
                 totalAmount: totalAmount 
             };
 
-            // Lógica de Reembolso/Gasto de pontos ao editar
             if (redeemedReward && !oldData.redeemedReward) {
                 if (clientDoc.exists) {
                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
@@ -447,7 +433,7 @@ router.put('/:appointmentId', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar agendamento'); }
 });
 
-// 6. ATUALIZAR COMANDA
+// 6. ATUALIZAR COMANDA (ITENS)
 router.post('/:appointmentId/comanda', async (req, res) => {
     const { appointmentId } = req.params;
     const { items: newItems } = req.body;
@@ -460,11 +446,8 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             
             const oldItems = doc.data().comandaItems || [];
             
-            // Lógica de contagem de stock com proteção contra undefined
             const count = (list) => list.filter(i => i.type === 'product').reduce((acc, i) => { 
-                // Tenta encontrar o ID em várias propriedades possíveis
                 const pid = i.productId || i.itemId || i.id;
-                // Só conta se o ID for válido e não for a string 'undefined'
                 if (pid && pid !== 'undefined' && pid !== 'null') {
                     acc[pid] = (acc[pid] || 0) + (i.quantity || 1); 
                 }
@@ -476,16 +459,10 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             
             const ids = new Set([...Object.keys(oldC), ...Object.keys(newC)]);
             for(const id of ids) {
-                // Proteção adicional para garantir que não tentamos atualizar 'undefined'
                 if (id && id !== 'undefined' && id !== 'null') {
                     const change = (newC[id] || 0) - (oldC[id] || 0);
                     if(change !== 0) {
                         const pRef = req.db.collection('products').doc(id);
-                        // Verifica se o documento existe antes de tentar atualizar?
-                        // O método t.update falha se não existir. 
-                        // Como estamos dentro de uma transação, uma falha aqui reverte tudo.
-                        // Assumimos que o produto existe. Se não existir, vai dar erro, o que é o correto
-                        // para integridade referencial, MAS o ID deve ser válido.
                         try {
                             t.update(pRef, { currentStock: admin.firestore.FieldValue.increment(-change) });
                         } catch (e) {
@@ -501,7 +478,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT (CORRIGIDO - ORDEM DE LEITURA/ESCRITA)
+// 7. CHECKOUT - CORRIGIDO (FIDELIDADE DINÂMICA)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items } = req.body;
@@ -515,38 +492,80 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         const saleRef = db.collection('sales').doc();
         const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
-        // Leitura fora da transação (ok, pois não precisa de consistência atômica com a escrita)
+        // 1. Busca configurações do estabelecimento
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const establishmentData = establishmentDoc.data() || {};
+        const loyaltyProgram = establishmentData.loyaltyProgram || {};
+        const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
+
+        // 2. Calcula Pontos de Fidelidade
+        let pointsToAward = 0;
+        if (loyaltyProgram.enabled) {
+            // Força minúsculo para comparação segura
+            const type = (loyaltyProgram.type || 'value').toLowerCase();
+            
+            if (type === 'visit') {
+                // Regra por Visita
+                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
+            } else {
+                // Regra por Valor
+                const divisor = parseFloat(loyaltyProgram.pointsPerCurrency || 10);
+                if (divisor > 0) {
+                    pointsToAward = Math.floor(Number(totalAmount) / divisor);
+                }
+            }
+        }
+
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
 
         await db.runTransaction(async (transaction) => {
-            // --- 1. LEITURAS (DEVEM VIR PRIMEIRO) ---
             const appointmentDoc = await transaction.get(appointmentRef);
             if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             const apptData = appointmentDoc.data();
 
-            // Prepara ID do Cliente para buscar
             const safeClientId = cleanId(apptData.clientPhone);
             let clientRef = null;
             let clientDoc = null;
 
             if (safeClientId) {
                 clientRef = db.collection('clients').doc(safeClientId);
-                clientDoc = await transaction.get(clientRef); // <--- CORREÇÃO: Leitura movida para cá
+                clientDoc = await transaction.get(clientRef);
             }
 
-            // --- 2. ESCRITAS (APÓS TODAS AS LEITURAS) ---
-
-            // Atualiza Agendamento
+            // Atualiza Agendamento com pontos ganhos
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
                 comandaItems: items,
-                totalAmount: Number(totalAmount), 
+                totalAmount: Number(totalAmount),
+                loyaltyPointsEarned: pointsToAward, // Salva para estorno
                 transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
             });
+
+            // Atualiza Cliente
+            if (clientDoc && clientDoc.exists) {
+                const updateData = {
+                    lastServiceDate: paidAtTimestamp,
+                    lastVisit: paidAtTimestamp,
+                    updatedAt: paidAtTimestamp
+                };
+
+                if (pointsToAward > 0) {
+                    updateData.loyaltyPoints = admin.firestore.FieldValue.increment(pointsToAward);
+                    
+                    const historyRef = clientRef.collection('loyaltyHistory').doc();
+                    transaction.set(historyRef, {
+                        type: 'earn',
+                        points: pointsToAward,
+                        source: 'appointment',
+                        description: 'Agendamento Finalizado',
+                        transactionId: appointmentId,
+                        timestamp: paidAtTimestamp
+                    });
+                }
+                transaction.update(clientRef, updateData);
+            }
 
             // Cria Venda
             transaction.set(saleRef, {
@@ -563,20 +582,11 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 createdBy: uid, 
                 createdAt: paidAtTimestamp, 
                 cashierSessionId: cashierSessionId || null,
+                loyaltyPointsEarned: pointsToAward,
                 transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
             });
 
-            // Atualiza Última Visita do Cliente (se existir)
-            if (clientDoc && clientDoc.exists) {
-                transaction.update(clientRef, { 
-                    lastServiceDate: paidAtTimestamp,
-                    lastVisit: paidAtTimestamp,
-                    updatedAt: paidAtTimestamp
-                });
-            }
-
             // Financeiro
-            const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
             payments.forEach(payment => {
                 const finRef = db.collection('financial_receivables').doc();
                 transaction.set(finRef, {
@@ -591,11 +601,11 @@ router.post('/:appointmentId/checkout', async (req, res) => {
             });
         });
 
-        res.status(200).json({ message: 'Checkout realizado.' });
+        res.status(200).json({ message: 'Checkout realizado.', pointsEarned: pointsToAward });
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA
+// 8. REABRIR COMANDA - CORRIGIDO (ESTORNO DE PONTOS)
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
@@ -607,6 +617,8 @@ router.post('/:appointmentId/reopen', async (req, res) => {
             if(!doc.exists) throw new Error("Não encontrado.");
             const data = doc.data();
             const saleId = data.transaction?.saleId;
+            const pointsToRevert = data.loyaltyPointsEarned || 0;
+            const safeClientId = cleanId(data.clientPhone);
 
             let financialDocs = [];
             if (saleId) {
@@ -614,9 +626,27 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 financialDocs = finsSnapshot.docs;
             }
 
-            // Deletar a venda reverte os pontos automaticamente?
-            // NÃO. Para reverter pontos, precisaria de um gatilho de onDelete em 'sales'.
-            // Por enquanto, apenas apaga o registro de venda.
+            // ESTORNO DE PONTOS
+            if (pointsToRevert > 0 && safeClientId) {
+                const clientRef = db.collection('clients').doc(safeClientId);
+                const clientDoc = await t.get(clientRef);
+                if (clientDoc.exists) {
+                    t.update(clientRef, { 
+                        loyaltyPoints: admin.firestore.FieldValue.increment(-pointsToRevert) 
+                    });
+                    
+                    const historyRef = clientRef.collection('loyaltyHistory').doc();
+                    t.set(historyRef, {
+                        type: 'revert',
+                        points: -pointsToRevert,
+                        source: 'reopen',
+                        description: 'Estorno: Agendamento Reaberto',
+                        transactionId: appointmentId,
+                        timestamp: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+            }
+
             if (saleId) {
                 t.delete(db.collection('sales').doc(saleId)); 
                 financialDocs.forEach(f => t.delete(f.ref));  
@@ -626,9 +656,10 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 status: 'confirmed', 
                 transaction: admin.firestore.FieldValue.delete(), 
                 cashierSessionId: admin.firestore.FieldValue.delete(),
+                loyaltyPointsEarned: admin.firestore.FieldValue.delete()
             });
         });
-        res.status(200).json({ message: 'Reaberto.' });
+        res.status(200).json({ message: 'Reaberto com estorno.' });
     } catch (error) { handleFirestoreError(res, error, 'reabrir'); }
 });
 

@@ -35,7 +35,12 @@ let localState = {
         payments: [],
         selectedMethod: 'dinheiro',
         installments: 1,
-        amountReceived: ''
+        amountReceived: '',
+        // NOVO: Estado para desconto
+        discount: {
+            type: 'real', // 'real' ou 'percent'
+            value: 0
+        }
     }
 };
 
@@ -64,12 +69,15 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     // Atualiza visualmente a lista (card) imediatamente
     renderComandaList();
 
-    // 2. Se for checkout, muda a tela IMEDIATAMENTE (UI Otimista)
+    // 2. Se for checkout, prepara o estado e muda a tela IMEDIATAMENTE (UI Otimista)
     if (nextStep === 'checkout') {
         localState.viewMode = 'checkout';
+        // Reinicia estado do checkout se for uma nova entrada
         if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
         localState.checkoutState.selectedMethod = 'dinheiro';
-        localState.checkoutState.amountReceived = ''; 
+        localState.checkoutState.amountReceived = '';
+        localState.checkoutState.discount = { type: 'real', value: 0 }; // Reset desconto
+        
         renderComandaDetail();
     }
 
@@ -86,39 +94,32 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     document.body.appendChild(loadingOverlay);
 
     try {
-        // 4. PREPARAÇÃO DOS DADOS (CORREÇÃO CRÍTICA PARA ERRO 500)
-        // Filtra itens inválidos e garante que productId exista
+        // 4. PREPARAÇÃO DOS DADOS
         const itemsToSave = (comanda.comandaItems || [])
             .filter(i => i && i.id && String(i.id) !== 'undefined' && String(i.id) !== 'null')
             .map(i => {
                 const itemPayload = { ...i };
-                
-                // Converte ID para string para evitar problemas de tipo
                 itemPayload.id = String(i.id);
 
-                // CORREÇÃO: Preenche productId E product_id para compatibilidade total com o backend
                 if (itemPayload.type === 'product') {
                     const pid = itemPayload.id;
                     if (!itemPayload.productId) itemPayload.productId = pid;
-                    if (!itemPayload.product_id) itemPayload.product_id = pid; // Snake case fallback
+                    if (!itemPayload.product_id) itemPayload.product_id = pid;
                 }
                 
                 if (itemPayload.type === 'service') {
                     const sid = itemPayload.id;
                     if (!itemPayload.serviceId) itemPayload.serviceId = sid;
-                    if (!itemPayload.service_id) itemPayload.service_id = sid; // Snake case fallback
+                    if (!itemPayload.service_id) itemPayload.service_id = sid;
                 }
                 
                 return itemPayload;
             });
 
-        console.log("Enviando itens para salvar:", itemsToSave); // Log para debug
-
         // 5. Envia para o servidor
         if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
-             // Vendas avulsas temporárias são salvas na finalização do checkout
+             // Lógica para temp se necessário
         } else {
-            // Usa endpoint específico de itens para garantir persistência correta
             await comandasApi.updateComandaItems(comanda.id, itemsToSave);
         }
         
@@ -128,7 +129,7 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         }
 
         if (nextStep !== 'checkout') {
-            showNotification('Sucesso', 'Comanda salva com sucesso!', 'success');
+            showNotification('Sucesso', 'Comanda atualizada!', 'success');
             renderComandaDetail();
         }
 
@@ -144,6 +145,7 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     }
 }
 
+// --- CORREÇÃO DE DUPLICIDADE ---
 function getSafeAllItems(comanda) {
     if (!comanda._cachedItems) {
         let result = [];
@@ -151,14 +153,38 @@ function getSafeAllItems(comanda) {
             const finalItems = comanda.comandaItems || comanda.items || [];
             result = finalItems.length > 0 ? finalItems : (comanda.services || []);
         } else {
-            // Marca itens originais com source 'original_service'
-            const baseServices = (comanda.services || []).map(s => ({...s, _source: 'original_service'}));
-            const extraItems = comanda.comandaItems || [];
-            const legacyItems = comanda.items || [];
+            // 1. Pega os serviços originais
+            const baseServices = (comanda.services || []).map(s => ({
+                ...s, 
+                _source: 'original_service',
+                type: 'service' 
+            }));
             
-            // Marca itens extras com source 'extra'
-            const extras = [...extraItems, ...legacyItems].map(i => ({...i, _source: 'extra'}));
-            result = [...baseServices, ...extras];
+            // 2. Mapa de frequência para saber o que já está na lista de originais
+            const originalsMap = baseServices.reduce((acc, s) => {
+                const key = String(s.id); 
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+            }, {});
+
+            // 3. Pega todos os itens salvos na comanda
+            const rawExtras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
+            const validExtras = [];
+
+            // 4. Filtra duplicatas
+            rawExtras.forEach(item => {
+                const key = String(item.id);
+                const isServiceCandidate = item.type === 'service' || !item.type;
+
+                if (isServiceCandidate && originalsMap[key] > 0) {
+                    originalsMap[key]--; 
+                } else {
+                    validExtras.push({...item, _source: 'extra'});
+                }
+            });
+
+            // 5. Combina
+            result = [...baseServices, ...validExtras];
         }
         
         comanda._cachedItems = result;
@@ -436,15 +462,14 @@ function renderComandaDetail() {
     const isCompleted = comanda.status === 'completed';
     const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
-    // --- LÓGICA DE GRUPAMENTO ---
+    // --- LÓGICA DE GRUPAMENTO AJUSTADA ---
     const groupedItems = allItems.reduce((acc, item) => {
         const isOriginal = item._source === 'original_service';
-        // Garante que o ID existe, se não usa o nome como fallback para evitar "undefined"
         const safeId = item.id || item.name;
         
         const key = isOriginal 
-            ? `original-${safeId}` // Chave exclusiva para originais
-            : `${item.type}-${safeId}`; // Chave padrão para extras
+            ? `original-${safeId}` 
+            : `${item.type}-${safeId}`;
             
         if (!acc[key]) acc[key] = { ...item, quantity: 0, sources: [] };
         acc[key].quantity += 1;
@@ -522,7 +547,6 @@ function renderComandaDetail() {
             <div class="space-y-3">
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
                 ${Object.values(groupedItems).map(item => {
-                    // Verifica se o item é original do agendamento
                     const isOriginal = item.sources && item.sources.includes('original_service');
                     
                     return `
@@ -539,10 +563,8 @@ function renderComandaDetail() {
                             ${!isCompleted ? `
                                 <div class="flex items-center bg-gray-100 rounded-lg p-1 gap-3">
                                     ${isOriginal ? 
-                                        // Se for original, exibe apenas a quantidade fixa (sem botões)
                                         `<span class="text-sm font-bold text-gray-500 w-16 text-center py-1 bg-gray-200 rounded text-[10px] uppercase">Fixo: ${item.quantity}</span>` 
                                         : 
-                                        // Se for extra, exibe botões normais
                                         `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-600">-</button>
                                          <span class="text-sm font-bold text-gray-800 w-4 text-center">${item.quantity}</span>
                                          <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-green-50 hover:text-green-600">+</button>`
@@ -583,12 +605,27 @@ function renderComandaDetail() {
 // --- ESTÁGIO 2: TELA DE CHECKOUT (ESTÁTICA) ---
 function renderCheckoutView(comanda, container) {
     const rawItems = getSafeAllItems(comanda);
-    
-    const total = rawItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+    const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const checkoutState = localState.checkoutState;
+
+    // Lógica de Desconto
+    const discount = checkoutState.discount || { type: 'real', value: 0 };
+    let discountValue = 0;
+
+    if (discount.type === 'percent') {
+        discountValue = (subtotal * discount.value) / 100;
+    } else {
+        discountValue = discount.value;
+    }
     
+    // Garante que desconto não exceda o total
+    if (discountValue > subtotal) discountValue = subtotal;
+
+    const totalFinal = subtotal - discountValue;
+
+    // Lógica de Pagamentos
     const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
-    const remaining = Math.max(0, total - totalPaid);
+    const remaining = Math.max(0, totalFinal - totalPaid);
     
     if (!checkoutState.amountReceived || remaining > 0) {
          checkoutState.amountReceived = remaining.toFixed(2);
@@ -606,9 +643,22 @@ function renderCheckoutView(comanda, container) {
     container.innerHTML = `
         ${mobileHeaderHTML}
         <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar">
+            
             <div class="text-center mb-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
-                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Valor Total</p>
-                <p class="text-5xl font-extrabold text-gray-800 mt-2">R$ ${total.toFixed(2)}</p>
+                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Subtotal: R$ ${subtotal.toFixed(2)}</p>
+                
+                <div class="flex items-center justify-center gap-2 mt-2 mb-2">
+                     <span class="text-xs font-bold text-red-500">Desconto:</span>
+                     <div class="flex border rounded-lg bg-white overflow-hidden shadow-sm w-40">
+                         <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-1 text-center text-sm font-bold text-red-600 outline-none" placeholder="0">
+                         <select id="discount-type" class="bg-gray-100 text-xs font-bold text-gray-700 border-l p-1 outline-none">
+                             <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
+                             <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
+                         </select>
+                     </div>
+                </div>
+
+                <p class="text-5xl font-extrabold text-gray-800 mt-2">R$ ${totalFinal.toFixed(2)}</p>
                 ${remaining <= 0.01 
                     ? '<p class="text-green-600 font-bold mt-2 text-lg">Pago</p>' 
                     : `<p class="text-red-500 font-medium mt-2">Faltam: R$ ${remaining.toFixed(2)}</p>`
@@ -665,9 +715,21 @@ function renderCheckoutView(comanda, container) {
 
         <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-3">
             <button data-action="back-to-items" class="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition">Voltar</button>
-            <button data-action="finalize-checkout" class="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed" ${remaining > 0.01 ? 'disabled' : ''}>Finalizar</button>
+            <button data-action="finalize-checkout" class="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">Finalizar</button>
         </footer>
     `;
+
+    // Listeners de Desconto
+    container.querySelector('#discount-value')?.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) || 0;
+        localState.checkoutState.discount.value = val;
+        renderComandaDetail(); // Re-render para atualizar cálculos
+    });
+
+    container.querySelector('#discount-type')?.addEventListener('change', (e) => {
+        localState.checkoutState.discount.type = e.target.value;
+        renderComandaDetail();
+    });
 
     container.querySelector('#checkout-amount')?.addEventListener('input', (e) => {
         checkoutState.amountReceived = e.target.value;
@@ -1135,15 +1197,43 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 
 async function handleFinalizeCheckout(comanda) {
     if (localState.isProcessing) return;
+    
+    // CALCULA TUDO NOVAMENTE PARA GARANTIA
+    const rawItems = getSafeAllItems(comanda);
+    const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
+    const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
+    let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
+    if (discountValue > subtotal) discountValue = subtotal;
+    const totalAmount = subtotal - discountValue;
+
+    const { payments } = localState.checkoutState;
+    const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
+    const remaining = totalAmount - totalPaid;
+
+    // Se houver saldo devedor, pergunta se quer lançar como dívida
+    if (remaining > 0.01) {
+        const confirmed = await showConfirmation(
+            'Pagamento Parcial', 
+            `O valor de R$ ${remaining.toFixed(2)} não foi pago. Deseja registrar como DÍVIDA (Fiado) no cadastro do cliente?`,
+            'Sim, registrar dívida'
+        );
+
+        if (!confirmed) return; // Cancela se não confirmar
+
+        // Adiciona pagamento do tipo 'fiado' automaticamente
+        payments.push({
+            method: 'fiado',
+            value: remaining,
+            installments: 1
+        });
+    }
+
     localState.isProcessing = true;
 
     const isAppointment = comanda.type === 'appointment';
-    const rawItems = getSafeAllItems(comanda); // Usa os itens atualizados
     const finalItems = rawItems; 
 
-    const { payments } = localState.checkoutState;
-    const totalAmount = payments.reduce((acc, p) => acc + p.value, 0);
-
+    // Lógica de fidelidade (apenas estimativa visual, backend recalcula)
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
     if (settings && settings.enabled) {
@@ -1160,6 +1250,7 @@ async function handleFinalizeCheckout(comanda) {
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
         loyaltyPointsEarned: pointsToAward,
+        discount: discount // Envia o objeto de desconto para o backend
     };
 
     // Loading overlay
@@ -1342,7 +1433,14 @@ export async function loadComandasPage(params = {}) {
                     const amountInput = document.getElementById('checkout-amount');
                     let value = parseFloat(amountInput.value);
                     const rawItems = getSafeAllItems(comanda);
-                    const total = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+                    
+                    // Recalcula total com desconto para validar o pagamento
+                    const subtotal = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+                    const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
+                    let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
+                    if (discountValue > subtotal) discountValue = subtotal;
+                    const total = subtotal - discountValue;
+
                     const currentPaid = localState.checkoutState.payments.reduce((acc,p)=>acc+p.value,0);
                     const remaining = total - currentPaid;
 
@@ -1385,7 +1483,8 @@ export async function loadComandasPage(params = {}) {
                         return;
                     }
                     
-                    // 1. Tenta achar no próprio agendamento primeiro
+                    // 1. Tenta achar no próprio agendamento primeiro (para manter preço/nome originais)
+                    // e usa comparação flexível (==) para IDs
                     const existingItems = getSafeAllItems(comanda);
                     let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
 
@@ -1395,7 +1494,7 @@ export async function loadComandasPage(params = {}) {
                         itemToClone = catalog.find(i => i.id == itemId);
                     }
 
-                    // 3. Fallback seguro
+                    // 3. Fallback seguro que tenta preservar preço
                     const safeItem = itemToClone 
                         ? { 
                             id: itemToClone.id, 
