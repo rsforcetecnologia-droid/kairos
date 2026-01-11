@@ -19,7 +19,8 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
-    const { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId } = req.body;
+    // 1. ADICIONADO 'discount' AQUI
+    const { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId, discount } = req.body;
 
     if (!items || items.length === 0 || totalAmount === undefined || !payments) {
         return res.status(400).json({ message: "Dados da venda incompletos." });
@@ -68,6 +69,8 @@ router.post('/', async (req, res) => {
             establishmentId,
             items,
             totalAmount: Number(totalAmount),
+            // 2. SALVAR O DESCONTO NA RAIZ DO DOCUMENTO
+            discount: discount || null, 
             clientName: clientName || "Cliente Avulso",
             clientPhone: clientPhone || null,
             clientId: safeClientId || null,
@@ -82,7 +85,9 @@ router.post('/', async (req, res) => {
             transaction: {
                 paidAt: paidAtTimestamp,
                 payments: payments,
-                totalAmount: Number(totalAmount)
+                totalAmount: Number(totalAmount),
+                // 3. SALVAR O DESCONTO NA TRANSAÇÃO
+                discount: discount || null 
             }
         };
         
@@ -108,8 +113,7 @@ router.post('/', async (req, res) => {
                     const productItem = productsToUpdate[i];
                     if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
                     const newStock = (productDoc.data().currentStock || 0) - (productItem.quantity || 1); 
-                    // Nota: Removi a verificação < 0 para permitir estoque negativo se necessário, ou descomente abaixo:
-                    // if (newStock < 0) throw new Error(`Stock insuficiente para o produto ${productItem.name}.`);
+                    // Nota: Removi a verificação < 0 para permitir estoque negativo se necessário
                     updates.push({ ref: productDoc.ref, newStock: newStock });
                 }
                 

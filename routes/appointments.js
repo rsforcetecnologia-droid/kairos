@@ -478,10 +478,11 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT - CORRIGIDO (FIDELIDADE DINÂMICA)
+// 7. CHECKOUT - CORRIGIDO (FIDELIDADE DINÂMICA + DESCONTO)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
-    const { payments, totalAmount, cashierSessionId, items } = req.body;
+    // 1. ADICIONADO 'discount' AQUI NA DESESTRUTURAÇÃO
+    const { payments, totalAmount, cashierSessionId, items, discount } = req.body;
     const { db } = req;
     const { uid, establishmentId } = req.user;
 
@@ -533,14 +534,21 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 clientDoc = await transaction.get(clientRef);
             }
 
-            // Atualiza Agendamento com pontos ganhos
+            // Atualiza Agendamento com pontos ganhos E DESCONTO
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
                 comandaItems: items,
                 totalAmount: Number(totalAmount),
                 loyaltyPointsEarned: pointsToAward, // Salva para estorno
-                transaction: { payments, totalAmount: Number(totalAmount), paidAt: paidAtTimestamp, saleId: saleRef.id }
+                discount: discount || null, // 2. SALVA O DESCONTO NA RAIZ
+                transaction: { 
+                    payments, 
+                    totalAmount: Number(totalAmount), 
+                    paidAt: paidAtTimestamp, 
+                    saleId: saleRef.id,
+                    discount: discount || null // 3. SALVA O DESCONTO NA TRANSAÇÃO
+                }
             });
 
             // Atualiza Cliente
@@ -567,13 +575,14 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction.update(clientRef, updateData);
             }
 
-            // Cria Venda
+            // Cria Venda (Espelho para relatórios) COM DESCONTO
             transaction.set(saleRef, {
                 type: 'appointment', 
                 appointmentId, 
                 establishmentId, 
                 items,
                 totalAmount: Number(totalAmount), 
+                discount: discount || null, // SALVA O DESCONTO AQUI TAMBÉM
                 clientName: apptData.clientName, 
                 clientPhone: apptData.clientPhone,
                 clientId: safeClientId, 
@@ -583,7 +592,12 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 createdAt: paidAtTimestamp, 
                 cashierSessionId: cashierSessionId || null,
                 loyaltyPointsEarned: pointsToAward,
-                transaction: { paidAt: paidAtTimestamp, payments, totalAmount: Number(totalAmount) }
+                transaction: { 
+                    paidAt: paidAtTimestamp, 
+                    payments, 
+                    totalAmount: Number(totalAmount),
+                    discount: discount || null 
+                }
             });
 
             // Financeiro
@@ -656,7 +670,8 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 status: 'confirmed', 
                 transaction: admin.firestore.FieldValue.delete(), 
                 cashierSessionId: admin.firestore.FieldValue.delete(),
-                loyaltyPointsEarned: admin.firestore.FieldValue.delete()
+                loyaltyPointsEarned: admin.firestore.FieldValue.delete(),
+                discount: admin.firestore.FieldValue.delete() // Remove também o desconto ao reabrir
             });
         });
         res.status(200).json({ message: 'Reaberto com estorno.' });
