@@ -8,282 +8,408 @@
     <meta name="apple-mobile-web-app-title" content="Kairos">
     <link rel="apple-touch-icon" href="/assets/icon-B9sEy9Pc.png">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Login Estabelecimento | Kairos</title>
     
 
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
     <style>
-        /* --- Estilos Gerais --- */
+        /* --- Reset e Fontes --- */
+        * { box-sizing: border-box; }
         body.login-page {
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            background-color: #fff;
+        }
+
+        /* --- LADO ESQUERDO (Desktop) --- */
+        .login-visual-side {
+            flex: 1.5;
+            position: relative;
             background-image: url('/assets/hero-bg-1-ywweQIUE.jpg');
             background-size: cover;
             background-position: center;
-            background-repeat: no-repeat;
-            height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
+            color: white;
+            padding: 40px;
             overflow: hidden;
         }
 
-        .login-overlay {
+        .visual-overlay {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.5) 100%);
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(79, 70, 229, 0.8) 100%);
             z-index: 1;
         }
 
-        .login-card {
+        .visual-content {
             position: relative;
             z-index: 2;
-            background: rgba(255, 255, 255, 0.95);
-            width: 100%;
-            max-width: 400px;
-            padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
             text-align: center;
-            animation: fadeIn Up 0.5s ease-out;
+            max-width: 600px;
+            animation: fadeIn 1s ease-out;
+        }
+
+        .visual-content h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            font-weight: 700;
+        }
+
+        .visual-content p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .floating-badge {
+            margin-top: 40px;
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.2);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+            100% { transform: translateY(0px); }
+        }
+
+        /* --- LADO DIREITO (Desktop Padrão) --- */
+        .login-form-side {
+            flex: 1;
+            max-width: 550px;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            position: relative;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .form-wrapper {
+            width: 100%;
+            max-width: 380px;
         }
 
         .login-logo {
-            max-width: 180px;
+            max-width: 160px;
             height: auto;
-            margin-bottom: 1.5rem;
             display: block;
-            margin-left: auto;
-            margin-right: auto;
+            margin: 0 auto 30px auto;
+            transition: all 0.3s;
         }
 
         .login-title {
-            color: #333;
-            font-size: 1.5rem;
+            color: #1e293b;
+            font-size: 1.8rem;
             font-weight: 700;
             margin-bottom: 0.5rem;
         }
 
         .login-subtitle {
-            color: #666;
-            font-size: 0.9rem;
-            margin-bottom: 2rem;
+            color: #64748b;
+            font-size: 0.95rem;
         }
 
         .input-group {
             margin-bottom: 1.25rem;
             text-align: left;
+            position: relative;
         }
 
         .input-group label {
             display: block;
             margin-bottom: 0.5rem;
-            color: #444;
+            color: #334155;
             font-size: 0.9rem;
             font-weight: 600;
         }
 
         .form-control {
             width: 100%;
-            padding: 0.85rem 1rem;
+            padding: 12px 16px;
             font-size: 1rem;
-            border: 1px solid #e1e1e1;
+            border: 1px solid #e2e8f0;
             border-radius: 8px;
-            background-color: #f9f9f9;
-            transition: all 0.3s ease;
-            box-sizing: border-box;
+            background-color: #f8fafc;
+            transition: all 0.2s ease;
+            outline: none;
         }
 
         .form-control:focus {
             background-color: #fff;
-            border-color: #4a90e2;
-            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
-            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
         }
+
+        .password-toggle-btn {
+            position: absolute;
+            right: 12px;
+            top: 38px;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+        .password-toggle-btn:hover { color: #4f46e5; }
 
         .btn-primary-login {
             width: 100%;
-            padding: 0.9rem;
-            background: linear-gradient(to right, #4a90e2, #357abd);
+            padding: 14px;
+            background: #4f46e5;
             color: white;
             border: none;
             border-radius: 8px;
             font-size: 1rem;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 1rem;
+            transition: all 0.2s;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
         }
 
         .btn-primary-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(74, 144, 226, 0.3);
+            background: #4338ca;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 15px rgba(79, 70, 229, 0.3);
         }
-
+        
         .btn-primary-login:disabled {
-            background: #ccc;
+            background: #9ca3af;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
 
-        .auth-links {
-            margin-top: 1.5rem;
-            display: flex;
-            justify-content: center;
-            font-size: 0.9rem;
-        }
-
-        .auth-links a {
-            color: #4a90e2;
-            text-decoration: none;
-            cursor: pointer;
-            font-weight: 600;
-        }
-
-        .auth-links a:hover {
-            text-decoration: underline;
-        }
-
+        .auth-links { margin-top: 20px; text-align: center; }
+        .auth-links a { color: #4f46e5; text-decoration: none; font-size: 0.9rem; font-weight: 500; }
+        
         .back-home {
-            display: inline-block;
-            margin-top: 2rem;
-            color: #888;
-            text-decoration: none;
-            font-size: 0.9rem;
+            display: block; text-align: center; margin-top: 30px;
+            color: #64748b; text-decoration: none; font-size: 0.85rem;
+            transition: color 0.2s;
         }
-        
-        .back-home:hover {
-            color: #333;
+        .back-home:hover { color: #1e293b; }
+
+        .error-message, .success-message {
+            font-size: 0.875rem; margin-bottom: 1rem; display: none;
+            padding: 10px; border-radius: 6px; text-align: center;
+        }
+        .error-message { background-color: #fee2e2; color: #b91c1c; }
+        .success-message { background-color: #dcfce7; color: #15803d; }
+
+        /* ========================================= */
+        /* --- ESTILO MOBILE TECH/MODERNO --- */
+        /* ========================================= */
+        @media (max-width: 900px) {
+            .login-visual-side { display: none; }
+            
+            body.login-page {
+                /* Fundo Gradiente Tecnológico Escuro */
+                background: #0f172a;
+                background-image: 
+                    radial-gradient(circle at 10% 20%, rgba(79, 70, 229, 0.4) 0%, transparent 40%),
+                    radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.4) 0%, transparent 40%);
+                height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .login-form-side {
+                /* Card com efeito Glassmorphism (Vidro) */
+                background: rgba(255, 255, 255, 0.03);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                
+                width: 90%;
+                max-width: 380px;
+                border-radius: 24px;
+                margin: 0 auto;
+                height: auto;
+                flex: none;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                padding: 40px 30px;
+                
+                /* Animação de entrada suave */
+                animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+
+            /* Adaptação dos Textos para Fundo Escuro */
+            .login-title { color: #ffffff; text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+            .login-subtitle { color: #94a3b8; }
+            
+            /* Logo Branco (Inverte cores se for preto) */
+            .login-logo {
+                filter: brightness(0) invert(1); 
+                opacity: 0.9;
+                max-width: 140px; /* Um pouco menor no mobile */
+            }
+
+            /* Inputs no estilo Dark Tech */
+            .input-group label { color: #cbd5e1; font-size: 0.85rem; letter-spacing: 0.5px; }
+            
+            .form-control {
+                background: rgba(0, 0, 0, 0.3); /* Fundo escuro translúcido */
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #fff;
+            }
+            
+            .form-control:focus {
+                background: rgba(0, 0, 0, 0.5);
+                border-color: #818cf8;
+                box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.25);
+            }
+            
+            .form-control::placeholder { color: #64748b; }
+
+            /* Ícone do Olho */
+            .password-toggle-btn { color: #94a3b8; }
+            .password-toggle-btn:hover { color: #fff; }
+
+            /* Botão com efeito Neon */
+            .btn-primary-login {
+                background: linear-gradient(90deg, #4f46e5, #7c3aed);
+                box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            .btn-primary-login:hover {
+                box-shadow: 0 0 30px rgba(124, 58, 237, 0.6);
+            }
+
+            /* Links */
+            .auth-links a { color: #a5b4fc; }
+            .back-home { color: #64748b; }
+            .back-home:hover { color: #fff; }
         }
 
-        .error-message {
-            color: #dc2626;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-            display: none;
-            background-color: #fee2e2;
-            padding: 0.5rem;
-            border-radius: 6px;
-        }
-        
-        .success-message {
-            color: #166534;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-            display: none;
-            background-color: #dcfce7;
-            padding: 0.5rem;
-            border-radius: 6px;
-        }
-
-        /* --- Estilos do Modal --- */
+        /* --- Modais --- */
         .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0, 0, 0, 0.8); /* Fundo mais escuro */
-            z-index: 2147483647; /* Z-index máximo permitido pelo navegador */
-            display: none; 
-            align-items: center;
-            justify-content: center;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.85); z-index: 9999;
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
         }
-
         .modal-card {
-            background: #fff;
-            padding: 2rem;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 350px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            text-align: center;
-            position: relative;
-            z-index: 2147483648; /* Acima do overlay */
+            background: #fff; padding: 2rem; border-radius: 16px;
+            width: 90%; max-width: 350px; text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         }
-
-        .modal-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            color: #333;
-        }
-        
-        .modal-text {
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 1.5rem;
-        }
-
-        .btn-secondary {
-            background: #e5e7eb;
-            color: #374151;
-            margin-top: 0.5rem;
-        }
-        
-        .btn-secondary:hover {
-            background: #d1d5db;
+        @media (max-width: 900px) {
+            /* Modal Dark no Mobile */
+            .modal-card {
+                background: #1e293b;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            .modal-title { color: #fff; }
+            .modal-text { color: #cbd5e1; }
+            #resetEmail { 
+                background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.1); color: white;
+            }
+            .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
         }
 
         @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
+            from { opacity: 0; transform: translateY(40px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; } to { opacity: 1; }
+        }
     </style>
-  <script type="module" crossorigin src="/assets/login-DTZFxWlD.js"></script>
+  <script type="module" crossorigin src="/assets/login-pzHrXRg1.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
   <link rel="stylesheet" crossorigin href="/assets/styles-D-uS6CkJ.css">
-  <link rel="stylesheet" crossorigin href="/assets/landing-D5XgeVlH.css">
+  <link rel="stylesheet" crossorigin href="/assets/landing-Bcftk3uU.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body class="login-page">
 
-    <div class="login-overlay"></div>
-
-    <div class="login-card">
-        <img src="/assets/logo_kairos-k4eqkW2R.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
-        
-        <h1 class="login-title">Bem-vindo</h1>
-        <p class="login-subtitle">Faça login para gerenciar seu negócio</p>
-
-        <form id="loginForm">
-            <div class="input-group">
-                <label for="email">E-mail</label>
-                <input type="email" id="email" class="form-control" placeholder="admin@empresa.com" required autocomplete="email">
+    <div class="login-visual-side">
+        <div class="visual-overlay"></div>
+        <div class="visual-content">
+            <h1>Gestão Inteligente</h1>
+            <p>Controle sua barbearia ou salão com elegância e eficiência.</p>
+            
+            <div class="floating-badge">
+                <i class="ph ph-rocket-launch" style="font-size: 24px; color: #a5b4fc;"></i>
+                <span>Sistema de Alta Performance</span>
             </div>
-
-            <div class="input-group">
-                <label for="password">Senha</label>
-                <input type="password" id="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
-            </div>
-
-            <div id="errorMessage" class="error-message"></div>
-
-            <button type="submit" id="btn-login" class="btn-primary-login">
-                ENTRAR
-            </button>
-        </form>
-
-        <div class="auth-links">
-            <a href="#" id="triggerReset">Esqueci minha senha</a>
         </div>
+    </div>
 
-        <a href="index.html" class="back-home">← Voltar ao site</a>
+    <div class="login-form-side">
+        <div class="form-wrapper">
+            <img src="/assets/logo_login_estab-k4eqkW2R.png" alt="Kairos Estabelecimento" class="login-logo" onerror="this.src='images/logo_kairos.png'">
+            
+            <div class="login-header">
+                <h2 class="login-title">Acessar Conta</h2>
+                <p class="login-subtitle">Bem-vindo ao futuro da gestão</p>
+            </div>
+
+            <form id="loginForm">
+                <div class="input-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" class="form-control" placeholder="admin@empresa.com" required autocomplete="email">
+                </div>
+
+                <div class="input-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" class="form-control" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" class="password-toggle-btn" id="togglePassword" tabindex="-1">
+                        <i class="ph ph-eye"></i>
+                    </button>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+
+                <button type="submit" id="btn-login" class="btn-primary-login">
+                    Entrar no Sistema
+                </button>
+            </form>
+
+            <div class="auth-links">
+                <a href="#" id="triggerReset">Esqueci minha senha</a>
+            </div>
+
+            <a href="index.html" class="back-home">← Voltar</a>
+        </div>
     </div>
 
     <div id="resetModal" class="modal-overlay">
         <div class="modal-card">
             <h3 class="modal-title">Redefinir Senha</h3>
-            <p class="modal-text">Digite seu e-mail para receber um link de redefinição.</p>
+            <p class="modal-text">Digite seu e-mail para receber o link.</p>
             
             <form id="resetForm">
                 <div class="input-group" style="text-align: left;">
-                    <label for="resetEmail">E-mail</label>
+                    <label for="resetEmail" style="color: inherit;">E-mail</label>
                     <input type="email" id="resetEmail" class="form-control" placeholder="admin@empresa.com" required>
                 </div>
 
@@ -291,46 +417,45 @@
                 <div id="resetError" class="error-message"></div>
 
                 <button type="submit" id="btn-send-reset" class="btn-primary-login">Enviar Link</button>
-                <button type="button" id="btn-close-modal" class="btn-primary-login btn-secondary">Cancelar</button>
+                <button type="button" id="btn-close-modal" class="btn-secondary" style="width:100%; padding:10px; margin-top:10px; border-radius:8px; border:none; cursor:pointer;">Cancelar</button>
             </form>
         </div>
     </div>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            // Modal Logic
             const trigger = document.getElementById('triggerReset');
             const modal = document.getElementById('resetModal');
             const closeBtn = document.getElementById('btn-close-modal');
             const emailLogin = document.getElementById('email');
             const emailReset = document.getElementById('resetEmail');
 
-            // Função para abrir o modal
             if (trigger && modal) {
-                trigger.onclick = function(e) {
+                trigger.onclick = (e) => {
                     e.preventDefault();
                     if(emailLogin && emailReset) emailReset.value = emailLogin.value;
-                    modal.style.cssText = "display: flex !important; opacity: 1 !important; visibility: visible !important;";
+                    modal.style.display = 'flex';
                 };
             }
+            if (closeBtn) closeBtn.onclick = () => modal.style.display = 'none';
+            if (modal) modal.onclick = (e) => { if(e.target === modal) modal.style.display = 'none'; };
 
-            // Função para fechar
-            if (closeBtn && modal) {
-                closeBtn.onclick = function() {
-                    modal.style.display = 'none';
-                };
-            }
+            // Toggle Password
+            const toggleBtn = document.getElementById('togglePassword');
+            const passInput = document.getElementById('password');
+            const eyeIcon = toggleBtn?.querySelector('i');
 
-            // Fechar ao clicar fora
-            if (modal) {
-                modal.onclick = function(e) {
-                    if (e.target === modal) {
-                        modal.style.display = 'none';
-                    }
-                };
+            if (toggleBtn && passInput) {
+                toggleBtn.addEventListener('click', () => {
+                    const type = passInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                    passInput.setAttribute('type', type);
+                    eyeIcon.classList.toggle('ph-eye');
+                    eyeIcon.classList.toggle('ph-eye-slash');
+                });
             }
         });
     </script>
-
 
 </body>
 </html>
