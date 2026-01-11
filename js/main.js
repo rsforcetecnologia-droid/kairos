@@ -56,6 +56,9 @@ const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
 const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
 const myProfileLink = document.getElementById('myProfileLink'); 
+const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
+const sidebar = document.getElementById('sidebar');
+const mobileOverlay = document.getElementById('mobile-overlay');
 
 // --- PALETA DE CORES EXPANDIDA ---
 const colorThemes = {
@@ -208,6 +211,11 @@ export function navigateTo(sectionId, params = {}) {
         if (!isModuleEnabled || !hasEmployeePermission) {
             contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
+            // Fechar sidebar mobile se estiver aberta
+            if (sidebar.classList.contains('absolute')) { // Check simples para ver se estamos em modo mobile
+                 sidebar.classList.add('hidden');
+                 mobileOverlay.classList.add('hidden');
+            }
             return;
         }
     }
@@ -220,6 +228,13 @@ export function navigateTo(sectionId, params = {}) {
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
         }
         contentDiv.innerHTML = '';
+        
+        // Fechar sidebar mobile ao navegar
+        if (window.innerWidth < 768) { // Verifica se é mobile
+            sidebar.classList.add('hidden');
+            mobileOverlay.classList.add('hidden');
+        }
+
         loadPage(params);
     } else {
         contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold">Página em Construção</h2><p class="text-gray-600">O módulo para "${sectionId}" ainda não foi implementado.</p></div>`;
@@ -235,11 +250,14 @@ async function loadHeaderKPIs(userPermissions) {
     const canViewAgenda = userPermissions === null || userPermissions['agenda-section']?.view === true;
     const canViewFinancial = userPermissions === null || userPermissions['financial-section']?.view === true;
 
+    // Remove hidden para exibir os novos cards flex
     if (canViewAgenda && kpiAppointmentsWrapper) {
         kpiAppointmentsWrapper.classList.remove('hidden');
+        kpiAppointmentsWrapper.classList.add('inline-flex'); // Garante inline-flex para centralizar no container
     }
     if (canViewFinancial && kpiFinancialWrapper) {
         kpiFinancialWrapper.classList.remove('hidden');
+        kpiFinancialWrapper.classList.add('inline-flex'); // Garante inline-flex
     }
 
     if (!canViewAgenda && !canViewFinancial) {
@@ -265,7 +283,6 @@ async function loadHeaderKPIs(userPermissions) {
 
 async function initializePushNotifications(userUid) {
     try {
-        // [DIAGNÓSTICO] Para saber que a função iniciou
         console.log('[Nativo] Iniciando configuração de Push...');
 
         if (Capacitor.getPlatform() === 'android') {
@@ -287,8 +304,6 @@ async function initializePushNotifications(userUid) {
         }
 
         if (permStatus.receive !== 'granted') {
-            // [DIAGNÓSTICO] Alerta se a permissão for negada
-            alert('ERRO: Permissão de notificações negada!');
             return;
         }
 
@@ -297,35 +312,24 @@ async function initializePushNotifications(userUid) {
 
         PushNotifications.addListener('registration', async (token) => {
             console.log('Push Token gerado:', token.value);
-            
-            // [DIAGNÓSTICO CRÍTICO] Mostra se o token foi gerado com sucesso
-            // alert('SUCESSO: Token gerado! ' + token.value.substring(0, 10) + '...');
-
             try {
                 const userRef = doc(db, 'users', userUid);
-                
-                // [CORREÇÃO] Usar arrayUnion para não sobrescrever tokens do PWA (web)
                 await updateDoc(userRef, {
                     fcmTokens: arrayUnion(token.value),
                     platform: 'native_mobile'
                 });
-                
                 console.log('Token FCM salvo no perfil do utilizador (Nativo).');
             } catch (error) {
-                alert('Erro ao salvar no Banco: ' + error.message);
                 console.error("Erro ao salvar token FCM:", error);
             }
         });
 
         PushNotifications.addListener('registrationError', (error) => {
-             // [DIAGNÓSTICO CRÍTICO] Se falhar (ex: FIS_AUTH_ERROR), este alerta vai aparecer
-             alert('FALHA DE REGISTO: ' + JSON.stringify(error));
              console.error('Erro no registo de push notifications:', error);
         });
 
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
             console.log('Notificação Push recebida:', notification);
-            // Em Android Foreground, mostramos um toast ou alerta visual customizado
             showNotification(notification.title, notification.body, 'info', true);
         });
 
@@ -335,7 +339,6 @@ async function initializePushNotifications(userUid) {
         });
 
     } catch (e) {
-        alert('Erro Fatal Push: ' + e.message);
         console.log('Push Notifications não suportado/inicializado:', e);
     }
 }
@@ -357,6 +360,25 @@ async function initialize() {
     }
     
     initializeModalClosers();
+
+    // --- FIX DO MENU MOBILE ---
+    if (hamburgerMenuBtn) {
+        hamburgerMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sidebar.classList.remove('hidden');
+            // Classes para o menu mobile aparecer sobreposto
+            sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
+            mobileOverlay.classList.remove('hidden');
+        });
+    }
+
+    if (mobileOverlay) {
+        mobileOverlay.addEventListener('click', () => {
+            sidebar.classList.add('hidden');
+            sidebar.classList.remove('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
+            mobileOverlay.classList.add('hidden');
+        });
+    }
 
     notificationBell.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -406,36 +428,29 @@ async function initialize() {
         if (user) {
             console.log("Usuário detectado:", user.email);
 
-            // --- FIX: INICIALIZA NOTIFICAÇÕES WEB PUSH (PWA) ---
             if (!Capacitor.isNativePlatform()) {
                 console.log("Inicializando Web Push (PWA)...");
-                
-                // 1. Tenta conectar silenciosamente (se já permitido)
                 initWebPush(); 
 
-                // 2. Lógica do Toast de Notificação (Se ainda não permitido e for suportado)
                 if ('Notification' in window && Notification.permission === 'default') {
                     const toast = document.getElementById('toast-notification-request');
                     const btnEnable = document.getElementById('btn-enable-toast');
                     const btnDeny = document.getElementById('btn-deny-toast');
                     const btnClose = document.getElementById('btn-close-toast');
 
-                    // Mostra o toast após 3.5 segundos para não ser intrusivo logo no inicio
                     setTimeout(() => {
                         if (toast) toast.style.display = 'block';
                     }, 3500);
 
-                    // Ação: Botão "Ativar"
                     if (btnEnable) {
                         btnEnable.addEventListener('click', async () => {
-                            const granted = await requestWebPermission(); // Função importada
+                            const granted = await requestWebPermission();
                             if (granted && toast) {
                                 toast.style.display = 'none';
                             }
                         });
                     }
 
-                    // Ação: Botões de Fechar
                     const closeAction = () => { if (toast) toast.style.display = 'none'; };
                     if (btnDeny) btnDeny.addEventListener('click', closeAction);
                     if (btnClose) btnClose.addEventListener('click', closeAction);
@@ -472,9 +487,7 @@ async function initialize() {
                     
                     state.userProfessionalId = userProfessionalId; 
                     
-                    // Inicializa notificações nativas apenas se estiver no ambiente nativo (Android/iOS via Loja)
                     if (Capacitor.isNativePlatform()) {
-                        // Passamos o UID para vincular o token
                         initializePushNotifications(user.uid);
                     }
                     
