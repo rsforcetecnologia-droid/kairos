@@ -93,7 +93,7 @@ async function openHierarchyModal(type) {
         <div class="modal-content max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden">
             <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 class="text-lg font-bold text-gray-800">Gerir ${title}</h2>
-                <button data-action="close-modal" data-target="genericModal" class="text-gray-400 hover:text-gray-600">&times;</button>
+                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
             </div>
             
             <div class="p-6">
@@ -193,7 +193,10 @@ function renderBaseLayout() {
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
                             </button>
                             <button id="settings-btn" class="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                </svg>
                             </button>
                         </div>
                     </div>
@@ -249,7 +252,7 @@ function renderBaseLayout() {
                 <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
                     </div>
 
-                <div id="list-container" class="space-y-3 pb-20 w-full">
+                <div id="list-container" class="space-y-3 pb-20 w-full px-1">
                     <div class="text-center py-10"><div class="loader mx-auto"></div></div>
                 </div>
             </div>
@@ -375,10 +378,18 @@ function setupEventListeners() {
     if (genericModalEventListener) document.getElementById('genericModal').removeEventListener('click', genericModalEventListener);
     
     genericModalEventListener = (e) => {
-        const target = e.target.closest('button[data-action^="delete-"]');
-        if (target) {
-            const type = target.dataset.action.split('-')[1];
-            handleDeleteHierarchyItem(type, target.dataset.id);
+        // --- CORREÇÃO: Lógica para fechar modal quando clicado em botão com data-action="close-modal" ---
+        const closeBtn = e.target.closest('[data-action="close-modal"]');
+        if (closeBtn) {
+            document.getElementById('genericModal').style.display = 'none';
+            return;
+        }
+
+        // Lógica existente para Delete
+        const deleteBtn = e.target.closest('button[data-action^="delete-"]');
+        if (deleteBtn) {
+            const type = deleteBtn.dataset.action.split('-')[1];
+            handleDeleteHierarchyItem(type, deleteBtn.dataset.id);
         }
     };
     document.getElementById('genericModal').addEventListener('click', genericModalEventListener);
@@ -548,44 +559,44 @@ function renderLists() {
         const natureName = item.naturezaId ? natureMap.get(item.naturezaId) || 'Geral' : 'Geral';
         const itemDataStr = JSON.stringify(item).replace(/'/g, "&apos;");
 
-        // LAYOUT CORRIGIDO PARA MOBILE E CARD CLICÁVEL
-        // 1. Adicionado class 'financial-card-item' para identificar clique
-        // 2. Adicionado 'cursor-pointer' para feedback visual
-        // 3. Reduzido padding (p-3) e gap (gap-3) para caber melhor no mobile
-        // 4. max-w-full para garantir que não estoure
+        // LAYOUT CORRIGIDO PARA QUEBRAR O TEXTO E NÃO ESTOURAR:
+        // - Adicionado: items-start, break-words, whitespace-normal, leading-snug
+        // - Removido: truncate, items-center
         return `
-        <div class="financial-card-item bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 relative overflow-hidden w-full max-w-full cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
+        <div class="financial-card-item w-full max-w-full bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-start gap-3 relative overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
              data-type="${typeStr}"
              data-item='${itemDataStr}'>
             
             <div class="absolute left-0 top-0 bottom-0 w-1 ${isPaid ? 'bg-gray-300' : (isReceivable ? 'bg-green-500' : 'bg-red-500')}"></div>
 
-            <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-xl w-12 h-12 border border-gray-100">
+            <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-lg w-12 h-12 border border-gray-100 mt-0.5">
                 <span class="text-base font-bold text-gray-800 leading-none">${dateObj.day}</span>
                 <span class="text-[9px] font-bold text-gray-400 uppercase leading-none mt-0.5">${dateObj.month}</span>
             </div>
 
-            <div class="flex-1 min-w-0 overflow-hidden">
-                <h3 class="font-bold text-gray-800 truncate text-sm ${isPaid ? 'line-through text-gray-400' : ''}">${item.description}</h3>
-                <div class="flex items-center gap-1.5 mt-0.5">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium truncate max-w-[100px]">
+            <div class="flex-1 min-w-0 flex flex-col justify-start">
+                <h3 class="font-bold text-gray-800 text-sm break-words whitespace-normal pr-1 leading-snug ${isPaid ? 'line-through text-gray-400' : ''}">
+                    ${item.description}
+                </h3>
+                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium break-all">
                         ${natureName}
                     </span>
-                    ${isPaid ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Baixado</span>' : ''}
+                    ${isPaid ? '<span class="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 font-medium whitespace-nowrap">Baixado</span>' : ''}
                 </div>
             </div>
 
-            <div class="text-right flex-shrink-0">
-                <p class="font-bold text-sm ${amountClass}">${formatCurrency(item.amount)}</p>
+            <div class="flex-shrink-0 text-right pl-1 flex flex-col items-end">
+                <p class="font-bold text-sm ${amountClass} whitespace-nowrap">${formatCurrency(item.amount)}</p>
                 
-                <div class="flex justify-end gap-2 mt-1">
+                <div class="flex justify-end gap-3 mt-2">
                     ${!isPaid ? `
-                        <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="p-1 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-colors z-10" title="Baixar">
+                        <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="p-1.5 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-colors z-10" title="Baixar">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         </button>
                     ` : ''}
                     
-                    <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10" title="Excluir">
+                    <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10" title="Excluir">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
@@ -655,7 +666,7 @@ function openSettingsModal() {
                         <svg class="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     </button>
                 </div>
-                <button type="button" data-action="close-modal" data-target="genericModal" class="mt-6 text-gray-400 hover:text-gray-600 font-medium text-sm">Fechar</button>
+                <button type="button" data-action="close-modal" class="mt-6 text-gray-400 hover:text-gray-600 font-medium text-sm">Fechar</button>
             </div>
         </div>
     `;
@@ -686,7 +697,7 @@ function openFinancialModal(type, item = null) {
         <div class="modal-content max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden w-full m-4">
             <div class="bg-${colorClass}-50 px-6 py-4 border-b border-${colorClass}-100 flex justify-between items-center">
                 <h2 class="text-xl font-bold text-${colorClass}-800">${title}</h2>
-                <button type="button" data-action="close-modal" data-target="genericModal" class="text-${colorClass}-400 hover:text-${colorClass}-600 text-2xl">&times;</button>
+                <button type="button" data-action="close-modal" class="text-${colorClass}-400 hover:text-${colorClass}-600 text-2xl font-bold">&times;</button>
             </div>
             
             <form id="financial-form" class="p-6 space-y-4">
@@ -754,7 +765,7 @@ function openFinancialModal(type, item = null) {
                 </div>
 
                 <div class="pt-4 flex gap-3">
-                    <button type="button" data-action="close-modal" data-target="genericModal" class="flex-1 py-3 bg-gray-100 text-gray-600 font-semibold rounded-xl hover:bg-gray-200">Cancelar</button>
+                    <button type="button" data-action="close-modal" class="flex-1 py-3 bg-gray-100 text-gray-600 font-semibold rounded-xl hover:bg-gray-200">Cancelar</button>
                     <button type="submit" class="flex-1 py-3 bg-${colorClass}-600 text-white font-semibold rounded-xl hover:bg-${colorClass}-700 shadow-lg active:scale-95 transition-transform">Salvar</button>
                 </div>
             </form>

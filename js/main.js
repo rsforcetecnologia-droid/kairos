@@ -83,7 +83,7 @@ const profileDropdown = document.getElementById('profileDropdown');
 const profileName = document.getElementById('profileName');
 const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
-const cancellationHistoryBtn = document.getElementById('cancellationHistoryBtn');
+// REMOVIDO: const cancellationHistoryBtn ... (O botão já não existe no HTML)
 const myProfileLink = document.getElementById('myProfileLink'); 
 const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const sidebar = document.getElementById('sidebar');
@@ -533,9 +533,7 @@ async function initialize() {
         }
     });
 
-    cancellationHistoryBtn.addEventListener('click', () => {
-        openCancellationHistoryModal();
-    });
+    // REMOVIDO LISTENER DE CANCELLATION HISTORY BTN POIS O BOTÃO JÁ NÃO EXISTE
 
     profileMenuButton.addEventListener('click', (e) => {
         e.stopPropagation();

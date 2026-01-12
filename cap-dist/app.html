@@ -117,10 +117,10 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
     </style>
-  <script type="module" crossorigin src="/assets/app-DCOapws5.js"></script>
+  <script type="module" crossorigin src="/assets/app-Txja_tF6.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
-  <link rel="stylesheet" crossorigin href="/assets/styles-C_Llvr6k.css">
+  <link rel="stylesheet" crossorigin href="/assets/styles-C2XZ_b0c.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body class="bg-gray-50">
 
@@ -227,7 +227,7 @@
                             </svg>
                         </div>
                         <div class="flex flex-col justify-center h-full">
-                            <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5 whitespace-nowrap">Agend. Hj</span>
+                            <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5 whitespace-nowrap">Agend. Hoje</span>
                             <span id="kpi-today-appointments" class="text-xs md:text-sm font-bold text-gray-800 leading-none">--</span>
                         </div>
                     </div>
@@ -239,7 +239,7 @@
                             </svg>
                         </div>
                         <div class="flex flex-col justify-center h-full">
-                            <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5 whitespace-nowrap">Fat. Hj</span>
+                            <span class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide leading-none mb-0.5 whitespace-nowrap">Fat. Hoje</span>
                             <span id="kpi-today-revenue" class="text-xs md:text-sm font-bold text-gray-800 leading-none">R$ --,--</span>
                         </div>
                     </div>
@@ -247,11 +247,7 @@
                 </div>
 
                 <div class="flex items-center gap-2 md:gap-4">
-                    <button id="cancellationHistoryBtn" class="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-50 transition-colors" title="Histórico de Cancelamentos">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </button>
+                    
                     <div class="relative">
                         <button id="notificationBell" class="relative text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-50 transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -303,6 +299,22 @@
     <div id="categoryModal" class="modal"></div>
     <div id="serviceModal" class="modal"></div>
     <div id="genericModal" class="modal"></div>
+
+    <div id="exitConfirmationModal" class="modal" style="z-index: 9999;">
+        <div class="modal-content p-6 text-center rounded-2xl shadow-xl max-w-xs mx-auto mt-40 bg-white border border-gray-200">
+            <div class="mb-4 text-red-500 flex justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Sair do Aplicativo?</h3>
+            <p class="text-sm text-gray-600 mb-6">Você deseja fechar o sistema?</p>
+            <div class="flex gap-3 justify-center">
+                <button id="btn-cancel-exit" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors">Não</button>
+                <button id="btn-confirm-exit" class="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors shadow-sm">Sair</button>
+            </div>
+        </div>
+    </div>
 
     <div id="toast-container"></div>
 
