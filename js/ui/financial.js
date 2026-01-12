@@ -182,9 +182,9 @@ export async function loadFinancialPage() {
 
 function renderBaseLayout() {
     contentDiv.innerHTML = `
-        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50">
+        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 w-full overflow-hidden">
             
-            <div class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-20">
+            <div class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-20 w-full">
                 <div class="max-w-5xl mx-auto px-4 py-3">
                     <div class="flex justify-between items-center mb-3">
                         <h1 class="text-xl font-bold text-gray-800">Financeiro</h1>
@@ -193,7 +193,7 @@ function renderBaseLayout() {
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
                             </button>
                             <button id="settings-btn" class="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                             </button>
                         </div>
                     </div>
@@ -249,7 +249,7 @@ function renderBaseLayout() {
                 <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
                     </div>
 
-                <div id="list-container" class="space-y-3 pb-20">
+                <div id="list-container" class="space-y-3 pb-20 w-full">
                     <div class="text-center py-10"><div class="loader mx-auto"></div></div>
                 </div>
             </div>
@@ -323,25 +323,51 @@ function setupEventListeners() {
         fetchAndDisplayData();
     });
 
-    // Listener Global de Cliques (Deletar, Editar, Baixar)
+    // Listener Global de Cliques (Deletar, Editar, Baixar e CLIQUE NO CARD)
     if (financialPageEventListener) document.body.removeEventListener('click', financialPageEventListener);
     
     financialPageEventListener = (e) => {
-        const target = e.target.closest('button[data-action]');
-        if (!target) return;
+        const target = e.target;
+        
+        // 1. Verifica se foi clique num botão específico primeiro (Excluir, Baixar)
+        const actionButton = target.closest('button[data-action]');
+        if (actionButton) {
+            const { action, type, id } = actionButton.dataset;
+            
+            // Impede a propagação para não abrir o card de edição se clicar no botão excluir/baixar
+            e.stopPropagation();
 
-        const { action, type, id } = target.dataset;
-        // Evita disparar em outras telas se o ID coincidir
-        if (!document.getElementById('list-container')) return;
+            if (action === 'delete') {
+                handleDelete(type, id);
+                return;
+            }
+            if (action === 'mark-as-paid') {
+                handleMarkAsPaid(type, id);
+                return;
+            }
+            if (action === 'manage-natures') {
+                openHierarchyModal('nature');
+                return;
+            }
+            if (action === 'manage-cost-centers') {
+                openHierarchyModal('cost-center');
+                return;
+            }
+            // "Edit" via botão (caso exista em desktop)
+            if (action === 'edit') {
+                const itemData = JSON.parse(actionButton.dataset.item.replace(/&apos;/g, "'"));
+                openFinancialModal(type, itemData);
+                return;
+            }
+        }
 
-        if (action === 'edit') {
-            const itemData = JSON.parse(target.dataset.item.replace(/&apos;/g, "'"));
+        // 2. Se não foi botão, verifica se foi no CARD (para Editar)
+        const cardItem = target.closest('.financial-card-item');
+        if (cardItem && document.getElementById('list-container').contains(cardItem)) {
+            const { type } = cardItem.dataset;
+            const itemData = JSON.parse(cardItem.dataset.item.replace(/&apos;/g, "'"));
             openFinancialModal(type, itemData);
         }
-        else if (action === 'delete') handleDelete(type, id);
-        else if (action === 'mark-as-paid') handleMarkAsPaid(type, id);
-        else if (action === 'manage-natures') openHierarchyModal('nature');
-        else if (action === 'manage-cost-centers') openHierarchyModal('cost-center');
     };
     document.body.addEventListener('click', financialPageEventListener);
 
@@ -457,10 +483,6 @@ function renderSummary() {
     const section = document.getElementById('summary-section');
     if (!section) return;
 
-    // Filtra apenas pelo status (Pendente/Pago) selecionado ou Tudo para o resumo?
-    // Geralmente resumo mostra o total do período independente do status, ou segue o filtro.
-    // Vamos fazer o resumo seguir o filtro de Data, mas mostrar totais Pendentes vs Realizados.
-    
     // Totais Receitas
     const totalRec = localState.receivables.reduce((acc, i) => acc + i.amount, 0);
     const paidRec = localState.receivables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
@@ -526,40 +548,44 @@ function renderLists() {
         const natureName = item.naturezaId ? natureMap.get(item.naturezaId) || 'Geral' : 'Geral';
         const itemDataStr = JSON.stringify(item).replace(/'/g, "&apos;");
 
-        // Card Moderno
+        // LAYOUT CORRIGIDO PARA MOBILE E CARD CLICÁVEL
+        // 1. Adicionado class 'financial-card-item' para identificar clique
+        // 2. Adicionado 'cursor-pointer' para feedback visual
+        // 3. Reduzido padding (p-3) e gap (gap-3) para caber melhor no mobile
+        // 4. max-w-full para garantir que não estoure
         return `
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 relative overflow-hidden group transition-all hover:shadow-md">
+        <div class="financial-card-item bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 relative overflow-hidden w-full max-w-full cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
+             data-type="${typeStr}"
+             data-item='${itemDataStr}'>
             
             <div class="absolute left-0 top-0 bottom-0 w-1 ${isPaid ? 'bg-gray-300' : (isReceivable ? 'bg-green-500' : 'bg-red-500')}"></div>
 
-            <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-xl w-14 h-14 border border-gray-100">
-                <span class="text-lg font-bold text-gray-800 leading-none">${dateObj.day}</span>
-                <span class="text-[10px] font-bold text-gray-400 uppercase leading-none mt-1">${dateObj.month}</span>
+            <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-xl w-12 h-12 border border-gray-100">
+                <span class="text-base font-bold text-gray-800 leading-none">${dateObj.day}</span>
+                <span class="text-[9px] font-bold text-gray-400 uppercase leading-none mt-0.5">${dateObj.month}</span>
             </div>
 
-            <div class="flex-1 min-w-0">
-                <h3 class="font-bold text-gray-800 truncate text-sm md:text-base ${isPaid ? 'line-through text-gray-400' : ''}">${item.description}</h3>
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium truncate max-w-[120px]">
+            <div class="flex-1 min-w-0 overflow-hidden">
+                <h3 class="font-bold text-gray-800 truncate text-sm ${isPaid ? 'line-through text-gray-400' : ''}">${item.description}</h3>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium truncate max-w-[100px]">
                         ${natureName}
                     </span>
-                    ${isPaid ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Baixado</span>' : ''}
+                    ${isPaid ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Baixado</span>' : ''}
                 </div>
             </div>
 
-            <div class="text-right">
-                <p class="font-bold text-sm md:text-lg ${amountClass}">${formatCurrency(item.amount)}</p>
+            <div class="text-right flex-shrink-0">
+                <p class="font-bold text-sm ${amountClass}">${formatCurrency(item.amount)}</p>
                 
-                <div class="flex justify-end gap-3 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <div class="flex justify-end gap-2 mt-1">
                     ${!isPaid ? `
-                        <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="text-gray-400 hover:text-green-500" title="Baixar">
+                        <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="p-1 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-colors z-10" title="Baixar">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         </button>
                     ` : ''}
-                    <button data-action="edit" data-type="${typeStr}" data-item='${itemDataStr}' class="text-gray-400 hover:text-blue-500" title="Editar">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                    </button>
-                    <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="text-gray-400 hover:text-red-500" title="Excluir">
+                    
+                    <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10" title="Excluir">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>

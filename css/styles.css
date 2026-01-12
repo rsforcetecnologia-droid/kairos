@@ -1443,3 +1443,16 @@ html, body {
 input, select, textarea {
     font-size: 16px !important; /* Tamanho mínimo para o iOS não dar zoom */
 }
+
+/* --- AJUSTE DE FONTE DO MENU LATERAL --- */
+/* Aumenta a fonte do menu para compensar a falta de zoom e melhorar leitura */
+.sidebar-text {
+    font-size: 16px !important; /* Força 16px (maior que o padrão anterior) */
+    line-height: 1.5;
+}
+
+/* Opcional: Aumentar também o ícone ligeiramente se achar necessário */
+.sidebar-link svg {
+    width: 1.5rem; /* 24px */
+    height: 1.5rem;
+}
