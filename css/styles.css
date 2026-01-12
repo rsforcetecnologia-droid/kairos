@@ -1425,3 +1425,21 @@ body.is-app-native .mobile-only-header {
         display: flex;
     }
 }
+/* css/styles.css */
+
+html, body {
+    /* Impede o zoom por gestos (pinça) e duplo toque */
+    touch-action: pan-x pan-y; 
+    
+    /* Garante altura total e previne comportamento elástico indesejado em alguns browsers */
+    height: 100%;
+    overflow-x: hidden; /* Evita rolagem horizontal acidental */
+    
+    /* Melhoria de texto para mobile */
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Opcional: Evita que inputs de texto dêem zoom automático no iPhone ao focar */
+input, select, textarea {
+    font-size: 16px !important; /* Tamanho mínimo para o iOS não dar zoom */
+}

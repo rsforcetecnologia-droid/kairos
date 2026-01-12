@@ -83,22 +83,22 @@ function renderLayout() {
     const costOptions = localState.costCentersList.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
 
     contentDiv.innerHTML = `
-        <div class="flex flex-col min-h-screen bg-gray-50 pb-24 relative">
+        <div class="flex flex-col min-h-screen bg-gray-50 pb-24 relative w-full overflow-x-hidden">
             
             <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all duration-300">
-                <div class="max-w-7xl mx-auto px-4 py-3">
+                <div class="max-w-7xl mx-auto px-3 md:px-4 py-3">
                     <div class="flex justify-between items-center">
-                        <div>
-                            <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        <div class="overflow-hidden mr-2">
+                            <h1 class="text-lg md:text-xl font-bold text-gray-800 flex items-center gap-2 truncate">
+                                <svg class="w-5 h-5 md:w-6 md:h-6 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                                 Relatórios
                             </h1>
-                            <p class="text-xs text-gray-500 mt-0.5" id="date-range-display">
+                            <p class="text-[10px] md:text-xs text-gray-500 mt-0.5 truncate" id="date-range-display">
                                 ${formatDateShort(localState.startDate)} até ${formatDateShort(localState.endDate)}
                             </p>
                         </div>
-                        <button id="toggle-filters-btn" class="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors relative">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+                        <button id="toggle-filters-btn" class="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors relative flex-shrink-0">
+                            <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
                         </button>
                     </div>
                 </div>
@@ -134,16 +134,16 @@ function renderLayout() {
                     </div>
                 </div>
 
-                <div class="overflow-x-auto no-scrollbar border-t border-gray-100 bg-white">
-                    <div class="flex px-4 py-2 gap-2 min-w-max max-w-7xl mx-auto">
-                        <button data-tab="dashboards" class="tab-btn flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all whitespace-nowrap border">Financeiro</button>
-                        <button data-tab="appointments" class="tab-btn flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all whitespace-nowrap border">Agendamentos</button>
-                        <button data-tab="dre" class="tab-btn flex-1 py-2 px-4 rounded-full text-sm font-medium transition-all whitespace-nowrap border">DRE Contábil</button>
+                <div class="overflow-x-auto no-scrollbar border-t border-gray-100 bg-white w-full">
+                    <div class="flex px-3 md:px-4 py-2 gap-2 min-w-max max-w-7xl mx-auto">
+                        <button data-tab="dashboards" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">Financeiro</button>
+                        <button data-tab="appointments" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">Agendamentos</button>
+                        <button data-tab="dre" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">DRE Contábil</button>
                     </div>
                 </div>
             </div>
 
-            <main id="report-content" class="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6 animate-fade-in"></main>
+            <main id="report-content" class="flex-1 max-w-7xl w-full mx-auto px-3 md:px-4 py-4 space-y-4 animate-fade-in"></main>
         </div>
     `;
 
@@ -185,8 +185,8 @@ function updateTabsUI() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         const isActive = btn.dataset.tab === localState.currentTab;
         btn.className = isActive 
-            ? "tab-btn py-2 px-6 rounded-full text-sm font-bold bg-indigo-600 text-white shadow-md transform scale-105 transition-all whitespace-nowrap border-transparent"
-            : "tab-btn py-2 px-6 rounded-full text-sm font-medium text-gray-500 bg-white border-gray-200 hover:bg-gray-50 transition-all whitespace-nowrap";
+            ? "tab-btn py-2 px-6 rounded-full text-xs md:text-sm font-bold bg-indigo-600 text-white shadow-md transform scale-105 transition-all whitespace-nowrap border-transparent"
+            : "tab-btn py-2 px-6 rounded-full text-xs md:text-sm font-medium text-gray-500 bg-white border-gray-200 hover:bg-gray-50 transition-all whitespace-nowrap";
     });
 }
 
@@ -282,68 +282,68 @@ function renderFinancialDashboards(container) {
     const dre = dreSimple || { grossRevenue: 0, netProfit: 0, variableCosts: 0 }; 
 
     container.innerHTML = `
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-slide-up">
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 animate-slide-up w-full">
+            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
                 <div class="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <svg class="w-20 h-20 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    <svg class="w-16 h-16 md:w-20 md:h-20 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                 </div>
                 <div class="flex items-center gap-2 mb-2">
                     <span class="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z" /></svg>
+                        <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z" /></svg>
                     </span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Faturamento</p>
+                    <p class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Faturamento</p>
                 </div>
-                <p class="text-2xl font-black text-gray-800 tracking-tight">R$ ${dre.grossRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                <div class="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                <p class="text-xl md:text-2xl font-black text-gray-800 tracking-tight">R$ ${dre.grossRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                <div class="mt-3 md:mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                      <div class="h-full bg-blue-500 rounded-full" style="width: 100%"></div>
                 </div>
             </div>
 
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
+            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="p-2 bg-red-50 text-red-600 rounded-lg">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" /></svg>
+                        <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" /></svg>
                     </span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Custos</p>
+                    <p class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Custos</p>
                 </div>
-                <p class="text-2xl font-black text-red-500 tracking-tight">R$ ${dre.variableCosts.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                <div class="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                <p class="text-xl md:text-2xl font-black text-red-500 tracking-tight">R$ ${dre.variableCosts.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                <div class="mt-3 md:mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                      <div class="h-full bg-red-500 rounded-full" style="width: ${dre.grossRevenue > 0 ? (dre.variableCosts/dre.grossRevenue)*100 : 0}%"></div>
                 </div>
             </div>
 
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
+            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden">
                 <div class="flex items-center gap-2 mb-2">
                     <span class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <svg class="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     </span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider">Lucro Líquido</p>
+                    <p class="text-[10px] md:text-xs text-gray-500 font-bold uppercase tracking-wider">Lucro Líquido</p>
                 </div>
-                <p class="text-2xl font-black text-emerald-600 tracking-tight">R$ ${dre.netProfit.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                 <div class="mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                <p class="text-xl md:text-2xl font-black text-emerald-600 tracking-tight">R$ ${dre.netProfit.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                 <div class="mt-3 md:mt-4 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
                      <div class="h-full bg-emerald-500 rounded-full" style="width: ${dre.grossRevenue > 0 ? (dre.netProfit/dre.grossRevenue)*100 : 0}%"></div>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mt-6 animate-slide-up delay-100">
-            <div class="mb-6">
-                <h3 class="text-lg font-bold text-gray-800">Fluxo de Caixa</h3>
-                <p class="text-xs text-gray-400">Entradas, saídas e saldo acumulado.</p>
+        <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 mt-4 md:mt-6 animate-slide-up delay-100 w-full">
+            <div class="mb-4 md:mb-6">
+                <h3 class="text-base md:text-lg font-bold text-gray-800">Fluxo de Caixa</h3>
+                <p class="text-[10px] md:text-xs text-gray-400">Entradas, saídas e saldo acumulado.</p>
             </div>
-            <div class="relative w-full h-72 md:h-96">
+            <div class="relative w-full h-64 md:h-96">
                 <canvas id="chart-cashflow-modern"></canvas>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 animate-slide-up delay-200">
-            <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                <h3 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wide">Evolução Mensal</h3>
-                <div class="relative h-64"><canvas id="chart-monthly"></canvas></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-4 md:mt-6 animate-slide-up delay-200 w-full">
+            <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 w-full">
+                <h3 class="font-bold text-gray-800 mb-4 text-xs md:text-sm uppercase tracking-wide">Evolução Mensal</h3>
+                <div class="relative h-56 md:h-64"><canvas id="chart-monthly"></canvas></div>
             </div>
-            <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-                <h3 class="font-bold text-gray-800 mb-4 text-sm uppercase tracking-wide">Vendas por Profissional</h3>
-                <div class="relative h-64 flex justify-center"><canvas id="chart-profs"></canvas></div>
+            <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 w-full">
+                <h3 class="font-bold text-gray-800 mb-4 text-xs md:text-sm uppercase tracking-wide">Vendas por Profissional</h3>
+                <div class="relative h-56 md:h-64 flex justify-center"><canvas id="chart-profs"></canvas></div>
             </div>
         </div>
     `;
@@ -399,59 +399,59 @@ function renderAppointmentsTab(container) {
     const byProfessional = Object.values(professionalMap).sort((a,b) => b.value - a.value);
 
     container.innerHTML = `
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 animate-slide-up">
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 animate-slide-up w-full">
+            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
                 <p class="text-[10px] text-gray-500 font-bold uppercase">Agendamentos</p>
                 <div class="flex items-end gap-2 mt-1">
-                    <p class="text-3xl font-black text-gray-800">${totalCount}</p>
+                    <p class="text-2xl md:text-3xl font-black text-gray-800">${totalCount}</p>
                 </div>
             </div>
             
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100">
                 <p class="text-[10px] text-gray-500 font-bold uppercase">Concluídos</p>
-                <p class="text-xl font-black text-indigo-600 mt-1">${totalCount > 0 ? Math.round((completedCount/totalCount)*100) : 0}%</p>
+                <p class="text-lg md:text-xl font-black text-indigo-600 mt-1">${totalCount > 0 ? Math.round((completedCount/totalCount)*100) : 0}%</p>
             </div>
-             <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+             <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100">
                 <p class="text-[10px] text-gray-500 font-bold uppercase">Cancelados</p>
-                <p class="text-xl font-black text-red-500 mt-1">${cancelledCount}</p>
+                <p class="text-lg md:text-xl font-black text-red-500 mt-1">${cancelledCount}</p>
             </div>
 
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
+            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
                 <p class="text-[10px] text-gray-500 font-bold uppercase">Valor Estimado</p>
-                 <p class="text-2xl font-black text-gray-800 mt-1">R$ ${totalValue.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</p>
+                 <p class="text-xl md:text-2xl font-black text-gray-800 mt-1">R$ ${totalValue.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</p>
             </div>
         </div>
 
-        <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mt-4 animate-slide-up delay-100">
-            <h3 class="text-lg font-bold text-gray-800 mb-4">Volume Diário</h3>
-            <div class="relative w-full h-64">
+        <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 mt-4 animate-slide-up delay-100 w-full">
+            <h3 class="text-base md:text-lg font-bold text-gray-800 mb-4">Volume Diário</h3>
+            <div class="relative w-full h-56 md:h-64">
                 <canvas id="chart-appointments-daily"></canvas>
             </div>
         </div>
 
-        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mt-4 animate-slide-up delay-200">
-            <div class="p-5 border-b border-gray-50 bg-gray-50/50">
-                <h3 class="text-lg font-bold text-gray-800">Ranking Profissional</h3>
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mt-4 animate-slide-up delay-200 w-full">
+            <div class="p-4 md:p-5 border-b border-gray-50 bg-gray-50/50">
+                <h3 class="text-base md:text-lg font-bold text-gray-800">Ranking Profissional</h3>
             </div>
-            <div class="overflow-x-auto no-scrollbar">
-                <table class="w-full text-sm">
+            <div class="overflow-x-auto no-scrollbar w-full">
+                <table class="w-full text-xs md:text-sm min-w-full">
                     <tbody class="divide-y divide-gray-100">
                         ${byProfessional.map((p, idx) => {
                             const maxVal = byProfessional[0]?.value || 1;
                             const percent = (p.value / maxVal) * 100;
                             return `
                             <tr class="group">
-                                <td class="p-4 w-12 text-center font-bold text-gray-300 text-xs">${idx + 1}</td>
-                                <td class="p-4 pl-0">
-                                    <p class="font-bold text-gray-800">${escapeHTML(p.name)}</p>
+                                <td class="p-3 md:p-4 w-8 md:w-12 text-center font-bold text-gray-300">${idx + 1}</td>
+                                <td class="p-3 md:p-4 pl-0 min-w-[100px]">
+                                    <p class="font-bold text-gray-800 truncate">${escapeHTML(p.name)}</p>
                                     <div class="w-full h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
                                         <div class="h-full bg-indigo-500 rounded-full" style="width: ${percent}%"></div>
                                     </div>
                                 </td>
-                                <td class="p-4 text-center">
-                                    <span class="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg font-bold text-xs">${p.count}</span>
+                                <td class="p-3 md:p-4 text-center">
+                                    <span class="bg-indigo-50 text-indigo-700 px-2 md:px-2.5 py-1 rounded-lg font-bold text-xs">${p.count}</span>
                                 </td>
-                                <td class="p-4 text-right font-bold text-gray-700 whitespace-nowrap">R$ ${p.value.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
+                                <td class="p-3 md:p-4 text-right font-bold text-gray-700 whitespace-nowrap">R$ ${p.value.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
                             </tr>
                         `}).join('')}
                         ${byProfessional.length === 0 ? '<tr><td colspan="4" class="p-8 text-center text-gray-400">Sem dados.</td></tr>' : ''}
@@ -475,16 +475,16 @@ function renderDRE(container) {
         const percent = totalRev > 0 ? (value / totalRev) * 100 : 0;
         const sign = isNegative ? '- ' : '';
         return `
-        <div class="flex items-center justify-between py-3 px-4 border-b border-dashed border-gray-100 last:border-0">
-            <div class="flex-1 pr-4">
-                <p class="text-xs font-semibold text-gray-600 truncate">${escapeHTML(label)}</p>
-                <div class="w-full h-1 bg-gray-100 rounded-full mt-1.5 overflow-hidden max-w-[100px]">
+        <div class="flex items-center justify-between py-2 md:py-3 px-3 md:px-4 border-b border-dashed border-gray-100 last:border-0">
+            <div class="flex-1 pr-2 md:pr-4 overflow-hidden">
+                <p class="text-[10px] md:text-xs font-semibold text-gray-600 truncate">${escapeHTML(label)}</p>
+                <div class="w-full h-1 bg-gray-100 rounded-full mt-1.5 overflow-hidden max-w-[80px] md:max-w-[100px]">
                     <div class="h-full ${colorClass.replace('text-', 'bg-')} opacity-40" style="width: ${Math.min(percent, 100)}%"></div>
                 </div>
             </div>
-            <div class="text-right">
-                <p class="text-sm font-bold ${colorClass}">${sign}R$ ${value.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                <p class="text-[10px] text-gray-400 font-medium">${percent.toFixed(1)}%</p>
+            <div class="text-right flex-shrink-0">
+                <p class="text-xs md:text-sm font-bold ${colorClass}">${sign}R$ ${value.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                <p class="text-[9px] md:text-[10px] text-gray-400 font-medium">${percent.toFixed(1)}%</p>
             </div>
         </div>`;
     };
@@ -496,23 +496,23 @@ function renderDRE(container) {
     const netResultLabel = dreFinancial.netResult >= 0 ? 'Lucro' : 'Prejuízo';
 
     container.innerHTML = `
-        <div class="max-w-xl mx-auto animate-slide-up pb-10">
-            <div class="bg-gray-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden mb-6">
+        <div class="max-w-xl mx-auto animate-slide-up pb-10 w-full">
+            <div class="bg-gray-900 text-white rounded-3xl p-5 md:p-6 shadow-xl relative overflow-hidden mb-4 md:mb-6">
                 <div class="absolute right-0 top-0 opacity-10 transform translate-x-1/4 -translate-y-1/4">
-                    <svg class="w-48 h-48" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    <svg class="w-32 h-32 md:w-48 md:h-48" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                 </div>
-                <p class="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">Resultado Líquido</p>
-                <h2 class="text-4xl font-black mb-2">R$ ${dreFinancial.netResult.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h2>
-                <span class="inline-block px-3 py-1 bg-white/20 rounded-lg text-xs font-bold backdrop-blur-sm">
+                <p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">Resultado Líquido</p>
+                <h2 class="text-3xl md:text-4xl font-black mb-2">R$ ${dreFinancial.netResult.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h2>
+                <span class="inline-block px-2 py-1 md:px-3 md:py-1 bg-white/20 rounded-lg text-[10px] md:text-xs font-bold backdrop-blur-sm">
                     ${netResultLabel}: ${(totalRev > 0 ? (dreFinancial.netResult/totalRev)*100 : 0).toFixed(1)}% de Margem
                 </span>
             </div>
 
-            <div class="space-y-4">
+            <div class="space-y-3 md:space-y-4">
                 <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                     <div class="bg-gray-50/50 p-3 border-b border-gray-100 flex justify-between items-center">
                         <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-2">Receitas</h3>
-                        <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Total: R$ ${dreFinancial.totalRevenues.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
+                        <span class="text-[10px] md:text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Total: R$ ${dreFinancial.totalRevenues.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
                     </div>
                     <div>${revRows || '<p class="text-xs text-gray-400 p-4 text-center">Nenhuma receita.</p>'}</div>
                 </div>
@@ -520,7 +520,7 @@ function renderDRE(container) {
                 <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                     <div class="bg-gray-50/50 p-3 border-b border-gray-100 flex justify-between items-center">
                         <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-2">Despesas</h3>
-                        <span class="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Total: R$ ${dreFinancial.totalExpenses.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
+                        <span class="text-[10px] md:text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Total: R$ ${dreFinancial.totalExpenses.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
                     </div>
                     <div>${expRows || '<p class="text-xs text-gray-400 p-4 text-center">Nenhuma despesa.</p>'}</div>
                 </div>
@@ -557,8 +557,15 @@ function renderModernCashFlowChart(canvasId, data) {
                     borderColor: '#3b82f6',
                     backgroundColor: gradientBalance,
                     borderWidth: 3,
-                    pointRadius: 0,
+                    
+                    // MELHORIAS PARA MOBILE (CLICK E VISIBILIDADE)
+                    pointRadius: 3,           // Ponto visível (pequeno)
+                    pointBackgroundColor: '#fff', 
+                    pointBorderColor: '#3b82f6',
+                    pointBorderWidth: 2,
                     pointHoverRadius: 6,
+                    hitRadius: 30,           // Área de toque expandida
+                    
                     fill: true,
                     tension: 0.4,
                     order: 0,
@@ -571,7 +578,11 @@ function renderModernCashFlowChart(canvasId, data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
+            // INTERAÇÃO MELHORADA
+            interaction: { 
+                mode: 'index',   // Mostra tooltip de todos os datasets (saldo, entrada, saída)
+                intersect: false // Não precisa tocar exatamente no elemento, apenas na linha vertical
+            },
             plugins: {
                 legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 6, font: { family: "'Inter', sans-serif", size: 10 } } },
                 tooltip: { backgroundColor: '#fff', titleColor: '#111', bodyColor: '#444', borderColor: '#eee', borderWidth: 1, padding: 10 }
@@ -602,20 +613,31 @@ function renderModernAreaChart(canvasId, labels, data) {
         data: {
             labels: labelsFormatted,
             datasets: [{
-                label: 'Qtd',
+                label: 'Agendamentos',
                 data: data,
                 borderColor: '#6366f1',
                 backgroundColor: gradient,
                 borderWidth: 2,
                 fill: true,
                 tension: 0.4,
-                pointRadius: 0,
-                pointHoverRadius: 4
+                
+                // MELHORIAS PARA MOBILE
+                pointRadius: 3,          // Ponto visível
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#6366f1',
+                pointBorderWidth: 2,
+                pointHoverRadius: 5,
+                hitRadius: 30            // Área de toque expandida
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            // INTERAÇÃO MELHORADA
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
             plugins: { legend: { display: false }, tooltip: { backgroundColor: '#fff', titleColor: '#111', bodyColor: '#6366f1', borderColor: '#eee', borderWidth: 1 } },
             scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 10 } } },

@@ -1,5 +1,33 @@
 // js/main.js
 
+// Adicione logo no início ou dentro de um window.onload
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // 1. Bloquear gesto de pinça (Pinch-to-zoom) no iOS
+    document.addEventListener('gesturestart', function (e) {
+        e.preventDefault();
+    });
+
+    document.addEventListener('gesturechange', function (e) {
+        e.preventDefault();
+    });
+
+    document.addEventListener('gestureend', function (e) {
+        e.preventDefault();
+    });
+
+    // 2. Bloquear Zoom por Duplo Toque (Double-tap)
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function (event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+            event.preventDefault();
+        }
+        lastTouchEnd = now;
+    }, false);
+
+});
+
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -17,6 +45,7 @@ import { checkAndStartOnboarding } from './ui/onboarding.js';
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
+import { App } from '@capacitor/app'; // <--- ADICIONADO AQUI
 
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES WEB (PWA) ---
 // [AJUSTE] Importamos 'requestWebPermission' para ligar ao botão do Toast
@@ -343,6 +372,120 @@ async function initializePushNotifications(userUid) {
     }
 }
 
+// --- FUNÇÃO PARA GERENCIAR O BOTÃO VOLTAR (Nativo e PWA) ---
+function setupBackButtonHandling() {
+    const exitModal = document.getElementById('exitConfirmationModal');
+    const btnCancel = document.getElementById('btn-cancel-exit');
+    const btnConfirm = document.getElementById('btn-confirm-exit');
+
+    // Funções auxiliares
+    const showModal = () => exitModal.style.display = 'block';
+    const hideModal = () => exitModal.style.display = 'none';
+    const isModalVisible = () => exitModal.style.display === 'block';
+
+    if (!exitModal) return;
+
+    // Ação do botão "Não" (Cancelar)
+    btnCancel.addEventListener('click', () => {
+        hideModal();
+        // Se for PWA, precisamos "rearmar" a armadilha do histórico
+        if (!Capacitor.isNativePlatform()) {
+            history.pushState(null, document.title, location.href);
+        }
+    });
+
+    // Ação do botão "Sim" (Sair)
+    btnConfirm.addEventListener('click', () => {
+        hideModal();
+        if (Capacitor.isNativePlatform()) {
+            App.exitApp(); // Fecha o app nativo
+        } else {
+            // No PWA/Browser, tentamos voltar o histórico real para fechar ou sair
+            history.back(); 
+            // Opcional: Redirecionar para uma página de "Até logo" se o navegador não fechar
+            // window.location.href = 'about:blank'; 
+        }
+    });
+
+    // --- LÓGICA PARA APP NATIVO (ANDROID) ---
+    if (Capacitor.isNativePlatform()) {
+        App.addListener('backButton', ({ canGoBack }) => {
+            if (isModalVisible()) {
+                hideModal();
+            } else {
+                // Se tiver algum modal do sistema aberto (ex: agendamento), fecha ele primeiro
+                const openModals = document.querySelectorAll('.modal[style*="display: block"]');
+                // Filtra o modal de confirmação para não fechar ele mesmo se já estiver aberto
+                const activeModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
+                
+                if (activeModals.length > 0) {
+                    activeModals.forEach(m => m.style.display = 'none');
+                    return;
+                }
+
+                // Se o menu lateral estiver aberto, fecha ele
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar && !sidebar.classList.contains('hidden') && window.innerWidth < 768) {
+                    sidebar.classList.add('hidden');
+                    document.getElementById('mobile-overlay').classList.add('hidden');
+                    return;
+                }
+
+                // Se estivermos na tela inicial (Agenda), pede para sair
+                // Se estiver em outra tela, volta para a Agenda
+                const activeLink = document.querySelector('.sidebar-link.active');
+                if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
+                    showModal();
+                } else {
+                    // Simula navegação para home
+                    navigateTo('agenda-section');
+                }
+            }
+        });
+    } 
+    // --- LÓGICA PARA PWA (NAVEGADOR) ---
+    else {
+        // Empurra um estado no histórico ao carregar para criar a "armadilha"
+        history.pushState(null, document.title, location.href);
+
+        window.addEventListener('popstate', (event) => {
+            // Se o modal já estiver aberto e o usuário clicar em voltar de novo
+            if (isModalVisible()) {
+                hideModal();
+                history.pushState(null, document.title, location.href); // Rearma
+                return;
+            }
+
+            // Verifica se tem outros modais abertos
+            const openModals = document.querySelectorAll('.modal[style*="display: block"], .modal[style*="display: flex"]');
+            // Filtra para não pegar o próprio modal de exit se ele estivesse abrindo
+            const otherModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
+
+            if (otherModals.length > 0) {
+                // Fecha modais e rearma o histórico para não sair da página
+                otherModals.forEach(m => m.style.display = 'none');
+                history.pushState(null, document.title, location.href);
+                return;
+            }
+
+            // Lógica de Navegação PWA
+            const activeLink = document.querySelector('.sidebar-link.active');
+            
+            // Se estiver na Home (Agenda), mostra confirmação de sair
+            if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
+                showModal();
+                // Importante: NÃO damos pushState aqui imediatamente, 
+                // deixamos o estado "voltar" acontecer visualmente, mas o modal bloqueia a ação.
+                // Se ele cancelar, aí damos pushState no clique do botão cancelar.
+            } else {
+                // Se estiver em outra página, volta para a Agenda e previne a saída
+                navigateTo('agenda-section');
+                history.pushState(null, document.title, location.href);
+            }
+        });
+    }
+}
+
 // --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
 async function initialize() {
     
@@ -360,6 +503,7 @@ async function initialize() {
     }
     
     initializeModalClosers();
+    setupBackButtonHandling(); // <--- INICIA O HANDLER DO BOTÃO VOLTAR
 
     // --- FIX DO MENU MOBILE ---
     if (hamburgerMenuBtn) {
