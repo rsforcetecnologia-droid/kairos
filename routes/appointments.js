@@ -361,7 +361,8 @@ router.delete('/:appointmentId', async (req, res) => {
             const items = data.comandaItems || [];
             const products = items.filter(i => i.type === 'product');
             for (const item of products) {
-                if (item.itemId) {
+                // CORREÇÃO: Ignora rewards virtuais no delete
+                if (item.itemId && !String(item.itemId).startsWith('reward-')) {
                     const prodRef = db.collection('products').doc(item.itemId);
                     transaction.update(prodRef, { currentStock: admin.firestore.FieldValue.increment(item.quantity || 1) });
                 }
@@ -467,7 +468,8 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             
             const count = (list) => list.filter(i => i.type === 'product').reduce((acc, i) => { 
                 const pid = i.productId || i.itemId || i.id;
-                if (pid && pid !== 'undefined' && pid !== 'null') {
+                // CORREÇÃO: Ignorar IDs inválidos ou de prémios virtuais ao contar stock
+                if (pid && pid !== 'undefined' && pid !== 'null' && !String(pid).startsWith('reward-')) {
                     acc[pid] = (acc[pid] || 0) + (i.quantity || 1); 
                 }
                 return acc; 

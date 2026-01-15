@@ -26,6 +26,7 @@ let localState = {
     isCashierOpen: false,
     activeCashierSessionId: null,
     loyaltySettings: null,
+    pendingRedemption: null, // Armazena dados do prémio a ser resgatado
     paging: {
         page: 1,
         limit: 10,
@@ -36,11 +37,11 @@ let localState = {
         selectedMethod: 'dinheiro',
         installments: 1,
         amountReceived: '',
-        // NOVO: Estado para desconto
         discount: {
             type: 'real', // 'real' ou 'percent'
             value: 0
-        }
+        },
+        discountReason: '' // Novo campo para o motivo
     }
 };
 
@@ -57,31 +58,31 @@ function debounce(func, wait) {
     };
 }
 
-// NOVA FUNÇÃO: Executa o salvamento com Loading na tela
+// Executa o salvamento com Loading na tela
 async function executeSaveAction(comanda, nextStep = 'stay') {
     if (!comanda || !comanda.id) return;
 
-    // 1. FORÇA ATUALIZAÇÃO LOCAL ANTES DE TUDO
     comanda._localUpdatedAt = Date.now();
-    comanda._cachedItems = null; // Limpa cache para forçar recálculo
-    comanda._hasUnsavedChanges = false; // Remove a marcação de não salvo
+    comanda._cachedItems = null; 
+    comanda._hasUnsavedChanges = false; 
 
-    // Atualiza visualmente a lista (card) imediatamente
     renderComandaList();
 
-    // 2. Se for checkout, prepara o estado e muda a tela IMEDIATAMENTE (UI Otimista)
     if (nextStep === 'checkout') {
         localState.viewMode = 'checkout';
-        // Reinicia estado do checkout se for uma nova entrada
         if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
         localState.checkoutState.selectedMethod = 'dinheiro';
         localState.checkoutState.amountReceived = '';
-        localState.checkoutState.discount = { type: 'real', value: 0 }; // Reset desconto
+        
+        // Mantém desconto se já tiver sido aplicado (ex: fidelidade), senão reseta
+        if (!localState.checkoutState.discount.value) {
+             localState.checkoutState.discount = { type: 'real', value: 0 };
+             localState.checkoutState.discountReason = '';
+        }
         
         renderComandaDetail();
     }
 
-    // 3. Cria e mostra o overlay de carregamento
     const loadingOverlay = document.createElement('div');
     loadingOverlay.id = 'saving-overlay';
     loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
@@ -94,7 +95,6 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     document.body.appendChild(loadingOverlay);
 
     try {
-        // 4. PREPARAÇÃO DOS DADOS
         const itemsToSave = (comanda.comandaItems || [])
             .filter(i => i && i.id && String(i.id) !== 'undefined' && String(i.id) !== 'null')
             .map(i => {
@@ -116,14 +116,12 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
                 return itemPayload;
             });
 
-        // 5. Envia para o servidor
         if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
              // Lógica para temp se necessário
         } else {
             await comandasApi.updateComandaItems(comanda.id, itemsToSave);
         }
         
-        // Remove overlay
         if(document.body.contains(loadingOverlay)) {
             document.body.removeChild(loadingOverlay);
         }
@@ -138,14 +136,12 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
             document.body.removeChild(loadingOverlay);
         }
         console.error("Erro ao salvar:", error);
-        
-        comanda._hasUnsavedChanges = true; // Volta a flag se der erro
+        comanda._hasUnsavedChanges = true; 
         renderComandaDetail();
         showNotification('Erro', 'Falha ao salvar no servidor: ' + error.message, 'warning');
     }
 }
 
-// --- CORREÇÃO DE DUPLICIDADE ---
 function getSafeAllItems(comanda) {
     if (!comanda._cachedItems) {
         let result = [];
@@ -153,25 +149,21 @@ function getSafeAllItems(comanda) {
             const finalItems = comanda.comandaItems || comanda.items || [];
             result = finalItems.length > 0 ? finalItems : (comanda.services || []);
         } else {
-            // 1. Pega os serviços originais
             const baseServices = (comanda.services || []).map(s => ({
                 ...s, 
                 _source: 'original_service',
                 type: 'service' 
             }));
             
-            // 2. Mapa de frequência para saber o que já está na lista de originais
             const originalsMap = baseServices.reduce((acc, s) => {
                 const key = String(s.id); 
                 acc[key] = (acc[key] || 0) + 1;
                 return acc;
             }, {});
 
-            // 3. Pega todos os itens salvos na comanda
             const rawExtras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
             const validExtras = [];
 
-            // 4. Filtra duplicatas
             rawExtras.forEach(item => {
                 const key = String(item.id);
                 const isServiceCandidate = item.type === 'service' || !item.type;
@@ -183,7 +175,6 @@ function getSafeAllItems(comanda) {
                 }
             });
 
-            // 5. Combina
             result = [...baseServices, ...validExtras];
         }
         
@@ -342,7 +333,7 @@ function renderComandaList() {
     const filteredComandas = localState.allComandas.filter(c => c.status === currentStatus);
 
     if (filteredComandas.length === 0) {
-        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda nesta página.</p>`;
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda encontrada.</p>`;
         renderPaginationControls(paginationContainer);
         return;
     }
@@ -462,7 +453,6 @@ function renderComandaDetail() {
     const isCompleted = comanda.status === 'completed';
     const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
-    // --- LÓGICA DE GRUPAMENTO AJUSTADA ---
     const groupedItems = allItems.reduce((acc, item) => {
         const isOriginal = item._source === 'original_service';
         const safeId = item.id || item.name;
@@ -602,31 +592,28 @@ function renderComandaDetail() {
     }
 }
 
-// --- ESTÁGIO 2: TELA DE CHECKOUT (ESTÁTICA) ---
+// --- ESTÁGIO 2: TELA DE CHECKOUT (OTIMIZADA) ---
 function renderCheckoutView(comanda, container) {
     const rawItems = getSafeAllItems(comanda);
     const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const checkoutState = localState.checkoutState;
 
-    // Lógica de Desconto
+    // Cálculo inicial
     const discount = checkoutState.discount || { type: 'real', value: 0 };
     let discountValue = 0;
-
     if (discount.type === 'percent') {
         discountValue = (subtotal * discount.value) / 100;
     } else {
         discountValue = discount.value;
     }
-    
-    // Garante que desconto não exceda o total
     if (discountValue > subtotal) discountValue = subtotal;
-
     const totalFinal = subtotal - discountValue;
-
-    // Lógica de Pagamentos
+    
+    // Pagamentos
     const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
     const remaining = Math.max(0, totalFinal - totalPaid);
     
+    // Atualiza valor sugerido se necessário
     if (!checkoutState.amountReceived || remaining > 0) {
          checkoutState.amountReceived = remaining.toFixed(2);
     }
@@ -645,24 +632,30 @@ function renderCheckoutView(comanda, container) {
         <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar">
             
             <div class="text-center mb-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
-                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Subtotal: R$ ${subtotal.toFixed(2)}</p>
+                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Subtotal: <span id="checkout-subtotal-display">R$ ${subtotal.toFixed(2)}</span></p>
                 
-                <div class="flex items-center justify-center gap-2 mt-2 mb-2">
-                     <span class="text-xs font-bold text-red-500">Desconto:</span>
-                     <div class="flex border rounded-lg bg-white overflow-hidden shadow-sm w-40">
-                         <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-1 text-center text-sm font-bold text-red-600 outline-none" placeholder="0">
-                         <select id="discount-type" class="bg-gray-100 text-xs font-bold text-gray-700 border-l p-1 outline-none">
-                             <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
-                             <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
-                         </select>
+                <div class="flex flex-col items-center justify-center gap-2 mt-4 mb-2">
+                     <div class="flex items-center gap-2">
+                         <span class="text-xs font-bold text-red-500">Desconto:</span>
+                         <div class="flex border rounded-lg bg-white overflow-hidden shadow-sm w-40">
+                             <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-1 text-center text-sm font-bold text-red-600 outline-none" placeholder="0">
+                             <select id="discount-type" class="bg-gray-100 text-xs font-bold text-gray-700 border-l p-1 outline-none">
+                                 <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
+                                 <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
+                             </select>
+                         </div>
                      </div>
+                     <input type="text" id="discount-reason" class="w-64 p-2 text-xs border border-gray-200 rounded-lg text-center focus:border-indigo-300 focus:ring focus:ring-indigo-100 outline-none" placeholder="Motivo do desconto (opcional)" value="${checkoutState.discountReason || ''}">
                 </div>
 
-                <p class="text-5xl font-extrabold text-gray-800 mt-2">R$ ${totalFinal.toFixed(2)}</p>
-                ${remaining <= 0.01 
-                    ? '<p class="text-green-600 font-bold mt-2 text-lg">Pago</p>' 
-                    : `<p class="text-red-500 font-medium mt-2">Faltam: R$ ${remaining.toFixed(2)}</p>`
-                }
+                <p class="text-5xl font-extrabold text-gray-800 mt-2" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
+                
+                <div id="checkout-status-msg" class="mt-2">
+                    ${remaining <= 0.01 
+                        ? '<p class="text-green-600 font-bold text-lg">Pago</p>' 
+                        : `<p class="text-red-500 font-medium">Faltam: <span id="checkout-remaining-display">R$ ${remaining.toFixed(2)}</span></p>`
+                    }
+                </div>
             </div>
 
             <div class="space-y-3 mb-6">
@@ -719,24 +712,65 @@ function renderCheckoutView(comanda, container) {
         </footer>
     `;
 
-    // Listeners de Desconto
+    // Função interna para atualizar APENAS os números sem redesenhar o HTML
+    const updateCheckoutUI = () => {
+        // Recalcular
+        const dType = localState.checkoutState.discount.type;
+        const dVal = localState.checkoutState.discount.value;
+        let cDiscount = (dType === 'percent') ? (subtotal * dVal) / 100 : dVal;
+        if (cDiscount > subtotal) cDiscount = subtotal;
+        
+        const cFinal = subtotal - cDiscount;
+        const cPaid = localState.checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
+        const cRemaining = Math.max(0, cFinal - cPaid);
+
+        // Atualizar DOM
+        const elTotal = container.querySelector('#checkout-total-display');
+        if (elTotal) elTotal.textContent = `R$ ${cFinal.toFixed(2)}`;
+
+        const elStatus = container.querySelector('#checkout-status-msg');
+        if (elStatus) {
+            if (cRemaining <= 0.01) {
+                elStatus.innerHTML = '<p class="text-green-600 font-bold text-lg">Pago</p>';
+            } else {
+                elStatus.innerHTML = `<p class="text-red-500 font-medium">Faltam: <span id="checkout-remaining-display">R$ ${cRemaining.toFixed(2)}</span></p>`;
+            }
+        }
+        
+        // Atualiza input de pagamento se ainda não foi pago
+        const elAmount = container.querySelector('#checkout-amount');
+        if (elAmount && cRemaining > 0) {
+             // Opcional: Atualizar o valor sugerido se o usuário não estiver digitando nele
+             if (document.activeElement !== elAmount) {
+                 elAmount.value = cRemaining.toFixed(2);
+             }
+        }
+    };
+
+    // Listeners OTIMIZADOS
     container.querySelector('#discount-value')?.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value) || 0;
         localState.checkoutState.discount.value = val;
-        renderComandaDetail(); // Re-render para atualizar cálculos
+        // NÃO chama renderComandaDetail(), chama updateCheckoutUI
+        updateCheckoutUI();
     });
 
     container.querySelector('#discount-type')?.addEventListener('change', (e) => {
         localState.checkoutState.discount.type = e.target.value;
-        renderComandaDetail();
+        updateCheckoutUI();
+    });
+    
+    // Listener para o motivo do desconto
+    container.querySelector('#discount-reason')?.addEventListener('input', (e) => {
+        localState.checkoutState.discountReason = e.target.value;
     });
 
     container.querySelector('#checkout-amount')?.addEventListener('input', (e) => {
-        checkoutState.amountReceived = e.target.value;
+        localState.checkoutState.amountReceived = e.target.value;
     });
     
     container.querySelector('#checkout-installments')?.addEventListener('change', (e) => {
-        checkoutState.installments = parseInt(e.target.value, 10);
+        localState.checkoutState.installments = parseInt(e.target.value, 10);
     });
 }
 
@@ -821,18 +855,76 @@ function openRewardSelectionModal(rewards, comanda) {
     });
 }
 
+// --- FUNÇÃO ATUALIZADA: RESGATE COM CORREÇÃO DE TIPO E COMPARAÇÃO ROBUSTA ---
 async function addRewardToComanda(reward, comanda) {
     const cost = Number(reward.costPoints || reward.points || 0);
     const name = reward.name || reward.reward;
-    const rewardItem = {
-        id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
-        name: `${name}`,
-        price: 0.00, 
-        type: reward.serviceId ? 'service' : 'product',
-        isReward: true,
-        pointsCost: cost
-    };
-    await handleAddItemToComanda(rewardItem, 1);
+    
+    // 1. Busca todos os itens atuais da comanda
+    const allItems = getSafeAllItems(comanda);
+
+    // 2. Tenta encontrar EXATAMENTE o serviço/produto do prémio na comanda
+    // Normalização de IDs para evitar falhas de comparação (String vs Number)
+    const rewardServiceId = reward.serviceId ? String(reward.serviceId) : (reward.service_id ? String(reward.service_id) : null);
+    const rewardProductId = reward.productId ? String(reward.productId) : (reward.product_id ? String(reward.product_id) : null);
+
+    const match = allItems.find(i => {
+        // Normaliza IDs do item
+        const itemId = i.id ? String(i.id) : (i.itemId ? String(i.itemId) : null);
+        const itemServiceId = i.serviceId ? String(i.serviceId) : (i.service_id ? String(i.service_id) : null);
+        const itemProductId = i.productId ? String(i.productId) : (i.product_id ? String(i.product_id) : null);
+
+        // Debug para diagnóstico (Silencioso em produção)
+        console.log('Verificando compatibilidade:', { rewardServiceId, itemId, itemServiceId, name: i.name });
+
+        // Verifica compatibilidade de IDs para Serviços
+        if (rewardServiceId) {
+            if (itemId === rewardServiceId) return true;
+            if (itemServiceId === rewardServiceId) return true;
+        }
+        
+        // Verifica compatibilidade para Produtos
+        if (rewardProductId) {
+            if (itemId === rewardProductId) return true;
+            if (itemProductId === rewardProductId) return true;
+        }
+        
+        return false;
+    });
+
+    if (match) {
+        // --- CENÁRIO: ITEM ENCONTRADO (APLICAR DESCONTO) ---
+        const price = Number(match.price || 0);
+        
+        // Aplica o desconto no estado do checkout
+        localState.checkoutState.discount = {
+            type: 'real',
+            value: price
+        };
+        
+        // Define o motivo automaticamente
+        localState.checkoutState.discountReason = `Resgate Fidelidade: ${name}`;
+        
+        // Armazena informações do resgate para enviar ao backend no checkout (para abater pontos)
+        localState.pendingRedemption = {
+            rewardId: reward.id || null,
+            name: name,
+            cost: cost,
+            appliedToServiceId: match.id
+        };
+
+        showNotification('Sucesso', `Prémio "${name}" resgatado! O valor de R$ ${price.toFixed(2)} foi abatido.`, 'success');
+        
+        // Atualiza a interface para mostrar o desconto aplicado
+        renderComandaDetail(); 
+    } else {
+        // --- CENÁRIO: ITEM NÃO ENCONTRADO (BLOQUEAR) ---
+        showNotification(
+            'Resgate Não Permitido', 
+            `Para resgatar o prémio "${name}", o serviço correspondente deve constar na comanda. Adicione o serviço primeiro. Se o erro persistir, verifique se o prémio está vinculado a um serviço nas configurações.`, 
+            'warning'
+        );
+    }
 }
 
 function openAddItemModal() {
@@ -866,7 +958,6 @@ function openAddItemModal() {
                 if (!el) return;
                 const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
                 el.innerHTML = filtered.map(item => {
-                    // Proteção: não renderiza itens sem ID para evitar erros futuros
                     if (!item.id) return '';
                     
                     return `
@@ -1103,48 +1194,53 @@ async function handleFilterClick(filter) {
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
     document.querySelector(`[data-filter="${filter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
     document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
+    
+    // UI Otimista: Limpa e mostra loader imediatamente
     hideMobileDetail();
-    await fetchAndDisplayData();
     localState.selectedComandaId = null;
     localState.viewMode = 'items';
+    const listContainer = document.getElementById('comandas-list');
+    if (listContainer) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+    
+    await fetchAndDisplayData();
     renderComandaDetail();
 }
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
     localState.viewMode = 'items';
+    // Limpa estado pendente de resgate ao mudar de comanda
+    localState.pendingRedemption = null;
+    localState.checkoutState.discount = { type: 'real', value: 0 };
+    localState.checkoutState.discountReason = '';
+    
     renderComandaList(); 
     showMobileDetail();
     renderComandaDetail();
 }
 
-// --- OTIMIZAÇÃO: ATUALIZAÇÃO IMEDIATA (Optimistic UI) ---
 async function handleAddItemToComanda(itemData, quantity) {
     const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
     if (!comanda) return;
 
-    // PROTEÇÃO: Impede a adição de itens sem ID válido
     if (!itemData.id || String(itemData.id) === 'undefined') {
         console.error("Tentativa de adicionar item sem ID:", itemData);
         showNotification('Erro', 'Item sem identificador. Não foi possível adicionar.', 'error');
         return;
     }
 
-    // CORREÇÃO: Assegurar que o preço é um número para evitar erros de soma
     const numericPrice = parseFloat(itemData.price) || 0;
 
     const itemsToAdd = Array(quantity).fill(0).map(() => {
         const baseItem = {
-            id: String(itemData.id), // Garante string
+            id: String(itemData.id), 
             name: itemData.name,
-            price: numericPrice, // Usa o valor numérico garantido
+            price: numericPrice, 
             type: itemData.type,
             isReward: itemData.isReward || false, 
             pointsCost: itemData.pointsCost || 0
         };
         
-        // Redundância: Garante que productId e serviceId existem para evitar erro 500
-        // Preenche AMBOS os padrões (camelCase e snake_case) para garantir
         if (itemData.type === 'product') {
             baseItem.productId = baseItem.id;
             baseItem.product_id = baseItem.id;
@@ -1159,12 +1255,9 @@ async function handleAddItemToComanda(itemData, quantity) {
     comanda.comandaItems = comanda.comandaItems || [];
     comanda.comandaItems.push(...itemsToAdd);
     
-    // 1. Limpa o cache para garantir que os novos itens sejam lidos
     comanda._cachedItems = null;
-    // 2. Marca como não salvo
     comanda._hasUnsavedChanges = true; 
     
-    // 3. Força renderização IMEDIATA para feedback visual APENAS DO DETALHE
     renderComandaDetail();
 }
 
@@ -1173,10 +1266,6 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     if (!comanda) return;
 
     let modified = false;
-
-    // CORREÇÃO: Removemos a opção de deletar 'services' (originais).
-    // O sistema só permitirá remover itens que estão em 'comandaItems' (extras).
-    // Usa == para comparar string vs number
     let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id == itemId && item.type === itemType);
     
     if (extraIndex > -1) {
@@ -1185,12 +1274,8 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     } 
 
     if (modified) {
-        // 1. Limpa o cache
         comanda._cachedItems = null;
-        // 2. Marca como não salvo
         comanda._hasUnsavedChanges = true;
-        
-        // 3. Força renderização IMEDIATA APENAS DO DETALHE
         renderComandaDetail();
     }
 }
@@ -1198,7 +1283,6 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 async function handleFinalizeCheckout(comanda) {
     if (localState.isProcessing) return;
     
-    // CALCULA TUDO NOVAMENTE PARA GARANTIA
     const rawItems = getSafeAllItems(comanda);
     const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
@@ -1210,7 +1294,6 @@ async function handleFinalizeCheckout(comanda) {
     const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
     const remaining = totalAmount - totalPaid;
 
-    // Se houver saldo devedor, pergunta se quer lançar como dívida
     if (remaining > 0.01) {
         const confirmed = await showConfirmation(
             'Pagamento Parcial', 
@@ -1218,9 +1301,8 @@ async function handleFinalizeCheckout(comanda) {
             'Sim, registrar dívida'
         );
 
-        if (!confirmed) return; // Cancela se não confirmar
+        if (!confirmed) return; 
 
-        // Adiciona pagamento do tipo 'fiado' automaticamente
         payments.push({
             method: 'fiado',
             value: remaining,
@@ -1233,16 +1315,26 @@ async function handleFinalizeCheckout(comanda) {
     const isAppointment = comanda.type === 'appointment';
     const finalItems = rawItems; 
 
-    // Lógica de fidelidade (apenas estimativa visual, backend recalcula)
+    // --- LÓGICA DE PONTOS DE FIDELIDADE (Visita vs Real) ---
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
     if (settings && settings.enabled) {
-        if (settings.type === 'visit') pointsToAward = Number(settings.pointsPerVisit) || 1;
-        else {
+        if (settings.type === 'visit') {
+            // Pontos fixos por visita
+            pointsToAward = Number(settings.pointsPerVisit) || 1;
+        } else {
+            // Pontos por moeda gasta
             const divisor = Number(settings.pointsPerCurrency) || 10;
+            // Usa o totalAmount (valor pago efetivamente)
             if (divisor > 0) pointsToAward = Math.floor(totalAmount / divisor);
         }
     }
+
+    // Prepara o objeto de desconto incluindo o motivo
+    const enrichedDiscount = {
+        ...discount,
+        reason: localState.checkoutState.discountReason || '' // Inclui motivo no registro financeiro
+    };
 
     const data = {
         payments,
@@ -1250,10 +1342,10 @@ async function handleFinalizeCheckout(comanda) {
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
         loyaltyPointsEarned: pointsToAward,
-        discount: discount // Envia o objeto de desconto para o backend
+        discount: enrichedDiscount,
+        loyaltyRedemption: localState.pendingRedemption // Envia dados do resgate para o backend
     };
 
-    // Loading overlay
     const loadingOverlay = document.createElement('div');
     loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
     loadingOverlay.innerHTML = '<div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center"><div class="loader mb-4 border-t-indigo-600"></div><p>Finalizando venda...</p></div>';
@@ -1276,6 +1368,7 @@ async function handleFinalizeCheckout(comanda) {
         hideMobileDetail();
         localState.selectedComandaId = null;
         localState.viewMode = 'items';
+        localState.pendingRedemption = null;
         await fetchAndDisplayData();
     } catch (error) { 
         showNotification('Erro no Checkout', error.message, 'error'); 
@@ -1318,35 +1411,55 @@ async function handleCreateNewSale(e) {
     handleComandaClick(newComanda.id);
 }
 
-// --- INICIALIZAÇÃO ---
+// --- INICIALIZAÇÃO OTIMIZADA ---
 
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
-    if (!listContainer.hasChildNodes() || listContainer.innerHTML.includes('loader')) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+    
+    // Exibe loader apenas se a lista estiver vazia ou já tiver um loader (evita piscar se já tem dados)
+    if (!listContainer.hasChildNodes() || listContainer.innerHTML.includes('loader')) {
+        listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+    }
     
     const filterDate = localState.activeFilter === 'finalizadas' ? document.getElementById('filter-date').value : null;
 
     try {
-        const activeSession = await cashierApi.getActiveSession();
+        // --- OTIMIZAÇÃO: PARALELISMO DE REQUISIÇÕES CRÍTICAS ---
+        const sessionPromise = cashierApi.getActiveSession();
+        const comandasPromise = comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
+        
+        // Só busca fidelidade se ainda não tiver carregado
+        // CORREÇÃO AQUI: Mudado de getEstablishment para getEstablishmentDetails
+        const loyaltyPromise = !localState.loyaltySettings 
+            ? establishmentsApi.getEstablishmentDetails(state.establishmentId) 
+            : Promise.resolve(null);
+
+        const [activeSession, response, establishmentData] = await Promise.all([
+            sessionPromise,
+            comandasPromise,
+            loyaltyPromise
+        ]);
+
+        // Processamento dos resultados
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
         updateCashierUIState();
         
+        if (establishmentData && establishmentData.loyaltyProgram) {
+            localState.loyaltySettings = establishmentData.loyaltyProgram;
+        }
+
         if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
             renderComandaList();
             renderComandaDetail();
             return;
         }
-        
-        try {
-            const establishmentData = await establishmentsApi.getEstablishment(state.establishmentId);
-            if (establishmentData && establishmentData.loyaltyProgram) localState.loyaltySettings = establishmentData.loyaltyProgram;
-        } catch (e) {}
 
-        const response = await comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
         localState.allComandas = response.data || response;
         localState.paging.total = response.total || response.length;
         
+        // --- CARREGAMENTO DE CATÁLOGO OTIMIZADO ---
+        // Só carrega se o catálogo estiver vazio
         if (localState.catalog.services.length === 0) {
             const [services, products, packages, professionals] = await Promise.all([
                 servicesApi.getServices(state.establishmentId),
@@ -1408,7 +1521,6 @@ export async function loadComandasPage(params = {}) {
                 case 'close-cashier': await handleOpenCloseCashierModal(); break;
                 case 'view-sales-report': navigateTo('sales-report-section'); break;
                 
-                // --- NOVAS NAVEGAÇÕES ---
                 case 'go-to-checkout':
                     await executeSaveAction(comanda, 'checkout');
                     break;
@@ -1422,7 +1534,6 @@ export async function loadComandasPage(params = {}) {
                     await executeSaveAction(comanda, 'stay');
                     break;
 
-                // --- AÇÕES DE CHECKOUT ---
                 case 'select-method':
                     localState.checkoutState.selectedMethod = target.dataset.method;
                     localState.checkoutState.installments = 1;
@@ -1434,7 +1545,6 @@ export async function loadComandasPage(params = {}) {
                     let value = parseFloat(amountInput.value);
                     const rawItems = getSafeAllItems(comanda);
                     
-                    // Recalcula total com desconto para validar o pagamento
                     const subtotal = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
                     const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
                     let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
@@ -1472,29 +1582,23 @@ export async function loadComandasPage(params = {}) {
                     await handleFinalizeCheckout(comanda);
                     break;
 
-                // --- AÇÕES DE QUANTIDADE COM DEBOUNCE (CORRIGIDAS) ---
                 case 'increase-qty': {
                     const itemId = target.dataset.itemId;
                     const itemType = target.dataset.itemType;
                     
-                    // PROTEÇÃO: Impede operações com ID inválido
                     if (!itemId || itemId === 'undefined' || itemId === 'null') {
                         showNotification('Erro', 'Item inválido para adição.', 'error');
                         return;
                     }
                     
-                    // 1. Tenta achar no próprio agendamento primeiro (para manter preço/nome originais)
-                    // e usa comparação flexível (==) para IDs
                     const existingItems = getSafeAllItems(comanda);
                     let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
 
-                    // 2. Se não achar, tenta no catálogo
                     if (!itemToClone) {
                         const catalog = localState.catalog[itemType + 's'] || [];
                         itemToClone = catalog.find(i => i.id == itemId);
                     }
 
-                    // 3. Fallback seguro que tenta preservar preço
                     const safeItem = itemToClone 
                         ? { 
                             id: itemToClone.id, 

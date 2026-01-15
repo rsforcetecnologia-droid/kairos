@@ -98,26 +98,24 @@ router.post('/', async (req, res) => {
             
             // 3. Validar e Atualizar Estoque
             if (productsToUpdate.length > 0) {
-                productsToUpdate.forEach((item, index) => {
-                    if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
-                        throw new Error(`Item inválido na venda: O ID do produto na posição ${index} está em falta.`);
+                // CORREÇÃO: Filtrar rewards virtuais antes de buscar no banco
+                const realProducts = productsToUpdate.filter(item => item.id && !String(item.id).startsWith('reward-'));
+
+                if (realProducts.length > 0) {
+                    const productRefs = realProducts.map(item => db.collection('products').doc(item.id));
+                    const productDocs = await transaction.getAll(...productRefs);
+                    const updates = [];
+
+                    for (let i = 0; i < productDocs.length; i++) {
+                        const productDoc = productDocs[i];
+                        const productItem = realProducts[i];
+                        if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
+                        const newStock = (productDoc.data().currentStock || 0) - (productItem.quantity || 1); 
+                        updates.push({ ref: productDoc.ref, newStock: newStock });
                     }
-                });
-
-                const productRefs = productsToUpdate.map(item => db.collection('products').doc(item.id));
-                const productDocs = await transaction.getAll(...productRefs);
-                const updates = [];
-
-                for (let i = 0; i < productDocs.length; i++) {
-                    const productDoc = productDocs[i];
-                    const productItem = productsToUpdate[i];
-                    if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
-                    const newStock = (productDoc.data().currentStock || 0) - (productItem.quantity || 1); 
-                    // Nota: Removi a verificação < 0 para permitir estoque negativo se necessário
-                    updates.push({ ref: productDoc.ref, newStock: newStock });
+                    
+                    updates.forEach(update => transaction.update(update.ref, { currentStock: update.newStock }));
                 }
-                
-                updates.forEach(update => transaction.update(update.ref, { currentStock: update.newStock }));
             }
             
             // 4. ATUALIZAR PONTOS DO CLIENTE (SE EXISTIR)
@@ -259,8 +257,9 @@ router.post('/:saleId/reopen', async (req, res) => {
             // Estornar Stock
             const productsToRestock = saleData.items.filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
+                // CORREÇÃO: Filtrar rewards virtuais ao estornar
                 const productRefs = productsToRestock
-                    .filter(item => item.id)
+                    .filter(item => item.id && !String(item.id).startsWith('reward-'))
                     .map(item => db.collection('products').doc(item.id));
                 
                 if (productRefs.length > 0) {
@@ -342,14 +341,20 @@ router.delete('/:saleId', async (req, res) => {
             // Devolver estoque se necessário (para vendas pendentes ou canceladas via delete)
             const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                const productRefs = productsToRestock.filter(i => i.id).map(item => db.collection('products').doc(item.id));
-                const productDocs = await transaction.getAll(...productRefs);
-                productDocs.forEach((doc, index) => {
-                    if (doc.exists) {
-                        const qty = productsToRestock[index].quantity || 1;
-                        transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(qty) });
-                    }
-                });
+                // CORREÇÃO: Filtrar rewards virtuais ao excluir
+                const productRefs = productsToRestock
+                    .filter(i => i.id && !String(i.id).startsWith('reward-'))
+                    .map(item => db.collection('products').doc(item.id));
+                
+                if (productRefs.length > 0) {
+                    const productDocs = await transaction.getAll(...productRefs);
+                    productDocs.forEach((doc, index) => {
+                        if (doc.exists) {
+                            const qty = productsToRestock[index].quantity || 1;
+                            transaction.update(doc.ref, { currentStock: admin.firestore.FieldValue.increment(qty) });
+                        }
+                    });
+                }
             }
             
             const financialSnapshot = await db.collection('financial_receivables').where('transactionId', '==', saleId).get();
