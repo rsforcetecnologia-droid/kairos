@@ -1,1649 +1,1571 @@
-// js/ui/agenda.js (Otimizado: Busca de Clientes Lazy + Correções Gerais + Exclusão em Lote + Correção Modal)
+// js/ui/comandas.js
 
 // --- 1. IMPORTAÇÕES ---
+import * as comandasApi from '../api/comandas.js';
+import * as salesApi from '../api/sales.js';
 import * as appointmentsApi from '../api/appointments.js';
+import * as productsApi from '../api/products.js';
 import * as servicesApi from '../api/services.js';
-import * as professionalsApi from '../api/professionals.js';
-import * as blockagesApi from '../api/blockages.js';
 import * as clientsApi from '../api/clients.js';
-import * as establishmentApi from '../api/establishments.js';
+import * as cashierApi from '../api/cashier.js';
+import * as packagesApi from '../api/packages.js';
+import * as professionalsApi from '../api/professionals.js';
+import * as establishmentsApi from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
 import { escapeHTML } from '../utils.js';
 
-// --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
-const contentDiv = document.getElementById('content');
-let currentTimeInterval = null;
-let hasContentDelegationInitialized = false; 
-
-// PALETA DE CORES
-const colorPalette = [
-    { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5' }, // Indigo
-    { bg: '#d1fae5', border: '#059669', main: '#059669' }, // Emerald
-    { bg: '#ffe4e6', border: '#e11d48', main: '#e11d48' }, // Rose
-    { bg: '#fef3c7', border: '#d97706', main: '#d97706' }, // Amber
-    { bg: '#cffafe', border: '#0e7490', main: '#0e7490' }, // Cyan
-    { bg: '#e0f2fe', border: '#0284c7', main: '#0284c7' }, // Sky
-    { bg: '#ede9fe', border: '#7c3aed', main: '#7c3aed' }, // Violet
-    { bg: '#fce7f3', border: '#db2777', main: '#db2777' }, // Fuchsia
-];
-
-let availableServicesForModal = [];
-let availableProfessionalsForModal = [];
-let loyaltySettingsForModal = {};
-let allClientsData = []; 
-
-// Estado local
+// --- 2. ESTADO LOCAL DA PÁGINA ---
 let localState = {
-    currentView: 'list', 
-    weekViewDays: 7, 
-    currentDate: new Date(),
-    selectedProfessionalId: 'all', 
-    profSearchTerm: '', 
-    showInactiveProfs: false, 
-    scrollToAppointmentId: null,
-    // NOVOS ESTADOS PARA SELEÇÃO EM LOTE
-    isSelectionMode: false,
-    selectedItems: new Set() 
-};
-
-// ESTADO DO NOVO AGENDAMENTO
-let newAppointmentState = {
-    step: 1, 
-    data: {
-        id: null, 
-        clientName: '',
-        clientPhone: '',
-        selectedServiceIds: [],
-        professionalId: null,
-        professionalName: '',
-        date: null,
-        time: null,
-        redeemedReward: null,
-        clientHasRewards: false,
-        clientLoyaltyPoints: 0
+    allComandas: [],
+    catalog: { services: [], products: [], packages: [] },
+    activeFilter: 'atendimento',
+    selectedComandaId: null,
+    viewMode: 'items', // 'items' ou 'checkout'
+    isCashierOpen: false,
+    activeCashierSessionId: null,
+    loyaltySettings: null,
+    paging: {
+        page: 1,
+        limit: 10,
+        total: 0,
+    },
+    checkoutState: {
+        payments: [],
+        selectedMethod: 'dinheiro',
+        installments: 1,
+        amountReceived: '',
+        // NOVO: Estado para desconto
+        discount: {
+            type: 'real', // 'real' ou 'percent'
+            value: 0
+        }
     }
 };
 
-function formatDateReduced(date) {
-    return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).format(date).replace(/\./g, '');
+let pageEventListener = null;
+let contentDiv = null;
+let searchDebounceTimeout = null;
+
+// --- 3. FUNÇÕES AUXILIARES ---
+
+function debounce(func, wait) {
+    return function(...args) {
+        clearTimeout(searchDebounceTimeout);
+        searchDebounceTimeout = setTimeout(() => func.apply(this, args), wait);
+    };
 }
 
-function getWeekStart(date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    if (localState.currentView === 'week' && localState.weekViewDays === 7) {
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-        return new Date(d.setDate(diff));
+// NOVA FUNÇÃO: Executa o salvamento com Loading na tela
+async function executeSaveAction(comanda, nextStep = 'stay') {
+    if (!comanda || !comanda.id) return;
+
+    // 1. FORÇA ATUALIZAÇÃO LOCAL ANTES DE TUDO
+    comanda._localUpdatedAt = Date.now();
+    comanda._cachedItems = null; // Limpa cache para forçar recálculo
+    comanda._hasUnsavedChanges = false; // Remove a marcação de não salvo
+
+    // Atualiza visualmente a lista (card) imediatamente
+    renderComandaList();
+
+    // 2. Se for checkout, prepara o estado e muda a tela IMEDIATAMENTE (UI Otimista)
+    if (nextStep === 'checkout') {
+        localState.viewMode = 'checkout';
+        // Reinicia estado do checkout se for uma nova entrada
+        if (!localState.checkoutState.payments) localState.checkoutState.payments = [];
+        localState.checkoutState.selectedMethod = 'dinheiro';
+        localState.checkoutState.amountReceived = '';
+        localState.checkoutState.discount = { type: 'real', value: 0 }; // Reset desconto
+        
+        renderComandaDetail();
     }
-    return d;
-}
 
-function renderProfessionalSelector() {
-    const container = document.getElementById('profSelectorContainer');
-    const searchTerm = localState.profSearchTerm.toLowerCase();
-    
-    if (!container || !state.professionals) return;
+    // 3. Cria e mostra o overlay de carregamento
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.id = 'saving-overlay';
+    loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.innerHTML = `
+        <div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center animate-fade-in">
+            <div class="loader mb-4 border-t-indigo-600"></div>
+            <p class="text-gray-800 font-bold text-lg">Sincronizando...</p>
+        </div>
+    `;
+    document.body.appendChild(loadingOverlay);
 
-    let availableProfs = state.professionals.filter(p => 
-        localState.showInactiveProfs || p.status !== 'inactive'
-    );
+    try {
+        // 4. PREPARAÇÃO DOS DADOS
+        const itemsToSave = (comanda.comandaItems || [])
+            .filter(i => i && i.id && String(i.id) !== 'undefined' && String(i.id) !== 'null')
+            .map(i => {
+                const itemPayload = { ...i };
+                itemPayload.id = String(i.id);
 
-    if (searchTerm) {
-        availableProfs = availableProfs.filter(p => 
-            p.name.toLowerCase().includes(searchTerm)
-        );
-    }
-    
-    const allOption = [{ id: 'all', name: 'Todos', photo: null, status: 'active' }];
-    const professionalsToRender = [...allOption, ...availableProfs];
-
-    container.innerHTML = professionalsToRender.map(prof => {
-        const isSelected = localState.selectedProfessionalId === prof.id;
-        const profName = prof.name === 'Todos' ? 'Todos' : prof.name.split(' ')[0];
-        const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
-        const isActive = prof.status !== 'inactive';
-        
-        const safeName = escapeHTML(profName);
-        
-        const defaultColor = colorPalette[0];
-        const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
-        
-        const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
-        const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
-        const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
-        
-        const borderColor = isSelected ? profColor.border : 'transparent'; 
-        const borderStyle = `border: 3px solid ${borderColor}; box-shadow: ${isSelected ? '0 0 0 2px ' + profColor.border : 'none'};`;
-
-        return `
-            <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
-                 data-action="select-professional" 
-                 data-prof-id="${prof.id}">
-                ${prof.id === 'all' 
-                    ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
-                           ${initials}
-                          </div>`
-                    : `<img src="${photoSrc}" alt="${safeName}" class="prof-card-photo" style="${borderStyle}" />`
+                if (itemPayload.type === 'product') {
+                    const pid = itemPayload.id;
+                    if (!itemPayload.productId) itemPayload.productId = pid;
+                    if (!itemPayload.product_id) itemPayload.product_id = pid;
                 }
-                <span class="prof-card-name">${safeName}</span>
+                
+                if (itemPayload.type === 'service') {
+                    const sid = itemPayload.id;
+                    if (!itemPayload.serviceId) itemPayload.serviceId = sid;
+                    if (!itemPayload.service_id) itemPayload.service_id = sid;
+                }
+                
+                return itemPayload;
+            });
+
+        // 5. Envia para o servidor
+        if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
+             // Lógica para temp se necessário
+        } else {
+            await comandasApi.updateComandaItems(comanda.id, itemsToSave);
+        }
+        
+        // Remove overlay
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
+        }
+
+        if (nextStep !== 'checkout') {
+            showNotification('Sucesso', 'Comanda atualizada!', 'success');
+            renderComandaDetail();
+        }
+
+    } catch (error) {
+        if(document.body.contains(loadingOverlay)) {
+            document.body.removeChild(loadingOverlay);
+        }
+        console.error("Erro ao salvar:", error);
+        
+        comanda._hasUnsavedChanges = true; // Volta a flag se der erro
+        renderComandaDetail();
+        showNotification('Erro', 'Falha ao salvar no servidor: ' + error.message, 'warning');
+    }
+}
+
+// --- CORREÇÃO DE DUPLICIDADE ---
+function getSafeAllItems(comanda) {
+    if (!comanda._cachedItems) {
+        let result = [];
+        if (comanda.status === 'completed') {
+            const finalItems = comanda.comandaItems || comanda.items || [];
+            result = finalItems.length > 0 ? finalItems : (comanda.services || []);
+        } else {
+            // 1. Pega os serviços originais
+            const baseServices = (comanda.services || []).map(s => ({
+                ...s, 
+                _source: 'original_service',
+                type: 'service' 
+            }));
+            
+            // 2. Mapa de frequência para saber o que já está na lista de originais
+            const originalsMap = baseServices.reduce((acc, s) => {
+                const key = String(s.id); 
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+            }, {});
+
+            // 3. Pega todos os itens salvos na comanda
+            const rawExtras = [...(comanda.comandaItems || []), ...(comanda.items || [])];
+            const validExtras = [];
+
+            // 4. Filtra duplicatas
+            rawExtras.forEach(item => {
+                const key = String(item.id);
+                const isServiceCandidate = item.type === 'service' || !item.type;
+
+                if (isServiceCandidate && originalsMap[key] > 0) {
+                    originalsMap[key]--; 
+                } else {
+                    validExtras.push({...item, _source: 'extra'});
+                }
+            });
+
+            // 5. Combina
+            result = [...baseServices, ...validExtras];
+        }
+        
+        comanda._cachedItems = result;
+        comanda._cachedTimestamp = Date.now();
+        return result;
+    }
+    return comanda._cachedItems;
+}
+
+function showMobileDetail() {
+    const layout = document.getElementById('comandas-layout');
+    if (layout) {
+        layout.classList.add('detail-view-active');
+        const detailContainer = document.getElementById('comanda-detail-container');
+        if(detailContainer) detailContainer.scrollTop = 0;
+    }
+}
+
+function hideMobileDetail() {
+    const layout = document.getElementById('comandas-layout');
+    if (layout) {
+        layout.classList.remove('detail-view-active');
+    }
+}
+
+// --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
+
+function renderPageLayout() {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    contentDiv.innerHTML = `
+        <section class="h-full flex flex-col">
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-4 px-1">
+                <h2 class="text-2xl md:text-3xl font-bold text-gray-800">Ponto de Venda</h2>
+                <div id="cashier-controls" class="flex items-center gap-2">
+                    <div class="loader-sm"></div>
+                </div>
+            </div>
+
+            <div id="cashier-alert-box"></div>
+
+            <div id="comandas-layout">
+                <div id="comandas-list-column" class="flex flex-col h-full">
+                    <div class="p-4 pb-2 sticky top-0 bg-white z-10 border-b border-gray-100 shadow-sm flex-shrink-0">
+                        <button 
+                            id="btn-new-sale"
+                            data-action="new-sale" 
+                            class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-md flex items-center justify-center gap-2 mb-3"
+                        >
+                            <span>+</span> NOVA VENDA
+                        </button>
+                        
+                        <div class="flex bg-gray-100 rounded-lg p-1">
+                            <button data-filter="atendimento" class="filter-btn flex-1 text-sm font-medium py-2 rounded-md transition-all">Em Aberto</button>
+                            <button data-filter="finalizadas" class="filter-btn flex-1 text-sm font-medium py-2 rounded-md transition-all">Finalizadas</button>
+                        </div>
+                    </div>
+
+                    <div id="finalizadas-datepicker" class="hidden px-4 py-2 bg-gray-50 border-b flex-shrink-0">
+                        <label for="filter-date" class="text-xs font-semibold text-gray-500 uppercase">Data:</label>
+                        <input type="date" id="filter-date" value="${todayStr}" class="w-full mt-1 p-2 border rounded-md bg-white text-sm">
+                    </div>
+
+                    <div id="comandas-list" class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-grow">
+                        <div class="loader mx-auto mt-10"></div>
+                    </div>
+                    
+                    <div id="pagination-container" class="p-2 border-t bg-gray-50 flex-shrink-0 min-h-[50px] flex justify-center items-center"></div>
+                </div>
+
+                <div id="comanda-detail-container">
+                    <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
+                        <p>Selecione uma venda para ver os detalhes</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+    updateCashierUIState();
+}
+
+function updateCashierUIState() {
+    const alertBox = document.getElementById('cashier-alert-box');
+    const newSaleBtn = document.getElementById('btn-new-sale');
+
+    if (!localState.isCashierOpen) {
+        if (alertBox) alertBox.innerHTML = `
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg animate-fade-in">
+                <div class="flex">
+                    <div class="flex-shrink-0">⚠️</div>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            <strong>Caixa Fechado!</strong> Abra o caixa para realizar vendas.
+                        </p>
+                    </div>
+                </div>
             </div>
         `;
-    }).join('');
+        if (newSaleBtn) {
+            newSaleBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            newSaleBtn.disabled = true;
+        }
+    } else {
+        if (alertBox) alertBox.innerHTML = '';
+        if (newSaleBtn) {
+            newSaleBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            newSaleBtn.disabled = false;
+        }
+    }
+    renderCashierControls();
 }
 
-function createWhatsAppLink(phone, clientName, serviceName, professionalName, startTime) {
-    const cleanedPhone = (phone || '').replace(/\D/g, '');
-    const date = new Date(startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    const time = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} para o dia ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
-    const encodedMessage = encodeURIComponent(message);
-    return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`;
+function renderCashierControls() {
+    const container = document.getElementById('cashier-controls');
+    if (!container) return;
+    
+    if (localState.isCashierOpen) {
+        container.innerHTML = `
+            <span class="hidden sm:inline-block text-sm font-medium text-green-700 bg-green-100 py-1 px-3 rounded-full border border-green-200">Caixa Aberto</span>
+            <button data-action="close-cashier" class="py-2 px-4 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 text-sm transition">Fechar Caixa</button>
+            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
+        `;
+    } else {
+        container.innerHTML = `
+            <span class="hidden sm:inline-block text-sm font-medium text-red-700 bg-red-100 py-1 px-3 rounded-full border border-red-200">Caixa Fechado</span>
+            <button data-action="open-cashier" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 text-sm shadow transition">Abrir Caixa</button>
+            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
+        `;
+    }
 }
 
-function renderListView(allEvents) {
-    const agendaView = document.getElementById('agenda-view');
-    if (!agendaView) return;
+function renderComandaList() {
+    const listContainer = document.getElementById('comandas-list');
+    const paginationContainer = document.getElementById('pagination-container');
+    
+    if (!listContainer) return;
+    
+    if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
+        listContainer.innerHTML = `
+            <div class="text-center py-10 opacity-60">
+                <svg class="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <p class="text-sm font-medium text-gray-700">Caixa Fechado</p>
+                <p class="text-xs text-gray-500">Abra o caixa para ver as vendas</p>
+            </div>
+        `;
+        if (paginationContainer) paginationContainer.innerHTML = '';
+        return;
+    }
+    
+    const statusMap = {
+        atendimento: 'confirmed',
+        finalizadas: 'completed'
+    };
+    const currentStatus = statusMap[localState.activeFilter];
+    const filteredComandas = localState.allComandas.filter(c => c.status === currentStatus);
 
-    allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-
-    if (allEvents.length === 0) {
-        agendaView.innerHTML = `<div class="text-center p-10 text-gray-500"><svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum agendamento ou bloqueio</h3><p class="mt-1 text-sm text-gray-500">Não há eventos para o dia e filtros selecionados.</p></div>`;
+    if (filteredComandas.length === 0) {
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda nesta página.</p>`;
+        renderPaginationControls(paginationContainer);
         return;
     }
 
-    const cardsHTML = allEvents.map(event => {
-        const startTime = new Date(event.startTime);
-        const endTime = new Date(event.endTime);
-        const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const endTimeStr = endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
-        
-        const safeReason = escapeHTML(event.reason);
-        const safeProfName = escapeHTML(event.professionalName);
-        const safeClientName = escapeHTML(event.clientName);
-        const safeServiceName = escapeHTML(event.serviceName);
+    const fragment = document.createDocumentFragment();
 
-        // --- CHECKBOX DE SELEÇÃO ---
-        const isSelected = localState.selectedItems.has(event.id);
-        const checkboxHTML = localState.isSelectionMode 
-            ? `<div class="flex items-center justify-center pr-3 border-r border-gray-200 mr-3">
-                 <input type="checkbox" class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer" 
-                        data-action="toggle-select-item" 
-                        data-id="${event.id}" 
-                        ${isSelected ? 'checked' : ''}>
-               </div>` 
-            : '';
+    filteredComandas.forEach(comanda => {
+        const allItems = getSafeAllItems(comanda);
+        const total = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+        const isSelected = comanda.id === localState.selectedComandaId;
+        const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
+        const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
+        const safeProfName = escapeHTML(comanda.professionalName || 'Sem profissional');
+        const typeIndicator = isWalkIn
+            ? `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">Avulso</span>`
+            : `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">Agenda</span>`;
 
-        if (event.type === 'blockage') {
-            return `
-                <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
-                    ${checkboxHTML}
-                    <div class="time-info">
-                        <p class="font-bold text-md">${startTimeStr}</p>
-                        <p class="text-xs text-gray-500">${endTimeStr}</p>
-                    </div>
-                    <div class="details-info min-w-0">
-                        <p class="font-bold text-red-800 truncate">${safeReason}</p>
-                        <p class="text-sm text-gray-600 truncate">com ${safeProfName}</p>
-                    </div>
-                    <div class="status-info">
-                        <span class="status-badge bg-red-100 text-red-800">Bloqueio</span>
-                    </div>
-                </div>`;
-        }
-
-        const isCompleted = event.status === 'completed';
-        const statusClass = isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
-        const statusText = isCompleted ? 'Finalizado' : 'Aberto';
-        const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
-        
-        const isRedeemed = event.redeemedReward?.points > 0;
-        const hasRewards = event.hasRewards && !isRedeemed;
-        const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
-
-        // Se estiver em modo de seleção, desativa interações de clique no card para evitar abrir o comanda
-        const cardAction = localState.isSelectionMode ? '' : 'data-action="open-comanda"';
-
-        return `
-            <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
-                
-                ${checkboxHTML}
-
-                <div class="time-info" ${cardAction}>
-                    <p class="font-bold text-md">${startTimeStr}</p>
-                    <p class="text-xs text-gray-500">${endTimeStr}</p>
+        const div = document.createElement('div');
+        div.className = `comanda-card cursor-pointer ${isSelected ? 'selected' : ''}`;
+        div.dataset.action = 'select-comanda';
+        div.dataset.comandaId = comanda.id;
+        div.innerHTML = `
+            <div class="flex justify-between items-start mb-1 pointer-events-none">
+                <p class="font-bold text-gray-800 truncate max-w-[70%] text-sm">${safeClientName}</p>
+                <p class="font-bold text-gray-900 text-sm">R$ ${total.toFixed(2)}</p>
+            </div>
+            <div class="flex justify-between items-center mt-1 pointer-events-none">
+                <div class="flex items-center gap-2">
+                    ${typeIndicator}
+                    <p class="text-xs text-gray-500 truncate max-w-[100px]">${safeProfName}</p>
                 </div>
-
-                <div class="details-info min-w-0" ${cardAction}>
-                    <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
-                    <p class="text-sm text-gray-600 truncate">${safeServiceName}</p>
-                    <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
-                    
-                    ${isRedeemed ? '<p class="text-xs font-semibold text-purple-600">Resgate de Prémio</p>' : ''}
-                </div>
-
-                <div class="status-info">
-                    <span class="status-badge ${statusClass} mb-1">${statusText}</span>
-                    <div class="card-actions flex gap-1 items-center">
-                        ${!isCompleted ? `
-                            <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
-                            </a>
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn" title="Editar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        ` : `
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn opacity-40 cursor-not-allowed" title="Finalizado - Não editável" disabled><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        `}
-                        <button data-action="delete-appointment" data-id="${event.id}" class="action-btn" title="Apagar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
-                    </div>
-                </div>
-            </div>`;
-    }).join('');
-    
-    // --- CORREÇÃO DE SOBREPOSIÇÃO ---
-    // Adicionado pb-24 (padding-bottom: 6rem) para garantir que o último item não fique atrás do botão flutuante
-    agendaView.innerHTML = `<div class="list-view-container space-y-2 pb-24">${cardsHTML}</div>`;
-}
-
-function getActiveWeekDays() {
-    const isMobile = window.innerWidth < 768;
-    if (isMobile && localState.currentView === 'week') {
-        return 3;
-    }
-    return localState.weekViewDays;
-}
-
-function renderWeekView(allEvents) {
-    const agendaView = document.getElementById('agenda-view');
-    if (!agendaView) return;
-
-    const weekDays = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const weekStart = getWeekStart(localState.currentDate);
-    
-    const numDays = getActiveWeekDays();
-    let weekHTML = `<div class="grid divide-x divide-gray-200 min-h-[60vh]" style="grid-template-columns: repeat(${numDays}, minmax(0, 1fr));">`;
-
-    for (let i = 0; i < numDays; i++) {
-        const day = new Date(weekStart);
-        day.setDate(day.getDate() + i);
-        const today = new Date();
-        const isCurrentDay = day.toDateString() === today.toDateString();
-
-        const dayEvents = allEvents
-            .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
-            .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-        
-        let eventsHTML = '<div class="p-1 space-y-2">'; 
-        if (dayEvents.length > 0) {
-            eventsHTML += dayEvents.map(event => {
-                const startTime = new Date(event.startTime);
-                const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', border: '#9ca3af' };
-                
-                const safeReason = escapeHTML(event.reason);
-                const safeProfName = escapeHTML(event.professionalName);
-                const safeClientName = escapeHTML(event.clientName);
-                const safeServiceName = escapeHTML(event.serviceName);
-
-                if (event.type === 'blockage') {
-                    return `
-                        <div class="p-2 rounded-lg border-l-4 flex flex-col bg-red-100" style="border-left-color: ${profColor.border};">
-                            <span class="font-bold text-xs text-red-900">${startTimeStr}</span>
-                            <div class="mt-1 min-w-0">
-                                <p class="font-semibold text-sm text-red-800 truncate">${safeReason}</p>
-                                <p class="text-xs text-red-600 truncate">com ${safeProfName}</p>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
-                const isRedeemed = event.redeemedReward?.points > 0;
-                const hasRewards = event.hasRewards && !isRedeemed;
-                const isCompleted = event.status === 'completed';
-
-                return `
-                    <div class="p-2 rounded-lg border-l-4 flex flex-col cursor-pointer" 
-                         style="background-color: ${profColor.bg}; border-left-color: ${profColor.border};"
-                         data-action="open-comanda" data-appointment='${apptDataString}'>
-                        
-                        <div class="flex justify-between items-center">
-                            <span class="font-bold text-xs text-gray-900">${startTimeStr}</span>
-                            ${isCompleted ? '<span class="text-[10px] font-semibold bg-green-200 text-green-800 px-1 rounded-sm">OK</span>' : ''}
-                        </div>
-
-                        <div class="mt-1 min-w-0">
-                            <p class="font-semibold text-sm text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
-                            <p class="text-xs text-gray-600 truncate">${safeServiceName}</p>
-                            <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
-                            ${isRedeemed ? '<p class="text-xs text-purple-600 truncate">Resgate</p>' : ''}
-                        </div>
-                        
-                        </div>
-                `;
-            }).join('');
-        } else {
-            eventsHTML += '<div class="text-center text-xs text-gray-400 pt-4">Nenhum evento</div>';
-        }
-        eventsHTML += '</div>';
-
-        weekHTML += `
-            <div class="flex flex-col">
-                <div class="text-center py-2 border-b ${isCurrentDay ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50'}">
-                    <p class="font-bold">${weekDays[day.getDay()]}</p>
-                    <p class="text-sm">${day.getDate()}/${day.getMonth() + 1}</p>
-                </div>
-                <div class="flex-grow overflow-y-auto">${eventsHTML}</div>
+                <p class="text-xs text-gray-400 font-medium">${time}</p> 
             </div>
         `;
-    }
-
-    weekHTML += '</div>';
-    agendaView.innerHTML = weekHTML;
-}
-
-function renderAgenda() {
-    const filteredEvents = state.allEvents.filter(event => {
-        const profMatch = localState.selectedProfessionalId === 'all' || event.professionalId === localState.selectedProfessionalId;
-        return profMatch;
+        fragment.appendChild(div);
     });
 
-    if (localState.currentView === 'list') {
-        renderListView(filteredEvents);
-    } else {
-        renderWeekView(filteredEvents);
-    }
-    
-    updateBatchDeleteUI();
+    listContainer.innerHTML = '';
+    listContainer.appendChild(fragment);
+    renderPaginationControls(paginationContainer);
 }
 
-// Atualiza a barra flutuante de exclusão em lote
-function updateBatchDeleteUI() {
-    const container = document.getElementById('batch-delete-container');
-    const fabButton = document.querySelector('[data-action="new-appointment"]');
-    
+function renderPaginationControls(container) {
     if (!container) return;
+    container.innerHTML = '';
 
-    if (localState.isSelectionMode && localState.selectedItems.size > 0) {
-        container.innerHTML = `
-            <div class="bg-white p-4 rounded-xl shadow-2xl border border-red-100 flex items-center justify-between gap-4">
-                <span class="font-bold text-gray-800">${localState.selectedItems.size} selecionado(s)</span>
-                <button data-action="batch-delete" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 shadow-md flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    Excluir
-                </button>
-            </div>
-        `;
-        container.style.display = 'block';
-        if (fabButton) fabButton.style.display = 'none'; // Esconde botão +
-    } else {
-        container.style.display = 'none';
-        if (fabButton) fabButton.style.display = 'flex'; // Mostra botão +
-    }
-}
+    const { page, total, limit } = localState.paging;
+    const totalPages = Math.ceil((total || 0) / limit);
+    if (totalPages === 0) return;
 
-async function fetchAndDisplayAgenda() {
-    const agendaView = document.getElementById('agenda-view');
-    if (!agendaView) return;
-    
-    // Limpa seleção ao mudar datas
-    localState.selectedItems.clear();
-    updateBatchDeleteUI();
-    
-    agendaView.innerHTML = '<div class="loader mx-auto my-10"></div>';
+    const div = document.createElement('div');
+    div.className = "flex gap-2 justify-center items-center w-full";
+    div.innerHTML = `
+        <button data-page="${page - 1}" class="px-3 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 text-sm font-medium ${page <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${page <= 1 ? 'disabled' : ''}>&laquo;</button>
+        <span class="text-xs font-semibold text-gray-600 mx-2">Pág ${page} de ${totalPages || 1}</span>
+        <button data-page="${page + 1}" class="px-3 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 text-sm font-medium ${page >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${page >= totalPages ? 'disabled' : ''}>&raquo;</button>
+    `;
+    container.appendChild(div);
 
-    let start, end;
-    const weekRangeSpan = document.getElementById('weekRange');
-
-    if (!weekRangeSpan) return;
-
-    if (localState.currentView === 'list') {
-        start = new Date(localState.currentDate);
-        start.setHours(0, 0, 0, 0);
-        end = new Date(localState.currentDate);
-        end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = formatDateReduced(start);
-    } else {
-        const numDays = getActiveWeekDays(); 
-        
-        start = getWeekStart(new Date(localState.currentDate)); 
-        end = new Date(start);
-        end.setDate(start.getDate() + (numDays - 1)); 
-        end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} - ${end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}`;
-    }
-
-    try {
-        const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(
-            state.establishmentId, 
-            start.toISOString(), 
-            end.toISOString(), 
-            localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId
-        );
-        
-        const blockagesData = await blockagesApi.getBlockagesByDateRange(
-            state.establishmentId, 
-            start.toISOString(), 
-            end.toISOString(), 
-            localState.selectedProfessionalId
-        );
-        
-        if (!document.getElementById('agenda-view')) return;
-
-        const enrichedBlockages = blockagesData.map(b => {
-            let profName = b.professionalName;
-            
-            if (!profName && b.professionalId) {
-                const prof = state.professionals ? state.professionals.find(p => p.id === b.professionalId) : null;
-                if (prof) {
-                    profName = prof.name;
-                }
+    div.querySelectorAll('button[data-page]').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation(); 
+            const newPage = parseInt(btn.dataset.page, 10);
+            if (newPage > 0 && newPage <= totalPages) {
+                localState.paging.page = newPage;
+                fetchAndDisplayData();
             }
-            
-            return { 
-                ...b, 
-                type: 'blockage',
-                professionalName: profName || 'Não identificado' 
-            };
-        });
-        
-        const allEvents = [
-            ...appointmentsData.map(a => ({ ...a, type: 'appointment' })),
-            ...enrichedBlockages 
-        ];
-        
-        state.allEvents = allEvents; 
-        
-        renderProfessionalSelector();
-        renderAgenda(); 
-
-        if (localState.scrollToAppointmentId) {
-            const targetCard = document.querySelector(`[data-appointment*='"id":"${localState.scrollToAppointmentId}"']`);
-            if (targetCard) {
-                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                targetCard.style.transition = 'background-color 0.5s ease-in-out';
-                targetCard.style.backgroundColor = '#e0e7ff'; 
-                setTimeout(() => {
-                    targetCard.style.backgroundColor = ''; 
-                }, 2500); 
-            }
-            localState.scrollToAppointmentId = null; 
-        }
-
-    } catch (error) {
-        if (document.getElementById('agenda-view')) {
-            document.getElementById('agenda-view').innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
-            showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
-        }
-    }
+        };
+    });
 }
 
-async function populateFilters() {
-    try {
-        const [profs, services, establishmentDetails] = await Promise.all([
-            (state.professionals && state.professionals.length > 0) 
-                ? Promise.resolve(state.professionals) 
-                : professionalsApi.getProfessionals(state.establishmentId),
-            (state.services && state.services.length > 0) 
-                ? Promise.resolve(state.services)
-                : servicesApi.getServices(state.establishmentId),
-            (loyaltySettingsForModal.enabled !== undefined)
-                ? Promise.resolve(null)
-                : establishmentApi.getEstablishmentDetails(state.establishmentId)
-        ]);
-
-        if (!state.professionals || state.professionals.length === 0) {
-            state.professionals = profs || [];
-        }
-        if (!state.services || state.services.length === 0) {
-            state.services = services || [];
-        }
-        
-        allClientsData = []; 
-
-        if (establishmentDetails) { 
-            loyaltySettingsForModal = establishmentDetails.loyaltyProgram || { enabled: false };
-        }
-
-        state.professionals.forEach((prof, index) => {
-            state.professionalColors.set(prof.id, colorPalette[index % colorPalette.length]);
-        });
-        
-        renderProfessionalSelector();
-
-    } catch (error) {
-        console.error("Erro ao popular filtros e dependências do modal:", error);
-        showNotification('Atenção', 'Não foi possível pré-carregar os dados para agendamento. A abertura do modal pode ser lenta.', 'error');
-    }
-}
-
-function navigateModalStep(step) {
-    if (step < 1 || step > 4) return;
-    newAppointmentState.step = step;
-    openAppointmentModal(null, true); 
-}
-
-function handleServiceCardClick(serviceId, element) {
-    const multiToggle = document.getElementById('multiServiceToggle');
-    const isMultiSelect = multiToggle && multiToggle.checked;
-
-    const isSelected = element.classList.contains('selected');
-    const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
-
-    if (isSelected) {
-        element.classList.remove('selected', 'border-blue-500');
-        if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
-    } else {
-        if (!isMultiSelect) {
-            newAppointmentState.data.selectedServiceIds = []; 
-            const container = document.getElementById('apptServicesContainer');
-            if (container) {
-                container.querySelectorAll('.service-card.selected').forEach(card => {
-                    card.classList.remove('selected', 'border-blue-500');
-                });
-            }
-        }
-        element.classList.add('selected', 'border-blue-500');
-        newAppointmentState.data.selectedServiceIds.push(serviceId);
-    }
-}
-
-function handleProfessionalCardClick(professionalId, element) {
-    const professionalContainer = document.querySelector('.professional-step-cards');
-    if (!professionalContainer) return;
+function renderComandaDetail() {
+    const detailContainer = document.getElementById('comanda-detail-container');
+    if (!detailContainer) return;
     
-    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-blue-500'));
-    
-    element.classList.add('selected', 'border-blue-500');
-    
-    const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
-    
-    newAppointmentState.data.professionalId = professionalId;
-    newAppointmentState.data.professionalName = professional ? professional.name : 'N/A';
-}
+    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
 
-function handleTimeSlotClick(slot, element) {
-    const timeContainer = document.getElementById('availableTimesContainer');
-    if (!timeContainer) return;
-    
-    timeContainer.querySelectorAll('.time-slot-card').forEach(c => c.classList.remove('selected'));
-    element.classList.add('selected');
-    newAppointmentState.data.time = slot;
-}
-
-async function updateTimesAndDuration() {
-    const totalDurationSpan = document.getElementById('apptTotalDuration');
-    const timeContainer = document.getElementById('availableTimesContainer');
-    
-    if (!totalDurationSpan || !timeContainer) return;
-
-    const professionalId = newAppointmentState.data.professionalId;
-    const selectedServiceIds = newAppointmentState.data.selectedServiceIds;
-    const date = document.getElementById('apptDate').value;
-    
-    newAppointmentState.data.date = date; 
-
-    const totalDuration = selectedServiceIds.reduce((acc, id) => {
-        const service = availableServicesForModal.find(s => s.id === id);
-        return acc + (service ? (service.duration + (service.bufferTime || 0)) : 0);
-    }, 0);
-    totalDurationSpan.textContent = `${totalDuration} min`;
-
-    if (totalDuration === 0 || !professionalId || !date) {
-        timeContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Selecione serviço, profissional e data.</p>';
+    if (localState.viewMode === 'checkout' && comanda) {
+        renderCheckoutView(comanda, detailContainer);
         return;
     }
-
-    timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
     
-    try {
-        let slots = await appointmentsApi.getAvailability({
-            establishmentId: state.establishmentId,
-            professionalId: professionalId,
-            serviceIds: selectedServiceIds,
-            date: date
-        });
-        
-        const now = new Date();
-        const selectedDateObj = new Date(date + 'T00:00:00');
-        if (selectedDateObj.toDateString() === now.toDateString()) {
-            const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            slots = slots.filter(slot => {
-                const [slotHours, slotMinutes] = slot.split(':').map(Number);
-                const slotTotalMinutes = slotHours * 60 + slotMinutes;
-                return slotTotalMinutes >= currentMinutes;
-            });
-        }
-
-        timeContainer.innerHTML = '';
-        if (slots.length > 0) {
-            slots.forEach(slot => {
-                const card = document.createElement('button');
-                card.type = 'button';
-                card.className = `time-slot-card p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition ${newAppointmentState.data.time === slot ? 'selected' : ''}`;
-                card.textContent = slot;
-                card.addEventListener('click', () => handleTimeSlotClick(slot, card));
-                timeContainer.appendChild(card);
-            });
-            if (newAppointmentState.data.time) {
-                const selectedSlot = timeContainer.querySelector(`[data-action="time-slot"][data-time="${newAppointmentState.data.time}"]`);
-                if (selectedSlot) selectedSlot.classList.add('selected');
-            }
-        } else {
-            timeContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum horário disponível.</p>`;
-        }
-    } catch (e) {
-        console.error("Erro ao buscar horários:", e);
-        timeContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao buscar horários.</p>';
-    }
-}
-
-function renderLoyaltyRewards() {
-    const container = document.getElementById('loyaltyRewardsContainer');
-    if (!container) return;
-
-    const { clientHasRewards, clientLoyaltyPoints, redeemedReward } = newAppointmentState.data;
-    const { enabled, rewards } = loyaltySettingsForModal;
-    
-    if (!enabled || !clientHasRewards || !rewards || rewards.length === 0) {
-        container.classList.add('hidden');
-        container.innerHTML = '';
-        return;
-    }
-
-    container.classList.remove('hidden');
-    
-    const availableRewards = rewards.filter(r => clientLoyaltyPoints >= r.points);
-
-    let rewardsHTML = `
-        <h4 class="text-md font-semibold text-gray-700 mb-2">🎁 Prêmios Disponíveis (${clientLoyaltyPoints} pontos)</h4>
+    const mobileHeaderHTML = `
+        <div class="mobile-only-header">
+            <button data-action="back-to-list" class="btn-back-mobile">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <h3 class="font-bold text-lg text-gray-800 ml-2">Detalhes</h3>
+        </div>
     `;
 
-    if (availableRewards.length > 0) {
-        rewardsHTML += '<div class="space-y-2">';
-        rewardsHTML += availableRewards.map(reward => {
-            const isChecked = redeemedReward?.reward === reward.reward;
-            const safeReward = escapeHTML(reward.reward);
-
-            return `
-                <label class="flex items-center p-3 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
-                    <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600" 
-                           value="${safeReward}" 
-                           data-points="${reward.points}"
-                           ${isChecked ? 'checked' : ''}>
-                    <span class="ml-3">
-                        <span class="font-semibold text-gray-800">${safeReward}</span>
-                        <span class="text-sm text-gray-600"> (-${reward.points} pontos)</span>
-                    </span>
-                </label>
-            `;
-        }).join('');
-        rewardsHTML += '</div>';
-    } else {
-        rewardsHTML += `<p class="text-sm text-gray-600">Pontos insuficientes para resgatar os prêmios disponíveis.</p>`;
+    if (!localState.isCashierOpen) {
+        detailContainer.innerHTML = `
+            ${mobileHeaderHTML}
+            <div class="flex flex-col items-center justify-center h-full text-center text-gray-500 p-6">
+                <div class="bg-gray-100 p-4 rounded-full mb-4">🔒</div>
+                <p class="font-semibold text-lg">Caixa Fechado</p>
+                <button data-action="open-cashier" class="py-2 px-6 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow mt-4">Abrir Caixa</button>
+            </div>
+        `;
+        return;
     }
 
-    container.innerHTML = rewardsHTML;
+    if (!comanda) {
+        detailContainer.innerHTML = `
+            <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
+                <svg class="w-16 h-16 mb-4 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>
+                <p class="text-lg font-medium">Selecione uma venda</p>
+                <p class="text-sm">Toque em um item à esquerda para ver os detalhes</p>
+            </div>
+        `;
+        return;
+    }
 
-    container.querySelectorAll('input[name="loyaltyReward"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                newAppointmentState.data.redeemedReward = {
-                    reward: e.target.value,
-                    points: parseInt(e.target.dataset.points, 10)
-                };
-            }
-        });
-    });
+    const allItems = getSafeAllItems(comanda);
+    const isCompleted = comanda.status === 'completed';
+    const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
     
-    container.insertAdjacentHTML('beforeend', `
-        <label class="flex items-center p-3 mt-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
-            <input type="radio" name="loyaltyReward" class="form-radio text-gray-400" 
-                   value="none" 
-                   ${!redeemedReward ? 'checked' : ''}>
-            <span class="ml-3 text-gray-600">Não resgatar prêmio agora</span>
-        </label>
-    `);
-    container.querySelector('input[value="none"]').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            newAppointmentState.data.redeemedReward = null;
-        }
-    });
-}
-
-async function handleAppointmentFormSubmit(e) {
-    e.preventDefault();
-    const form = e.target;
-    const submitButton = form.querySelector('button[type="submit"]');
-
-    if (!newAppointmentState.data.time || newAppointmentState.data.selectedServiceIds.length === 0 || !newAppointmentState.data.professionalId) {
-        return showNotification('Erro de Validação', 'Por favor, selecione o horário, serviço(s) e profissional antes de confirmar.', 'error');
-    }
-
-    submitButton.disabled = true;
-    submitButton.textContent = 'A confirmar...';
-
-    const servicesData = newAppointmentState.data.selectedServiceIds.map(id => {
-        const service = availableServicesForModal.find(s => s.id === id);
-        return { id: service.id, name: service.name, price: service.price, duration: service.duration, bufferTime: service.bufferTime || 0, photo: service.photo || null };
-    });
-
-    const [hours, minutes] = newAppointmentState.data.time.split(':');
-    const startTimeAsDate = new Date(`${newAppointmentState.data.date}T${hours}:${minutes}:00`);
-
-    const appointmentData = {
-        establishmentId: state.establishmentId,
-        clientName: newAppointmentState.data.clientName,
-        clientPhone: newAppointmentState.data.clientPhone,
-        services: servicesData,
-        professionalId: newAppointmentState.data.professionalId,
-        startTime: startTimeAsDate.toISOString(),
-        redeemedReward: newAppointmentState.data.redeemedReward
-    };
+    // --- LÓGICA DE GRUPAMENTO AJUSTADA ---
+    const groupedItems = allItems.reduce((acc, item) => {
+        const isOriginal = item._source === 'original_service';
+        const safeId = item.id || item.name;
+        
+        const key = isOriginal 
+            ? `original-${safeId}` 
+            : `${item.type}-${safeId}`;
+            
+        if (!acc[key]) acc[key] = { ...item, quantity: 0, sources: [] };
+        acc[key].quantity += 1;
+        if(item._source) acc[key].sources.push(item._source);
+        return acc;
+    }, {});
     
-    const appointmentId = form.querySelector('#appointmentId').value;
-    if (appointmentId) {
-        appointmentData.id = appointmentId;
-    }
+    const total = Object.values(groupedItems).reduce((acc, item) => acc + Number(item.price || 0) * item.quantity, 0);
+    const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
+    const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
+    const hasUnsaved = comanda._hasUnsavedChanges;
+    const saveBtnClass = hasUnsaved 
+        ? "bg-amber-500 text-white hover:bg-amber-600 shadow-lg animate-pulse" 
+        : "bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300"; 
+    
+    const saveBtnText = hasUnsaved ? "Salvar Alterações*" : "Salvar";
 
-    try {
-        if (appointmentId) {
-            await appointmentsApi.updateAppointment(appointmentId, appointmentData);
-        } else {
-            await appointmentsApi.createAppointment(appointmentData);
-        }
-        showNotification(`Agendamento ${appointmentId ? 'atualizado' : 'criado'} com sucesso!`, 'success');
-        document.getElementById('appointmentModal').style.display = 'none';
-        fetchAndDisplayAgenda();
-    } catch (error) {
-        showNotification(error.message, 'error');
-    } finally {
-        submitButton.disabled = false;
-        submitButton.textContent = 'Confirmar Agendamento';
-    }
-}
+    const desktopButtons = `
+        <div class="grid grid-cols-3 gap-3 mobile-hidden pt-2">
+            <button data-action="add-item" class="col-span-1 py-3 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 transition border border-blue-200 text-sm">
+                + Item
+            </button>
+            <button data-action="save-comanda" class="col-span-1 py-3 font-bold rounded-xl transition text-sm ${saveBtnClass}">
+                ${saveBtnText}
+            </button>
+            <button data-action="go-to-checkout" class="col-span-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200 text-sm">
+                Receber
+            </button>
+        </div>
+    `;
 
-function renderClientCard(client) {
-    const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
-    const safeName = escapeHTML(client.name);
-    const safePhone = escapeHTML(client.phone);
+    const mobileFABs = `
+        <div class="mobile-fabs-container">
+            <button data-action="add-item" class="fab-btn-secondary" title="Adicionar Item">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            </button>
+            <button data-action="save-comanda" class="fab-btn-secondary ${hasUnsaved ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-600 text-white hover:bg-gray-700'}" title="Salvar Alterações">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+            </button>
+            <button data-action="go-to-checkout" class="fab-btn-primary" title="Receber / Pagar">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </button>
+        </div>
+    `;
 
-    return `
-        <div class="client-search-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-blue-50 ${isSelected ? 'selected border-blue-500' : ''}" 
-             data-action="select-client" 
-             data-client-name="${safeName}" 
-             data-client-phone="${safePhone}"
-             data-client-id="${client.id}"
-             data-loyalty-points="${client.loyaltyPoints || 0}">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${safeName.charAt(0).toUpperCase()}</div>
+    detailContainer.innerHTML = `
+        ${mobileHeaderHTML} 
+        <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar"> 
+            <div class="flex justify-between items-start mb-6 border-b pb-4">
                 <div>
-                    <p class="font-semibold text-gray-800">${safeName}</p>
-                    <p class="text-sm text-gray-500">${safePhone}</p>
+                    <h3 class="text-xl font-bold text-gray-800 truncate max-w-[200px]">${safeClientName}</h3>
+                    <p class="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        ${safeProfName}
+                    </p>
+                    ${!isWalkIn ? 
+                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-xs font-semibold hover:underline flex items-center gap-1 mt-2">
+                             Ver na Agenda <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                         </button>` 
+                         : `<span class="mt-2 inline-block px-2 py-1 text-xs font-bold bg-blue-100 text-blue-700 rounded-md">Venda Avulsa</span>`}
                 </div>
+                <div class="flex gap-2">
+                    ${isCompleted ? 
+                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="p-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200" title="Reabrir"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>` 
+                        : ''}
+                    ${isWalkIn && !isCompleted ? 
+                        `<button data-action="delete-walk-in" data-id="${comanda.id}" class="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Excluir"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` 
+                        : ''}
+                </div>
+            </div>
+
+            <div id="loyalty-container" class="mb-4"></div>
+
+            <div class="space-y-3">
+                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
+                ${Object.values(groupedItems).map(item => {
+                    const isOriginal = item.sources && item.sources.includes('original_service');
+                    
+                    return `
+                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${item.isReward ? 'border-yellow-200 bg-yellow-50' : ''}">
+                        <div class="flex items-center gap-3 w-full">
+                            <div class="flex-grow min-w-0">
+                                <p class="text-sm font-semibold text-gray-800 line-clamp-1">
+                                    ${item.isReward ? '🎁 ' : ''}
+                                    ${escapeHTML(item.name)}
+                                    ${isOriginal ? '<span class="text-[10px] text-indigo-600 bg-indigo-50 px-1 rounded border border-indigo-100 ml-1">Original</span>' : ''}
+                                </p>
+                                <p class="text-xs text-gray-500">${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
+                            </div>
+                            ${!isCompleted ? `
+                                <div class="flex items-center bg-gray-100 rounded-lg p-1 gap-3">
+                                    ${isOriginal ? 
+                                        `<span class="text-sm font-bold text-gray-500 w-16 text-center py-1 bg-gray-200 rounded text-[10px] uppercase">Fixo: ${item.quantity}</span>` 
+                                        : 
+                                        `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-600">-</button>
+                                         <span class="text-sm font-bold text-gray-800 w-4 text-center">${item.quantity}</span>
+                                         <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-6 h-6 flex items-center justify-center rounded bg-white text-gray-600 shadow-sm hover:bg-green-50 hover:text-green-600">+</button>`
+                                    }
+                                </div>
+                            ` : `<span class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-700 font-bold text-sm rounded-lg">${item.quantity}x</span>`}
+                            <div class="flex items-center justify-end w-20">
+                                <span class="font-bold text-gray-900 whitespace-nowrap">R$ ${(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `}).join('')}
+                ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg text-sm">Nenhum item adicionado</div>' : ''}
+            </div>
+        </div>
+
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+            <div class="flex flex-col items-start lg:flex-row lg:justify-between lg:items-end mb-4">
+                <span class="text-sm text-gray-500 font-medium">Total a Pagar</span>
+                <span class="text-4xl lg:text-3xl font-extrabold text-gray-900 mt-1 lg:mt-0">R$ ${total.toFixed(2)}</span>
+            </div>
+            ${!isCompleted ? desktopButtons : `
+                <div class="bg-green-50 text-green-700 text-center py-3 rounded-xl font-bold border border-green-200 flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    Venda Finalizada
+                </div>
+            `}
+        </footer>
+
+        ${!isCompleted ? mobileFABs : ''}
+    `;
+
+    if (!isCompleted && (comanda.clientId || comanda.clientName)) {
+        checkAndRenderLoyalty(comanda, detailContainer.querySelector('#loyalty-container'));
+    }
+}
+
+// --- ESTÁGIO 2: TELA DE CHECKOUT (ESTÁTICA) ---
+function renderCheckoutView(comanda, container) {
+    const rawItems = getSafeAllItems(comanda);
+    const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
+    const checkoutState = localState.checkoutState;
+
+    // Lógica de Desconto
+    const discount = checkoutState.discount || { type: 'real', value: 0 };
+    let discountValue = 0;
+
+    if (discount.type === 'percent') {
+        discountValue = (subtotal * discount.value) / 100;
+    } else {
+        discountValue = discount.value;
+    }
+    
+    // Garante que desconto não exceda o total
+    if (discountValue > subtotal) discountValue = subtotal;
+
+    const totalFinal = subtotal - discountValue;
+
+    // Lógica de Pagamentos
+    const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
+    const remaining = Math.max(0, totalFinal - totalPaid);
+    
+    if (!checkoutState.amountReceived || remaining > 0) {
+         checkoutState.amountReceived = remaining.toFixed(2);
+    }
+
+    const mobileHeaderHTML = `
+        <div class="mobile-only-header">
+            <button data-action="back-to-items" class="btn-back-mobile">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            </button>
+            <h3 class="font-bold text-lg text-gray-800 ml-2">Pagamento</h3>
+        </div>
+    `;
+
+    container.innerHTML = `
+        ${mobileHeaderHTML}
+        <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar">
+            
+            <div class="text-center mb-6 bg-gray-50 p-6 rounded-xl border border-gray-100">
+                <p class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Subtotal: R$ ${subtotal.toFixed(2)}</p>
+                
+                <div class="flex items-center justify-center gap-2 mt-2 mb-2">
+                     <span class="text-xs font-bold text-red-500">Desconto:</span>
+                     <div class="flex border rounded-lg bg-white overflow-hidden shadow-sm w-40">
+                         <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-1 text-center text-sm font-bold text-red-600 outline-none" placeholder="0">
+                         <select id="discount-type" class="bg-gray-100 text-xs font-bold text-gray-700 border-l p-1 outline-none">
+                             <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
+                             <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
+                         </select>
+                     </div>
+                </div>
+
+                <p class="text-5xl font-extrabold text-gray-800 mt-2">R$ ${totalFinal.toFixed(2)}</p>
+                ${remaining <= 0.01 
+                    ? '<p class="text-green-600 font-bold mt-2 text-lg">Pago</p>' 
+                    : `<p class="text-red-500 font-medium mt-2">Faltam: R$ ${remaining.toFixed(2)}</p>`
+                }
+            </div>
+
+            <div class="space-y-3 mb-6">
+                ${checkoutState.payments.map((p, index) => `
+                    <div class="flex justify-between items-center bg-white p-3 rounded-lg border border-gray-200 shadow-sm animate-fade-in-fast">
+                        <div class="flex items-center gap-3">
+                             <div class="bg-gray-100 p-2 rounded-lg">
+                                <span class="font-bold text-xs uppercase text-gray-600">${p.method}</span>
+                             </div>
+                             ${p.installments > 1 ? `<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">${p.installments}x</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="font-bold text-gray-900">R$ ${p.value.toFixed(2)}</span>
+                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-red-400 hover:text-red-600 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+
+            ${remaining > 0.01 ? `
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                <label class="block text-xs font-bold text-gray-500 uppercase mb-3">Adicionar Pagamento</label>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    ${['dinheiro', 'pix', 'debito', 'credito', 'crediario'].map(m => `
+                        <button data-action="select-method" data-method="${m}" class="p-2 rounded-lg border text-xs font-bold uppercase transition ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}">
+                            ${m}
+                        </button>
+                    `).join('')}
+                </div>
+                
+                ${['credito', 'crediario'].includes(checkoutState.selectedMethod) ? `
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-500">Parcelas</label>
+                        <select id="checkout-installments" class="w-full mt-1 p-2 border rounded-lg text-sm bg-gray-50">
+                            ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${checkoutState.installments === i+1 ? 'selected' : ''}>${i+1}x</option>`).join('')}
+                        </select>
+                    </div>
+                ` : ''}
+
+                <div class="flex items-end gap-2">
+                    <div class="flex-grow">
+                        <label class="text-xs text-gray-500">Valor</label>
+                        <input type="number" id="checkout-amount" step="0.01" class="w-full p-2 border rounded-lg text-lg font-bold" value="${remaining.toFixed(2)}">
+                    </div>
+                    <button data-action="add-payment-checkout" class="h-[46px] px-4 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-900 transition">OK</button>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-3">
+            <button data-action="back-to-items" class="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition">Voltar</button>
+            <button data-action="finalize-checkout" class="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">Finalizar</button>
+        </footer>
+    `;
+
+    // Listeners de Desconto
+    container.querySelector('#discount-value')?.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) || 0;
+        localState.checkoutState.discount.value = val;
+        renderComandaDetail(); // Re-render para atualizar cálculos
+    });
+
+    container.querySelector('#discount-type')?.addEventListener('change', (e) => {
+        localState.checkoutState.discount.type = e.target.value;
+        renderComandaDetail();
+    });
+
+    container.querySelector('#checkout-amount')?.addEventListener('input', (e) => {
+        checkoutState.amountReceived = e.target.value;
+    });
+    
+    container.querySelector('#checkout-installments')?.addEventListener('change', (e) => {
+        checkoutState.installments = parseInt(e.target.value, 10);
+    });
+}
+
+// --- FIDELIDADE E MODAIS ---
+
+async function checkAndRenderLoyalty(comanda, containerElement) {
+    if (!containerElement) return;
+    const settings = localState.loyaltySettings;
+    if (!settings || !settings.enabled) return;
+
+    let clientData = null;
+    try {
+        if (comanda.clientId) {
+            clientData = await clientsApi.getClient(state.establishmentId, comanda.clientId);
+        } else if (comanda.clientName) {
+            const search = await clientsApi.getClients(state.establishmentId, comanda.clientName, 1);
+            if (search && search.length > 0) clientData = search[0];
+        }
+    } catch (e) { console.warn("Erro ao buscar dados de fidelidade", e); }
+
+    if (!clientData || clientData.loyaltyPoints === undefined) return;
+
+    const currentPoints = Number(clientData.loyaltyPoints) || 0;
+    const rewardsList = settings.tiers || settings.rewards || [];
+    const availableRewards = rewardsList.filter(r => {
+        const cost = Number(r.costPoints || r.points || 0); 
+        return cost > 0 && currentPoints >= cost;
+    });
+
+    if (availableRewards.length > 0) {
+        const rewardDiv = document.createElement('div');
+        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 shadow-sm flex justify-between items-center animate-fade-in";
+        rewardDiv.innerHTML = `
+            <div class="flex items-center gap-3">
+                <div class="bg-yellow-100 p-2 rounded-full text-yellow-600">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-yellow-800">Prémio Disponível!</p>
+                    <p class="text-xs text-yellow-700">Saldo: <strong>${currentPoints} pts</strong></p>
+                </div>
+            </div>
+        `;
+        const btn = document.createElement('button');
+        btn.innerText = "Resgatar";
+        btn.className = "text-xs font-bold bg-yellow-500 text-white px-4 py-2 rounded-lg shadow hover:bg-yellow-600 transition-colors";
+        btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
+        rewardDiv.appendChild(btn);
+        containerElement.innerHTML = '';
+        containerElement.appendChild(rewardDiv);
+    }
+}
+
+function openRewardSelectionModal(rewards, comanda) {
+    const contentHTML = `
+        <div class="space-y-4">
+            <p class="text-sm text-gray-600 mb-4">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
+            <div class="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                ${rewards.map(r => {
+                    const cost = r.costPoints || r.points || 0;
+                    const name = r.name || r.reward;
+                    return `
+                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
+                        <div class="text-left">
+                            <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(name)}</p>
+                            <p class="text-xs text-gray-500">Custo: ${cost} pontos</p>
+                        </div>
+                        <span class="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full">Grátis</span>
+                    </button>
+                `}).join('')}
             </div>
         </div>
     `;
-}
-
-async function handleClientSearch(searchTerm) {
-    const resultsContainer = document.getElementById('clientSearchResults');
-    if (!resultsContainer) return;
-    
-    const term = searchTerm.trim();
-
-    if (term.length < 3) {
-        resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Digite pelo menos 3 caracteres para buscar clientes existentes.</p>';
-        return;
-    }
-    
-    resultsContainer.innerHTML = '<div class="loader-small mx-auto my-2"></div>';
-
-    try {
-        const foundClients = await clientsApi.getClients(state.establishmentId, term);
-        allClientsData = foundClients;
-
-        if (foundClients.length === 0) {
-            resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente encontrado com este termo.</p>';
-            return;
+    const { modalElement, close } = showGenericModal({ title: "🎁 Resgatar Prémio", contentHTML: contentHTML, maxWidth: 'max-w-md' });
+    modalElement.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="select-reward"]');
+        if (btn) {
+            const rewardId = btn.dataset.rewardId;
+            const reward = rewards.find(r => (r.id && r.id == rewardId) || ((r.name || r.reward) == rewardId)); 
+            if (reward) { addRewardToComanda(reward, comanda); close(); }
         }
-
-        resultsContainer.innerHTML = foundClients.map(renderClientCard).join('');
-        
-        resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
-            card.addEventListener('click', (e) => {
-                const clientName = card.dataset.clientName;
-                const clientPhone = card.dataset.clientPhone;
-                const loyaltyPoints = parseInt(card.dataset.loyaltyPoints || '0', 10);
-                
-                newAppointmentState.data.clientName = clientName;
-                newAppointmentState.data.clientPhone = clientPhone;
-                newAppointmentState.data.clientLoyaltyPoints = loyaltyPoints;
-                
-                const loyaltyProgram = loyaltySettingsForModal; 
-                const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
-                
-                newAppointmentState.data.clientHasRewards = (
-                    loyaltyProgram.enabled && 
-                    minPointsToRedeem !== Infinity && 
-                    newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
-                );
-                
-                document.getElementById('apptClientName').value = clientName;
-                document.getElementById('apptClientPhone').value = clientPhone;
-                
-                document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
-                card.classList.add('selected', 'border-blue-500');
-            });
-        });
-
-    } catch (error) {
-        console.error("Erro na busca de clientes:", error);
-        resultsContainer.innerHTML = '<p class="text-sm text-red-500">Erro ao buscar clientes.</p>';
-    }
+    });
 }
 
-async function handleClientRegistration(e) {
-    e.preventDefault();
-    const form = document.getElementById('clientRegistrationForm');
-    const registerButton = form.querySelector('button[type="submit"]');
+async function addRewardToComanda(reward, comanda) {
+    const cost = Number(reward.costPoints || reward.points || 0);
+    const name = reward.name || reward.reward;
+    const rewardItem = {
+        id: reward.serviceId || reward.productId || `reward-${Date.now()}`,
+        name: `${name}`,
+        price: 0.00, 
+        type: reward.serviceId ? 'service' : 'product',
+        isReward: true,
+        pointsCost: cost
+    };
+    await handleAddItemToComanda(rewardItem, 1);
+}
 
-    const clientData = {
-        establishmentId: state.establishmentId,
-        name: form.querySelector('#regClientName').value.trim(),
-        email: form.querySelector('#regClientEmail').value.trim(),
-        phone: form.querySelector('#regClientPhone').value.trim(),
-        dobDay: form.querySelector('#regClientDobDay').value.trim(),
-        dobMonth: form.querySelector('#regClientDobMonth').value.trim(),
-        notes: form.querySelector('#regClientNotes').value.trim(),
+function openAddItemModal() {
+    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
+    const { modalElement, close } = showGenericModal({ title: "Adicionar Item à Comanda", contentHTML: '<div id="add-item-content"></div>', maxWidth: 'max-w-4xl' });
+
+    const renderCatalogView = () => {
+        const contentContainer = modalElement.querySelector('#add-item-content');
+        contentContainer.innerHTML = `
+            <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><h4 class="font-semibold mb-2 text-center text-indigo-600">Serviços</h4><div id="modal-service-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-green-600">Produtos</h4><div id="modal-product-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
+                <div><h4 class="font-semibold mb-2 text-center text-purple-600">Pacotes</h4><div id="modal-package-list" class="space-y-2 max-h-80 overflow-y-auto custom-scrollbar"></div></div>
+            </div>`;
+
+        const filterAndRender = (term = '') => {
+            const lowerTerm = term.toLowerCase();
+            const icons = {
+                service: '<svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v4.512a9.04 9.04 0 00-3 5.012M12 12a9.04 9.04 0 01-3-5.012V5l-1-1z" /></svg>',
+                product: '<svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>',
+                package: '<svg class="w-5 h-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-14L4 7m8 4v10M4 7v10l8 4" /></svg>'
+            };
+            const lists = {
+                'modal-service-list': { items: localState.catalog.services, type: 'service' },
+                'modal-product-list': { items: localState.catalog.products, type: 'product' },
+                'modal-package-list': { items: localState.catalog.packages, type: 'package' }
+            };
+            Object.entries(lists).forEach(([id, { items, type }]) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
+                el.innerHTML = filtered.map(item => {
+                    // Proteção: não renderiza itens sem ID para evitar erros futuros
+                    if (!item.id) return '';
+                    
+                    return `
+                    <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-2 w-full p-2 bg-white border rounded hover:bg-gray-50 transition text-left">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-50">${icons[type]}</div>
+                        <span class="flex-grow text-sm truncate">${escapeHTML(item.name)}</span>
+                        <span class="font-bold text-xs text-gray-700">R$ ${item.price.toFixed(2)}</span>
+                    </button>
+                `}).join('') || `<p class="text-xs text-gray-400 text-center py-2">Nada encontrado</p>`;
+            });
+        };
+
+        filterAndRender(); 
+        const searchInput = document.getElementById('item-search-input');
+        searchInput.addEventListener('input', debounce((e) => { filterAndRender(e.target.value); }, 300));
+        setTimeout(() => searchInput.focus(), 100);
     };
 
-    if (!clientData.name || !clientData.phone) {
-         return showNotification('Erro de Validação', 'Nome e Telefone são obrigatórios.', 'error');
-    }
-    
-    registerButton.disabled = true;
-    registerButton.textContent = 'A salvar...';
+    const renderQuantityView = (item) => {
+        let quantity = 1;
+        const contentContainer = modalElement.querySelector('#add-item-content');
+        const updateDisplay = () => {
+            document.getElementById('quantity-display').textContent = quantity;
+            document.getElementById('quantity-minus-btn').disabled = quantity <= 1;
+        };
+        contentContainer.innerHTML = `
+            <div class="text-center p-8 relative">
+                <button data-action="back-to-catalog" class="absolute top-0 left-0 text-gray-600 hover:text-gray-900 font-medium flex items-center gap-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Voltar
+                </button>
+                <h3 class="font-bold text-2xl text-gray-800 mt-4">${escapeHTML(item.name)}</h3>
+                <p class="text-lg text-gray-500 font-medium">R$ ${item.price.toFixed(2)}</p>
+                <div class="my-8 flex items-center justify-center gap-6">
+                    <button id="quantity-minus-btn" class="w-14 h-14 rounded-full bg-gray-100 text-2xl font-bold text-gray-600 hover:bg-gray-200 transition disabled:opacity-50">-</button>
+                    <span id="quantity-display" class="text-5xl font-bold w-24 text-center text-indigo-700">${quantity}</span>
+                    <button id="quantity-plus-btn" class="w-14 h-14 rounded-full bg-gray-100 text-2xl font-bold text-gray-600 hover:bg-gray-200 transition">+</button>
+                </div>
+                <button data-action="confirm-add-item" class="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg text-lg">Adicionar à Comanda</button>
+            </div>
+        `;
+        document.getElementById('quantity-minus-btn').onclick = () => { if (quantity > 1) { quantity--; updateDisplay(); } };
+        document.getElementById('quantity-plus-btn').onclick = () => { quantity++; updateDisplay(); };
+        
+        document.querySelector('[data-action="confirm-add-item"]').onclick = async () => { 
+            await handleAddItemToComanda(item, quantity);
+            close(); 
+        };
+    };
 
-    try {
-        await clientsApi.createClient(clientData);
-        allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
-        
-        newAppointmentState.data.clientName = clientData.name;
-        newAppointmentState.data.clientPhone = clientData.phone;
-        newAppointmentState.data.clientHasRewards = false; 
-        newAppointmentState.data.clientLoyaltyPoints = 0; 
-        
-        showNotification('Cliente cadastrado com sucesso!', 'success');
-        document.getElementById('genericModal').style.display = 'none';
-        navigateModalStep(1); 
-        
-    } catch (error) {
-        showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
-    } finally {
-        registerButton.disabled = false;
-        registerButton.textContent = 'Salvar';
-    }
+    modalElement.addEventListener('click', (e) => {
+        const selectBtn = e.target.closest('[data-action="select-item-for-quantity"]');
+        const backBtn = e.target.closest('[data-action="back-to-catalog"]');
+        if (selectBtn) {
+            const { itemType, itemId } = selectBtn.dataset;
+            const catalog = localState.catalog[itemType + 's'] || [];
+            const item = catalog.find(i => i.id === itemId);
+            if (item) renderQuantityView({...item, type: itemType});
+        } else if (backBtn) renderCatalogView();
+    });
+    renderCatalogView();
 }
 
-function renderClientRegistrationModal() {
-    const modalContent = `
-        <form id="clientRegistrationForm" class="flex flex-col h-full">
-            <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (Dia)</label><input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Aniversário (Mês)</label><input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                </div>
-                <div><label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label><textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea></div>
+async function openNewSaleModal(preSelectedClient = null) {
+    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
+    if (!state.professionals || state.professionals.length === 0) {
+         try { state.professionals = await professionalsApi.getProfessionals(state.establishmentId); } 
+         catch (err) { return showNotification('Erro', 'Não foi possível carregar profissionais.', 'error'); }
+    }
+    const professionalsOptions = state.professionals.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+    const contentHTML = `
+        <form id="new-sale-form" class="space-y-4">
+            <div class="relative">
+                <label class="block text-sm font-medium text-gray-700">Cliente</label>
+                <input type="text" id="client-search" class="mt-1 w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500" placeholder="Digite nome ou telefone..." autocomplete="off">
+                <input type="hidden" id="selected-client-id" required>
+                <ul id="client-suggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto mt-1"></ul>
+                <button type="button" data-action="new-client-from-sale" class="text-xs text-blue-600 hover:underline mt-1 font-medium inline-block">+ Cadastrar Novo Cliente</button>
             </div>
-            
+            <div>
+                <label for="new-sale-professional" class="block text-sm font-medium text-gray-700">Profissional</label>
+                <select id="new-sale-professional" required class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Selecione...</option>${professionalsOptions}</select>
+            </div>
+            <div class="pt-4 border-t"><button type="submit" id="btn-start-sale" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">Iniciar Venda</button></div>
+        </form>
+    `;
+    const { modalElement } = showGenericModal({ title: "Nova Venda Avulsa", contentHTML: contentHTML, maxWidth: 'max-w-md' });
+    const searchInput = modalElement.querySelector('#client-search');
+    const suggestionsList = modalElement.querySelector('#client-suggestions');
+    const hiddenIdInput = modalElement.querySelector('#selected-client-id');
+    
+    if (preSelectedClient) {
+        hiddenIdInput.value = preSelectedClient.id;
+        searchInput.value = `${preSelectedClient.name} (${preSelectedClient.phone || 'Sem tel'})`;
+        searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+    }
+
+    searchInput.addEventListener('input', debounce(async (e) => {
+        const term = e.target.value.trim();
+        hiddenIdInput.value = ''; searchInput.classList.remove('bg-green-50', 'border-green-300', 'text-green-800');
+        if (term.length < 2) { suggestionsList.classList.add('hidden'); return; }
+        try {
+            suggestionsList.innerHTML = '<li class="p-2 text-xs text-gray-500">Buscando...</li>';
+            suggestionsList.classList.remove('hidden');
+            const results = await clientsApi.getClients(state.establishmentId, term, 10);
+            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-2 text-xs text-gray-500">Nenhum cliente encontrado</li>';
+            else {
+                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-2 hover:bg-indigo-50 cursor-pointer border-b last:border-0 transition-colors"><div class="font-bold text-sm text-gray-800">${escapeHTML(c.name)}</div><div class="text-xs text-gray-500">${c.phone || 'Sem telefone'}</div></li>`).join('');
+            }
+        } catch (err) { suggestionsList.classList.add('hidden'); }
+    }, 400));
+
+    suggestionsList.addEventListener('click', (e) => {
+        const li = e.target.closest('li[data-client-id]');
+        if (li) {
+            hiddenIdInput.value = li.dataset.clientId;
+            hiddenIdInput.dataset.name = li.dataset.clientName;
+            hiddenIdInput.dataset.phone = li.dataset.clientPhone;
+            searchInput.value = `${li.dataset.clientName}`;
+            searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+            suggestionsList.classList.add('hidden');
+        }
+    });
+    document.addEventListener('click', (e) => { if (!searchInput.contains(e.target) && !suggestionsList.contains(e.target)) suggestionsList.classList.add('hidden'); });
+    modalElement.querySelector('#new-sale-form').addEventListener('submit', handleCreateNewSale);
+    const newClientBtn = modalElement.querySelector('[data-action="new-client-from-sale"]');
+    if (newClientBtn) newClientBtn.addEventListener('click', (e) => { e.preventDefault(); modalElement.style.display = 'none'; _comandas_renderClientRegistrationModal(); });
+}
+
+function _comandas_renderClientRegistrationModal() {
+    const modalContent = `
+        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full">
+            <div class="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar" style="max-height: 80vh;">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-sm font-medium text-gray-700">Nome *</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
+                    <div><label class="block text-sm font-medium text-gray-700">Telefone (ID) *</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Apenas números"></div>
+                </div>
+            </div>
             <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-                <button type="button" data-action="close-modal" data-target="genericModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar</button>
+                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar Cliente</button>
             </footer>
         </form>
     `;
-
-    showGenericModal({
-        title: 'Cadastrar Novo Cliente',
-        contentHTML: modalContent,
-        maxWidth: 'max-w-2xl'
-    });
-    
-    const form = document.getElementById('clientRegistrationForm');
-    if (form) {
-         form.addEventListener('submit', handleClientRegistration);
-    }
+    showGenericModal({ title: 'Cadastrar Novo Cliente', contentHTML: modalContent, maxWidth: 'max-w-2xl' });
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (form) form.addEventListener('submit', _comandas_handleClientRegistration);
 }
 
-function openClientRegistrationModal() {
-    renderClientRegistrationModal();
+async function _comandas_handleClientRegistration(e) {
+    e.preventDefault();
+    const form = document.getElementById('comandas_clientRegistrationForm');
+    if (!form) return;
+    const nameInput = form.querySelector('#regClientName');
+    const phoneInput = form.querySelector('#regClientPhone');
+    const cleanPhone = phoneInput.value.replace(/\D/g, '');
+
+    if (!nameInput.value || !cleanPhone) return showNotification('Erro', 'Nome e Telefone são obrigatórios.', 'error');
+
+    try {
+        const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
+        if (existingClient) {
+            showNotification('Atenção', `Cliente já cadastrado.`, 'info');
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(existingClient); 
+        } else {
+            const newClient = await clientsApi.createClient({ establishmentId: state.establishmentId, name: nameInput.value, phone: cleanPhone });
+            showNotification('Sucesso', 'Cliente cadastrado!', 'success');
+            document.getElementById('genericModal').style.display = 'none';
+            openNewSaleModal(newClient);
+        }
+    } catch (error) { showNotification(`Erro`, error.message, 'error'); }
 }
 
-function renderStep1_Client(appointment, isNavigating) {
-    const title = appointment ? 'Editar Agendamento' : 'Selecionar Cliente';
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">1. Dados do Cliente</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label for="apptClientName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
-                    <input type="text" id="apptClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Nome Completo" value="${escapeHTML(newAppointmentState.data.clientName)}">
-                </div>
-                <div>
-                    <label for="apptClientPhone" class="block text-sm font-medium text-gray-700">Telemóvel</label>
-                    <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${escapeHTML(newAppointmentState.data.clientPhone)}">
-                </div>
-            </div>
-             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                <div class="relative w-full sm:flex-grow">
-                    <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
-                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </div>
-                <button type="button" data-action="open-client-registration" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center justify-center gap-2 w-full sm:w-auto flex-shrink-0">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                    Cadastrar
-                </button>
-            </div>
-            
-            <div id="clientSearchResults" class="space-y-3 max-h-40 overflow-y-auto p-1">
-                <p class="text-sm text-gray-500">Digite para buscar clientes existentes.</p>
-            </div>
-        </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-            <button type="button" data-action="close-modal" data-target="appointmentModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-            <button type="button" data-action="next-step" data-current-step="1" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
-        </footer>
-    `;
-    return { title: title, content: formContent };
-}
-
-function renderStep2_Service() {
-    const title = 'Selecionar Serviço';
-    const isMultiSelectedInitial = newAppointmentState.data.selectedServiceIds.length > 1;
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
-             
-             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="w-full sm:flex-grow p-3 pl-10 border rounded-lg">
-                 
-                 <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
-                     <div class="relative">
-                         <input type="checkbox" id="multiServiceToggle" class="sr-only" ${isMultiSelectedInitial ? 'checked' : ''}>
-                         <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full transition-colors"></div>
-                         <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform" style="transition: all 0.3s;"></div>
-                     </div>
-                     <span class="text-sm font-medium text-gray-700">Selecionar Vários</span>
-                 </label>
-            </div>
-            
-            <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
-                 ${availableServicesForModal.map(service => {
-                     const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
-                     const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-                     const safeName = escapeHTML(service.name);
-
-                     return `
-                         <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
-                             <div class="flex items-center">
-                                 <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
-                                 <div class="flex-1">
-                                     <p class="font-semibold text-sm text-gray-800">${safeName}</p>
-                                     <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
-                                 </div>
-                             </div>
-                         </div>`;
-                 }).join('')}
-            </div>
-        </div>
-        
-        <style>
-            #multiServiceToggle:checked + .toggle-bg { background-color: #4f46e5; }
-            #multiServiceToggle:checked + .toggle-bg + .dot { transform: translateX(100%); }
-        </style>
-
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="2" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="2" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
-        </footer>
-    `;
-    return { title: title, content: formContent };
-}
-
-function renderStep3_Professional() {
-    const title = 'Selecionar Profissional';
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-             <h3 class="text-xl font-bold text-gray-800">3. Profissional</h3>
-             <div id="apptProfessionalContainer" class="mt-4 flex flex-wrap gap-3 max-h-48 overflow-y-auto p-1 professional-step-cards">
-                 ${availableProfessionalsForModal.map(prof => {
-                     const isChecked = newAppointmentState.data.professionalId === prof.id;
-                     const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
-                     const safeName = escapeHTML(prof.name);
-                     
-                     return `
-                         <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
-                             <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                             <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
-                             <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
-                         </div>`;
-                 }).join('')}
-             </div>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
-             </div>
-        </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="3" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="3" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
-        </footer>
-    `;
-    return { title: title, content: formContent };
-}
-
-function renderStep4_Schedule(appointment) {
-    const title = appointment ? 'Confirmar Edição' : 'Data e Horário';
-    
-    const today = new Date();
-    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const initialDate = newAppointmentState.data.date || todayString;
-    
-    const safeClientName = escapeHTML(newAppointmentState.data.clientName);
-    const safeProfName = escapeHTML(newAppointmentState.data.professionalName);
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">4. ${title}</h3>
-
-            <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 space-y-1">
-                <p class="font-bold text-gray-800">${safeClientName}</p>
-                <p class="text-sm text-gray-700">Serviços: ${newAppointmentState.data.selectedServiceIds.length} selecionado(s)</p>
-                <p class="text-sm text-gray-700">Profissional: ${safeProfName}</p>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
-                <div>
-                    <label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label>
-                    <input type="date" id="apptDate" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500" value="${initialDate}">
-                </div>
-                <div class="bg-gray-100 p-3 rounded-lg shadow-sm flex flex-col justify-center">
-                    <label class="block text-xs font-medium text-gray-600">Duração Total Estimada</label>
-                    <span id="apptTotalDuration" class="mt-1 text-xl font-bold text-gray-800">0 min</span>
-                </div>
-            </div>
-
+async function openCashierModal() {
+    const contentHTML = `
+        <form id="open-cashier-form" class="space-y-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Horários Disponíveis</label>
-                <div id="availableTimesContainer" class="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
-                    <p class="col-span-full text-center text-gray-500">Selecione serviço(s), profissional e data.</p>
-                </div>
+                <label for="initial-amount" class="block text-sm font-medium text-gray-700">Valor Inicial do Caixa</label>
+                <div class="mt-1 relative"><span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span><input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold" placeholder="0.00" value="0.00"></div>
             </div>
-
-             <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
-        </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="4" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="submit" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Confirmar Agendamento</button>
-        </footer>
+            <div class="pt-4 border-t"><button type="submit" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition shadow-md">Confirmar Abertura</button></div>
+        </form>
     `;
-    return { title: title, content: formContent };
+    const { modalElement } = showGenericModal({ title: "Abrir Caixa", contentHTML, maxWidth: 'max-w-md' });
+    modalElement.querySelector('#open-cashier-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const initialAmount = parseFloat(document.getElementById('initial-amount').value);
+        if (isNaN(initialAmount) || initialAmount < 0) return showNotification('Valor Inválido', 'Insira um valor válido.', 'error');
+        try {
+            const session = await cashierApi.openCashier({ establishmentId: state.establishmentId, initialAmount: parseFloat(initialAmount.toFixed(2)) });
+            localState.isCashierOpen = true; localState.activeCashierSessionId = session.id; document.getElementById('genericModal').style.display = 'none'; showNotification('Sucesso!', `Caixa aberto (R$ ${initialAmount.toFixed(2)})`, 'success'); updateCashierUIState(); await fetchAndDisplayData();
+        } catch (error) { showNotification('Erro', `Falha ao abrir caixa: ${error.message}`, 'error'); }
+    });
 }
 
-function handleServiceSearchInModal(searchTerm) {
-    const container = document.getElementById('apptServicesContainer');
-    if (!container) return;
-    const term = searchTerm.toLowerCase();
-    const filtered = availableServicesForModal.filter(s => s.name.toLowerCase().includes(term));
-
-    container.innerHTML = filtered.map(service => {
-        const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
-        const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-        
-        return `
-            <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
-                <div class="flex items-center">
-                    <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
-                    <div class="flex-1">
-                        <p class="font-semibold text-sm text-gray-800">${escapeHTML(service.name)}</p>
-                        <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
-                    </div>
+async function handleOpenCloseCashierModal() {
+    const sessionId = localState.activeCashierSessionId;
+    if (!sessionId) return;
+    try {
+        const report = await cashierApi.getCloseCashierReport(sessionId);
+        const contentHTML = `
+            <form id="close-cashier-form" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-100"><p class="text-xs text-gray-500 uppercase font-bold">Abertura</p><p class="text-xl font-bold text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
+                    <div class="bg-green-50 p-3 rounded-lg border border-green-100"><p class="text-xs text-gray-500 uppercase font-bold">Vendas Dinheiro</p><p class="text-xl font-bold text-green-700">R$ ${report.cashSales.toFixed(2)}</p></div>
                 </div>
-            </div>`;
-    }).join('');
-
-    container.querySelectorAll('.service-card').forEach(card => {
-        card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
-    });
+                <div class="bg-gray-800 text-white p-4 rounded-lg text-center shadow-lg"><p class="text-sm font-medium opacity-80">Valor Esperado em Caixa</p><p class="text-3xl font-bold">R$ ${report.expectedAmount.toFixed(2)}</p></div>
+                <hr>
+                <div>
+                    <label for="final-amount" class="block text-sm font-bold text-gray-700">Valor Final (Contado)</label>
+                    <div class="mt-1 relative"><span class="absolute left-3 top-2 text-gray-500 font-semibold">R$</span><input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-2 pl-12 border rounded-md text-lg font-semibold border-gray-300 focus:ring-2 focus:ring-red-500" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}"></div>
+                </div>
+                <div class="pt-4 border-t"><button type="submit" class="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 transition shadow-md">Confirmar e Fechar</button></div>
+            </form>
+        `;
+        const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-md' });
+        modalElement.querySelector('#close-cashier-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const finalAmount = parseFloat(document.getElementById('final-amount').value);
+            if (isNaN(finalAmount) || finalAmount < 0) return showNotification('Valor Inválido', 'Insira um valor final válido.', 'error');
+            try {
+                await cashierApi.closeCashier(sessionId, finalAmount);
+                localState.isCashierOpen = false; localState.activeCashierSessionId = null; document.getElementById('genericModal').style.display = 'none'; updateCashierUIState(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
+            } catch (error) { showNotification('Erro', `Falha ao fechar caixa: ${error.message}`, 'error'); }
+        });
+    } catch (error) { showNotification('Erro', `Falha ao carregar relatório: ${error.message}`, 'error'); }
 }
 
-function handleProfessionalSearchInModal(searchTerm) {
-    const container = document.getElementById('apptProfessionalContainer');
-    if (!container) return;
-    const term = searchTerm.toLowerCase();
-    const filtered = availableProfessionalsForModal.filter(p => p.name.toLowerCase().includes(term));
+// --- HANDLERS E OPERAÇÕES CRÍTICAS ---
 
-    container.innerHTML = filtered.map(prof => {
-        const isChecked = newAppointmentState.data.professionalId === prof.id;
-        const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
-        const safeName = escapeHTML(prof.name);
-        
-        return `
-             <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
-                 <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                 <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
-                 <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
-             </div>`;
-    }).join('');
-
-    container.querySelectorAll('.professional-modal-card').forEach(card => {
-        card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
-    });
+async function handleFilterClick(filter) {
+    if (localState.activeFilter === filter) return;
+    localState.activeFilter = filter;
+    localState.paging.page = 1;
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
+    document.querySelector(`[data-filter="${filter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
+    document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
+    hideMobileDetail();
+    await fetchAndDisplayData();
+    localState.selectedComandaId = null;
+    localState.viewMode = 'items';
+    renderComandaDetail();
 }
 
+function handleComandaClick(comandaId) {
+    localState.selectedComandaId = comandaId;
+    localState.viewMode = 'items';
+    renderComandaList(); 
+    showMobileDetail();
+    renderComandaDetail();
+}
 
-async function openAppointmentModal(appointment = null, isNavigating = false) {
-    const modal = document.getElementById('appointmentModal');
-    
-    if (!isNavigating) {
-        const initialDateString = appointment?.startTime 
-            ? new Date(appointment.startTime).toISOString().split('T')[0] 
-            : new Date().toISOString().split('T')[0];
+// --- OTIMIZAÇÃO: ATUALIZAÇÃO IMEDIATA (Optimistic UI) ---
+async function handleAddItemToComanda(itemData, quantity) {
+    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+    if (!comanda) return;
 
-        const initialTimeString = appointment?.startTime
-            ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
-            : null;
+    // PROTEÇÃO: Impede a adição de itens sem ID válido
+    if (!itemData.id || String(itemData.id) === 'undefined') {
+        console.error("Tentativa de adicionar item sem ID:", itemData);
+        showNotification('Erro', 'Item sem identificador. Não foi possível adicionar.', 'error');
+        return;
+    }
 
-        newAppointmentState = {
-            step: 1,
-            data: {
-                id: appointment?.id || null, 
-                clientName: appointment?.clientName || '',
-                clientPhone: appointment?.clientPhone || '',
-                selectedServiceIds: appointment?.services?.map(s => s.id) || [], 
-                professionalId: appointment?.professionalId || null,
-                professionalName: appointment?.professionalName || '',
-                date: initialDateString,
-                time: initialTimeString,
-                redeemedReward: appointment?.redeemedReward || null,
-                clientHasRewards: appointment?.hasRewards || false,
-                clientLoyaltyPoints: 0 
-            }
+    // CORREÇÃO: Assegurar que o preço é um número para evitar erros de soma
+    const numericPrice = parseFloat(itemData.price) || 0;
+
+    const itemsToAdd = Array(quantity).fill(0).map(() => {
+        const baseItem = {
+            id: String(itemData.id), // Garante string
+            name: itemData.name,
+            price: numericPrice, // Usa o valor numérico garantido
+            type: itemData.type,
+            isReward: itemData.isReward || false, 
+            pointsCost: itemData.pointsCost || 0
         };
         
-        if (appointment && appointment.clientName) {
-             try {
-                 const foundClients = await clientsApi.getClients(state.establishmentId, appointment.clientName);
-                 const matchedClient = foundClients.find(c => c.phone === appointment.clientPhone);
-                 if (matchedClient) {
-                     newAppointmentState.data.clientLoyaltyPoints = matchedClient.loyaltyPoints || 0;
-                     allClientsData = foundClients;
-                 }
-             } catch (e) {
-                 console.warn("Não foi possível carregar pontos do cliente para edição:", e);
-             }
+        // Redundância: Garante que productId e serviceId existem para evitar erro 500
+        // Preenche AMBOS os padrões (camelCase e snake_case) para garantir
+        if (itemData.type === 'product') {
+            baseItem.productId = baseItem.id;
+            baseItem.product_id = baseItem.id;
+        } else if (itemData.type === 'service') {
+            baseItem.serviceId = baseItem.id;
+            baseItem.service_id = baseItem.id;
         }
-    }
-    
-    if (!state.services || !state.professionals || loyaltySettingsForModal.enabled === undefined) {
-         showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
-         return;
-    }
-    
-    availableServicesForModal = state.services;
-    availableProfessionalsForModal = state.professionals.filter(p => p.status === 'active');
-
-    if (newAppointmentState.data.clientLoyaltyPoints > 0) {
-        const loyaltyProgram = loyaltySettingsForModal;
-        const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
         
-        newAppointmentState.data.clientHasRewards = (
-            loyaltyProgram.enabled && 
-            minPointsToRedeem !== Infinity && 
-            newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
-        );
-    }
-    
-    let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
-    
-    switch (newAppointmentState.step) {
-        case 1: renderResult = renderStep1_Client(appointment, isNavigating); break;
-        case 2: renderResult = renderStep2_Service(); break;
-        case 3: renderResult = renderStep3_Professional(); break;
-        case 4: renderResult = renderStep4_Schedule(appointment); break;
-        default: break;
-    }
-    
-    modal.innerHTML = `
-        <div class="modal-content max-w-4xl p-0 rounded-xl overflow-hidden shadow-2xl">
-            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
-                <h2 class="text-xl font-bold text-gray-800">${renderResult.title}</h2>
-                <button type="button" data-action="close-modal" data-target="appointmentModal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
-            </header>
-            
-            <form id="appointmentForm" class="flex flex-col h-full">
-                <input type="hidden" id="appointmentId" value="${newAppointmentState.data.id || ''}">
-                <input type="hidden" id="selectedTime" value="${newAppointmentState.data.time || ''}">
-                
-                <div class="flex-1 overflow-y-auto" style="max-height: 80vh;">
-                    ${renderResult.content}
-                </div>
-                
-            </form>
-        </div>`;
-
-    // --- CORREÇÃO: Adicionar listener para fechar o modal manualmente ---
-    modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
+        return baseItem;
     });
-
-    modal.querySelectorAll('[data-action="next-step"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const currentStep = parseInt(btn.dataset.currentStep, 10);
-            
-            if (currentStep === 1) {
-                const clientNameInput = modal.querySelector('#apptClientName');
-                const clientPhoneInput = modal.querySelector('#apptClientPhone');
-
-                newAppointmentState.data.clientName = clientNameInput.value.trim();
-                newAppointmentState.data.clientPhone = clientPhoneInput.value.trim();
-                
-                if (!newAppointmentState.data.clientName || !newAppointmentState.data.clientPhone) {
-                    return showNotification('Atenção', 'Nome e telefone do cliente são obrigatórios.', 'error');
-                }
-            } else if (currentStep === 2) {
-                if (newAppointmentState.data.selectedServiceIds.length === 0) {
-                     return showNotification('Atenção', 'Selecione pelo menos um serviço.', 'error');
-                }
-            } else if (currentStep === 3) {
-                 if (!newAppointmentState.data.professionalId) {
-                     return showNotification('Atenção', 'Selecione um profissional.', 'error');
-                 }
-            }
-            
-            navigateModalStep(currentStep + 1);
-        });
-    });
-
-    modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => {
-        btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1));
-    });
-
-    const appointmentForm = modal.querySelector('#appointmentForm');
     
-    if (newAppointmentState.step === 4 && appointmentForm) {
-         appointmentForm.addEventListener('submit', handleAppointmentFormSubmit);
-    }
-
-    modal.style.display = 'flex';
+    comanda.comandaItems = comanda.comandaItems || [];
+    comanda.comandaItems.push(...itemsToAdd);
     
-    if (newAppointmentState.step === 2) {
-        const servicesContainer = modal.querySelector('#apptServicesContainer');
-        servicesContainer.querySelectorAll('.service-card').forEach(card => {
-            card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
-        });
-        const serviceSearchInput = modal.querySelector('#serviceSearchModalInput');
-        if (serviceSearchInput) {
-            serviceSearchInput.addEventListener('input', (e) => handleServiceSearchInModal(e.target.value));
-        }
-    }
-
-    if (newAppointmentState.step === 3) {
-        const professionalContainer = modal.querySelector('#apptProfessionalContainer');
-        professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => {
-            card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
-        });
-        const professionalSearchInput = modal.querySelector('#professionalSearchModalInput');
-        if (professionalSearchInput) {
-            professionalSearchInput.addEventListener('input', (e) => handleProfessionalSearchInModal(e.target.value));
-        }
-    }
+    // 1. Limpa o cache para garantir que os novos itens sejam lidos
+    comanda._cachedItems = null;
+    // 2. Marca como não salvo
+    comanda._hasUnsavedChanges = true; 
     
-    if (newAppointmentState.step === 1) {
-        const clientSearchInput = modal.querySelector('#clientSearchInput');
+    // 3. Força renderização IMEDIATA para feedback visual APENAS DO DETALHE
+    renderComandaDetail();
+}
+
+async function handleRemoveItemFromComanda(itemId, itemType) {
+    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+    if (!comanda) return;
+
+    let modified = false;
+
+    // CORREÇÃO: Removemos a opção de deletar 'services' (originais).
+    // O sistema só permitirá remover itens que estão em 'comandaItems' (extras).
+    // Usa == para comparar string vs number
+    let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id == itemId && item.type === itemType);
+    
+    if (extraIndex > -1) {
+        comanda.comandaItems.splice(extraIndex, 1);
+        modified = true;
+    } 
+
+    if (modified) {
+        // 1. Limpa o cache
+        comanda._cachedItems = null;
+        // 2. Marca como não salvo
+        comanda._hasUnsavedChanges = true;
         
-        if (clientSearchInput) {
-            clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
-            
-             if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone && allClientsData.length > 0) {
-                 const resultsContainer = document.getElementById('clientSearchResults');
-                 if(resultsContainer) resultsContainer.innerHTML = allClientsData.map(renderClientCard).join('');
-             }
-        }
-
-        const registerButton = modal.querySelector('[data-action="open-client-registration"]');
-        if (registerButton) {
-            registerButton.addEventListener('click', openClientRegistrationModal);
-        }
-    }
-    
-    if (newAppointmentState.step === 4) {
-        const dateInput = modal.querySelector('#apptDate');
-        
-        if (dateInput) dateInput.addEventListener('change', updateTimesAndDuration);
-        
-        updateTimesAndDuration();
-        renderLoyaltyRewards();
+        // 3. Força renderização IMEDIATA APENAS DO DETALHE
+        renderComandaDetail();
     }
 }
 
-
-// --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
-
-export async function loadAgendaPage(params = {}) { 
-    if (currentTimeInterval) clearInterval(currentTimeInterval);
+async function handleFinalizeCheckout(comanda) {
+    if (localState.isProcessing) return;
     
-    localState.currentDate = params.targetDate ? new Date(params.targetDate) : (localState.currentDate || new Date());
-    localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
-    
-    localState.profSearchTerm = ''; 
-    localState.isSelectionMode = false;
-    localState.selectedItems.clear();
+    // CALCULA TUDO NOVAMENTE PARA GARANTIA
+    const rawItems = getSafeAllItems(comanda);
+    const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
+    const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
+    let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
+    if (discountValue > subtotal) discountValue = subtotal;
+    const totalAmount = subtotal - discountValue;
 
-    if (window.innerWidth < 768) {
-        localState.currentView = 'list';
+    const { payments } = localState.checkoutState;
+    const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
+    const remaining = totalAmount - totalPaid;
+
+    // Se houver saldo devedor, pergunta se quer lançar como dívida
+    if (remaining > 0.01) {
+        const confirmed = await showConfirmation(
+            'Pagamento Parcial', 
+            `O valor de R$ ${remaining.toFixed(2)} não foi pago. Deseja registrar como DÍVIDA (Fiado) no cadastro do cliente?`,
+            'Sim, registrar dívida'
+        );
+
+        if (!confirmed) return; // Cancela se não confirmar
+
+        // Adiciona pagamento do tipo 'fiado' automaticamente
+        payments.push({
+            method: 'fiado',
+            value: remaining,
+            installments: 1
+        });
     }
 
-    contentDiv.innerHTML = `
-        <section>
-            <div class="bg-white p-4 rounded-xl shadow-lg mb-4">
-                
-                <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-4 gap-4">
-                    <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
-                    <div class="flex flex-wrap items-center gap-2 order-2 sm:order-1">
-                        <button id="btn-toggle-select" class="p-2 border rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1" title="Selecionar Múltiplos">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                            <span class="hidden sm:inline">Selecionar</span>
-                        </button>
-                        
-                        <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
-                            <button data-view="list" class="view-btn ${localState.currentView === 'list' ? 'active' : ''}">Lista</button>
-                            <button data-view="week" class="view-btn ${localState.currentView === 'week' ? 'active' : ''}">Semana</button>
-                        </div>
-                        <div id="week-days-toggle" class="${localState.currentView === 'week' ? 'flex' : 'hidden'} items-center gap-1 rounded-lg bg-gray-200 p-1">
-                            <button data-days="3" class="week-days-btn view-btn">3 dias</button>
-                            <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
-                            <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold">Hoje</button>
-                            <button id="prevBtn" data-amount="-1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg></button>
-                            <button id="nextBtn" data-amount="1" class="p-2 border rounded-md shadow-sm"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg></button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="border-t border-gray-200 -mx-4 mb-4"></div>
+    localState.isProcessing = true;
 
-                <div>
-                     <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
-                         <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm">
-                         <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 self-start sm:self-center">
-                             <div class="relative">
-                                 <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
-                                 <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                             </div>
-                             <span class="text-sm font-medium text-gray-700">Inativos</span>
-                         </label>
-                     </div>
-                     
-                     <div id="profSelectorContainer" class="prof-selector-container mt-2">
-                     <div class="loader mx-auto"></div>
-                     </div>
-                </div>
+    const isAppointment = comanda.type === 'appointment';
+    const finalItems = rawItems; 
 
-            </div> 
-            
-            <div id="agenda-view" class="bg-white rounded-xl shadow-lg overflow-hidden"></div>
-            
-            <button data-action="new-appointment" class="fixed bottom-4 right-4 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition z-50">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-            </button>
-
-            <div id="batch-delete-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
-        </section>`;
-
-    // --- SELEÇÃO DE ITENS E AÇÕES EM LOTE ---
-    
-    // Toggle Mode
-    const toggleSelectBtn = document.getElementById('btn-toggle-select');
-    toggleSelectBtn.addEventListener('click', () => {
-        localState.isSelectionMode = !localState.isSelectionMode;
-        if (!localState.isSelectionMode) {
-            localState.selectedItems.clear();
+    // Lógica de fidelidade (apenas estimativa visual, backend recalcula)
+    let pointsToAward = 0;
+    const settings = localState.loyaltySettings;
+    if (settings && settings.enabled) {
+        if (settings.type === 'visit') pointsToAward = Number(settings.pointsPerVisit) || 1;
+        else {
+            const divisor = Number(settings.pointsPerCurrency) || 10;
+            if (divisor > 0) pointsToAward = Math.floor(totalAmount / divisor);
         }
-        
-        toggleSelectBtn.classList.toggle('bg-blue-100', localState.isSelectionMode);
-        toggleSelectBtn.classList.toggle('text-blue-700', localState.isSelectionMode);
-        
-        renderAgenda(); 
-    });
+    }
 
-    // --- EVENTOS GERAIS DA PÁGINA ---
-
-    document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            localState.currentView = btn.dataset.view;
-
-            const weekDaysToggle = document.getElementById('week-days-toggle');
-            if (localState.currentView === 'week') {
-                weekDaysToggle.style.display = 'flex';
-                
-                if (window.innerWidth < 768) {
-                    localState.weekViewDays = 3;
-                    document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
-                    const btn3dias = document.querySelector('.week-days-btn[data-days="3"]');
-                    if (btn3dias) btn3dias.classList.add('active');
-                }
-            } else {
-                weekDaysToggle.style.display = 'none';
-            }
-
-            fetchAndDisplayAgenda();
-        });
-    });
-
-    document.querySelectorAll('.week-days-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            localState.weekViewDays = parseInt(btn.dataset.days, 10);
-            fetchAndDisplayAgenda();
-        });
-    });
-
-    document.getElementById('todayBtn').addEventListener('click', () => {
-        localState.currentDate = new Date();
-        fetchAndDisplayAgenda();
-    });
-    
-    const handleNavigationClick = (e) => {
-        const amount = parseInt(e.currentTarget.dataset.amount, 10);
-        const step = localState.currentView === 'week' ? getActiveWeekDays() : 1;
-        
-        const newDate = new Date(localState.currentDate);
-        newDate.setDate(newDate.getDate() + amount * step);
-        localState.currentDate = newDate;
-        
-        fetchAndDisplayAgenda();
+    const data = {
+        payments,
+        totalAmount: Number(totalAmount),
+        items: finalItems,
+        cashierSessionId: localState.activeCashierSessionId,
+        loyaltyPointsEarned: pointsToAward,
+        discount: discount // Envia o objeto de desconto para o backend
     };
 
-    document.getElementById('prevBtn').addEventListener('click', handleNavigationClick);
-    document.getElementById('nextBtn').addEventListener('click', handleNavigationClick);
+    // Loading overlay
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.innerHTML = '<div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center"><div class="loader mb-4 border-t-indigo-600"></div><p>Finalizando venda...</p></div>';
+    document.body.appendChild(loadingOverlay);
+
+    try {
+        if (isAppointment) await appointmentsApi.checkoutAppointment(comanda.id, data);
+        else {
+            data.establishmentId = state.establishmentId;
+            data.clientId = comanda.clientId; data.clientName = comanda.clientName; data.professionalId = comanda.professionalId;
+            if (comanda.clientPhone) data.clientPhone = comanda.clientPhone;
+            await salesApi.createSale(data);
+        }
+        
+        let msg = 'Venda finalizada com sucesso!';
+        if (pointsToAward > 0) msg += ` Cliente ganhou ${pointsToAward} pontos!`;
+
+        showNotification('Sucesso!', msg, 'success');
+        
+        hideMobileDetail();
+        localState.selectedComandaId = null;
+        localState.viewMode = 'items';
+        await fetchAndDisplayData();
+    } catch (error) { 
+        showNotification('Erro no Checkout', error.message, 'error'); 
+    } finally { 
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
+        localState.isProcessing = false; 
+    }
+}
+
+async function handleCreateNewSale(e) {
+    e.preventDefault();
+    const hiddenIdInput = document.getElementById('selected-client-id');
+    const professionalId = document.getElementById('new-sale-professional').value;
+    const clientId = hiddenIdInput.value;
+    const clientName = document.getElementById('client-search').value;
+    const clientPhone = hiddenIdInput.dataset.phone || '';
+
+    if (!clientId) return showNotification('Erro', 'Selecione um cliente válido.', 'error');
+    const professional = state.professionals.find(p => p.id === professionalId);
+    if (!professional) return showNotification('Erro', 'Selecione um profissional válido.', 'error');
     
-    document.getElementById('profSearchInput').addEventListener('input', (e) => {
-        localState.profSearchTerm = e.target.value;
-        renderProfessionalSelector();
-    });
+    const newComanda = {
+        id: `temp-${Date.now()}`,
+        type: 'walk-in',
+        clientId: clientId, 
+        clientName: clientName.split('(')[0].trim(),
+        clientPhone: clientPhone,
+        professionalId: professional.id,
+        professionalName: professional.name,
+        startTime: new Date(),
+        status: 'confirmed',
+        services: [],
+        comandaItems: [],
+    };
 
-    document.getElementById('showInactiveProfsToggle').addEventListener('change', (e) => {
-        localState.showInactiveProfs = e.target.checked;
-        renderProfessionalSelector(); 
-        fetchAndDisplayAgenda(); 
-    });
+    localState.allComandas.unshift(newComanda);
+    localState.selectedComandaId = newComanda.id;
+    localState.viewMode = 'items';
+    document.getElementById('genericModal').style.display = 'none';
+    handleComandaClick(newComanda.id);
+}
+
+// --- INICIALIZAÇÃO ---
+
+async function fetchAndDisplayData() {
+    const listContainer = document.getElementById('comandas-list');
+    if (!listContainer.hasChildNodes() || listContainer.innerHTML.includes('loader')) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     
-    if (!hasContentDelegationInitialized) {
-        contentDiv.addEventListener('click', async (e) => {
-            const targetElement = e.target.closest('[data-action]');
-            
-            // Tratamento de Seleção em Lote (Checkbox)
-            if (e.target.dataset.action === 'toggle-select-item') {
-                const id = e.target.dataset.id;
-                if (e.target.checked) {
-                    localState.selectedItems.add(id);
-                } else {
-                    localState.selectedItems.delete(id);
-                }
-                updateBatchDeleteUI();
-                return;
-            }
+    const filterDate = localState.activeFilter === 'finalizadas' ? document.getElementById('filter-date').value : null;
 
-            // Ação de Excluir em Lote
-            if (targetElement && targetElement.dataset.action === 'batch-delete') {
-                const count = localState.selectedItems.size;
-                const confirmed = await showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
-                
-                if (confirmed) {
-                    const ids = Array.from(localState.selectedItems);
-                    let successCount = 0;
-                    
-                    // Exclusão paralela
-                    try {
-                        await Promise.all(ids.map(async (id) => {
-                            try {
-                                await appointmentsApi.deleteAppointment(id);
-                                successCount++;
-                            } catch (err) {
-                                console.error(`Falha ao excluir ${id}`, err);
-                            }
-                        }));
-                        
-                        showNotification(`${successCount} agendamento(s) excluído(s).`, 'success');
-                        localState.selectedItems.clear();
-                        localState.isSelectionMode = false;
-                        document.getElementById('btn-toggle-select').classList.remove('bg-blue-100', 'text-blue-700');
-                        fetchAndDisplayAgenda();
-                        
-                    } catch (error) {
-                        showNotification('Erro ao processar exclusão em lote.', 'error');
-                    }
-                }
-                return;
-            }
-            
-            if (e.target.closest('[data-action="select-professional"]')) {
-                const selectedProfCard = e.target.closest('[data-action="select-professional"]');
-                const profId = selectedProfCard.dataset.profId;
-                
-                const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
-                
-                localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
+    try {
+        const activeSession = await cashierApi.getActiveSession();
+        localState.isCashierOpen = !!activeSession;
+        localState.activeCashierSessionId = activeSession ? activeSession.id : null;
+        updateCashierUIState();
+        
+        if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
+            renderComandaList();
+            renderComandaDetail();
+            return;
+        }
+        
+        try {
+            const establishmentData = await establishmentsApi.getEstablishment(state.establishmentId);
+            if (establishmentData && establishmentData.loyaltyProgram) localState.loyaltySettings = establishmentData.loyaltyProgram;
+        } catch (e) {}
 
-                if (profId !== 'all') {
-                    const searchInput = document.getElementById('profSearchInput');
-                    if(searchInput) {
-                        searchInput.value = '';
-                    }
-                    localState.profSearchTerm = '';
-                }
-                
-                await fetchAndDisplayAgenda(); 
-                return;
-            }
+        const response = await comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
+        localState.allComandas = response.data || response;
+        localState.paging.total = response.total || response.length;
+        
+        if (localState.catalog.services.length === 0) {
+            const [services, products, packages, professionals] = await Promise.all([
+                servicesApi.getServices(state.establishmentId),
+                productsApi.getProducts(state.establishmentId),
+                packagesApi.getPackages(state.establishmentId),
+                professionalsApi.getProfessionals(state.establishmentId)
+            ]);
+            localState.catalog = { services, products, packages };
+            state.professionals = professionals;
+        }
+        
+        renderComandaList();
+        renderComandaDetail();
 
-            if (!targetElement) return;
+    } catch (error) {
+        showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
+    }
+}
 
-            const action = targetElement.dataset.action;
-            let apptData = null;
-            const card = e.target.closest('[data-appointment]');
-            if (card) {
-                apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-            }
-            
-            switch (action) {
-                case 'new-appointment':
-                    openAppointmentModal();
-                    break;
-                case 'edit-appointment':
-                    if (localState.isSelectionMode) return; // Bloqueia edição em modo de seleção
-                    if (!apptData) return;
-                    if (apptData.status === 'completed') {
-                        showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
-                        return;
-                    }
+export async function loadComandasPage(params = {}) {
+    contentDiv = document.getElementById('content');
+    localState.selectedComandaId = params.selectedAppointmentId || null;
+    localState.viewMode = 'items';
+    
+    renderPageLayout();
 
-                    if (apptData.hasRewards && !apptData.redeemedReward) {
-                        showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos para resgatar. Verifique a Etapa 4 do agendamento.', 'info');
-                    }
-
-                    openAppointmentModal(apptData);
-                    break;
-                case 'delete-appointment': {
-                    if (localState.isSelectionMode) return;
-                    const id = targetElement.dataset.id;
-                    const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem a certeza que deseja apagar este agendamento?');
-                    if (confirmed) {
-                        try {
-                            await appointmentsApi.deleteAppointment(id);
-                            showNotification('Agendamento apagado!', 'success');
-                            fetchAndDisplayAgenda();
-                        } catch (error) {
-                            showNotification(`Não foi possível apagar: ${error.message}`, 'error');
-                        }
-                    }
-                    break;
-                }
-                case 'open-comanda':
-                    if (localState.isSelectionMode) return; // Impede abrir comanda ao selecionar
-                    if (apptData) {
-                        if (apptData.hasRewards && !apptData.redeemedReward && apptData.status !== 'completed') {
-                             showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos de fidelidade para resgatar.', 'info');
-                        }
-                        const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
-                        const params = { 
-                            selectedAppointmentId: apptData.id,
-                            initialFilter: initialFilter
-                        };
-                        
-                        if (initialFilter === 'finalizadas') {
-                            let dateToUse = apptData.startTime;
-                            
-                            if (apptData.transaction && apptData.transaction.paidAt) {
-                                const paidAt = apptData.transaction.paidAt;
-                                if (typeof paidAt === 'object' && paidAt._seconds) {
-                                    dateToUse = new Date(paidAt._seconds * 1000);
-                                } else {
-                                    dateToUse = paidAt;
-                                }
-                            }
-                            params.filterDate = dateToUse;
-                        }
-                        
-                        navigateTo('comandas-section', params);
-                    }
-                    break;
-            }
-        });
-        hasContentDelegationInitialized = true; 
+    if (pageEventListener) {
+        contentDiv.removeEventListener('click', pageEventListener);
+        contentDiv.removeEventListener('change', pageEventListener);
     }
 
-    await populateFilters();
-    await fetchAndDisplayAgenda();
+    pageEventListener = async (e) => {
+        const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
+        const dateInput = e.target.id === 'filter-date';
+
+        if (dateInput && localState.activeFilter === 'finalizadas') {
+             localState.paging.page = 1;
+             await fetchAndDisplayData();
+             return;
+        }
+
+        if (!target) return;
+        
+        if (target.matches('[data-filter]')) {
+            handleFilterClick(target.dataset.filter);
+        } else if (target.matches('[data-comanda-id]')) {
+            if (e.target.closest('[data-action="go-to-appointment"]')) { e.stopPropagation(); return; }
+            handleComandaClick(target.dataset.comandaId);
+        } else if (target.matches('[data-action]')) {
+            const action = target.dataset.action;
+            const comandaId = target.dataset.id || localState.selectedComandaId;
+            const comanda = localState.allComandas.find(c => c.id === comandaId);
+
+            switch (action) {
+                case 'back-to-list': hideMobileDetail(); localState.selectedComandaId = null; document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected')); renderComandaDetail(); break;
+                case 'new-sale': openNewSaleModal(); break;
+                case 'add-item': openAddItemModal(); break;
+                case 'open-cashier': openCashierModal(); break;
+                case 'close-cashier': await handleOpenCloseCashierModal(); break;
+                case 'view-sales-report': navigateTo('sales-report-section'); break;
+                
+                // --- NOVAS NAVEGAÇÕES ---
+                case 'go-to-checkout':
+                    await executeSaveAction(comanda, 'checkout');
+                    break;
+                    
+                case 'back-to-items':
+                    localState.viewMode = 'items';
+                    renderComandaDetail();
+                    break;
+
+                case 'save-comanda':
+                    await executeSaveAction(comanda, 'stay');
+                    break;
+
+                // --- AÇÕES DE CHECKOUT ---
+                case 'select-method':
+                    localState.checkoutState.selectedMethod = target.dataset.method;
+                    localState.checkoutState.installments = 1;
+                    renderComandaDetail();
+                    break;
+                
+                case 'add-payment-checkout':
+                    const amountInput = document.getElementById('checkout-amount');
+                    let value = parseFloat(amountInput.value);
+                    const rawItems = getSafeAllItems(comanda);
+                    
+                    // Recalcula total com desconto para validar o pagamento
+                    const subtotal = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+                    const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
+                    let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
+                    if (discountValue > subtotal) discountValue = subtotal;
+                    const total = subtotal - discountValue;
+
+                    const currentPaid = localState.checkoutState.payments.reduce((acc,p)=>acc+p.value,0);
+                    const remaining = total - currentPaid;
+
+                    if (isNaN(value) || value <= 0) { showNotification('Valor inválido', 'Insira um valor maior que zero.', 'error'); break; }
+                    if (value > remaining + 0.05) { showNotification('Valor inválido', 'Valor excede o restante.', 'error'); break; }
+
+                    const newPayment = { 
+                        method: localState.checkoutState.selectedMethod, 
+                        value: value 
+                    };
+                    if (['credito', 'crediario'].includes(localState.checkoutState.selectedMethod) && localState.checkoutState.installments > 1) {
+                        newPayment.installments = localState.checkoutState.installments;
+                    }
+                    
+                    localState.checkoutState.payments.push(newPayment);
+                    localState.checkoutState.selectedMethod = 'dinheiro'; // Reset
+                    localState.checkoutState.installments = 1;
+                    localState.checkoutState.amountReceived = '';
+                    renderComandaDetail();
+                    break;
+
+                case 'remove-payment-checkout':
+                    const idx = parseInt(target.dataset.index, 10);
+                    localState.checkoutState.payments.splice(idx, 1);
+                    renderComandaDetail();
+                    break;
+
+                case 'finalize-checkout':
+                    await handleFinalizeCheckout(comanda);
+                    break;
+
+                // --- AÇÕES DE QUANTIDADE COM DEBOUNCE (CORRIGIDAS) ---
+                case 'increase-qty': {
+                    const itemId = target.dataset.itemId;
+                    const itemType = target.dataset.itemType;
+                    
+                    // PROTEÇÃO: Impede operações com ID inválido
+                    if (!itemId || itemId === 'undefined' || itemId === 'null') {
+                        showNotification('Erro', 'Item inválido para adição.', 'error');
+                        return;
+                    }
+                    
+                    // 1. Tenta achar no próprio agendamento primeiro (para manter preço/nome originais)
+                    // e usa comparação flexível (==) para IDs
+                    const existingItems = getSafeAllItems(comanda);
+                    let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
+
+                    // 2. Se não achar, tenta no catálogo
+                    if (!itemToClone) {
+                        const catalog = localState.catalog[itemType + 's'] || [];
+                        itemToClone = catalog.find(i => i.id == itemId);
+                    }
+
+                    // 3. Fallback seguro que tenta preservar preço
+                    const safeItem = itemToClone 
+                        ? { 
+                            id: itemToClone.id, 
+                            name: itemToClone.name, 
+                            price: Number(itemToClone.price), 
+                            type: itemToClone.type 
+                          } 
+                        : { 
+                            id: itemId, 
+                            name: 'Item Indisponível', 
+                            price: 0, 
+                            type: itemType 
+                          };
+
+                    await handleAddItemToComanda(safeItem, 1);
+                    break;
+                }
+                case 'decrease-qty': {
+                    await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
+                    break;
+                }
+                case 'remove-item': await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType); break;
+                
+                case 'reopen-appointment': {
+                    const confirmed = await showConfirmation('Reabrir Comanda', 'Tem certeza? O pagamento será estornado.');
+                    if (confirmed) {
+                        try {
+                            await appointmentsApi.reopenAppointment(comandaId);
+                            const idx = localState.allComandas.findIndex(c => c.id === comandaId);
+                            if (idx !== -1) { localState.allComandas[idx].status = 'confirmed'; delete localState.allComandas[idx].transaction; }
+                            localState.selectedComandaId = null; hideMobileDetail(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Comanda reaberta.', 'success');
+                        } catch (error) { showNotification('Erro', error.message, 'error'); }
+                    }
+                    break;
+                }
+                case 'go-to-appointment': {
+                    const appointmentId = target.dataset.id;
+                    const startTime = target.dataset.date;
+                    navigateTo('agenda-section', { scrollToAppointmentId: appointmentId, targetDate: new Date(startTime) });
+                    break;
+                }
+                case 'delete-walk-in': {
+                    const confirmed = await showConfirmation('Excluir Venda', 'Confirma a exclusão desta venda avulsa?');
+                    if (confirmed) {
+                        if (comandaId.startsWith('temp-')) {
+                            localState.allComandas = localState.allComandas.filter(c => c.id !== comandaId);
+                            localState.selectedComandaId = null; renderComandaList(); renderComandaDetail(); hideMobileDetail();
+                        } else {
+                            try {
+                                await salesApi.deleteSale(comandaId);
+                                showNotification('Sucesso', 'Venda excluída.', 'success');
+                                localState.selectedComandaId = null; hideMobileDetail(); await fetchAndDisplayData();
+                            } catch (error) { showNotification('Erro', error.message, 'error'); }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    };
+    
+    contentDiv.addEventListener('click', pageEventListener);
+    contentDiv.addEventListener('change', pageEventListener);
+
+    if (params.initialFilter) localState.activeFilter = params.initialFilter === 'finalizadas' ? 'finalizadas' : 'atendimento';
+    if (params.selectedAppointmentId) localState.selectedComandaId = params.selectedAppointmentId;
+    
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
+    document.querySelector(`[data-filter="${localState.activeFilter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
+    document.getElementById('finalizadas-datepicker').classList.toggle('hidden', localState.activeFilter !== 'finalizadas');
+    if (params.filterDate) document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
+
+    await fetchAndDisplayData();
 }
