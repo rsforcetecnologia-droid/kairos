@@ -9,7 +9,6 @@ const { verifyToken, hasAccess, isOwner } = require('../middlewares/auth');
 // 🛠️ FUNÇÕES AUXILIARES
 // =======================================================================
 
-// --- CORREÇÃO: Helper para limpar ID (garante formato numérico) ---
 function cleanId(id) {
     if (!id) return '';
     return String(id).replace(/\D/g, '');
@@ -135,7 +134,6 @@ router.post('/', async (req, res) => {
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
         const newAppointmentRef = db.collection('appointments').doc();
         
-        // CORREÇÃO: Garante ID seguro para buscar/criar cliente
         const safeClientId = cleanId(clientPhone);
         const hasRewards = await checkClientRewards(db, clientName, safeClientId, establishmentId);
         
@@ -145,7 +143,6 @@ router.post('/', async (req, res) => {
             const clientRef = db.collection('clients').doc(safeClientId);
             const clientDoc = await transaction.get(clientRef);
             
-            // Verifica conflitos de agenda
             const conflictQuery = db.collection('appointments')
                 .where('professionalId', '==', professionalId)
                 .where('startTime', '<', admin.firestore.Timestamp.fromDate(endDate));
@@ -156,7 +153,6 @@ router.post('/', async (req, res) => {
             );
             if (actualConflicts.length > 0) throw new Error('Horário indisponível.');
 
-            // Cria ou Atualiza Cliente
             if (!clientDoc.exists) {
                 transaction.set(clientRef, {
                     establishmentId, 
@@ -229,7 +225,6 @@ router.use(verifyToken, hasAccess);
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        // Adicionado clientPhone e limit na desestruturação para otimização
         const { startDate, endDate, professionalId, clientPhone, limit } = req.query; 
 
         if (!startDate || !endDate) return res.status(400).json({ message: 'Período obrigatório.' });
@@ -247,15 +242,10 @@ router.get('/:establishmentId', async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
-        // --- INÍCIO DA OTIMIZAÇÃO ---
-        
-        // 1. Filtro Opcional por Cliente (Telefone)
-        // Isso permite buscar apenas o histórico deste cliente, sem carregar tudo.
         if (clientPhone) {
             query = query.where('clientPhone', '==', clientPhone);
         }
 
-        // 2. Filtros de Profissional
         if (role === 'employee' && !canViewAll) {
             if (userProfessionalId) query = query.where('professionalId', '==', userProfessionalId);
             else return res.status(200).json([]);
@@ -263,14 +253,11 @@ router.get('/:establishmentId', async (req, res) => {
             query = query.where('professionalId', '==', professionalId);
         }
 
-        // 3. Ordenação e Limite (Paginação)
-        // O Firestore exige que a ordenação siga o campo do filtro de desigualdade (startTime).
         query = query.orderBy('startTime', 'desc');
 
         if (limit) {
             query = query.limit(parseInt(limit));
         }
-        // --- FIM DA OTIMIZAÇÃO ---
 
         const [appointmentsSnapshot, professionalsSnapshot] = await Promise.all([
             query.get(),
@@ -361,7 +348,6 @@ router.delete('/:appointmentId', async (req, res) => {
             const items = data.comandaItems || [];
             const products = items.filter(i => i.type === 'product');
             for (const item of products) {
-                // CORREÇÃO: Ignora rewards virtuais no delete
                 if (item.itemId && !String(item.itemId).startsWith('reward-')) {
                     const prodRef = db.collection('products').doc(item.itemId);
                     transaction.update(prodRef, { currentStock: admin.firestore.FieldValue.increment(item.quantity || 1) });
@@ -468,7 +454,6 @@ router.post('/:appointmentId/comanda', async (req, res) => {
             
             const count = (list) => list.filter(i => i.type === 'product').reduce((acc, i) => { 
                 const pid = i.productId || i.itemId || i.id;
-                // CORREÇÃO: Ignorar IDs inválidos ou de prémios virtuais ao contar stock
                 if (pid && pid !== 'undefined' && pid !== 'null' && !String(pid).startsWith('reward-')) {
                     acc[pid] = (acc[pid] || 0) + (i.quantity || 1); 
                 }
@@ -502,7 +487,6 @@ router.post('/:appointmentId/comanda', async (req, res) => {
 // 7. CHECKOUT - CORRIGIDO (FIDELIDADE DINÂMICA + DESCONTO)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
-    // 1. ADICIONADO 'discount' AQUI NA DESESTRUTURAÇÃO
     const { payments, totalAmount, cashierSessionId, items, discount } = req.body;
     const { db } = req;
     const { uid, establishmentId } = req.user;
@@ -514,27 +498,29 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         const saleRef = db.collection('sales').doc();
         const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
-        // 1. Busca configurações do estabelecimento
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const establishmentData = establishmentDoc.data() || {};
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
 
-        // 2. Calcula Pontos de Fidelidade
+        // --- 2. CÁLCULO DE PONTOS CORRIGIDO ---
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
-            // Força minúsculo para comparação segura
-            const type = (loyaltyProgram.type || 'value').toLowerCase();
-            
+            // Normaliza o tipo (assume 'value' apenas se for explícito ou undefined, mas checa 'visit' primeiro)
+            let type = (loyaltyProgram.type || 'value').toLowerCase();
+
             if (type === 'visit') {
-                // Regra por Visita
-                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
+                // REGRA: Por Visita
+                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit);
+                // Fallback para 1 se não estiver configurado corretamente
+                if (isNaN(pointsToAward) || pointsToAward <= 0) pointsToAward = 1;
             } else {
-                // Regra por Valor
-                const divisor = parseFloat(loyaltyProgram.pointsPerCurrency || 10);
-                if (divisor > 0) {
-                    pointsToAward = Math.floor(Number(totalAmount) / divisor);
-                }
+                // REGRA: Por Valor (Amount/Value)
+                let divisor = parseFloat(loyaltyProgram.pointsPerCurrency);
+                if (isNaN(divisor) || divisor <= 0) divisor = 10; // Default 10 se inválido
+                
+                const safeTotal = Number(totalAmount) || 0;
+                pointsToAward = Math.floor(safeTotal / divisor);
             }
         }
 
@@ -555,24 +541,22 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 clientDoc = await transaction.get(clientRef);
             }
 
-            // Atualiza Agendamento com pontos ganhos E DESCONTO
             transaction.update(appointmentRef, {
                 status: 'completed',
                 cashierSessionId: cashierSessionId || null,
                 comandaItems: items,
                 totalAmount: Number(totalAmount),
-                loyaltyPointsEarned: pointsToAward, // Salva para estorno
-                discount: discount || null, // 2. SALVA O DESCONTO NA RAIZ
+                loyaltyPointsEarned: pointsToAward,
+                discount: discount || null,
                 transaction: { 
                     payments, 
                     totalAmount: Number(totalAmount), 
                     paidAt: paidAtTimestamp, 
                     saleId: saleRef.id,
-                    discount: discount || null // 3. SALVA O DESCONTO NA TRANSAÇÃO
+                    discount: discount || null
                 }
             });
 
-            // Atualiza Cliente
             if (clientDoc && clientDoc.exists) {
                 const updateData = {
                     lastServiceDate: paidAtTimestamp,
@@ -596,14 +580,13 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 transaction.update(clientRef, updateData);
             }
 
-            // Cria Venda (Espelho para relatórios) COM DESCONTO
             transaction.set(saleRef, {
                 type: 'appointment', 
                 appointmentId, 
                 establishmentId, 
                 items,
                 totalAmount: Number(totalAmount), 
-                discount: discount || null, // SALVA O DESCONTO AQUI TAMBÉM
+                discount: discount || null,
                 clientName: apptData.clientName, 
                 clientPhone: apptData.clientPhone,
                 clientId: safeClientId, 
@@ -621,7 +604,6 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 }
             });
 
-            // Financeiro
             payments.forEach(payment => {
                 const finRef = db.collection('financial_receivables').doc();
                 transaction.set(finRef, {
@@ -640,7 +622,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA - CORRIGIDO (ESTORNO DE PONTOS)
+// 8. REABRIR COMANDA
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
@@ -661,7 +643,6 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 financialDocs = finsSnapshot.docs;
             }
 
-            // ESTORNO DE PONTOS
             if (pointsToRevert > 0 && safeClientId) {
                 const clientRef = db.collection('clients').doc(safeClientId);
                 const clientDoc = await t.get(clientRef);
@@ -692,7 +673,7 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 transaction: admin.firestore.FieldValue.delete(), 
                 cashierSessionId: admin.firestore.FieldValue.delete(),
                 loyaltyPointsEarned: admin.firestore.FieldValue.delete(),
-                discount: admin.firestore.FieldValue.delete() // Remove também o desconto ao reabrir
+                discount: admin.firestore.FieldValue.delete()
             });
         });
         res.status(200).json({ message: 'Reaberto com estorno.' });
