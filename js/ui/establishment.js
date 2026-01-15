@@ -1,7 +1,12 @@
-// js/ui/establishment.js (Blindado, Multitenancy, Suporte, Cancelamento e Foto de Perfil)
+// js/ui/establishment.js (Blindado, Multitenancy, Suporte, Cancelamento, Foto de Perfil e Fidelidade Avançada)
 
 import * as establishmentApi from '../api/establishments.js';
 import * as financialApi from '../api/financial.js';
+// --- NOVOS IMPORTS PARA FIDELIDADE ---
+import * as servicesApi from '../api/services.js';
+import * as productsApi from '../api/products.js';
+import * as packagesApi from '../api/packages.js';
+// -------------------------------------
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
@@ -745,13 +750,26 @@ function renderWorkingHoursSection(data, container) {
     });
 }
 
-function renderLoyaltySection(data, container) {
+// --- MODIFICADO: FIDELIDADE AVANÇADA (Itens Específicos) ---
+async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
     
     // Define valores padrão se não existirem
     const currentType = loyaltyProgram.type || 'amount'; // 'amount' (valor) ou 'visit' (visita)
     const currentPointsPerCurrency = loyaltyProgram.pointsPerCurrency || 10;
     const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
+
+    // Carrega dados para os selects (Serviços, Produtos, Pacotes)
+    let services = [], products = [], packages = [];
+    try {
+        [services, products, packages] = await Promise.all([
+             servicesApi.getServices(state.establishmentId),
+             productsApi.getProducts(state.establishmentId),
+             packagesApi.getPackages(state.establishmentId)
+        ]);
+    } catch (error) {
+        console.error("Erro ao carregar dados para fidelidade:", error);
+    }
 
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
@@ -812,12 +830,13 @@ function renderLoyaltySection(data, container) {
 
                  <div>
                      <label class="block text-sm font-bold text-gray-700 mb-2">Prémios e Recompensas</label>
-                     <p class="text-xs text-gray-500 mb-3">Defina quantos pontos são necessários para resgatar cada prémio.</p>
+                     <p class="text-xs text-gray-500 mb-3">Defina os prêmios. Ao selecionar um item específico (Serviço, Produto ou Pacote), o sistema identificará automaticamente no checkout para aplicar o desconto.</p>
                      
-                     <div class="hidden md:grid grid-cols-[1fr_2fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
-                         <span>Custo (Pontos)</span>
-                         <span>Descrição do Prémio</span>
-                         <span>Valor Equivalente (R$)</span>
+                     <div class="hidden md:grid grid-cols-[0.8fr_1fr_1.5fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
+                         <span>Custo (Pts)</span>
+                         <span>Tipo do Prêmio</span>
+                         <span>Item / Descrição</span>
+                         <span>Valor Desconto (R$)</span>
                          <span></span>
                      </div>
                      
@@ -870,35 +889,121 @@ function renderLoyaltySection(data, container) {
     const tiersContainer = container.querySelector('#loyaltyTiersContainer');
     
     const createTierRow = (tier = {}) => {
-        const newTier = document.createElement('div');
-        // BLINDAGEM XSS
-        const safeReward = escapeHTML(tier.reward || '');
-        
-        newTier.className = 'loyalty-tier-row group bg-white md:bg-transparent p-3 md:p-0 border md:border-0 rounded-lg shadow-sm md:shadow-none relative'; 
-        newTier.innerHTML = `
+        const row = document.createElement('div');
+        row.className = 'loyalty-tier-row group bg-white md:bg-transparent p-3 md:p-0 border md:border-0 rounded-lg shadow-sm md:shadow-none relative md:grid md:grid-cols-[0.8fr_1fr_1.5fr_1fr_auto] md:gap-2 md:items-start'; 
+
+        // Valores atuais ou padrão
+        const currentType = tier.type || 'money';
+        const currentItemId = tier.itemId || '';
+        const currentRewardName = tier.reward || '';
+        const currentDiscount = tier.discount || '';
+        const currentPoints = tier.points || tier.costPoints || ''; // suporte legado
+
+        row.innerHTML = `
             <div class="mb-2 md:mb-0">
-                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Custo em Pontos</label>
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Custo (Pontos)</label>
                 <div class="relative">
-                    <input type="number" placeholder="Ex: 100" data-field="points" value="${tier.points || ''}" class="w-full p-2 pl-2 border rounded-md font-semibold text-gray-800">
+                    <input type="number" placeholder="Ex: 100" data-field="points" value="${currentPoints}" class="w-full p-2 pl-2 border rounded-md font-semibold text-gray-800">
                     <span class="md:hidden absolute right-3 top-2 text-xs text-gray-400">pts</span>
                 </div>
             </div>
+
             <div class="mb-2 md:mb-0">
-                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Descrição do Prémio</label>
-                <input type="text" placeholder="Ex: Corte de Cabelo Grátis" data-field="reward" value="${safeReward}" class="w-full p-2 border rounded-md">
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Tipo</label>
+                <select data-field="type" class="type-select w-full p-2 border rounded-md bg-white text-sm">
+                    <option value="money" ${currentType === 'money' ? 'selected' : ''}>Desconto Livre (R$)</option>
+                    <option value="service" ${currentType === 'service' ? 'selected' : ''}>Serviço Específico</option>
+                    <option value="product" ${currentType === 'product' ? 'selected' : ''}>Produto Específico</option>
+                    <option value="package" ${currentType === 'package' ? 'selected' : ''}>Pacote</option>
+                </select>
             </div>
+
+            <div class="mb-2 md:mb-0 relative">
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Item / Descrição</label>
+                
+                <input type="text" placeholder="Ex: Vale Compras R$ 20" data-field="rewardName" value="${escapeHTML(currentRewardName)}" class="desc-input w-full p-2 border rounded-md ${currentType !== 'money' ? 'hidden' : ''}">
+                
+                <select data-field="itemId" class="item-select w-full p-2 border rounded-md bg-white text-sm ${currentType === 'money' ? 'hidden' : ''}">
+                    <option value="">Selecione o item...</option>
+                </select>
+            </div>
+
             <div class="mb-2 md:mb-0">
-                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Desconto (R$)</label>
+                <label class="md:hidden text-xs font-bold text-gray-500 mb-1 block">Valor Desconto (R$)</label>
                 <div class="flex items-center relative">
                     <span class="absolute left-3 text-gray-500">R$</span>
-                    <input type="number" placeholder="0.00" data-field="discount" value="${tier.discount || ''}" class="w-full p-2 pl-8 border rounded-md">
+                    <input type="number" placeholder="0.00" data-field="discount" value="${currentDiscount}" step="0.01" class="discount-input w-full p-2 pl-8 border rounded-md">
                 </div>
+                <p class="text-[10px] text-gray-500 mt-1 hidden md:block">Deixe 0 para 100% (se item)</p>
             </div>
+
             <button type="button" class="remove-loyalty-tier absolute top-2 right-2 md:static text-gray-400 hover:text-red-600 p-2 rounded-md hover:bg-red-50 transition-colors" title="Remover">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
         `;
-        return newTier;
+
+        // Elementos DOM
+        const typeSelect = row.querySelector('.type-select');
+        const itemSelect = row.querySelector('.item-select');
+        const descInput = row.querySelector('.desc-input');
+        const discountInput = row.querySelector('.discount-input');
+
+        // Função para atualizar as opções do Select de Itens baseado no Tipo
+        const updateItemOptions = (type) => {
+            itemSelect.innerHTML = '<option value="">Selecione...</option>';
+            let list = [];
+            
+            if (type === 'service') list = services;
+            else if (type === 'product') list = products;
+            else if (type === 'package') list = packages;
+
+            list.forEach(item => {
+                const isSelected = item.id === currentItemId;
+                // Usa item.name ou item.title dependendo da estrutura do objeto
+                const name = item.name || item.title || 'Sem nome';
+                const price = item.price || item.salePrice || 0;
+                itemSelect.innerHTML += `<option value="${item.id}" data-price="${price}" ${isSelected ? 'selected' : ''}>${escapeHTML(name)}</option>`;
+            });
+        };
+
+        // Inicializa as opções se já tiver um tipo selecionado
+        if (currentType !== 'money') {
+            updateItemOptions(currentType);
+        }
+
+        // Listener de mudança de Tipo
+        typeSelect.addEventListener('change', (e) => {
+            const type = e.target.value;
+            
+            if (type === 'money') {
+                itemSelect.classList.add('hidden');
+                descInput.classList.remove('hidden');
+                descInput.value = ''; 
+                discountInput.value = '';
+            } else {
+                itemSelect.classList.remove('hidden');
+                descInput.classList.add('hidden');
+                updateItemOptions(type);
+                discountInput.value = ''; // Limpa valor ao mudar tipo
+            }
+        });
+
+        // Listener de mudança de Item (Preencher descrição e sugerir valor)
+        itemSelect.addEventListener('change', (e) => {
+            const selectedOption = e.target.selectedOptions[0];
+            if (selectedOption && selectedOption.value) {
+                // Ao selecionar um item, preenchemos o nome na descrição oculta (para facilitar o salvamento)
+                descInput.value = selectedOption.text;
+                
+                // Sugestão: Preencher o valor do desconto com o preço do item (100% off)
+                const price = selectedOption.dataset.price;
+                if (price) {
+                    discountInput.value = parseFloat(price).toFixed(2);
+                }
+            }
+        });
+
+        return row;
     };
     
     (loyaltyProgram.tiers || []).forEach(tier => {
@@ -922,11 +1027,29 @@ function renderLoyaltySection(data, container) {
         
         const selectedType = container.querySelector('input[name="loyaltyType"]:checked').value;
 
-        const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => ({
-            points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0, // Custo em pontos (antigo costPoints no backend se mapeado assim, mas aqui usaremos points como custo)
-            reward: row.querySelector('input[data-field="reward"]').value,
-            discount: parseFloat(row.querySelector('input[data-field="discount"]').value) || 0
-        }));
+        const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => {
+            const type = row.querySelector('.type-select').value;
+            const itemId = type === 'money' ? null : row.querySelector('.item-select').value;
+            
+            // Se for item, usa o texto do select como nome, senão usa o input
+            let rewardName = '';
+            if (type === 'money') {
+                rewardName = row.querySelector('.desc-input').value;
+            } else {
+                 const sel = row.querySelector('.item-select');
+                 rewardName = sel.options[sel.selectedIndex]?.text || '';
+            }
+
+            return {
+                points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0,
+                costPoints: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0, // Redundância para compatibilidade
+                type: type,
+                itemId: itemId,
+                reward: rewardName,
+                name: rewardName,
+                discount: parseFloat(row.querySelector('input[data-field="discount"]').value) || 0
+            };
+        });
 
         const formData = {
             loyaltyProgram: {
@@ -934,14 +1057,8 @@ function renderLoyaltySection(data, container) {
                 type: selectedType, // 'amount' ou 'visit'
                 pointsPerCurrency: parseFloat(container.querySelector('#loyaltyPointsPerCurrency').value) || 10,
                 pointsPerVisit: parseInt(container.querySelector('#loyaltyPointsPerVisit').value, 10) || 1,
-                // Nota: para manter compatibilidade, 'costPoints' nos tiers deve ser salvo.
-                // Vou mapear 'points' da UI para 'costPoints' (custo do premio) que é o padrão usado em comandas.js
-                tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward).map(t => ({
-                    costPoints: t.points, // Importante: renomeando para manter consistência com o uso em comandas.js
-                    reward: t.reward,
-                    name: t.reward, // Fallback para name
-                    discount: t.discount
-                }))
+                // Filtra apenas tiers válidos
+                tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward)
             }
         };
         handleSave(formData, e);
@@ -1273,7 +1390,7 @@ async function showSettingsDetailView(sectionId) {
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
-        case 'loyalty': renderLoyaltySection(establishmentData, detailContainer); break;
+        case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; // Agora é async
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
         // --- NOVOS CASOS ---
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
@@ -1334,7 +1451,7 @@ export async function loadEstablishmentPage() {
                 
                 <div class="absolute top-0 right-0 p-2 text-gray-400 hover:text-indigo-600" title="Ver Meu Perfil">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                  </div>
 

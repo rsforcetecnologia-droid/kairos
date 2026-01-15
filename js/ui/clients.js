@@ -3,7 +3,8 @@
 // --- 1. IMPORTAÇÕES ---
 import * as clientsApi from '../api/clients.js';
 import * as appointmentsApi from '../api/appointments.js';
-import * as salesApi from '../api/sales.js'; 
+// Importação da função de fetch autenticado para corrigir o erro 403
+import { authenticatedFetch } from '../api/apiService.js'; 
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
 import { escapeHTML, formatDate, formatCurrency } from '../utils.js'; 
@@ -13,17 +14,18 @@ import { state } from '../state.js';
 let localState = {
     clients: [],
     selectedClient: null,
-    activeTab: 'profile', // 'profile', 'appointments', 'history'
+    activeTab: 'profile', // 'profile', 'appointments', 'history', 'loyalty'
     searchTerm: '',
     loading: false,
     
-    // Estados para otimização e paginação
+    // Estados para otimização e paginação do histórico
     historyLimit: 20, 
     historySearchTerm: '', 
     historyLoading: false,
     historyData: {
         appointments: [],
-        sales: []
+        sales: [],
+        loyaltyLog: [] // Histórico unificado de fidelidade
     }
 };
 
@@ -38,7 +40,7 @@ function renderLayout() {
             <div class="p-4 bg-white border-b shadow-sm flex flex-col sm:flex-row justify-between items-center gap-3 sticky top-0 z-30">
                 <div class="w-full sm:w-auto text-center sm:text-left">
                     <h2 class="text-xl sm:text-2xl font-bold text-gray-800">Gestão de Clientes</h2>
-                    <p class="text-xs text-gray-500 hidden sm:block">Gerencie perfis, histórico e agendamentos</p>
+                    <p class="text-xs text-gray-500 hidden sm:block">Gerencie perfis, histórico, agendamentos e fidelidade</p>
                 </div>
                 
                 <div class="w-full sm:w-auto">
@@ -111,6 +113,7 @@ function renderClientList() {
                                 <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
                                 <span class="truncate">${client.phone || 'Sem telefone'}</span>
                             </p>
+                            ${client.loyaltyPoints ? `<span class="text-xs font-bold text-amber-600 mt-1 inline-block bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">⭐ ${client.loyaltyPoints} pts</span>` : ''}
                         </div>
                         <div class="text-right flex-shrink-0">
                             <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">Ver</span>
@@ -152,7 +155,8 @@ async function renderClientDetails() {
 
     if (!client) return renderClientList();
 
-    if (localState.activeTab !== 'profile') {
+    // Carrega histórico se não estiver na aba perfil e se o histórico estiver vazio
+    if (localState.activeTab !== 'profile' && localState.historyData.appointments.length === 0) {
         await fetchClientHistory(client.id);
     }
 
@@ -167,6 +171,9 @@ async function renderClientDetails() {
             <button class="tab-btn ${localState.activeTab === 'history' ? 'active-tab' : ''}" data-tab="history">
                 💰 Histórico
             </button>
+            <button class="tab-btn ${localState.activeTab === 'loyalty' ? 'active-tab' : ''}" data-tab="loyalty">
+                ⭐ Fidelidade
+            </button>
         </div>
     `;
 
@@ -178,6 +185,8 @@ async function renderClientDetails() {
         contentHTML = renderAppointmentsTab(client);
     } else if (localState.activeTab === 'history') {
         contentHTML = renderHistoryTab(client);
+    } else if (localState.activeTab === 'loyalty') {
+        contentHTML = renderLoyaltyTab(client);
     }
 
     // Card Full-Width no Mobile (sem bordas/margens laterais), com bordas no Desktop
@@ -192,6 +201,11 @@ async function renderClientDetails() {
                         <h2 class="text-2xl font-bold leading-tight">${escapeHTML(client.name)}</h2>
                         <p class="opacity-90 text-sm mt-1">${client.phone || 'Sem telefone'}</p>
                         ${client.email ? `<p class="opacity-75 text-xs">${client.email}</p>` : ''}
+                    </div>
+                    
+                    <div class="md:ml-auto bg-white/20 p-2 rounded-lg backdrop-blur-sm text-center min-w-[100px]">
+                        <p class="text-xs uppercase font-bold tracking-wide opacity-80">Pontos</p>
+                        <p class="text-2xl font-extrabold text-yellow-300 shadow-sm">${client.loyaltyPoints || 0}</p>
                     </div>
                 </div>
             </div>
@@ -221,11 +235,15 @@ async function renderClientDetails() {
     // Event Listeners das Abas
     container.querySelectorAll('.tab-btn').forEach(btn => {
         btn.onclick = () => {
-            if (localState.activeTab !== btn.dataset.tab) {
-                localState.historyLimit = 20;
-                localState.historySearchTerm = '';
+            const newTab = btn.dataset.tab;
+            if (localState.activeTab !== newTab) {
+                // Reset de filtros ao mudar de aba
+                if (newTab === 'appointments' || newTab === 'history') {
+                    localState.historyLimit = 20;
+                    localState.historySearchTerm = '';
+                }
             }
-            localState.activeTab = btn.dataset.tab;
+            localState.activeTab = newTab;
             renderClientDetails();
         };
     });
@@ -233,6 +251,11 @@ async function renderClientDetails() {
     if (localState.activeTab === 'profile') {
         document.getElementById('form-edit-client').onsubmit = handleSaveClient;
         document.getElementById('btn-delete-client').onclick = handleDeleteClient;
+    }
+    
+    if (localState.activeTab === 'loyalty') {
+        const btnRedeem = document.getElementById('btn-manual-redeem');
+        if(btnRedeem) btnRedeem.onclick = () => openManualRedemptionModal(client);
     }
 
     const historySearchInput = document.getElementById('history-search-input');
@@ -252,7 +275,8 @@ async function renderClientDetails() {
     if (btnLoadMore) {
         btnLoadMore.onclick = () => {
             localState.historyLimit += 20; 
-            renderClientDetails(); 
+            renderClientDetails(); // Re-renderiza para mostrar mais itens
+            fetchClientHistory(client.id); // Recarrega se necessário
         };
     }
 
@@ -272,7 +296,7 @@ async function renderClientDetails() {
     });
 }
 
-// HTML: Aba Perfil - Stackado no Mobile, Grid no Desktop
+// HTML: Aba Perfil
 function renderProfileTab(client) {
     return `
         <form id="form-edit-client" class="space-y-4 pb-10">
@@ -318,7 +342,7 @@ function renderProfileTab(client) {
     `;
 }
 
-// HTML: Aba Agendamentos (Link para Agenda)
+// HTML: Aba Agendamentos
 function renderAppointmentsTab(client) {
     let appointments = localState.historyData.appointments || [];
     
@@ -386,7 +410,7 @@ function renderAppointmentsTab(client) {
     `;
 }
 
-// HTML: Aba Histórico (Link para Comanda)
+// HTML: Aba Histórico (Comandas)
 function renderHistoryTab(client) {
     let sales = localState.historyData.sales || [];
     
@@ -403,7 +427,7 @@ function renderHistoryTab(client) {
     if (sales.length === 0 && !localState.historySearchTerm) {
         return `
             <div class="text-center py-12">
-                <p class="text-gray-400 text-sm">Nenhum registro financeiro.</p>
+                <p class="text-gray-400 text-sm">Nenhum registro financeiro encontrado.</p>
             </div>
         `;
     }
@@ -455,6 +479,64 @@ function renderHistoryTab(client) {
     `;
 }
 
+// HTML: Aba Fidelidade (Nova)
+function renderLoyaltyTab(client) {
+    const log = localState.historyData.loyaltyLog || [];
+    log.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const historyItems = log.length > 0 ? log.map(entry => {
+        const isRedemption = entry.type === 'redemption';
+        const icon = isRedemption 
+            ? '<svg class="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>'
+            : '<svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>';
+        
+        return `
+            <div class="flex justify-between items-center bg-white border border-gray-100 p-3 rounded-lg mb-2">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-full ${isRedemption ? 'bg-red-50' : 'bg-green-50'}">
+                        ${icon}
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-gray-800">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
+                        <p class="text-xs text-gray-500">${new Date(entry.date).toLocaleDateString()} às ${new Date(entry.date).toLocaleTimeString()}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="font-bold ${isRedemption ? 'text-red-600' : 'text-green-600'}">
+                        ${isRedemption ? '-' : '+'}${entry.points} pts
+                    </span>
+                </div>
+            </div>
+        `;
+    }).join('') : '<p class="text-center text-gray-400 py-4 text-sm">Nenhum histórico de pontos.</p>';
+
+    return `
+        <div class="space-y-6 pb-10">
+            <div class="bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4">
+                    <svg class="w-32 h-32" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                </div>
+                <p class="text-amber-100 font-bold uppercase tracking-wider text-xs mb-1">Saldo Atual</p>
+                <h1 class="text-4xl font-extrabold flex items-center gap-2">
+                    ${client.loyaltyPoints || 0} <span class="text-lg opacity-80 font-normal">pontos</span>
+                </h1>
+                <div class="mt-4 flex gap-2">
+                    <button id="btn-manual-redeem" class="bg-white/20 hover:bg-white/30 text-white text-xs font-bold py-2 px-4 rounded-lg backdrop-blur-sm transition border border-white/30">
+                        Resgate Manual / Ajuste
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <h4 class="text-sm font-bold text-gray-600 mb-3 uppercase tracking-wide">Extrato de Pontos</h4>
+                <div class="bg-gray-50 rounded-xl p-2 border border-gray-200">
+                    ${historyItems}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 // --- 4. FUNÇÕES DE DADOS E LÓGICA ---
 
 async function fetchClients() {
@@ -491,19 +573,17 @@ async function fetchClientHistory(clientId) {
         const start = new Date();
         start.setFullYear(start.getFullYear() - 5); 
 
-        let url = `${state.apiBaseUrl || ''}/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}`;
+        // --- CORREÇÃO: Usar authenticatedFetch para passar o token corretamente ---
+        let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}`;
         url += `&clientPhone=${encodeURIComponent(client.phone)}`;
         url += `&limit=${localState.historyLimit}`;
 
-        const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${state.token}` }
-        });
-        
-        if (!response.ok) throw new Error('Falha API');
-        const clientAppts = await response.json();
+        // Substituindo o fetch manual pelo authenticatedFetch que injeta o cabeçalho Authorization
+        const clientAppts = await authenticatedFetch(url);
         
         localState.historyData.appointments = clientAppts;
 
+        // Histórico de Vendas (Filtrar Completed)
         localState.historyData.sales = clientAppts
             .filter(a => a.status === 'completed')
             .map(a => ({
@@ -513,13 +593,117 @@ async function fetchClientHistory(clientId) {
                  items: a.services || []
              }));
 
+        // --- Gerar Histórico de Fidelidade (Deduzido dos agendamentos) ---
+        const loyaltyLog = [];
+        
+        clientAppts.forEach(appt => {
+            // Ganho de pontos (Vendas finalizadas)
+            if (appt.status === 'completed' && appt.loyaltyPointsEarned > 0) {
+                loyaltyLog.push({
+                    type: 'earn',
+                    points: appt.loyaltyPointsEarned,
+                    date: appt.startTime,
+                    description: 'Venda finalizada'
+                });
+            }
+            
+            // Uso de pontos (Resgates na comanda)
+            if (appt.loyaltyRedemption) {
+                loyaltyLog.push({
+                    type: 'redemption',
+                    points: appt.loyaltyRedemption.cost || 0,
+                    date: appt.startTime,
+                    description: `Resgate: ${appt.loyaltyRedemption.name}`
+                });
+            }
+        });
+        
+        localState.historyData.loyaltyLog = loyaltyLog;
+
     } catch (e) {
         console.error("Erro ao buscar histórico otimizado", e);
-        showNotification('Erro', 'Falha ao carregar histórico.', 'error');
+        showNotification('Aviso', 'Não foi possível carregar o histórico completo. Verifique sua conexão.', 'warning');
     } finally {
         localState.historyLoading = false;
         renderClientDetails();
     }
+}
+
+// Modal para Resgate Manual / Ajuste de Pontos (Deduz pontos do saldo)
+function openManualRedemptionModal(client) {
+    const currentPoints = client.loyaltyPoints || 0;
+    
+    const contentHTML = `
+        <div class="text-center mb-6">
+            <p class="text-sm text-gray-500">Saldo Atual</p>
+            <h2 class="text-3xl font-bold text-gray-800">${currentPoints} pts</h2>
+        </div>
+        <form id="manual-redeem-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Ação</label>
+                <select id="redeem-action" class="w-full p-2 border rounded-lg bg-gray-50">
+                    <option value="debit">Debitar Pontos (Resgate)</option>
+                    <option value="credit">Adicionar Pontos (Ajuste)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Quantidade de Pontos</label>
+                <input type="number" id="redeem-points" min="1" required class="w-full p-2 border rounded-lg text-lg font-bold" placeholder="0">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Motivo / Descrição</label>
+                <input type="text" id="redeem-reason" required class="w-full p-2 border rounded-lg" placeholder="Ex: Resgate de brinde balcão">
+            </div>
+            <div class="pt-4 border-t flex justify-end">
+                <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700">Confirmar</button>
+            </div>
+        </form>
+    `;
+
+    const { modalElement, close } = showGenericModal({ title: "Ajuste Manual de Pontos", contentHTML: contentHTML, maxWidth: 'max-w-sm' });
+
+    modalElement.querySelector('form').onsubmit = async (e) => {
+        e.preventDefault();
+        const action = document.getElementById('redeem-action').value;
+        const pointsInput = parseInt(document.getElementById('redeem-points').value, 10);
+        const reason = document.getElementById('redeem-reason').value;
+
+        if (!pointsInput || pointsInput <= 0) return showNotification('Erro', 'Insira uma quantidade válida.', 'error');
+        if (action === 'debit' && pointsInput > currentPoints) return showNotification('Erro', 'Saldo insuficiente.', 'error');
+
+        try {
+            let newBalance = currentPoints;
+            
+            if (action === 'debit') {
+                // Chama API de resgate para garantir registro no backend se existir log lá
+                // Deduz pontos do saldo do cliente
+                await clientsApi.redeemReward(state.establishmentId, client.phone, pointsInput, reason);
+                newBalance -= pointsInput;
+            } else {
+                // Crédito manual (Ajuste) - Atualiza cliente direto
+                newBalance += pointsInput;
+                await clientsApi.updateClient(client.id, { loyaltyPoints: newBalance });
+            }
+
+            // Atualiza estado local imediatamente para refletir na UI sem recarregar
+            localState.selectedClient.loyaltyPoints = newBalance;
+            
+            // Adiciona ao log local temporariamente para feedback visual imediato
+            localState.historyData.loyaltyLog.unshift({
+                type: action === 'debit' ? 'redemption' : 'earn',
+                points: pointsInput,
+                date: new Date().toISOString(),
+                description: reason + ' (Manual)'
+            });
+
+            showNotification('Sucesso', 'Saldo de pontos atualizado.', 'success');
+            close();
+            renderClientDetails(); // Re-renderiza para mostrar novo saldo
+
+        } catch (error) {
+            showNotification('Erro', 'Falha ao atualizar pontos: ' + error.message, 'error');
+        }
+    };
 }
 
 function selectClient(id) {
@@ -527,6 +711,10 @@ function selectClient(id) {
     localState.activeTab = 'profile'; 
     localState.historyLimit = 20; 
     localState.historySearchTerm = ''; 
+    
+    // Limpa dados de histórico ao selecionar novo cliente para evitar flash de dados antigos
+    localState.historyData = { appointments: [], sales: [], loyaltyLog: [] };
+    
     renderClientDetails();
 }
 

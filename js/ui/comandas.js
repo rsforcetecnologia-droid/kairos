@@ -42,7 +42,8 @@ let localState = {
             value: 0
         },
         discountReason: '' // Novo campo para o motivo
-    }
+    },
+    isProcessing: false
 };
 
 let pageEventListener = null;
@@ -342,7 +343,22 @@ function renderComandaList() {
 
     filteredComandas.forEach(comanda => {
         const allItems = getSafeAllItems(comanda);
-        const total = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+        
+        // --- CÁLCULO ATUALIZADO DO TOTAL PARA EXIBIÇÃO NO CARD ---
+        // Se a comanda está finalizada, usa o valor total salvo (que já inclui descontos)
+        let displayTotal = 0;
+        if (comanda.status === 'completed' && comanda.totalAmount !== undefined && comanda.totalAmount !== null) {
+            displayTotal = Number(comanda.totalAmount);
+        } else {
+            displayTotal = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+        }
+
+        // --- INDICADOR DE PRÊMIO RESGATADO ---
+        const hasReward = comanda.loyaltyRedemption || (comanda.discount && comanda.discount.reason && String(comanda.discount.reason).toLowerCase().includes('fidelidade'));
+        const rewardIndicator = hasReward 
+            ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-5 h-5 ml-2" title="Prémio Resgatado">🎁</span>` 
+            : '';
+
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
@@ -359,7 +375,10 @@ function renderComandaList() {
         div.innerHTML = `
             <div class="flex justify-between items-start mb-1 pointer-events-none">
                 <p class="font-bold text-gray-800 truncate max-w-[70%] text-sm">${safeClientName}</p>
-                <p class="font-bold text-gray-900 text-sm">R$ ${total.toFixed(2)}</p>
+                <div class="flex items-center">
+                    <p class="font-bold text-gray-900 text-sm">R$ ${displayTotal.toFixed(2)}</p>
+                    ${rewardIndicator}
+                </div>
             </div>
             <div class="flex justify-between items-center mt-1 pointer-events-none">
                 <div class="flex items-center gap-2">
@@ -539,16 +558,20 @@ function renderComandaDetail() {
                 ${Object.values(groupedItems).map(item => {
                     const isOriginal = item.sources && item.sources.includes('original_service');
                     
+                    // --- IDENTIFICAÇÃO VISUAL DO ITEM RESGATADO ---
+                    const isRedeemedItem = localState.pendingRedemption && String(localState.pendingRedemption.appliedToItemId) === String(item.id);
+                    const showRewardTag = item.isReward || isRedeemedItem;
+
                     return `
-                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${item.isReward ? 'border-yellow-200 bg-yellow-50' : ''}">
+                    <div class="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm ${showRewardTag ? 'border-yellow-300 bg-yellow-50 ring-1 ring-yellow-200' : ''}">
                         <div class="flex items-center gap-3 w-full">
                             <div class="flex-grow min-w-0">
                                 <p class="text-sm font-semibold text-gray-800 line-clamp-1">
-                                    ${item.isReward ? '🎁 ' : ''}
+                                    ${showRewardTag ? '🎁 ' : ''}
                                     ${escapeHTML(item.name)}
                                     ${isOriginal ? '<span class="text-[10px] text-indigo-600 bg-indigo-50 px-1 rounded border border-indigo-100 ml-1">Original</span>' : ''}
                                 </p>
-                                <p class="text-xs text-gray-500">${item.isReward ? '<span class="text-yellow-700 font-bold">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
+                                <p class="text-xs text-gray-500">${showRewardTag ? '<span class="text-yellow-700 font-bold bg-yellow-100 px-1 rounded">Prémio Fidelidade</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
                             </div>
                             ${!isCompleted ? `
                                 <div class="flex items-center bg-gray-100 rounded-lg p-1 gap-3">
@@ -832,13 +855,31 @@ function openRewardSelectionModal(rewards, comanda) {
                 ${rewards.map(r => {
                     const cost = r.costPoints || r.points || 0;
                     const name = r.name || r.reward;
+                    const type = r.type || 'money';
+                    const discountValue = r.discount ? parseFloat(r.discount).toFixed(2) : '0.00';
+                    let typeLabel = '';
+                    let typeColor = 'bg-gray-100 text-gray-600';
+
+                    // Definir rótulos e cores baseados no tipo
+                    switch(type) {
+                        case 'service': typeLabel = 'Serviço'; typeColor = 'bg-indigo-100 text-indigo-700'; break;
+                        case 'product': typeLabel = 'Produto'; typeColor = 'bg-green-100 text-green-700'; break;
+                        case 'package': typeLabel = 'Pacote'; typeColor = 'bg-purple-100 text-purple-700'; break;
+                        case 'money': default: typeLabel = 'Valor Livre'; typeColor = 'bg-yellow-100 text-yellow-700'; break;
+                    }
+
                     return `
                     <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group">
-                        <div class="text-left">
-                            <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(name)}</p>
+                        <div class="text-left flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${typeColor}">${typeLabel}</span>
+                                <p class="font-bold text-gray-800 group-hover:text-yellow-700">${escapeHTML(name)}</p>
+                            </div>
                             <p class="text-xs text-gray-500">Custo: ${cost} pontos</p>
                         </div>
-                        <span class="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full">Grátis</span>
+                        <div class="text-right">
+                            <span class="block text-sm font-bold text-green-600">Desc. R$ ${discountValue}</span>
+                        </div>
                     </button>
                 `}).join('')}
             </div>
@@ -855,73 +896,114 @@ function openRewardSelectionModal(rewards, comanda) {
     });
 }
 
-// --- FUNÇÃO ATUALIZADA: RESGATE COM CORREÇÃO DE TIPO E COMPARAÇÃO ROBUSTA ---
+// --- FUNÇÃO ATUALIZADA: RESGATE ROBUSTO E INTEGRAÇÃO FINANCEIRA ---
 async function addRewardToComanda(reward, comanda) {
     const cost = Number(reward.costPoints || reward.points || 0);
     const name = reward.name || reward.reward;
+    const type = reward.type || 'money';
+    
+    // --- CENÁRIO 1: VALOR LIVRE (MONEY) ---
+    if (type === 'money') {
+        const discountValue = parseFloat(reward.discount) || 0;
+        
+        if (discountValue <= 0) {
+            showNotification('Erro', 'O valor do desconto configurado é inválido.', 'error');
+            return;
+        }
+
+        // Aplica o desconto no estado do checkout
+        localState.checkoutState.discount = {
+            type: 'real',
+            value: discountValue
+        };
+        
+        localState.checkoutState.discountReason = `Resgate Fidelidade: ${name}`;
+        
+        localState.pendingRedemption = {
+            rewardId: reward.id || null,
+            name: name,
+            cost: cost,
+            type: 'money'
+        };
+
+        showNotification('Sucesso', `Prémio "${name}" resgatado! Desconto de R$ ${discountValue.toFixed(2)} aplicado.`, 'success');
+        
+        // Renderiza o checkout diretamente, pois não há item específico
+        renderComandaDetail(); 
+        return;
+    }
+
+    // --- CENÁRIO 2: ITEM ESPECÍFICO (SERVIÇO, PRODUTO, PACOTE) ---
     
     // 1. Busca todos os itens atuais da comanda
     const allItems = getSafeAllItems(comanda);
 
-    // 2. Tenta encontrar EXATAMENTE o serviço/produto do prémio na comanda
+    // 2. Tenta encontrar EXATAMENTE o item do prémio na comanda
     // Normalização de IDs para evitar falhas de comparação (String vs Number)
-    const rewardServiceId = reward.serviceId ? String(reward.serviceId) : (reward.service_id ? String(reward.service_id) : null);
-    const rewardProductId = reward.productId ? String(reward.productId) : (reward.product_id ? String(reward.product_id) : null);
+    const rewardItemId = reward.itemId ? String(reward.itemId) : null;
+
+    if (!rewardItemId) {
+        showNotification('Erro de Configuração', `O prémio "${name}" não tem um item vinculado nas configurações.`, 'error');
+        return;
+    }
 
     const match = allItems.find(i => {
-        // Normaliza IDs do item
-        const itemId = i.id ? String(i.id) : (i.itemId ? String(i.itemId) : null);
+        // Normaliza IDs do item da comanda
+        const itemId = i.id ? String(i.id) : null;
         const itemServiceId = i.serviceId ? String(i.serviceId) : (i.service_id ? String(i.service_id) : null);
         const itemProductId = i.productId ? String(i.productId) : (i.product_id ? String(i.product_id) : null);
 
-        // Debug para diagnóstico (Silencioso em produção)
-        console.log('Verificando compatibilidade:', { rewardServiceId, itemId, itemServiceId, name: i.name });
-
-        // Verifica compatibilidade de IDs para Serviços
-        if (rewardServiceId) {
-            if (itemId === rewardServiceId) return true;
-            if (itemServiceId === rewardServiceId) return true;
+        // Verifica compatibilidade baseado no tipo do prémio
+        if (type === 'service') {
+            return (itemId === rewardItemId || itemServiceId === rewardItemId);
+        } else if (type === 'product') {
+            return (itemId === rewardItemId || itemProductId === rewardItemId);
+        } else if (type === 'package') {
+            // Lógica para pacote pode variar dependendo da estrutura do item na comanda
+            return itemId === rewardItemId; 
         }
-        
-        // Verifica compatibilidade para Produtos
-        if (rewardProductId) {
-            if (itemId === rewardProductId) return true;
-            if (itemProductId === rewardProductId) return true;
-        }
-        
         return false;
     });
 
     if (match) {
-        // --- CENÁRIO: ITEM ENCONTRADO (APLICAR DESCONTO) ---
-        const price = Number(match.price || 0);
+        // --- ITEM ENCONTRADO (APLICAR DESCONTO) ---
+        
+        // Se o desconto configurado for 0 ou null, assume 100% do valor do item (preço cheio)
+        // Se tiver valor configurado, usa o valor configurado.
+        let discountValue = parseFloat(reward.discount);
+        if (!discountValue || discountValue <= 0) {
+            discountValue = parseFloat(match.price || 0);
+        }
         
         // Aplica o desconto no estado do checkout
         localState.checkoutState.discount = {
             type: 'real',
-            value: price
+            value: discountValue
         };
         
         // Define o motivo automaticamente
         localState.checkoutState.discountReason = `Resgate Fidelidade: ${name}`;
         
-        // Armazena informações do resgate para enviar ao backend no checkout (para abater pontos)
+        // Armazena informações do resgate e referencia o item para identificação visual
         localState.pendingRedemption = {
             rewardId: reward.id || null,
             name: name,
             cost: cost,
-            appliedToServiceId: match.id
+            type: type,
+            appliedToItemId: match.id 
         };
 
-        showNotification('Sucesso', `Prémio "${name}" resgatado! O valor de R$ ${price.toFixed(2)} foi abatido.`, 'success');
+        showNotification('Sucesso', `Prémio "${name}" resgatado! Item encontrado e desconto de R$ ${discountValue.toFixed(2)} aplicado.`, 'success');
         
-        // Atualiza a interface para mostrar o desconto aplicado
+        // Atualiza a interface (agora identificará visualmente o item)
         renderComandaDetail(); 
     } else {
-        // --- CENÁRIO: ITEM NÃO ENCONTRADO (BLOQUEAR) ---
+        // --- ITEM NÃO ENCONTRADO (BLOQUEAR) ---
+        let itemTypeName = type === 'service' ? 'serviço' : (type === 'product' ? 'produto' : 'pacote');
+        
         showNotification(
-            'Resgate Não Permitido', 
-            `Para resgatar o prémio "${name}", o serviço correspondente deve constar na comanda. Adicione o serviço primeiro. Se o erro persistir, verifique se o prémio está vinculado a um serviço nas configurações.`, 
+            'Item Não Encontrado', 
+            `Para resgatar o prémio "${name}", o ${itemTypeName} correspondente deve estar lançado nesta comanda. Por favor, adicione o item primeiro e tente resgatar novamente.`, 
             'warning'
         );
     }
@@ -1316,6 +1398,7 @@ async function handleFinalizeCheckout(comanda) {
     const finalItems = rawItems; 
 
     // --- LÓGICA DE PONTOS DE FIDELIDADE (Visita vs Real) ---
+    // Usamos as configurações recém-carregadas para garantir precisão
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
     if (settings && settings.enabled) {
@@ -1338,7 +1421,7 @@ async function handleFinalizeCheckout(comanda) {
 
     const data = {
         payments,
-        totalAmount: Number(totalAmount),
+        totalAmount: Number(totalAmount), // Envia o total JÁ com desconto aplicado
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
         loyaltyPointsEarned: pointsToAward,
@@ -1428,11 +1511,9 @@ async function fetchAndDisplayData() {
         const sessionPromise = cashierApi.getActiveSession();
         const comandasPromise = comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
         
-        // Só busca fidelidade se ainda não tiver carregado
-        // CORREÇÃO AQUI: Mudado de getEstablishment para getEstablishmentDetails
-        const loyaltyPromise = !localState.loyaltySettings 
-            ? establishmentsApi.getEstablishmentDetails(state.establishmentId) 
-            : Promise.resolve(null);
+        // --- CORREÇÃO FUNDAMENTAL ---
+        // Sempre busca as configurações de fidelidade para garantir que não estamos usando cache antigo
+        const loyaltyPromise = establishmentsApi.getEstablishmentDetails(state.establishmentId);
 
         const [activeSession, response, establishmentData] = await Promise.all([
             sessionPromise,
