@@ -213,7 +213,7 @@ router.post('/', async (req, res) => {
         sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
             .catch(e => console.error("Falha push:", e));
 
-        res.status(201).json({ message: 'Agendamento criado!' });
+        res.status(200).json({ message: 'Agendamento criado!' });
     } catch (error) {
         handleFirestoreError(res, error, 'criar agendamento');
     }
@@ -225,11 +225,12 @@ router.post('/', async (req, res) => {
 
 router.use(verifyToken, hasAccess);
 
-// 2. LISTAR AGENDAMENTOS
+// 2. LISTAR AGENDAMENTOS (OTIMIZADA)
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        const { startDate, endDate, professionalId } = req.query; 
+        // Adicionado clientPhone e limit na desestruturação para otimização
+        const { startDate, endDate, professionalId, clientPhone, limit } = req.query; 
 
         if (!startDate || !endDate) return res.status(400).json({ message: 'Período obrigatório.' });
         
@@ -246,12 +247,30 @@ router.get('/:establishmentId', async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
+        // --- INÍCIO DA OTIMIZAÇÃO ---
+        
+        // 1. Filtro Opcional por Cliente (Telefone)
+        // Isso permite buscar apenas o histórico deste cliente, sem carregar tudo.
+        if (clientPhone) {
+            query = query.where('clientPhone', '==', clientPhone);
+        }
+
+        // 2. Filtros de Profissional
         if (role === 'employee' && !canViewAll) {
             if (userProfessionalId) query = query.where('professionalId', '==', userProfessionalId);
             else return res.status(200).json([]);
         } else if (professionalId && professionalId !== 'all') { 
             query = query.where('professionalId', '==', professionalId);
         }
+
+        // 3. Ordenação e Limite (Paginação)
+        // O Firestore exige que a ordenação siga o campo do filtro de desigualdade (startTime).
+        query = query.orderBy('startTime', 'desc');
+
+        if (limit) {
+            query = query.limit(parseInt(limit));
+        }
+        // --- FIM DA OTIMIZAÇÃO ---
 
         const [appointmentsSnapshot, professionalsSnapshot] = await Promise.all([
             query.get(),
