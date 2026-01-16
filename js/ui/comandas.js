@@ -1398,18 +1398,28 @@ async function handleFinalizeCheckout(comanda) {
     const finalItems = rawItems; 
 
     // --- LÓGICA DE PONTOS DE FIDELIDADE (Visita vs Real) ---
-    // Usamos as configurações recém-carregadas para garantir precisão
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
+
     if (settings && settings.enabled) {
-        if (settings.type === 'visit') {
+        // Normaliza o tipo para evitar erros de maiúsculas/minúsculas ou espaços
+        const loyaltyType = settings.type ? String(settings.type).toLowerCase().trim() : '';
+
+        // Adiciona um log para você ver no console o que está vindo do banco (pode remover depois)
+        console.log('Fidelidade Config:', { type: loyaltyType, settings });
+
+        // Verifica se é 'visit', 'visita' ou se está 'fixed'
+        if (loyaltyType === 'visit' || loyaltyType === 'visita' || loyaltyType === 'fixed') {
             // Pontos fixos por visita
             pointsToAward = Number(settings.pointsPerVisit) || 1;
         } else {
-            // Pontos por moeda gasta
+            // Pontos por moeda gasta (cai aqui se for 'money', 'currency', 'valor', etc.)
             const divisor = Number(settings.pointsPerCurrency) || 10;
-            // Usa o totalAmount (valor pago efetivamente)
-            if (divisor > 0) pointsToAward = Math.floor(totalAmount / divisor);
+            
+            // Usa o totalAmount (valor pago efetivamente, já com descontos)
+            if (divisor > 0) {
+                pointsToAward = Math.floor(totalAmount / divisor);
+            }
         }
     }
 
