@@ -3,7 +3,7 @@
 // --- 1. IMPORTAÇÕES ---
 import * as clientsApi from '../api/clients.js';
 import * as appointmentsApi from '../api/appointments.js';
-// Importação da função de fetch autenticado para corrigir o erro 403
+// Importação para garantir autenticação nas chamadas
 import { authenticatedFetch } from '../api/apiService.js'; 
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
@@ -15,7 +15,15 @@ let localState = {
     clients: [],
     selectedClient: null,
     activeTab: 'profile', // 'profile', 'appointments', 'history', 'loyalty'
-    searchTerm: '',
+    
+    // --- NOVOS FILTROS ---
+    filters: {
+        search: '',
+        inactiveDays: '', // Dias sem visita
+        hasLoyalty: false, // Tem pontos
+        hasDebt: false,    // Tem débitos (Fiado)
+    },
+
     loading: false,
     
     // Estados para otimização e paginação do histórico
@@ -74,37 +82,66 @@ function renderLayout() {
     };
 }
 
-// Renderiza a Lista de Clientes (Tela Inicial)
+// Renderiza a Lista de Clientes (Tela Inicial) - COM FILTROS ATUALIZADOS
 function renderClientList() {
     renderLayout(); 
     
     const container = document.getElementById('clients-content-area');
     
-    // Filtragem local
-    const filtered = localState.clients.filter(c => 
-        c.name.toLowerCase().includes(localState.searchTerm.toLowerCase()) ||
-        (c.phone && c.phone.includes(localState.searchTerm))
-    );
+    // --- ÁREA DE FILTROS ---
+    const filtersHTML = `
+        <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-4 animate-fade-in">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div class="md:col-span-1">
+                    <label class="block text-xs font-bold text-gray-500 mb-1">Buscar</label>
+                    <div class="relative">
+                        <input type="text" id="client-search" 
+                            class="w-full p-2 pl-9 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none transition" 
+                            placeholder="Nome ou telefone..." 
+                            value="${localState.filters.search}">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                </div>
 
-    const searchHTML = `
-        <div class="mb-4 sm:mb-6 max-w-2xl mx-auto px-1 sm:px-0">
-            <div class="relative">
-                <input type="text" id="client-search" 
-                    class="w-full p-3.5 pl-12 rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none transition text-base" 
-                    placeholder="Buscar por nome ou telefone..." 
-                    value="${localState.searchTerm}">
-                <svg class="w-6 h-6 text-gray-400 absolute left-4 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1">Inatividade (Dias)</label>
+                    <input type="number" id="filter-inactive" 
+                        class="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none transition" 
+                        placeholder="Ex: 30" 
+                        value="${localState.filters.inactiveDays}">
+                </div>
+
+                <div class="flex flex-col gap-2 justify-center">
+                    <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input type="checkbox" id="filter-loyalty" class="form-checkbox h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500" ${localState.filters.hasLoyalty ? 'checked' : ''}>
+                        <span class="ml-2 text-sm text-gray-700">Com Pontos</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input type="checkbox" id="filter-debt" class="form-checkbox h-4 w-4 text-red-600 rounded focus:ring-red-500" ${localState.filters.hasDebt ? 'checked' : ''}>
+                        <span class="ml-2 text-sm font-semibold text-red-600">Com Débitos (Fiado)</span>
+                    </label>
+                </div>
+
+                <div>
+                    <button id="btn-apply-filters" class="w-full bg-gray-800 text-white py-2.5 rounded-lg text-sm font-bold hover:bg-gray-900 transition shadow-md active:scale-95">
+                        Aplicar Filtros
+                    </button>
+                </div>
             </div>
         </div>
     `;
 
-    const listHTML = filtered.length > 0 ? `
+    const listHTML = localState.clients.length > 0 ? `
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 max-w-6xl mx-auto pb-10">
-            ${filtered.map(client => `
-                <div class="client-card bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden active:bg-gray-50" data-id="${client.id}">
-                    <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500 opacity-0 group-hover:opacity-100 transition"></div>
+            ${localState.clients.map(client => {
+                // Verifica se tem débito para mudar a cor da borda
+                const hasDebt = client.totalDebt && parseFloat(client.totalDebt) > 0;
+                
+                return `
+                <div class="client-card bg-white p-4 rounded-xl border ${hasDebt ? 'border-red-300 ring-1 ring-red-100' : 'border-gray-200'} shadow-sm hover:shadow-md transition cursor-pointer group relative overflow-hidden active:bg-gray-50" data-id="${client.id}">
+                    <div class="absolute top-0 left-0 w-1 h-full ${hasDebt ? 'bg-red-500' : 'bg-indigo-500'} opacity-0 group-hover:opacity-100 transition"></div>
                     <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg flex-shrink-0">
+                        <div class="w-12 h-12 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'} flex items-center justify-center font-bold text-lg flex-shrink-0">
                             ${client.name.charAt(0).toUpperCase()}
                         </div>
                         <div class="flex-grow min-w-0">
@@ -113,33 +150,55 @@ function renderClientList() {
                                 <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
                                 <span class="truncate">${client.phone || 'Sem telefone'}</span>
                             </p>
-                            ${client.loyaltyPoints ? `<span class="text-xs font-bold text-amber-600 mt-1 inline-block bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">⭐ ${client.loyaltyPoints} pts</span>` : ''}
+                            
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                ${client.loyaltyPoints ? `<span class="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">⭐ ${client.loyaltyPoints} pts</span>` : ''}
+                                ${hasDebt ? `<span class="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">Devendo: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
+                            </div>
                         </div>
                         <div class="text-right flex-shrink-0">
                             <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">Ver</span>
                         </div>
                     </div>
                 </div>
-            `).join('')}
+            `}).join('')}
         </div>
     ` : `
         <div class="text-center py-20 opacity-50 px-4">
             <svg class="w-16 h-16 sm:w-20 sm:h-20 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
             <p class="text-lg sm:text-xl font-medium text-gray-600">Nenhum cliente encontrado</p>
-            <p class="text-sm text-gray-400">Tente buscar outro nome ou cadastre um novo.</p>
+            <p class="text-sm text-gray-400">Tente ajustar os filtros ou cadastre um novo.</p>
         </div>
     `;
 
-    container.innerHTML = searchHTML + listHTML;
+    container.innerHTML = filtersHTML + listHTML;
 
-    // Listeners da Lista
+    // --- EVENT LISTENERS ---
     const searchInput = document.getElementById('client-search');
-    searchInput.focus();
-    searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+    const inactiveInput = document.getElementById('filter-inactive');
+    const loyaltyCheck = document.getElementById('filter-loyalty');
+    const debtCheck = document.getElementById('filter-debt');
+    const btnApply = document.getElementById('btn-apply-filters');
+
+    // Focar no campo de busca se foi o que disparou
+    if (document.activeElement !== searchInput) {
+        // searchInput.focus(); 
+    }
     
-    searchInput.addEventListener('input', (e) => {
-        localState.searchTerm = e.target.value;
-        renderClientList(); 
+    // Botão Filtrar
+    btnApply.onclick = () => {
+        localState.filters = {
+            search: searchInput.value,
+            inactiveDays: inactiveInput.value,
+            hasLoyalty: loyaltyCheck.checked,
+            hasDebt: debtCheck.checked
+        };
+        fetchClients(); // Busca na API com os novos filtros
+    };
+
+    // Enter no search dispara o filtro
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') btnApply.click();
     });
 
     container.querySelectorAll('.client-card').forEach(card => {
@@ -201,6 +260,15 @@ async function renderClientDetails() {
                         <h2 class="text-2xl font-bold leading-tight">${escapeHTML(client.name)}</h2>
                         <p class="opacity-90 text-sm mt-1">${client.phone || 'Sem telefone'}</p>
                         ${client.email ? `<p class="opacity-75 text-xs">${client.email}</p>` : ''}
+                        
+                        ${client.totalDebt && client.totalDebt > 0 ? `
+                            <div class="mt-2 inline-block bg-red-700/50 border border-red-400/30 px-3 py-1 rounded-lg">
+                                <p class="text-xs font-bold text-red-100 flex items-center gap-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    Débito em Aberto: R$ ${parseFloat(client.totalDebt).toFixed(2)}
+                                </p>
+                            </div>
+                        ` : ''}
                     </div>
                     
                     <div class="md:ml-auto bg-white/20 p-2 rounded-lg backdrop-blur-sm text-center min-w-[100px]">
@@ -543,13 +611,26 @@ async function fetchClients() {
     localState.loading = true;
     renderLayout(); 
     try {
-        localState.clients = await clientsApi.getClients(state.establishmentId, '');
+        // Monta a URL com os filtros
+        let url = `/api/clients/${state.establishmentId}?limit=20`;
+        
+        if (localState.filters.search) url += `&search=${encodeURIComponent(localState.filters.search)}`;
+        if (localState.filters.inactiveDays) url += `&inactiveDays=${localState.filters.inactiveDays}`;
+        if (localState.filters.hasLoyalty) url += `&hasLoyalty=true`;
+        if (localState.filters.hasDebt) url += `&hasDebt=true`; // Novo Filtro
+
+        // Usa fetch autenticado
+        localState.clients = await authenticatedFetch(url);
         renderClientList();
     } catch (error) {
+        console.error(error);
         showNotification('Erro', 'Falha ao carregar clientes.', 'error');
+        localState.clients = [];
+        renderClientList();
     } finally {
         localState.loading = false;
-        renderClientList();
+        const loader = document.querySelector('.loader');
+        if(loader) loader.remove();
     }
 }
 
@@ -747,18 +828,26 @@ function openNewClientModal() {
     };
 }
 
+// --- CORREÇÃO DO ERRO 400: handleSaveClient ---
 async function handleSaveClient(e) {
     e.preventDefault();
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     
+    // --- CORREÇÃO CRÍTICA ---
+    // O backend exige 'establishmentId' no corpo da requisição para validar a operação
+    data.establishmentId = state.establishmentId; 
+    
     try {
         await clientsApi.updateClient(localState.selectedClient.id, data);
         Object.assign(localState.selectedClient, data);
+        
         const idx = localState.clients.findIndex(c => c.id === localState.selectedClient.id);
         if (idx !== -1) localState.clients[idx] = localState.selectedClient;
+        
         showNotification('Sucesso', 'Dados atualizados!', 'success');
     } catch (err) {
+        console.error(err);
         showNotification('Erro', 'Falha ao salvar: ' + err.message, 'error');
     }
 }
