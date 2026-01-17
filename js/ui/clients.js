@@ -13,16 +13,17 @@ import { state } from '../state.js';
 let localState = {
     clients: [],
     selectedClient: null,
-    activeTab: 'profile', // 'profile', 'appointments', 'history', 'loyalty'
+    activeTab: 'profile',
     
     // Filtros
     filters: {
         search: '',
         inactiveDays: '',
+        birthMonth: '',
         hasLoyalty: false,
         hasDebt: false,
     },
-    isFiltersExpanded: false, // Novo estado para controlar expansão mobile
+    showFilters: false, // Controla a visibilidade da barra de filtros
 
     loading: false,
     
@@ -34,14 +35,24 @@ let localState = {
         appointments: [],
         sales: [],
         loyaltyLog: []
-    }
+    },
+    
+    // Estado do Modal Desktop
+    desktopModalOpen: false
 };
 
 let contentDiv = null;
 
+// --- FUNÇÃO AUXILIAR: LIMPAR TELEFONE ---
+// Remove tudo que não for dígito para garantir busca correta na API
+const cleanPhone = (phone) => {
+    if (!phone) return '';
+    return String(phone).replace(/\D/g, '');
+};
+
 // --- 3. FUNÇÕES PRINCIPAIS DE RENDERIZAÇÃO ---
 
-// Layout Base (Responsivo - Ajustado para altura total e scroll correto)
+// Layout Base
 function renderLayout() {
     contentDiv.innerHTML = `
         <section class="h-[calc(100vh-4rem)] sm:h-full flex flex-col bg-gray-50">
@@ -49,7 +60,7 @@ function renderLayout() {
                 <div class="p-4 flex flex-col sm:flex-row justify-between items-center gap-3 max-w-7xl mx-auto w-full">
                     <div class="w-full sm:w-auto text-center sm:text-left">
                         <h2 class="text-xl sm:text-2xl font-bold text-gray-800">Clientes</h2>
-                        <p class="text-xs text-gray-500 hidden sm:block">Gerencie perfis e fidelidade</p>
+                        <p class="text-xs text-gray-500 hidden sm:block">Gerencie sua base de contatos</p>
                     </div>
                     
                     <div class="w-full sm:w-auto flex gap-2">
@@ -67,7 +78,7 @@ function renderLayout() {
                 </div>
             </div>
 
-            <div id="clients-content-area" class="flex-grow overflow-y-auto custom-scrollbar w-full max-w-7xl mx-auto">
+            <div id="clients-content-area" class="flex-grow overflow-y-auto custom-scrollbar w-full max-w-7xl mx-auto relative">
                 ${localState.loading ? '<div class="flex justify-center pt-20"><div class="loader"></div></div>' : ''}
             </div>
         </section>
@@ -83,92 +94,118 @@ function renderLayout() {
     };
 }
 
-// Renderiza a Lista de Clientes com Filtros Responsivos
+// Renderiza a Lista de Clientes com Filtros Modernos e Ocultos
 function renderClientList() {
     renderLayout(); 
     
     const container = document.getElementById('clients-content-area');
+    const hasActiveFilters = localState.filters.inactiveDays || localState.filters.birthMonth || localState.filters.hasLoyalty || localState.filters.hasDebt;
     
-    // --- ÁREA DE FILTROS (Mobile Friendly) ---
-    // No mobile, mostra apenas a busca. O resto fica escondido num toggle.
-    const filtersHTML = `
-        <div class="p-4 sticky top-0 bg-gray-50 z-20 pb-2">
-            <div class="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm">
-                
-                <div class="flex gap-2">
-                    <div class="relative flex-grow">
-                        <input type="text" id="client-search" 
-                            class="w-full py-2.5 pl-10 pr-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none transition" 
-                            placeholder="Buscar nome ou telefone..." 
-                            value="${localState.filters.search}">
-                        <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                    </div>
-                    
-                    <button id="btn-toggle-filters" class="sm:hidden px-3 border border-gray-300 rounded-lg text-gray-600 bg-gray-50 hover:bg-gray-100 transition">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
-                    </button>
-                    
-                    <button id="btn-apply-filters-desktop" class="hidden sm:block bg-gray-800 text-white px-4 rounded-lg text-sm font-bold hover:bg-gray-900 transition shadow-md">
-                        Filtrar
-                    </button>
+    // --- BARRA DE FERRAMENTAS (Busca + Botão Toggle) ---
+    const toolbarHTML = `
+        <div class="sticky top-0 bg-gray-50 z-20 px-4 pt-4 pb-2">
+            <div class="flex gap-2 items-center">
+                <div class="relative flex-grow shadow-sm">
+                    <input type="text" id="client-search" 
+                        class="w-full py-3 pl-10 pr-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none transition bg-white" 
+                        placeholder="Buscar por nome ou telefone..." 
+                        value="${localState.filters.search}">
+                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
+                
+                <button id="btn-toggle-filters" class="flex-shrink-0 p-3 rounded-xl border transition flex items-center gap-2 font-medium ${localState.showFilters || hasActiveFilters ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                    <span class="hidden sm:inline">Filtros</span>
+                    ${hasActiveFilters ? '<span class="flex h-2 w-2 rounded-full bg-indigo-600"></span>' : ''}
+                </button>
+            </div>
 
-                <div id="advanced-filters" class="${localState.isFiltersExpanded ? '' : 'hidden'} sm:grid sm:grid-cols-3 gap-3 mt-3 pt-3 border-t border-gray-100 animate-fade-in">
+            <div id="filter-panel" class="${localState.showFilters ? 'max-h-96 opacity-100 mt-3' : 'max-h-0 opacity-0 overflow-hidden'} transition-all duration-300 ease-in-out">
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-lg grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     
-                    <div class="mb-2 sm:mb-0">
-                        <label class="block text-xs font-bold text-gray-500 mb-1">Dias sem visita</label>
-                        <input type="number" id="filter-inactive" 
-                            class="w-full p-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none" 
-                            placeholder="Ex: 30" 
-                            value="${localState.filters.inactiveDays}">
+                    <div class="space-y-1">
+                        <label class="text-xs font-bold text-gray-500 uppercase">Dias Ausente (Min)</label>
+                        <div class="relative">
+                            <input type="number" id="filter-inactive" min="1"
+                                class="w-full p-2.5 pl-9 rounded-lg border border-gray-300 focus:ring-indigo-500 text-sm bg-gray-50 outline-none" 
+                                placeholder="Ex: 30 dias" 
+                                value="${localState.filters.inactiveDays}">
+                            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
                     </div>
 
-                    <div class="flex flex-col justify-center gap-2 mb-3 sm:mb-0">
-                        <label class="flex items-center cursor-pointer p-1">
+                    <div class="space-y-1">
+                        <label class="text-xs font-bold text-gray-500 uppercase">Aniversário em</label>
+                        <select id="filter-birth-month" class="w-full p-2.5 rounded-lg border border-gray-300 focus:ring-indigo-500 text-sm bg-gray-50 outline-none">
+                            <option value="">Todos os meses</option>
+                            <option value="1">Janeiro</option>
+                            <option value="2">Fevereiro</option>
+                            <option value="3">Março</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Maio</option>
+                            <option value="6">Junho</option>
+                            <option value="7">Julho</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Setembro</option>
+                            <option value="10">Outubro</option>
+                            <option value="11">Novembro</option>
+                            <option value="12">Dezembro</option>
+                        </select>
+                    </div>
+
+                    <div class="flex flex-col justify-center gap-2 pt-4 sm:pt-0">
+                        <label class="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded transition">
                             <input type="checkbox" id="filter-loyalty" class="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4" ${localState.filters.hasLoyalty ? 'checked' : ''}>
-                            <span class="ml-2 text-sm text-gray-700">Com Pontos</span>
+                            <span class="ml-2 text-sm text-gray-700 font-medium">Com Pontos Fidelidade</span>
                         </label>
-                        <label class="flex items-center cursor-pointer p-1">
+                        <label class="flex items-center cursor-pointer hover:bg-red-50 p-1 rounded transition">
                             <input type="checkbox" id="filter-debt" class="rounded text-red-600 focus:ring-red-500 w-4 h-4" ${localState.filters.hasDebt ? 'checked' : ''}>
                             <span class="ml-2 text-sm font-semibold text-red-600">Com Débitos (Fiado)</span>
                         </label>
                     </div>
 
-                    <div class="sm:hidden">
-                        <button id="btn-apply-filters-mobile" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-bold shadow-md">
+                    <div class="flex items-end">
+                        <button id="btn-apply-filters" class="w-full bg-gray-900 text-white py-2.5 rounded-lg text-sm font-bold shadow hover:bg-gray-800 transition active:scale-95">
                             Aplicar Filtros
                         </button>
                     </div>
                 </div>
-
             </div>
         </div>
     `;
 
     const listHTML = localState.clients.length > 0 ? `
-        <div class="px-4 pb-20">
+        <div class="px-4 pb-20 pt-2">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 ${localState.clients.map(client => {
                     const hasDebt = client.totalDebt && parseFloat(client.totalDebt) > 0;
+                    const lastVisit = client.lastVisit ? new Date(client.lastVisit).toLocaleDateString('pt-BR') : 'Nunca';
                     
                     return `
-                    <div class="client-card bg-white p-4 rounded-xl border ${hasDebt ? 'border-l-4 border-l-red-500 border-y-red-100 border-r-red-100' : 'border-gray-200 border-l-4 border-l-indigo-500'} shadow-sm hover:shadow-md transition cursor-pointer active:bg-gray-50 flex items-center gap-3" data-id="${client.id}">
+                    <div class="client-card bg-white p-4 rounded-xl border ${hasDebt ? 'border-l-4 border-l-red-500 border-y-red-100 border-r-red-100' : 'border-gray-200 border-l-4 border-l-indigo-500'} shadow-sm hover:shadow-md transition cursor-pointer active:bg-gray-50 flex items-center gap-3 group" data-id="${client.id}">
                         
-                        <div class="w-12 h-12 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'} flex items-center justify-center font-bold text-lg flex-shrink-0">
+                        <div class="w-12 h-12 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'} transition-colors flex items-center justify-center font-bold text-lg flex-shrink-0">
                             ${client.name.charAt(0).toUpperCase()}
                         </div>
                         
                         <div class="flex-grow min-w-0">
-                            <h3 class="font-bold text-gray-800 truncate text-base">${escapeHTML(client.name)}</h3>
+                            <div class="flex justify-between items-start">
+                                <h3 class="font-bold text-gray-800 truncate text-base">${escapeHTML(client.name)}</h3>
+                                ${client.dobDay && client.dobMonth == (new Date().getMonth() + 1) ? '<span class="text-xs bg-pink-100 text-pink-600 px-1.5 py-0.5 rounded font-bold">🎂 Mês</span>' : ''}
+                            </div>
                             <p class="text-sm text-gray-500 truncate">${client.phone || 'Sem telefone'}</p>
                             
-                            <div class="flex flex-wrap gap-1 mt-1.5">
-                                ${client.loyaltyPoints ? `<span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">⭐ ${client.loyaltyPoints}</span>` : ''}
-                                ${hasDebt ? `<span class="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">Devendo: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
+                            <div class="flex flex-wrap gap-2 mt-1.5 items-center">
+                                ${client.loyaltyPoints ? `<span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">⭐ ${client.loyaltyPoints}</span>` : ''}
+                                ${hasDebt ? `<span class="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">Devendo: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
+                                <span class="text-[10px] text-gray-400 flex items-center gap-1 ml-auto">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    ${lastVisit === 'Nunca' ? 'Novo' : lastVisit}
+                                </span>
                             </div>
                         </div>
                         
-                        <div class="text-gray-400">
+                        <div class="text-gray-300 group-hover:text-indigo-500 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                         </div>
                     </div>
@@ -177,80 +214,75 @@ function renderClientList() {
         </div>
     ` : `
         <div class="text-center py-20 px-6 opacity-60">
-            <div class="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-                <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            <div class="bg-gray-100 rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
             </div>
-            <p class="text-lg font-medium text-gray-700">Nenhum cliente encontrado</p>
-            <p class="text-sm text-gray-500">Tente ajustar a busca.</p>
+            <p class="text-xl font-bold text-gray-800 mb-2">Nenhum cliente encontrado</p>
+            <p class="text-sm text-gray-500 max-w-xs mx-auto">Tente ajustar seus filtros de busca ou cadastre um novo cliente.</p>
+            ${hasActiveFilters ? '<button id="btn-clear-search" class="mt-4 text-indigo-600 font-bold text-sm hover:underline">Limpar Filtros</button>' : ''}
         </div>
     `;
 
-    container.innerHTML = filtersHTML + listHTML;
+    container.innerHTML = toolbarHTML + listHTML;
 
     // --- EVENT LISTENERS ---
     const searchInput = document.getElementById('client-search');
     const toggleBtn = document.getElementById('btn-toggle-filters');
-    const advancedFiltersDiv = document.getElementById('advanced-filters');
+    const applyBtn = document.getElementById('btn-apply-filters');
+    const clearBtn = document.getElementById('btn-clear-search');
     
-    // Toggle Mobile
+    // Toggle Visibilidade Filtros
     if(toggleBtn) {
         toggleBtn.onclick = () => {
-            localState.isFiltersExpanded = !localState.isFiltersExpanded;
-            advancedFiltersDiv.classList.toggle('hidden');
-            // Ajusta cor do botão quando ativo
-            if(localState.isFiltersExpanded) {
-                toggleBtn.classList.add('bg-indigo-50', 'text-indigo-600', 'border-indigo-200');
-            } else {
-                toggleBtn.classList.remove('bg-indigo-50', 'text-indigo-600', 'border-indigo-200');
-            }
+            localState.showFilters = !localState.showFilters;
+            renderClientList(); // Re-render para atualizar classes e ícones
         };
     }
 
-    const applyFilters = () => {
+    // Pré-selecionar valor no Select de Mês
+    const monthSelect = document.getElementById('filter-birth-month');
+    if(monthSelect) {
+        monthSelect.value = localState.filters.birthMonth;
+    }
+
+    // Função Principal de Filtragem
+    const executeFilter = () => {
         const inactiveInput = document.getElementById('filter-inactive');
         const loyaltyCheck = document.getElementById('filter-loyalty');
         const debtCheck = document.getElementById('filter-debt');
+        const monthSelect = document.getElementById('filter-birth-month');
 
         localState.filters = {
             search: searchInput.value,
             inactiveDays: inactiveInput ? inactiveInput.value : '',
+            birthMonth: monthSelect ? monthSelect.value : '',
             hasLoyalty: loyaltyCheck ? loyaltyCheck.checked : false,
             hasDebt: debtCheck ? debtCheck.checked : false
         };
         fetchClients();
     };
 
-    // Botões de aplicar
-    const btnApplyDesktop = document.getElementById('btn-apply-filters-desktop');
-    const btnApplyMobile = document.getElementById('btn-apply-filters-mobile');
+    if (applyBtn) applyBtn.onclick = executeFilter;
     
-    if (btnApplyDesktop) btnApplyDesktop.onclick = applyFilters;
-    if (btnApplyMobile) btnApplyMobile.onclick = applyFilters;
+    if (clearBtn) clearBtn.onclick = () => {
+        localState.filters = { search: '', inactiveDays: '', birthMonth: '', hasLoyalty: false, hasDebt: false };
+        localState.showFilters = false;
+        fetchClients();
+    };
 
     // Enter na busca
     searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') applyFilters();
+        if (e.key === 'Enter') executeFilter();
     });
 
-    // Clique no Card
+    // Clique no Card (Desktop ou Mobile)
     container.querySelectorAll('.client-card').forEach(card => {
         card.onclick = () => selectClient(card.dataset.id);
     });
 }
 
-// Renderiza a Ficha do Cliente (Detalhes) - Responsivo
-async function renderClientDetails() {
-    renderLayout(); 
-    const container = document.getElementById('clients-content-area');
-    const client = localState.selectedClient;
-
-    if (!client) return renderClientList();
-
-    if (localState.activeTab !== 'profile' && localState.historyData.appointments.length === 0) {
-        await fetchClientHistory(client.id);
-    }
-
-    // Abas com Scroll Horizontal para Mobile
+// --- FUNÇÃO AUXILIAR: GERA HTML DOS DETALHES ---
+function getClientDetailsHTML(client) {
     const tabsHTML = `
         <div class="bg-white border-b sticky top-0 z-10 shadow-sm">
             <div class="flex overflow-x-auto no-scrollbar gap-1 px-4 py-1">
@@ -268,10 +300,14 @@ async function renderClientDetails() {
     else if (localState.activeTab === 'history') contentHTML = renderHistoryTab(client);
     else if (localState.activeTab === 'loyalty') contentHTML = renderLoyaltyTab(client);
 
-    // Ajuste de margens negativas para compensar padding do container
-    container.innerHTML = `
+    return `
         <div class="w-full bg-white shadow-sm min-h-full flex flex-col">
-            <div class="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 text-white">
+            <div class="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 text-white relative">
+                
+                <button id="btn-close-modal" class="absolute top-4 right-4 text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-full transition hidden desktop-modal-close">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+
                 <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
                     <div class="w-20 h-20 rounded-full bg-white text-indigo-600 flex items-center justify-center text-3xl font-bold shadow-lg ring-4 ring-white/20 flex-shrink-0">
                         ${client.name.charAt(0).toUpperCase()}
@@ -304,70 +340,66 @@ async function renderClientDetails() {
 
             ${tabsHTML}
 
-            <div class="p-4 sm:p-6 flex-grow relative bg-gray-50/50">
+            <div class="p-4 sm:p-6 flex-grow relative bg-gray-50/50 overflow-y-auto custom-scrollbar">
                 ${localState.historyLoading ? '<div class="absolute inset-0 bg-white/80 flex items-start justify-center pt-20 z-20"><div class="loader"></div></div>' : ''}
-                <div class="animate-fade-in max-w-3xl mx-auto">
+                <div class="animate-fade-in max-w-4xl mx-auto">
                     ${contentHTML}
                 </div>
             </div>
         </div>
     `;
+}
 
-    // Estilos Inline para as Abas
-    const style = document.createElement('style');
-    style.textContent = `
-        .tab-btn {
-            padding: 12px 16px;
-            white-space: nowrap;
-            font-size: 0.9rem;
-            font-weight: 500;
-            color: #6b7280;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-        .tab-btn.active {
-            color: #4f46e5;
-            border-bottom-color: #4f46e5;
-            font-weight: 700;
-            background-color: #f3f4f6;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-        }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    `;
-    container.appendChild(style);
+// --- FUNÇÃO AUXILIAR: ATTACH LISTENERS ---
+function attachDetailsEvents(container, client) {
+    if(!document.getElementById('tabs-styles')) {
+        const style = document.createElement('style');
+        style.id = 'tabs-styles';
+        style.textContent = `
+            .tab-btn { padding: 12px 16px; white-space: nowrap; font-size: 0.9rem; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; transition: all 0.2s; flex-shrink: 0; }
+            .tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; font-weight: 700; background-color: #f3f4f6; border-top-left-radius: 8px; border-top-right-radius: 8px; }
+            .no-scrollbar::-webkit-scrollbar { display: none; }
+            .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        `;
+        container.appendChild(style);
+    }
 
-    // Event Listeners
     container.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
             const newTab = btn.dataset.tab;
-            if (localState.activeTab !== newTab) {
-                if (newTab === 'appointments' || newTab === 'history') {
-                    localState.historyLimit = 20;
-                    localState.historySearchTerm = '';
-                }
+            if (localState.activeTab === newTab) return;
+
+            if (newTab === 'appointments' || newTab === 'history') {
+                localState.historyLimit = 20;
+                localState.historySearchTerm = '';
             }
             localState.activeTab = newTab;
-            renderClientDetails();
+            
+            renderClientDetails(); 
+
+            // CORREÇÃO: Busca dados se necessário (verifica se já temos appointments carregados)
+            const shouldFetch = newTab !== 'profile' && !localState.historyLoading && localState.historyData.appointments.length === 0;
+            
+            if (shouldFetch) {
+                 await fetchClientHistory(client.id);
+            }
         };
     });
 
     if (localState.activeTab === 'profile') {
-        document.getElementById('form-edit-client').onsubmit = handleSaveClient;
-        document.getElementById('btn-delete-client').onclick = handleDeleteClient;
+        const form = container.querySelector('#form-edit-client');
+        const btnDel = container.querySelector('#btn-delete-client');
+        if(form) form.onsubmit = handleSaveClient;
+        if(btnDel) btnDel.onclick = handleDeleteClient;
     }
     
     if (localState.activeTab === 'loyalty') {
-        const btnRedeem = document.getElementById('btn-manual-redeem');
+        const btnRedeem = container.querySelector('#btn-manual-redeem');
         if(btnRedeem) btnRedeem.onclick = () => openManualRedemptionModal(client);
     }
 
-    // Busca no Histórico
-    const historySearchInput = document.getElementById('history-search-input');
+    const historySearchInput = container.querySelector('#history-search-input');
     if (historySearchInput) {
-        // Truque para manter o foco
         const val = historySearchInput.value;
         historySearchInput.value = '';
         historySearchInput.focus();
@@ -379,7 +411,7 @@ async function renderClientDetails() {
         });
     }
 
-    const btnLoadMore = document.getElementById('btn-load-more');
+    const btnLoadMore = container.querySelector('#btn-load-more');
     if (btnLoadMore) {
         btnLoadMore.onclick = () => {
             localState.historyLimit += 20; 
@@ -388,20 +420,85 @@ async function renderClientDetails() {
         };
     }
 
-    // Navegação
     container.querySelectorAll('[data-go-agenda]').forEach(btn => {
         btn.onclick = (e) => {
+            closeDesktopModal(); 
             navigateTo('agenda-section', { targetDate: new Date(btn.dataset.date), scrollToAppointmentId: btn.dataset.id });
         };
     });
     container.querySelectorAll('[data-go-comanda]').forEach(btn => {
         btn.onclick = (e) => {
+            closeDesktopModal();
             navigateTo('comandas-section', { selectedAppointmentId: btn.dataset.id, initialFilter: 'finalizadas' });
         };
     });
+
+    const btnClose = container.querySelector('#btn-close-modal');
+    if(btnClose) btnClose.onclick = closeDesktopModal;
 }
 
-// HTML: Aba Perfil (Mobile Friendly)
+// --- RENDERIZAÇÃO PRINCIPAL (Decisão Mobile/Desktop) ---
+async function renderClientDetails() {
+    const client = localState.selectedClient;
+    
+    if (!client) {
+        closeDesktopModal();
+        return renderClientList();
+    }
+
+    const isDesktop = window.innerWidth >= 1024;
+
+    if (isDesktop) {
+        renderDesktopModal(client);
+    } else {
+        renderLayout(); 
+        const container = document.getElementById('clients-content-area');
+        container.innerHTML = getClientDetailsHTML(client);
+        attachDetailsEvents(container, client);
+    }
+}
+
+// Renderiza o Modal Desktop (Flutuante)
+function renderDesktopModal(client) {
+    let modalOverlay = document.getElementById('client-details-modal-overlay');
+    
+    if (!modalOverlay) {
+        modalOverlay = document.createElement('div');
+        modalOverlay.id = 'client-details-modal-overlay';
+        modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in';
+        
+        modalOverlay.innerHTML = `
+            <div class="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-scale-in" id="client-modal-content">
+                </div>
+        `;
+        
+        modalOverlay.onclick = (e) => {
+            if(e.target === modalOverlay) closeDesktopModal();
+        };
+
+        document.body.appendChild(modalOverlay);
+        localState.desktopModalOpen = true;
+    }
+
+    const modalContent = modalOverlay.querySelector('#client-modal-content');
+    modalContent.innerHTML = getClientDetailsHTML(client);
+    
+    const closeBtn = modalContent.querySelector('.desktop-modal-close');
+    if(closeBtn) closeBtn.classList.remove('hidden');
+
+    attachDetailsEvents(modalContent, client);
+}
+
+function closeDesktopModal() {
+    const modal = document.getElementById('client-details-modal-overlay');
+    if (modal) {
+        modal.remove();
+    }
+    localState.desktopModalOpen = false;
+    localState.selectedClient = null;
+}
+
+// HTML: Aba Perfil
 function renderProfileTab(client) {
     return `
         <form id="form-edit-client" class="space-y-5 pb-20">
@@ -654,19 +751,23 @@ function renderLoyaltyTab(client) {
     `;
 }
 
-// --- 4. FUNÇÕES DE DADOS E LÓGICA (Mantidas com otimizações de segurança) ---
+// --- 4. FUNÇÕES DE DADOS E LÓGICA (Corrigida e Otimizada) ---
 
 async function fetchClients() {
     localState.loading = true;
     renderLayout(); 
+    
     try {
+        // Constrói a URL base com o ID do estabelecimento e limite
         let url = `/api/clients/${state.establishmentId}?limit=20`;
         
+        // Verifica cada filtro e concatena na URL se existir valor
         if (localState.filters.search) url += `&search=${encodeURIComponent(localState.filters.search)}`;
         if (localState.filters.inactiveDays) url += `&inactiveDays=${localState.filters.inactiveDays}`;
         if (localState.filters.hasLoyalty) url += `&hasLoyalty=true`;
         if (localState.filters.hasDebt) url += `&hasDebt=true`;
 
+        // Faz a chamada direta usando authenticatedFetch com a URL montada
         localState.clients = await authenticatedFetch(url);
         renderClientList();
     } catch (error) {
@@ -700,7 +801,9 @@ async function fetchClientHistory(clientId) {
         start.setFullYear(start.getFullYear() - 5); 
 
         let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}`;
-        url += `&clientPhone=${encodeURIComponent(client.phone)}`;
+        // CORREÇÃO: Limpa o telefone antes de enviar (remove parênteses, traços, etc)
+        // Isso resolve o problema de não encontrar agendamentos se o telefone no cadastro estiver formatado
+        url += `&clientPhone=${encodeURIComponent(cleanPhone(client.phone))}`;
         url += `&limit=${localState.historyLimit}`;
 
         const clientAppts = await authenticatedFetch(url);
@@ -870,6 +973,9 @@ async function handleDeleteClient() {
         localState.clients = localState.clients.filter(c => c.id !== localState.selectedClient.id);
         localState.selectedClient = null;
         showNotification('Sucesso', 'Cliente removido.', 'success');
+        
+        // Se estiver em modal desktop, fecha-o
+        closeDesktopModal();
         renderClientList();
     } catch (err) {
         showNotification('Erro', err.message, 'error');
@@ -881,7 +987,9 @@ export async function loadClientsPage() {
     localState.selectedClient = null;
     localState.searchTerm = '';
     localState.historyLimit = 20;
-    localState.isFiltersExpanded = false;
+    localState.showFilters = false;
+    localState.desktopModalOpen = false;
+    localState.filters = { search: '', inactiveDays: '', birthMonth: '', hasLoyalty: false, hasDebt: false };
     
     renderLayout(); 
     await fetchClients(); 
