@@ -484,7 +484,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT - CORRIGIDO (FIDELIDADE DINÂMICA + DESCONTO)
+// 7. CHECKOUT - CORRIGIDO (FIDELIDADE SIMPLIFICADA: APENAS VISITA)
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount } = req.body;
@@ -506,22 +506,9 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         // --- 2. CÁLCULO DE PONTOS CORRIGIDO ---
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
-            // Normaliza o tipo (assume 'value' apenas se for explícito ou undefined, mas checa 'visit' primeiro)
-            let type = (loyaltyProgram.type || 'value').toLowerCase();
-
-            if (type === 'visit') {
-                // REGRA: Por Visita
-                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit);
-                // Fallback para 1 se não estiver configurado corretamente
-                if (isNaN(pointsToAward) || pointsToAward <= 0) pointsToAward = 1;
-            } else {
-                // REGRA: Por Valor (Amount/Value)
-                let divisor = parseFloat(loyaltyProgram.pointsPerCurrency);
-                if (isNaN(divisor) || divisor <= 0) divisor = 10; // Default 10 se inválido
-                
-                const safeTotal = Number(totalAmount) || 0;
-                pointsToAward = Math.floor(safeTotal / divisor);
-            }
+            // Regra Simplificada: Ignora o tipo configurado (valor ou visita) e usa sempre Pontos por Visita
+            pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
+            if (isNaN(pointsToAward) || pointsToAward <= 0) pointsToAward = 1;
         }
 
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';

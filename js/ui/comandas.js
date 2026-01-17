@@ -1362,6 +1362,8 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
     }
 }
 
+// js/ui/comandas.js - Parte corrigida
+
 async function handleFinalizeCheckout(comanda) {
     if (localState.isProcessing) return;
     
@@ -1397,46 +1399,34 @@ async function handleFinalizeCheckout(comanda) {
     const isAppointment = comanda.type === 'appointment';
     const finalItems = rawItems; 
 
-    // --- LÓGICA DE PONTOS DE FIDELIDADE (Visita vs Real) ---
+    // --- LÓGICA DE FIDELIDADE (SIMPLIFICADA: APENAS PONTOS POR VISITA) ---
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
 
     if (settings && settings.enabled) {
-        // Normaliza o tipo para evitar erros de maiúsculas/minúsculas ou espaços
-        const loyaltyType = settings.type ? String(settings.type).toLowerCase().trim() : '';
-
-        // Adiciona um log para você ver no console o que está vindo do banco (pode remover depois)
-        console.log('Fidelidade Config:', { type: loyaltyType, settings });
-
-        // Verifica se é 'visit', 'visita' ou se está 'fixed'
-        if (loyaltyType === 'visit' || loyaltyType === 'visita' || loyaltyType === 'fixed') {
-            // Pontos fixos por visita
-            pointsToAward = Number(settings.pointsPerVisit) || 1;
-        } else {
-            // Pontos por moeda gasta (cai aqui se for 'money', 'currency', 'valor', etc.)
-            const divisor = Number(settings.pointsPerCurrency) || 10;
-            
-            // Usa o totalAmount (valor pago efetivamente, já com descontos)
-            if (divisor > 0) {
-                pointsToAward = Math.floor(totalAmount / divisor);
-            }
-        }
+        // MODIFICAÇÃO: Removemos a verificação de tipo (Valor vs Visita).
+        // Agora, independente da configuração antiga, usa-se a regra de Visita.
+        // Se não houver valor definido, atribui 1 ponto por padrão.
+        pointsToAward = parseInt(settings.pointsPerVisit || 1, 10);
+        
+        // Log para depuração (opcional, pode remover depois)
+        console.log(`Fidelidade: Cliente ganhou ${pointsToAward} pontos fixos pela visita.`);
     }
 
     // Prepara o objeto de desconto incluindo o motivo
     const enrichedDiscount = {
         ...discount,
-        reason: localState.checkoutState.discountReason || '' // Inclui motivo no registro financeiro
+        reason: localState.checkoutState.discountReason || '' 
     };
 
     const data = {
         payments,
-        totalAmount: Number(totalAmount), // Envia o total JÁ com desconto aplicado
+        totalAmount: Number(totalAmount),
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
-        loyaltyPointsEarned: pointsToAward,
+        loyaltyPointsEarned: pointsToAward, // Envia a pontuação fixa calculada acima
         discount: enrichedDiscount,
-        loyaltyRedemption: localState.pendingRedemption // Envia dados do resgate para o backend
+        loyaltyRedemption: localState.pendingRedemption 
     };
 
     const loadingOverlay = document.createElement('div');

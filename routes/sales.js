@@ -46,22 +46,12 @@ router.post('/', async (req, res) => {
         // Configurações de Fidelidade
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
 
-        // 2. Calcular Pontos de Fidelidade com base na regra (CORREÇÃO DE CASE SENSITIVE)
+        // 2. Calcular Pontos de Fidelidade (MODIFICADO: Apenas Pontos por Visita)
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
-            // Normaliza para minúsculo para evitar erros (ex: "Visit" vs "visit")
-            const type = (loyaltyProgram.type || 'value').toLowerCase().trim();
-
-            if (type === 'visit' || type === 'visita' || type === 'fixed') {
-                // Regra por Visita: Valor fixo por venda
-                pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
-            } else {
-                // Regra por Valor: Total / Divisor (ex: R$ 30 / 10 = 3 pontos)
-                const divisor = parseFloat(loyaltyProgram.pointsPerCurrency || 10);
-                if (divisor > 0) {
-                    pointsToAward = Math.floor(Number(totalAmount) / divisor);
-                }
-            }
+            // Regra Simplificada: Ignora o tipo configurado e usa sempre Pontos por Visita
+            // Se não houver configuração, define 1 ponto padrão por venda
+            pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
         }
 
         const safeClientId = cleanId(clientPhone);

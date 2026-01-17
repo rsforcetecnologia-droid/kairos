@@ -751,12 +751,11 @@ function renderWorkingHoursSection(data, container) {
 }
 
 // --- MODIFICADO: FIDELIDADE AVANÇADA (Itens Específicos) ---
+// --- MODIFICADO: FIDELIDADE SIMPLIFICADA (Apenas Visita) ---
 async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
     
     // Define valores padrão se não existirem
-    const currentType = loyaltyProgram.type || 'amount'; // 'amount' (valor) ou 'visit' (visita)
-    const currentPointsPerCurrency = loyaltyProgram.pointsPerCurrency || 10;
     const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
 
     // Carrega dados para os selects (Serviços, Produtos, Pacotes)
@@ -786,43 +785,13 @@ async function renderLoyaltySection(data, container) {
                      </label>
                  </div>
 
-                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2">Como o cliente ganha pontos?</label>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors ${currentType === 'amount' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : ''}">
-                            <input type="radio" name="loyaltyType" value="amount" class="form-radio text-indigo-600 h-4 w-4" ${currentType === 'amount' ? 'checked' : ''}>
-                            <div class="ml-3">
-                                <span class="block text-sm font-medium text-gray-900">Por Valor Gasto (R$)</span>
-                                <span class="block text-xs text-gray-500">Ex: 1 ponto a cada R$ 10,00</span>
-                            </div>
-                        </label>
-
-                        <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors ${currentType === 'visit' ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500' : ''}">
-                            <input type="radio" name="loyaltyType" value="visit" class="form-radio text-indigo-600 h-4 w-4" ${currentType === 'visit' ? 'checked' : ''}>
-                            <div class="ml-3">
-                                <span class="block text-sm font-medium text-gray-900">Por Visita Realizada</span>
-                                <span class="block text-xs text-gray-500">Ex: 10 pontos por atendimento</span>
-                            </div>
-                        </label>
-                    </div>
-                 </div>
-
-                 <div id="loyalty-config-amount" class="${currentType === 'amount' ? '' : 'hidden'} p-4 bg-blue-50 rounded-lg border border-blue-100">
-                     <label for="loyaltyPointsPerCurrency" class="block text-sm font-medium text-blue-800">Regra de Conversão (Valor)</label>
-                     <p class="text-xs text-blue-600 mb-2">Quanto o cliente precisa gastar para ganhar 1 ponto?</p>
-                     <div class="flex items-center gap-2">
-                         <span class="text-gray-600 font-medium">1 Ponto a cada R$</span>
-                         <input type="number" id="loyaltyPointsPerCurrency" value="${currentPointsPerCurrency}" min="1" step="0.01" class="w-28 p-2 border border-blue-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                     </div>
-                 </div>
-
-                 <div id="loyalty-config-visit" class="${currentType === 'visit' ? '' : 'hidden'} p-4 bg-purple-50 rounded-lg border border-purple-100">
-                     <label for="loyaltyPointsPerVisit" class="block text-sm font-medium text-purple-800">Regra de Conversão (Visita)</label>
-                     <p class="text-xs text-purple-600 mb-2">Quantos pontos o cliente ganha ao finalizar um atendimento?</p>
+                 <div id="loyalty-config-visit" class="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                     <label for="loyaltyPointsPerVisit" class="block text-sm font-medium text-purple-800">Regra de Pontuação</label>
+                     <p class="text-xs text-purple-600 mb-2">Quantos pontos o cliente ganha a cada venda realizada?</p>
                      <div class="flex items-center gap-2">
                          <span class="text-gray-600 font-medium">Ganhar</span>
                          <input type="number" id="loyaltyPointsPerVisit" value="${currentPointsPerVisit}" min="1" step="1" class="w-20 p-2 border border-purple-300 rounded-md focus:ring-purple-500 focus:border-purple-500 text-center font-bold">
-                         <span class="text-gray-600 font-medium">pontos por visita</span>
+                         <span class="text-gray-600 font-medium">pontos por visita/venda</span>
                      </div>
                  </div>
 
@@ -830,7 +799,7 @@ async function renderLoyaltySection(data, container) {
 
                  <div>
                      <label class="block text-sm font-bold text-gray-700 mb-2">Prémios e Recompensas</label>
-                     <p class="text-xs text-gray-500 mb-3">Defina os prêmios. Ao selecionar um item específico (Serviço, Produto ou Pacote), o sistema identificará automaticamente no checkout para aplicar o desconto.</p>
+                     <p class="text-xs text-gray-500 mb-3">Defina os prêmios que o cliente pode resgatar com os pontos acumulados.</p>
                      
                      <div class="hidden md:grid grid-cols-[0.8fr_1fr_1.5fr_1fr_auto] items-center gap-2 mb-1 text-xs font-bold text-gray-500 px-2">
                          <span>Custo (Pts)</span>
@@ -856,48 +825,18 @@ async function renderLoyaltySection(data, container) {
     // Checkbox Habilitado
     container.querySelector('#loyaltyEnabled').checked = loyaltyProgram.enabled || false;
 
-    // Toggle entre Tipos (Valor vs Visita)
-    const radioInputs = container.querySelectorAll('input[name="loyaltyType"]');
-    const amountConfig = container.querySelector('#loyalty-config-amount');
-    const visitConfig = container.querySelector('#loyalty-config-visit');
-
-    radioInputs.forEach(input => {
-        input.addEventListener('change', (e) => {
-            const val = e.target.value;
-            // Atualiza visual dos cards de seleção
-            radioInputs.forEach(r => {
-                const label = r.closest('label');
-                if (r.checked) {
-                    label.classList.add('border-indigo-500', 'bg-indigo-50', 'ring-1', 'ring-indigo-500');
-                } else {
-                    label.classList.remove('border-indigo-500', 'bg-indigo-50', 'ring-1', 'ring-indigo-500');
-                }
-            });
-
-            // Mostra/Esconde configs
-            if (val === 'amount') {
-                amountConfig.classList.remove('hidden');
-                visitConfig.classList.add('hidden');
-            } else {
-                amountConfig.classList.add('hidden');
-                visitConfig.classList.remove('hidden');
-            }
-        });
-    });
-
-    // --- Lógica dos Tiers (Prémios) ---
+    // --- Lógica dos Tiers (Prémios) - MANTIDA IGUAL ---
     const tiersContainer = container.querySelector('#loyaltyTiersContainer');
     
     const createTierRow = (tier = {}) => {
         const row = document.createElement('div');
         row.className = 'loyalty-tier-row group bg-white md:bg-transparent p-3 md:p-0 border md:border-0 rounded-lg shadow-sm md:shadow-none relative md:grid md:grid-cols-[0.8fr_1fr_1.5fr_1fr_auto] md:gap-2 md:items-start'; 
 
-        // Valores atuais ou padrão
         const currentType = tier.type || 'money';
         const currentItemId = tier.itemId || '';
         const currentRewardName = tier.reward || '';
         const currentDiscount = tier.discount || '';
-        const currentPoints = tier.points || tier.costPoints || ''; // suporte legado
+        const currentPoints = tier.points || tier.costPoints || '';
 
         row.innerHTML = `
             <div class="mb-2 md:mb-0">
@@ -942,39 +881,30 @@ async function renderLoyaltySection(data, container) {
             </button>
         `;
 
-        // Elementos DOM
         const typeSelect = row.querySelector('.type-select');
         const itemSelect = row.querySelector('.item-select');
         const descInput = row.querySelector('.desc-input');
         const discountInput = row.querySelector('.discount-input');
 
-        // Função para atualizar as opções do Select de Itens baseado no Tipo
         const updateItemOptions = (type) => {
             itemSelect.innerHTML = '<option value="">Selecione...</option>';
             let list = [];
-            
             if (type === 'service') list = services;
             else if (type === 'product') list = products;
             else if (type === 'package') list = packages;
 
             list.forEach(item => {
                 const isSelected = item.id === currentItemId;
-                // Usa item.name ou item.title dependendo da estrutura do objeto
                 const name = item.name || item.title || 'Sem nome';
                 const price = item.price || item.salePrice || 0;
                 itemSelect.innerHTML += `<option value="${item.id}" data-price="${price}" ${isSelected ? 'selected' : ''}>${escapeHTML(name)}</option>`;
             });
         };
 
-        // Inicializa as opções se já tiver um tipo selecionado
-        if (currentType !== 'money') {
-            updateItemOptions(currentType);
-        }
+        if (currentType !== 'money') updateItemOptions(currentType);
 
-        // Listener de mudança de Tipo
         typeSelect.addEventListener('change', (e) => {
             const type = e.target.value;
-            
             if (type === 'money') {
                 itemSelect.classList.add('hidden');
                 descInput.classList.remove('hidden');
@@ -984,22 +914,16 @@ async function renderLoyaltySection(data, container) {
                 itemSelect.classList.remove('hidden');
                 descInput.classList.add('hidden');
                 updateItemOptions(type);
-                discountInput.value = ''; // Limpa valor ao mudar tipo
+                discountInput.value = ''; 
             }
         });
 
-        // Listener de mudança de Item (Preencher descrição e sugerir valor)
         itemSelect.addEventListener('change', (e) => {
             const selectedOption = e.target.selectedOptions[0];
             if (selectedOption && selectedOption.value) {
-                // Ao selecionar um item, preenchemos o nome na descrição oculta (para facilitar o salvamento)
                 descInput.value = selectedOption.text;
-                
-                // Sugestão: Preencher o valor do desconto com o preço do item (100% off)
                 const price = selectedOption.dataset.price;
-                if (price) {
-                    discountInput.value = parseFloat(price).toFixed(2);
-                }
+                if (price) discountInput.value = parseFloat(price).toFixed(2);
             }
         });
 
@@ -1016,22 +940,20 @@ async function renderLoyaltySection(data, container) {
     
     tiersContainer.addEventListener('click', e => {
         const removeButton = e.target.closest('.remove-loyalty-tier');
-        if (removeButton) {
-            removeButton.closest('.loyalty-tier-row').remove();
-        }
+        if (removeButton) removeButton.closest('.loyalty-tier-row').remove();
     });
     
     // --- Salvar ---
     container.querySelector('#loyalty-form').addEventListener('submit', e => {
         e.preventDefault();
         
-        const selectedType = container.querySelector('input[name="loyaltyType"]:checked').value;
+        // MODIFICAÇÃO: Não lemos mais o input radio. Fixamos o tipo.
+        const selectedType = 'visit'; 
 
         const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => {
             const type = row.querySelector('.type-select').value;
             const itemId = type === 'money' ? null : row.querySelector('.item-select').value;
             
-            // Se for item, usa o texto do select como nome, senão usa o input
             let rewardName = '';
             if (type === 'money') {
                 rewardName = row.querySelector('.desc-input').value;
@@ -1042,7 +964,7 @@ async function renderLoyaltySection(data, container) {
 
             return {
                 points: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0,
-                costPoints: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0, // Redundância para compatibilidade
+                costPoints: parseInt(row.querySelector('input[data-field="points"]').value, 10) || 0,
                 type: type,
                 itemId: itemId,
                 reward: rewardName,
@@ -1054,10 +976,9 @@ async function renderLoyaltySection(data, container) {
         const formData = {
             loyaltyProgram: {
                 enabled: container.querySelector('#loyaltyEnabled').checked,
-                type: selectedType, // 'amount' ou 'visit'
-                pointsPerCurrency: parseFloat(container.querySelector('#loyaltyPointsPerCurrency').value) || 10,
+                type: selectedType, // Forçado para 'visit'
                 pointsPerVisit: parseInt(container.querySelector('#loyaltyPointsPerVisit').value, 10) || 1,
-                // Filtra apenas tiers válidos
+                pointsPerCurrency: 0, // Zera para limpar
                 tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward)
             }
         };
