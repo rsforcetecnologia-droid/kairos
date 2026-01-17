@@ -19,7 +19,6 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
-    // 1. ADICIONADO 'discount' AQUI
     const { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId, discount } = req.body;
 
     if (!items || items.length === 0 || totalAmount === undefined || !payments) {
@@ -47,14 +46,17 @@ router.post('/', async (req, res) => {
         // Configurações de Fidelidade
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
 
-        // 2. Calcular Pontos de Fidelidade com base na regra
+        // 2. Calcular Pontos de Fidelidade com base na regra (CORREÇÃO DE CASE SENSITIVE)
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
-            if (loyaltyProgram.type === 'visit') {
+            // Normaliza para minúsculo para evitar erros (ex: "Visit" vs "visit")
+            const type = (loyaltyProgram.type || 'value').toLowerCase().trim();
+
+            if (type === 'visit' || type === 'visita' || type === 'fixed') {
                 // Regra por Visita: Valor fixo por venda
                 pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
             } else {
-                // Regra por Valor: Total / Divisor (ex: R$ 100 / 10 = 10 pontos)
+                // Regra por Valor: Total / Divisor (ex: R$ 30 / 10 = 3 pontos)
                 const divisor = parseFloat(loyaltyProgram.pointsPerCurrency || 10);
                 if (divisor > 0) {
                     pointsToAward = Math.floor(Number(totalAmount) / divisor);
@@ -69,7 +71,6 @@ router.post('/', async (req, res) => {
             establishmentId,
             items,
             totalAmount: Number(totalAmount),
-            // 2. SALVAR O DESCONTO NA RAIZ DO DOCUMENTO
             discount: discount || null, 
             clientName: clientName || "Cliente Avulso",
             clientPhone: clientPhone || null,
@@ -86,7 +87,6 @@ router.post('/', async (req, res) => {
                 paidAt: paidAtTimestamp,
                 payments: payments,
                 totalAmount: Number(totalAmount),
-                // 3. SALVAR O DESCONTO NA TRANSAÇÃO
                 discount: discount || null 
             }
         };
@@ -98,7 +98,7 @@ router.post('/', async (req, res) => {
             
             // 3. Validar e Atualizar Estoque
             if (productsToUpdate.length > 0) {
-                // CORREÇÃO: Filtrar rewards virtuais antes de buscar no banco
+                // Filtra rewards virtuais
                 const realProducts = productsToUpdate.filter(item => item.id && !String(item.id).startsWith('reward-'));
 
                 if (realProducts.length > 0) {
@@ -135,7 +135,7 @@ router.post('/', async (req, res) => {
                     transaction.set(historyRef, {
                         type: 'earn',
                         points: pointsToAward,
-                        source: 'sale', // ou 'walk-in'
+                        source: 'sale', 
                         description: 'Compra Avulsa (PDV)',
                         transactionId: saleRef.id,
                         timestamp: paidAtTimestamp
@@ -156,7 +156,7 @@ router.post('/', async (req, res) => {
                 if (paymentMethod === 'credito') {
                     const financialRef = db.collection('financial_receivables').doc();
                     const notes = installmentCount > 1 
-                        ? `Parcelado em ${installmentCount}x no cartão de crédito (estabelecimento recebe à vista)`
+                        ? `Parcelado em ${installmentCount}x no cartão de crédito`
                         : 'Pagamento à vista no cartão de crédito';
 
                     transaction.set(financialRef, {
@@ -257,7 +257,7 @@ router.post('/:saleId/reopen', async (req, res) => {
             // Estornar Stock
             const productsToRestock = saleData.items.filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                // CORREÇÃO: Filtrar rewards virtuais ao estornar
+                // Filtrar rewards virtuais ao estornar
                 const productRefs = productsToRestock
                     .filter(item => item.id && !String(item.id).startsWith('reward-'))
                     .map(item => db.collection('products').doc(item.id));
@@ -341,7 +341,7 @@ router.delete('/:saleId', async (req, res) => {
             // Devolver estoque se necessário (para vendas pendentes ou canceladas via delete)
             const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
-                // CORREÇÃO: Filtrar rewards virtuais ao excluir
+                // Filtrar rewards virtuais ao excluir
                 const productRefs = productsToRestock
                     .filter(i => i.id && !String(i.id).startsWith('reward-'))
                     .map(item => db.collection('products').doc(item.id));

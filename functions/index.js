@@ -1,7 +1,7 @@
 /**
  * functions/index.js
- * Backend V4: Notificações + Sistema de Fidelidade (Pontos e Resgates).
- * VERSÃO CORRIGIDA E CENTRALIZADA
+ * Backend V4: Notificações
+ * VERSÃO FINAL E LIMPA (Sem lógica de fidelidade duplicada)
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -14,12 +14,6 @@ const db = admin.firestore();
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers)
 // ============================================================================
-
-// --- CORREÇÃO: Função para limpar ID (deixar apenas números) ---
-function cleanId(id) {
-    if (!id) return '';
-    return String(id).replace(/\D/g, '');
-}
 
 // --- Formatação de Data e Hora ---
 function formatDate(dateValue) {
@@ -109,88 +103,6 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
 
     const uniqueTokens = [...new Set(tokens)];
     return uniqueTokens;
-}
-
-// --- LÓGICA CENTRAL DE FIDELIDADE (ROBUSTA) ---
-async function processLoyaltyTransaction(establishmentId, clientId, items, totalAmount, sourceId, sourceType) {
-    if (!establishmentId) return;
-    
-    // CORREÇÃO: Garante que temos um ID válido (numérico)
-    const safeClientId = cleanId(clientId);
-    if (!safeClientId) {
-        console.warn("[Fidelidade] Ignorado: ID do cliente inválido ou não fornecido.");
-        return;
-    }
-
-    try {
-        const estabRef = db.collection('establishments').doc(establishmentId);
-        const estabSnap = await estabRef.get();
-        
-        if (!estabSnap.exists) return;
-        const config = estabSnap.data().loyaltyProgram;
-
-        if (!config || !config.enabled) return;
-
-        const pointsFactor = config.pointsFactor || 1;
-        
-        // Cálculo de pontos a adicionar
-        let pointsToAdd = 0;
-        if (config.type === 'currency' && config.pointsPerCurrency > 0) {
-             pointsToAdd = Math.floor((totalAmount || 0) / config.pointsPerCurrency);
-        } else {
-             // Fallback para fator multiplicador (padrão antigo ou visita)
-             pointsToAdd = Math.floor((totalAmount || 0) * pointsFactor);
-        }
-
-        let pointsToDeduct = 0;
-        if (items && Array.isArray(items)) {
-            items.forEach(item => {
-                if (item.isReward && item.pointsCost > 0) {
-                    const qty = item.quantity || 1;
-                    pointsToDeduct += (item.pointsCost * qty);
-                }
-            });
-        }
-
-        if (pointsToDeduct === 0 && pointsToAdd === 0) return;
-
-        console.log(`[Fidelidade] Processando Cliente ${safeClientId}: -${pointsToDeduct} (Gasto) / +${pointsToAdd} (Ganho)`);
-
-        // Usa o ID limpo para buscar o documento
-        const clientRef = db.collection('clients').doc(safeClientId);
-
-        await db.runTransaction(async (t) => {
-            const clientDoc = await t.get(clientRef);
-            if (!clientDoc.exists) {
-                console.warn(`[Fidelidade] Cliente ${safeClientId} não encontrado no banco.`);
-                return;
-            }
-
-            const currentPoints = clientDoc.data().loyaltyPoints || 0;
-            const newBalance = currentPoints - pointsToDeduct + pointsToAdd;
-            const finalBalance = newBalance < 0 ? 0 : newBalance;
-
-            t.update(clientRef, { loyaltyPoints: finalBalance });
-
-            const historyRef = clientRef.collection('loyaltyHistory').doc();
-            t.set(historyRef, {
-                date: new Date().toISOString(),
-                type: pointsToDeduct > 0 ? 'redeem_and_earn' : 'earn',
-                pointsEarned: pointsToAdd,
-                pointsSpent: pointsToDeduct,
-                balanceBefore: currentPoints,
-                balanceAfter: finalBalance,
-                sourceId: sourceId,
-                sourceType: sourceType,
-                description: pointsToDeduct > 0 
-                    ? `Resgate e Acúmulo (+${pointsToAdd})` 
-                    : `Acúmulo de compra (+${pointsToAdd})`
-            });
-        });
-
-    } catch (error) {
-        console.error("[Fidelidade] Erro crítico ao processar pontos:", error);
-    }
 }
 
 const webpushConfig = {
@@ -308,42 +220,5 @@ exports.sendCancellationNotification = onDocumentUpdated(
                 await admin.messaging().sendEachForMulticast(message).catch(e => console.error(e));
             }
         }
-
-        // OBS: A lógica de fidelidade ao completar foi removida daqui para evitar conflito com o gatilho de Vendas.
-    }
-);
-
-// ============================================================================
-// SEÇÃO 3: GATILHO DE VENDAS (FONTE ÚNICA DE FIDELIDADE)
-// ============================================================================
-
-exports.handleNewSaleLoyalty = onDocumentCreated(
-    "sales/{saleId}",
-    async (event) => {
-        const snapshot = event.data;
-        if (!snapshot) return;
-
-        const sale = snapshot.data();
-        const saleId = event.params.saleId;
-
-        if (!sale.establishmentId) return;
-
-        // Tenta pegar o ID do cliente. Se não tiver, usa o telefone limpo como fallback.
-        // A rota de checkout corrigida enviará 'clientId', mas mantemos o fallback por segurança.
-        const clientIdToUse = sale.clientId || cleanId(sale.clientPhone);
-
-        if (!clientIdToUse) {
-            console.log(`[Fidelidade] Venda ${saleId} ignorada: Sem cliente vinculado.`);
-            return;
-        }
-
-        await processLoyaltyTransaction(
-            sale.establishmentId,
-            clientIdToUse, // ID seguro e limpo
-            sale.items || [],
-            sale.totalAmount || 0,
-            saleId,
-            'sale'
-        );
     }
 );
