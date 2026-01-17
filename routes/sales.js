@@ -15,11 +15,14 @@ router.get('/', async (req, res) => {
     res.status(501).json({ message: 'Ainda não implementado' });
 });
 
-// Criar nova venda avulsa (PDV) - COM FIDELIDADE DINÂMICA
+// Criar nova venda avulsa (PDV) - FIDELIDADE CORRIGIDA (APENAS VISITA) + AUDITORIA
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
     const { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId, discount } = req.body;
+
+    // --- LOG DE AUDITORIA: INÍCIO ---
+    console.log(`>>> [AUDITORIA] Iniciando Nova Venda Avulsa (R$ ${totalAmount})`);
 
     if (!items || items.length === 0 || totalAmount === undefined || !payments) {
         return res.status(400).json({ message: "Dados da venda incompletos." });
@@ -46,13 +49,40 @@ router.post('/', async (req, res) => {
         // Configurações de Fidelidade
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
 
-        // 2. Calcular Pontos de Fidelidade (MODIFICADO: Apenas Pontos por Visita)
+        // =================================================================================
+        // 🕵️ AUDITORIA DE FIDELIDADE
+        // =================================================================================
+        console.log("--- DADOS DE FIDELIDADE (BANCO DE DADOS) ---");
+        console.log("Habilitado:", loyaltyProgram.enabled);
+        console.log("Tipo Configurado (DB):", loyaltyProgram.type);
+        console.log("Pontos por Visita (DB):", loyaltyProgram.pointsPerVisit);
+        console.log("Pontos por Moeda (DB):", loyaltyProgram.pointsPerCurrency);
+
+        // 2. Calcular Pontos de Fidelidade (CORREÇÃO DEFINITIVA)
+        // Ignora qualquer regra de valor e usa apenas a regra de visita
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
-            // Regra Simplificada: Ignora o tipo configurado e usa sempre Pontos por Visita
-            // Se não houver configuração, define 1 ponto padrão por venda
-            pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
+            // Pega o valor configurado para visita (ou 1 se não existir)
+            // Usa 'rawPoints' para logar o que veio exatamente do banco
+            const rawPoints = loyaltyProgram.pointsPerVisit;
+            pointsToAward = parseInt(rawPoints);
+            
+            // Proteção: Se for inválido ou 0, garante pelo menos 1 ponto
+            if (isNaN(pointsToAward) || pointsToAward <= 0) {
+                console.log(`[AVISO] pointsPerVisit inválido ou zero (${rawPoints}), forçando para 1.`);
+                pointsToAward = 1;
+            }
         }
+
+        console.log("--- CÁLCULO FINAL ---");
+        console.log("Valor da Venda:", totalAmount);
+        console.log("Pontos a serem atribuídos (pointsToAward):", pointsToAward);
+        
+        if (pointsToAward > 10 && pointsToAward > parseInt(totalAmount)) {
+             console.warn("!!! ALERTA !!! Os pontos calculados são suspeitosamente altos.");
+        }
+        console.log("====================================================================");
+        // =================================================================================
 
         const safeClientId = cleanId(clientPhone);
 
@@ -114,6 +144,9 @@ router.post('/', async (req, res) => {
                 const clientDoc = await transaction.get(clientRef);
                 
                 if (clientDoc.exists) {
+                    // --- LOG DE AUDITORIA: ESCRITA NO BANCO ---
+                    console.log(`[DB WRITE] Incrementando ${pointsToAward} pontos para o cliente ${safeClientId} na transação.`);
+
                     // Incrementa pontos
                     transaction.update(clientRef, { 
                         loyaltyPoints: admin.firestore.FieldValue.increment(pointsToAward),
@@ -217,7 +250,7 @@ router.post('/', async (req, res) => {
         res.status(201).json({ message: 'Venda criada com sucesso!', saleId: saleRef.id, pointsEarned: pointsToAward });
 
     } catch (error) {
-        console.error("Erro ao criar venda:", error);
+        console.error("Erro CRÍTICO ao criar venda:", error);
         res.status(500).json({ message: error.message || "Ocorreu um erro no servidor." });
     }
 });

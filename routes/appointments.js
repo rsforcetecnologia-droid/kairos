@@ -484,12 +484,15 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT - CORRIGIDO (FIDELIDADE SIMPLIFICADA: APENAS VISITA)
+// 7. CHECKOUT - CORRIGIDO (FIDELIDADE SIMPLIFICADA) + AUDITORIA
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount } = req.body;
     const { db } = req;
     const { uid, establishmentId } = req.user;
+
+    // LOG DE AUDITORIA 1
+    console.log(`>>> [AUDITORIA - COMANDA] Iniciando Checkout Comanda ${appointmentId} (R$ ${totalAmount})`);
 
     if (!payments || !items) return res.status(400).json({ message: 'Dados incompletos.' });
 
@@ -500,16 +503,36 @@ router.post('/:appointmentId/checkout', async (req, res) => {
 
         const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
         const establishmentData = establishmentDoc.data() || {};
+        
+        // Configurações de Fidelidade
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = establishmentData.financialIntegration || {};
+
+        // LOG DE AUDITORIA 2
+        console.log("--- DADOS DE FIDELIDADE (BANCO DE DADOS - COMANDA) ---");
+        console.log("Habilitado:", loyaltyProgram.enabled);
+        console.log("Tipo Configurado (DB):", loyaltyProgram.type);
+        console.log("Pontos por Visita (DB):", loyaltyProgram.pointsPerVisit);
+        console.log("Pontos por Moeda (DB):", loyaltyProgram.pointsPerCurrency);
 
         // --- 2. CÁLCULO DE PONTOS CORRIGIDO ---
         let pointsToAward = 0;
         if (loyaltyProgram.enabled) {
             // Regra Simplificada: Ignora o tipo configurado (valor ou visita) e usa sempre Pontos por Visita
-            pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
-            if (isNaN(pointsToAward) || pointsToAward <= 0) pointsToAward = 1;
+            const rawPoints = loyaltyProgram.pointsPerVisit;
+            pointsToAward = parseInt(rawPoints || 1);
+            
+            if (isNaN(pointsToAward) || pointsToAward <= 0) {
+                console.log(`[AVISO] pointsPerVisit inválido ou zero (${rawPoints}), assumindo 1.`);
+                pointsToAward = 1;
+            }
         }
+
+        // LOG DE AUDITORIA 3
+        console.log("--- CÁLCULO FINAL (COMANDA) ---");
+        console.log("Valor Pago:", totalAmount);
+        console.log("Pontos Calculados (pointsToAward):", pointsToAward);
+        console.log("====================================================================");
 
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
@@ -552,6 +575,9 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 };
 
                 if (pointsToAward > 0) {
+                    // LOG DE AUDITORIA 4
+                    console.log(`[DB WRITE] Incrementando ${pointsToAward} pontos para cliente ${safeClientId} via Comanda.`);
+
                     updateData.loyaltyPoints = admin.firestore.FieldValue.increment(pointsToAward);
                     
                     const historyRef = clientRef.collection('loyaltyHistory').doc();
