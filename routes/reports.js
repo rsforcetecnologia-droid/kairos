@@ -103,41 +103,70 @@ router.get('/indicators', async (req, res) => {
         let totalCompletedAppointments = 0; 
         let totalAppointmentsVolume = 0;    
 
-        // A) PROCESSAR VENDAS (Apenas para Gráficos e Cards Superiores)
+        // A) PROCESSAR VENDAS (CORREÇÃO DE VALORES REAIS PAGOS)
         salesSnap.forEach(doc => {
             const data = doc.data();
             if (!data.transaction || !data.transaction.paidAt) return;
             
-            let docValue = 0;
+            // 1. Valor Realmente Pago (Considerando descontos e resgates)
+            const realPaidAmount = Number(data.transaction.totalAmount ?? data.total ?? 0);
+            
+            // 2. Valor Bruto dos Itens (Soma dos preços de tabela)
+            const allItems = data.items || [];
+            const grossTotalItems = allItems.reduce((acc, i) => acc + (Number(i.price) || 0), 0);
 
-            if (professionalId && professionalId !== 'all') {
-                const belongsToProf = (data.items || []).some(i => i.professionalId === professionalId) || data.professionalId === professionalId;
-                if (!belongsToProf) return;
-            }
+            // 3. Fator de Ajuste (Ratio)
+            // Se o total bruto era 40 e pagou 25, o ratio é 0.625.
+            // Se pagou 0 (resgate total), ratio é 0.
+            const ratio = (grossTotalItems > 0) ? (realPaidAmount / grossTotalItems) : 0;
+
+            let saleValueForFilter = 0;
 
             if (data.items && Array.isArray(data.items)) {
                 data.items.forEach(item => {
-                    const val = Number(item.price) || 0;
-                    docValue += val;
+                    // --- FILTRO DE PROFISSIONAL ---
+                    if (professionalId && professionalId !== 'all') {
+                        // Verifica se o item pertence ao profissional ou se a venda é dele
+                        const itemProfId = item.professionalId || data.professionalId;
+                        if (itemProfId !== professionalId) return;
+                    }
+
+                    const itemPrice = Number(item.price) || 0;
+                    // Aplica o ratio para descobrir o valor "líquido" deste item após desconto/resgate
+                    const itemRealRevenue = itemPrice * ratio;
+
+                    saleValueForFilter += itemRealRevenue;
+
+                    // Popula Gráficos (Produto)
                     const prodName = item.name || 'Outros';
-                    salesByProduct[prodName] = (salesByProduct[prodName] || 0) + val;
+                    salesByProduct[prodName] = (salesByProduct[prodName] || 0) + itemRealRevenue;
                     
+                    // Popula Gráficos (Profissional)
                     const profName = item.professionalName || data.professionalName || 'Não Identificado';
-                    salesByProfessional[profName] = (salesByProfessional[profName] || 0) + val;
+                    salesByProfessional[profName] = (salesByProfessional[profName] || 0) + itemRealRevenue;
                 });
             } else {
-                docValue = Number(data.total || data.transaction.totalAmount) || 0;
+                // Fallback para vendas antigas sem array de items
+                if (professionalId && professionalId !== 'all') {
+                    if (data.professionalId !== professionalId) return;
+                }
+                saleValueForFilter = realPaidAmount;
                 const profName = data.professionalName || 'Não Identificado';
-                salesByProfessional[profName] = (salesByProfessional[profName] || 0) + docValue;
+                salesByProfessional[profName] = (salesByProfessional[profName] || 0) + saleValueForFilter;
             }
 
-            if (docValue > 0) {
-                totalSalesRevenue += docValue;
-                const d = data.transaction.paidAt.toDate();
-                const dKey = d.toLocaleDateString('pt-BR');
-                const mKey = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
-                salesByDay[dKey] = (salesByDay[dKey] || 0) + docValue;
-                salesByMonth[mKey] = (salesByMonth[mKey] || 0) + docValue;
+            // Soma ao faturamento total e gráficos de tempo APENAS se houver valor para o filtro atual
+            if (saleValueForFilter > 0 || (realPaidAmount === 0 && saleValueForFilter === 0)) {
+                // Nota: se for 0, não soma, mas a lógica de fluxo segue
+                totalSalesRevenue += saleValueForFilter;
+                
+                if (saleValueForFilter > 0) {
+                    const d = data.transaction.paidAt.toDate();
+                    const dKey = d.toLocaleDateString('pt-BR');
+                    const mKey = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+                    salesByDay[dKey] = (salesByDay[dKey] || 0) + saleValueForFilter;
+                    salesByMonth[mKey] = (salesByMonth[mKey] || 0) + saleValueForFilter;
+                }
             }
         });
 
@@ -208,10 +237,6 @@ router.get('/indicators', async (req, res) => {
             }
         });
 
-        // --- CONSOLIDAÇÃO FINAL DA DRE ---
-        // REMOVIDO: A soma manual de 'totalSalesRevenue' e 'totalCommissions' na DRE.
-        // A DRE agora reflete EXATAMENTE o que está nas coleções 'financial_receivables' e 'financial_payables'.
-
         const netResult = dreFinancial.totalRevenues - dreFinancial.totalExpenses;
 
         // RETORNO
@@ -222,7 +247,7 @@ router.get('/indicators', async (req, res) => {
             },
             // O dreSimple mantém os dados operacionais para os Cards do topo
             dreSimple: { 
-                grossRevenue: totalSalesRevenue, 
+                grossRevenue: totalSalesRevenue, // Agora reflete o valor REALMENTE pago
                 variableCosts: totalCommissions, 
                 netProfit: totalSalesRevenue - totalCommissions 
             },
@@ -341,13 +366,17 @@ router.get('/sales/:establishmentId', async (req, res) => {
             const d = doc.data();
             if(!d.transaction) return;
             if(cashierSessionId && cashierSessionId !== 'all' && d.cashierSessionId !== cashierSessionId) return;
-            totalRevenue += d.transaction.totalAmount;
+            
+            // CORREÇÃO TAMBÉM NA ROTA LEGADO (SE ELA FOR USADA)
+            const realTotal = d.transaction.totalAmount || 0;
+            totalRevenue += realTotal;
+            
             (d.transaction.payments||[]).forEach(p => methods[p.method] = (methods[p.method]||0)+p.value);
             transactions.push({
                 date: d.transaction.paidAt.toDate(),
                 client: d.clientName,
                 items: (d.items||d.services||[]).map(i=>i.name).join(', '),
-                total: d.transaction.totalAmount,
+                total: realTotal,
                 type: d.type === 'walk-in' ? 'Venda Avulsa' : 'Agendamento',
                 responsavelCaixa: cashierSessionMap.get(d.cashierSessionId) || 'N/A',
                 payments: d.transaction.payments
@@ -382,7 +411,8 @@ router.get('/work-journal/:establishmentId', async (req, res) => {
         const completed = snap.docs.filter(d => d.data().status === 'completed');
         const appointments = completed.map(doc => {
             const d = doc.data();
-            const val = d.transaction ? d.transaction.totalAmount : 0;
+            // CORREÇÃO: Usar o totalAmount da transação
+            const val = d.transaction ? d.transaction.totalAmount : (d.totalAmount || 0);
             totalRevenue += val;
             totalServices += d.services ? d.services.length : 1;
             return { date: d.startTime.toDate(), client: d.clientName, services: d.services ? d.services.map(s => s.name).join(', ') : 'N/A', value: val };
@@ -424,7 +454,12 @@ router.get('/summary', async (req, res) => {
         ]);
 
         let todayRevenue = 0;
-        salesSnap.forEach(doc => todayRevenue += (doc.data().totalAmount || 0));
+        // CORREÇÃO: Usar transaction.totalAmount ou totalAmount
+        salesSnap.forEach(doc => {
+            const d = doc.data();
+            const val = d.transaction ? d.transaction.totalAmount : (d.totalAmount || 0);
+            todayRevenue += val;
+        });
         res.json({ todayAppointments: apptSnap.size, todayRevenue });
     } catch(e){ 
         console.error("Erro KPI Summary:", e);
