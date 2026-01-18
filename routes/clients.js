@@ -10,7 +10,7 @@ router.use(verifyToken, hasAccess);
 
 const db = admin.firestore();
 
-// --- HELPER DE FORMATAÇÃO PARA BUSCA ---
+// --- HELPER DE FORMATAÇÃO PARA BUSCA DE TELEFONE ---
 function getPhoneVariations(phone) {
     const p = String(phone).replace(/\D/g, '');
     const variations = [p]; 
@@ -22,6 +22,26 @@ function getPhoneVariations(phone) {
         variations.push(`(${p.substring(0,2)}) ${p.substring(2,6)}-${p.substring(6,10)}`);
     }
     return variations;
+}
+
+// --- HELPER SEGURO PARA DATAS DO FIRESTORE ---
+function parseFirestoreDate(value) {
+    if (!value) return null;
+    
+    // 1. Se for objeto Timestamp do Firestore (tem método toDate)
+    if (value && typeof value.toDate === 'function') {
+        return value.toDate();
+    }
+    
+    // 2. Se for objeto serializado com seconds (comum em algumas queries)
+    if (value && (value.seconds !== undefined || value._seconds !== undefined)) {
+        const seconds = value.seconds || value._seconds;
+        return new Date(seconds * 1000);
+    }
+
+    // 3. Tenta string ISO ou timestamp numérico padrão
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
 }
 
 const handleError = (res, error, message) => {
@@ -87,7 +107,6 @@ router.get('/:establishmentId', async (req, res) => {
         let clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         // --- FILTRAGEM EM MEMÓRIA (REFINAMENTO) ---
-        // Necessário pois Firestore não filtra nativamente por "mês de uma data" ou "diferença de dias"
         clients = applyMemoryFilters(clients, hasLoyalty, birthMonth, inactiveDays);
 
         res.json(clients);
@@ -96,7 +115,7 @@ router.get('/:establishmentId', async (req, res) => {
     }
 });
 
-// --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA ---
+// --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA (CORRIGIDA) ---
 function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
     // Se não tem filtros extras, retorna a lista original
     if (!hasLoyalty && !birthMonth && !inactiveDays) return list;
@@ -104,42 +123,54 @@ function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
     return list.filter(c => {
         let pass = true;
 
-        // 1. Filtro Fidelidade (Segurança extra caso a query do banco seja mista)
+        // 1. Filtro Fidelidade
         if (hasLoyalty === 'true') {
             if (!c.loyaltyPoints || c.loyaltyPoints <= 0) pass = false;
         }
 
-        // 2. Filtro Mês de Aniversário
+        // 2. Filtro Mês de Aniversário [CORRIGIDO]
         if (pass && birthMonth) {
-            // birthDate geralmente é "YYYY-MM-DD". Pegamos a parte do mês (índice 1 no split)
-            if (!c.birthDate || c.birthDate.split('-')[1] !== birthMonth) {
-                pass = false;
+            const filterMonth = parseInt(birthMonth, 10);
+            
+            // Prioridade: Campo explícito 'dobMonth' (ex: salvo como número 5 ou string "5")
+            if (c.dobMonth) {
+                const clientMonth = parseInt(c.dobMonth, 10);
+                if (clientMonth !== filterMonth) pass = false;
+            } 
+            // Fallback: Campo 'birthDate' (ex: "2000-05-20")
+            else if (c.birthDate) {
+                const parts = c.birthDate.split('-');
+                if (parts.length >= 2) {
+                    const clientMonth = parseInt(parts[1], 10); // "05" vira 5
+                    if (clientMonth !== filterMonth) pass = false;
+                } else {
+                    pass = false; // Formato inválido
+                }
+            } else {
+                pass = false; // Sem data de nascimento
             }
         }
 
-        // 3. Filtro de Inatividade (Dias sem visita)
+        // 3. Filtro de Inatividade (Dias sem visita) [CORRIGIDO]
         if (pass && inactiveDays) {
             const daysLimit = parseInt(inactiveDays);
             
-            // CORREÇÃO APLICADA AQUI:
-            // Inclui lastServiceDate (usado pelo agendamento novo) na verificação de datas.
-            const lastInteractionStr = c.lastServiceDate || c.lastVisit || c.updatedAt || c.createdAt;
+            // Busca qualquer registro de data de interação
+            const rawDate = c.lastServiceDate || c.lastVisit || c.updatedAt || c.createdAt;
             
-            if (!lastInteractionStr) {
-                // Se não tem data nenhuma, assumimos que é inativo (ou novo sem interação)
-                // Mantém na lista se a intenção é achar quem não interage
+            // Usa o helper para converter Timestamp/String em objeto Date válido
+            const lastDate = parseFirestoreDate(rawDate);
+            
+            if (!lastDate) {
+                // Se não tem data nenhuma, assumimos que é inativo (nunca veio) -> Passa no filtro
                 pass = true; 
             } else {
-                const lastDate = new Date(lastInteractionStr);
                 const now = new Date();
-                
-                // Diferença em milissegundos
                 const diffTime = Math.abs(now - lastDate);
-                // Converte para dias
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
                 
-                // Queremos clientes cuja última visita foi há MAIS tempo que o limite
-                // Ex: Filtro 30 dias. Se visitou há 5 dias (5 < 30), NÃO passa (é ativo).
+                // Se diffDays (dias desde a visita) for MENOR que o limite, ele veio recentemente.
+                // Logo, devemos DESCARTAR (pass = false) pois ele é ATIVO.
                 if (diffDays < daysLimit) {
                     pass = false; 
                 }
@@ -177,19 +208,19 @@ router.put('/:id', async (req, res) => {
 
         if (!data.establishmentId) return res.status(400).json({ error: 'ID do estabelecimento obrigatório' });
 
-        const now = new Date().toISOString();
+        const now = admin.firestore.FieldValue.serverTimestamp(); 
         
         // Prepara dados de atualização
         const updateData = {
             ...data,
             id: id,
             phone: id,
-            updatedAt: now // Atualiza a data de modificação (usada para cálculo de inatividade)
+            updatedAt: now // Atualiza a data de modificação
         };
 
         // Usa set com merge para criar ou atualizar
         await db.collection('clients').doc(id).set({
-            createdAt: now, // Só define se o doc não existir (devido ao merge, mas cuidado: set sobrescreve se não tratar)
+            createdAt: now, // Só define se o doc não existir
             ...updateData
         }, { merge: true });
         
@@ -249,17 +280,12 @@ router.get('/full-history/:establishmentId', async (req, res) => {
         // Processa Agendamentos
         appointmentsSnap.forEach(doc => {
             const d = doc.data();
-            let dateIso = null;
-            if (d.startTime && typeof d.startTime.toDate === 'function') {
-                dateIso = d.startTime.toDate().toISOString();
-            } else {
-                dateIso = d.startTime;
-            }
+            const dateIso = parseFirestoreDate(d.startTime); 
 
             if (dateIso) {
                 history.push({
                     type: 'appointment',
-                    date: dateIso,
+                    date: dateIso.toISOString(),
                     description: (d.services && d.services[0]) ? d.services[0].name : (d.serviceName || 'Agendamento'),
                     status: d.status,
                     value: d.totalAmount || 0,
@@ -271,29 +297,28 @@ router.get('/full-history/:establishmentId', async (req, res) => {
         // Processa Vendas
         salesSnap.forEach(doc => {
             const d = doc.data();
-            let dateIso = null;
-            if (d.createdAt && typeof d.createdAt.toDate === 'function') {
-                dateIso = d.createdAt.toDate().toISOString();
-            } else {
-                dateIso = d.createdAt;
-            }
+            const dateIso = parseFirestoreDate(d.createdAt); 
 
-            history.push({
-                type: 'sale',
-                date: dateIso,
-                description: 'Venda / Comanda',
-                status: 'paid',
-                value: d.totalAmount || 0,
-                id: doc.id
-            });
+            if (dateIso) {
+                history.push({
+                    type: 'sale',
+                    date: dateIso.toISOString(),
+                    description: 'Venda / Comanda',
+                    status: 'paid',
+                    value: d.totalAmount || 0,
+                    id: doc.id
+                });
+            }
         });
 
         // Processa Fidelidade
         loyaltySnap.forEach(doc => {
             const d = doc.data();
+            const dateVal = parseFirestoreDate(d.date || d.timestamp);
+            
             history.push({
                 type: 'loyalty',
-                date: d.date || d.timestamp,
+                date: dateVal ? dateVal.toISOString() : new Date().toISOString(),
                 description: d.rewardName || (d.points > 0 ? 'Acúmulo Manual' : 'Resgate'),
                 status: 'completed',
                 value: d.points,
@@ -329,10 +354,9 @@ router.post('/redeem', async (req, res) => {
 
             if (currentPoints < cost) throw new Error(`Saldo insuficiente.`);
 
-            // Atualiza pontos e data de última interação (importante para filtro de inatividade)
             t.update(clientRef, { 
                 loyaltyPoints: currentPoints - cost,
-                updatedAt: new Date().toISOString()
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             
             const historyRef = clientRef.collection('loyaltyHistory').doc();

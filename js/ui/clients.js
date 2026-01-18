@@ -43,15 +43,37 @@ let localState = {
 
 let contentDiv = null;
 
-// --- FUNÇÃO AUXILIAR: LIMPAR TELEFONE ---
+// --- FUNÇÕES AUXILIARES ---
+
+// Limpar Telefone
 const cleanPhone = (phone) => {
     if (!phone) return '';
     return String(phone).replace(/\D/g, '');
 };
 
+// [NOVO] Função Segura para formatar Data (Aceita String ou Firestore Timestamp)
+const parseLastVisit = (dateValue) => {
+    if (!dateValue) return 'Nunca';
+    
+    let date;
+    // Verifica se é um objeto Timestamp do Firestore (tem segundos)
+    if (typeof dateValue === 'object' && (dateValue.seconds || dateValue._seconds)) {
+        const seconds = dateValue.seconds || dateValue._seconds;
+        date = new Date(seconds * 1000);
+    } else {
+        // Tenta converter string ISO ou número
+        date = new Date(dateValue);
+    }
+
+    // Verifica se a data é válida
+    if (isNaN(date.getTime())) return 'Data Inválida';
+    
+    return date.toLocaleDateString('pt-BR');
+};
+
 // --- 3. FUNÇÕES PRINCIPAIS DE RENDERIZAÇÃO ---
 
-// Layout Base (Lista de Clientes)
+// Layout Base
 function renderLayout() {
     contentDiv.innerHTML = `
         <section class="h-[calc(100vh-4rem)] sm:h-full flex flex-col bg-gray-50 overflow-x-hidden w-full">
@@ -83,7 +105,6 @@ function renderLayout() {
 
 // Renderiza a Lista de Clientes
 function renderClientList() {
-    // Se o modal estiver aberto, não renderizamos a lista novamente para não perder o estado visual de fundo
     if (localState.modalOpen) return;
 
     renderLayout(); 
@@ -169,7 +190,8 @@ function renderClientList() {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 ${localState.clients.map(client => {
                     const hasDebt = client.totalDebt && parseFloat(client.totalDebt) > 0;
-                    const lastVisit = client.lastVisit ? new Date(client.lastVisit).toLocaleDateString('pt-BR') : 'Nunca';
+                    // [CORREÇÃO] Usar a função segura parseLastVisit
+                    const lastVisit = parseLastVisit(client.lastVisit);
                     
                     return `
                     <div class="client-card bg-white p-3 sm:p-4 rounded-xl border ${hasDebt ? 'border-l-4 border-l-red-500 border-y-red-100 border-r-red-100' : 'border-gray-200 border-l-4 border-l-indigo-500'} shadow-sm hover:shadow-md transition cursor-pointer active:bg-gray-50 flex items-center gap-3 group" data-id="${client.id}">
@@ -430,7 +452,6 @@ async function renderClientDetails() {
         return;
     }
 
-    // Agora sempre renderiza como Modal (tela flutuante)
     renderClientModal(client);
 }
 
@@ -440,10 +461,8 @@ function renderClientModal(client) {
     if (!modalOverlay) {
         modalOverlay = document.createElement('div');
         modalOverlay.id = 'client-details-modal-overlay';
-        // Ajuste: p-0 no mobile (tela cheia), p-4 no desktop
         modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4 animate-fade-in';
         
-        // Ajuste: w-full h-full no mobile (tela cheia)
         modalOverlay.innerHTML = `
             <div class="bg-white w-full h-full sm:h-[90vh] sm:max-w-5xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-scale-in" id="client-modal-content">
             </div>
@@ -454,7 +473,6 @@ function renderClientModal(client) {
         };
 
         document.body.appendChild(modalOverlay);
-        // Bloqueia rolagem do fundo
         document.body.classList.add('overflow-hidden');
         localState.modalOpen = true;
     }
@@ -470,12 +488,10 @@ function closeClientModal() {
     if (modal) {
         modal.remove();
     }
-    // Libera rolagem do fundo
     document.body.classList.remove('overflow-hidden');
     localState.modalOpen = false;
     localState.selectedClient = null;
     
-    // Atualiza a lista caso algo tenha mudado
     renderClientList();
 }
 
