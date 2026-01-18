@@ -55,7 +55,7 @@ const handleError = (res, error, message) => {
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        const { search, limit, hasLoyalty, birthMonth, inactiveDays } = req.query;
+        const { search, limit, hasLoyalty, birthMonth, inactiveDays, hasDebt } = req.query; // [NOVO] hasDebt
         
         // Se houver filtros de memória (data/mês), aumentamos o limite da busca no banco 
         // para garantir que tenhamos candidatos suficientes após a filtragem.
@@ -67,11 +67,15 @@ router.get('/:establishmentId', async (req, res) => {
 
         // --- ESTRATÉGIA DE BUSCA NO BANCO ---
 
-        // 1. Otimização: Se filtrar APENAS por fidelidade (sem busca textual), usa o índice do banco
+        // 1. Otimização: Se filtrar APENAS por fidelidade (sem busca textual)
         if (hasLoyalty === 'true' && !search) {
             query = query.where('loyaltyPoints', '>', 0).orderBy('loyaltyPoints', 'desc');
         } 
-        // 2. Busca textual (Nome ou ID)
+        // 2. Otimização: Se filtrar APENAS por débito (sem busca textual)
+        else if (hasDebt === 'true' && !search) {
+            query = query.where('totalDebt', '>', 0).orderBy('totalDebt', 'desc');
+        }
+        // 3. Busca textual (Nome ou ID)
         else if (search && search.trim()) {
             const term = search.trim();
             // Busca numérica direta (Telefone ID)
@@ -80,15 +84,12 @@ router.get('/:establishmentId', async (req, res) => {
                 if (doc.exists && doc.data().establishmentId === establishmentId) {
                      let result = [{ id: doc.id, ...doc.data() }];
                      // Aplica os filtros de memória no resultado único
-                     return res.json(applyMemoryFilters(result, hasLoyalty, birthMonth, inactiveDays)); 
+                     return res.json(applyMemoryFilters(result, hasLoyalty, birthMonth, inactiveDays, hasDebt)); 
                 }
                 // Fallback: tenta buscar por phone range se não achar ID direto (para casos de prefixo)
                 query = query.orderBy('phone').startAt(term).endAt(term + '\uf8ff');
             } else {
-                // 3. Busca textual por nome (CORREÇÃO CASE SENSITIVE)
-                
-                // Se o termo veio totalmente em minúsculo (ex: "mar"), convertemos a primeira letra
-                // para Maiúscula (ex: "Mar") para aumentar a chance de encontrar nomes próprios (ex: "Maria").
+                // Busca textual por nome (Case Insensitive parcial - primeira letra maiúscula)
                 let searchTerm = term;
                 if (searchTerm.length > 0 && searchTerm === searchTerm.toLowerCase()) {
                     searchTerm = searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1);
@@ -97,8 +98,8 @@ router.get('/:establishmentId', async (req, res) => {
                 query = query.orderBy('name').startAt(searchTerm).endAt(searchTerm + '\uf8ff');
             }
         } else {
-            // 3. Padrão: Ordena por nome se não caiu na otimização de fidelidade
-            if (!(hasLoyalty === 'true' && !search)) {
+            // 4. Padrão: Ordena por nome se não caiu nas otimizações
+            if (!(hasLoyalty === 'true' && !search) && !(hasDebt === 'true' && !search)) {
                 query = query.orderBy('name');
             }
         }
@@ -107,7 +108,7 @@ router.get('/:establishmentId', async (req, res) => {
         let clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         // --- FILTRAGEM EM MEMÓRIA (REFINAMENTO) ---
-        clients = applyMemoryFilters(clients, hasLoyalty, birthMonth, inactiveDays);
+        clients = applyMemoryFilters(clients, hasLoyalty, birthMonth, inactiveDays, hasDebt);
 
         res.json(clients);
     } catch (error) {
@@ -116,9 +117,8 @@ router.get('/:establishmentId', async (req, res) => {
 });
 
 // --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA (CORRIGIDA) ---
-function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
-    // Se não tem filtros extras, retorna a lista original
-    if (!hasLoyalty && !birthMonth && !inactiveDays) return list;
+function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays, hasDebt) {
+    if (!hasLoyalty && !birthMonth && !inactiveDays && !hasDebt) return list;
 
     return list.filter(c => {
         let pass = true;
@@ -128,7 +128,12 @@ function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
             if (!c.loyaltyPoints || c.loyaltyPoints <= 0) pass = false;
         }
 
-        // 2. Filtro Mês de Aniversário [CORRIGIDO]
+        // 2. Filtro Débito (Fiado)
+        if (hasDebt === 'true') {
+            if (!c.totalDebt || c.totalDebt <= 0) pass = false;
+        }
+
+        // 3. Filtro Mês de Aniversário [CORRIGIDO PARA ACEITAR NÚMERO E TEXTO]
         if (pass && birthMonth) {
             const filterMonth = parseInt(birthMonth, 10);
             
@@ -151,7 +156,7 @@ function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
             }
         }
 
-        // 3. Filtro de Inatividade (Dias sem visita) [CORRIGIDO]
+        // 4. Filtro de Inatividade (Dias sem visita) [CORRIGIDO COM PARSE DATE]
         if (pass && inactiveDays) {
             const daysLimit = parseInt(inactiveDays);
             
@@ -169,6 +174,7 @@ function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays) {
                 const diffTime = Math.abs(now - lastDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
                 
+                // Lógica: Queremos clientes "Ausentes há X dias".
                 // Se diffDays (dias desde a visita) for MENOR que o limite, ele veio recentemente.
                 // Logo, devemos DESCARTAR (pass = false) pois ele é ATIVO.
                 if (diffDays < daysLimit) {
@@ -208,7 +214,7 @@ router.put('/:id', async (req, res) => {
 
         if (!data.establishmentId) return res.status(400).json({ error: 'ID do estabelecimento obrigatório' });
 
-        const now = admin.firestore.FieldValue.serverTimestamp(); 
+        const now = admin.firestore.FieldValue.serverTimestamp(); // Usa Timestamp do servidor
         
         // Prepara dados de atualização
         const updateData = {
@@ -220,7 +226,7 @@ router.put('/:id', async (req, res) => {
 
         // Usa set com merge para criar ou atualizar
         await db.collection('clients').doc(id).set({
-            createdAt: now, // Só define se o doc não existir
+            createdAt: now, // Só define se o doc não existir (devido ao merge)
             ...updateData
         }, { merge: true });
         
@@ -354,6 +360,7 @@ router.post('/redeem', async (req, res) => {
 
             if (currentPoints < cost) throw new Error(`Saldo insuficiente.`);
 
+            // Atualiza pontos e data de última interação (importante para filtro de inatividade)
             t.update(clientRef, { 
                 loyaltyPoints: currentPoints - cost,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()

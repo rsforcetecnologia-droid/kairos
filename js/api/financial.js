@@ -1,3 +1,5 @@
+// js/api/financial.js
+
 import { authenticatedFetch } from './apiService.js';
 
 // --- Funções para Naturezas Financeiras (Hierárquico) ---
@@ -52,6 +54,7 @@ export const deleteCostCenter = (id) => {
 // --- Funções Genéricas para Lançamentos ---
 
 const createEntry = (type, data) => {
+    // Nota: O 'data' agora pode incluir o campo 'recurrenceId' gerado no front-end
     return authenticatedFetch(`/api/financial/${type}`, { 
         method: 'POST', 
         body: JSON.stringify(data) 
@@ -91,6 +94,19 @@ const deleteEntry = (type, id) => {
     return authenticatedFetch(`/api/financial/${type}/${id}`, { 
         method: 'DELETE' 
     });
+};
+
+/**
+ * Exclui múltiplos itens de uma vez.
+ * Como o backend pode não ter uma rota de batch delete, executamos as requisições em paralelo.
+ * @param {string} type - 'payables' ou 'receivables'
+ * @param {Array<string>} ids - Lista de IDs para excluir
+ */
+export const deleteBatch = (type, ids) => {
+    const promises = ids.map(id => 
+        authenticatedFetch(`/api/financial/${type}/${id}`, { method: 'DELETE' })
+    );
+    return Promise.all(promises);
 };
 
 const markAsPaid = (type, id, paymentDate) => {

@@ -14,18 +14,6 @@ function cleanId(id) {
     return String(id).replace(/\D/g, '');
 }
 
-// [NOVO] Função auxiliar para formatar telefone (Ajuda na busca)
-function formatPhone(cleanPhone) {
-    if (!cleanPhone) return null;
-    if (cleanPhone.length === 11) { // Celular: (11) 99999-9999
-        return `(${cleanPhone.substring(0,2)}) ${cleanPhone.substring(2,7)}-${cleanPhone.substring(7)}`;
-    }
-    if (cleanPhone.length === 10) { // Fixo: (11) 3333-4444
-        return `(${cleanPhone.substring(0,2)}) ${cleanPhone.substring(2,6)}-${cleanPhone.substring(6)}`;
-    }
-    return null;
-}
-
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
@@ -183,7 +171,6 @@ router.post('/', async (req, res) => {
             let newAppointment = {
                 establishmentId, services: servicesDetails, professionalId, professionalName,
                 clientName, clientPhone, 
-                clientId: safeClientId, // [CORREÇÃO] Salva o ID limpo para facilitar buscas futuras
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'confirmed', createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -234,7 +221,7 @@ router.post('/', async (req, res) => {
 
 router.use(verifyToken, hasAccess);
 
-// 2. LISTAR AGENDAMENTOS (OTIMIZADA E CORRIGIDA)
+// 2. LISTAR AGENDAMENTOS (OTIMIZADA)
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
@@ -255,23 +242,8 @@ router.get('/:establishmentId', async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
-        // [CORREÇÃO] Busca Robusta por Telefone
-        // Tenta encontrar o agendamento seja pelo formato limpo (clientId) OU pelo formato formatado
         if (clientPhone) {
-            const clean = cleanId(clientPhone);
-            const possiblePhones = [clean];
-            
-            // Adiciona a versão formatada (ex: (11) 99999-9999) à lista de busca
-            const formatted = formatPhone(clean);
-            if (formatted) possiblePhones.push(formatted);
-
-            // Se o clientPhone original for diferente dos acima, adiciona também
-            if (clientPhone !== clean && clientPhone !== formatted) {
-                possiblePhones.push(clientPhone);
-            }
-
-            // Usa query IN para buscar qualquer uma das variações
-            query = query.where('clientPhone', 'in', possiblePhones);
+            query = query.where('clientPhone', '==', clientPhone);
         }
 
         if (role === 'employee' && !canViewAll) {
@@ -446,9 +418,7 @@ router.put('/:appointmentId', async (req, res) => {
             let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
             
             const updatePayload = {
-                clientName, clientPhone, 
-                clientId: safeClientId, // [CORREÇÃO] Salva ID limpo
-                professionalId, professionalName: profDoc.data().name,
+                clientName, clientPhone, professionalId, professionalName: profDoc.data().name,
                 startTime: admin.firestore.Timestamp.fromDate(start), endTime: admin.firestore.Timestamp.fromDate(end),
                 services: servicesDetails, redeemedReward: redeemedReward || null, hasRewards,
                 totalAmount: totalAmount 
@@ -514,7 +484,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT - CORRIGIDO (FIDELIDADE SIMPLIFICADA) + AUDITORIA + RESGATE + FINANCEIRO PENDENTE
+// 7. CHECKOUT - CORRIGIDO (FIDELIDADE SIMPLIFICADA) + AUDITORIA + RESGATE + FINANCEIRO PENDENTE + REGISTRO DE FIADO
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount, loyaltyRedemption } = req.body;
@@ -564,6 +534,16 @@ router.post('/:appointmentId/checkout', async (req, res) => {
         console.log("Pontos Calculados (pointsToAward):", pointsToAward);
         console.log("====================================================================");
 
+        // --- [NOVO] CÁLCULO DE DÍVIDA (FIADO/CREDIÁRIO) ---
+        let totalDebtIncrement = 0;
+        if (Array.isArray(payments)) {
+            payments.forEach(p => {
+                if (p.method && (p.method.toLowerCase() === 'fiado' || p.method.toLowerCase() === 'crediario')) {
+                    totalDebtIncrement += (parseFloat(p.value) || 0);
+                }
+            });
+        }
+
         const timezone = establishmentData.timezone || 'America/Sao_Paulo';
         const paidDate = new Date(new Date().toLocaleString("en-US", { timeZone: timezone })).toISOString().split('T')[0];
 
@@ -609,6 +589,12 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                     lastVisit: paidAtTimestamp,
                     updatedAt: paidAtTimestamp
                 };
+
+                // [NOVO] Atualiza dívida do cliente
+                if (totalDebtIncrement > 0) {
+                    console.log(`[DB WRITE] Registrando dívida de R$ ${totalDebtIncrement} para cliente ${safeClientId}.`);
+                    updateData.totalDebt = admin.firestore.FieldValue.increment(totalDebtIncrement);
+                }
 
                 // CENÁRIO A: Resgate de Prémio (DÉBITO)
                 if (loyaltyRedemption) {
@@ -742,7 +728,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'checkout'); }
 });
 
-// 8. REABRIR COMANDA (COM ESTORNO DE PONTOS E RESGATE)
+// 8. REABRIR COMANDA (COM ESTORNO DE PONTOS, RESGATE E DÍVIDA)
 router.post('/:appointmentId/reopen', async (req, res) => {
     const { appointmentId } = req.params;
     const { db } = req;
@@ -766,6 +752,7 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                 const clientRef = db.collection('clients').doc(safeClientId);
                 const clientDoc = await t.get(clientRef);
                 if (clientDoc.exists) {
+                    
                     // 1. Estornar Pontos Ganhos
                     if (data.loyaltyPointsEarned > 0) {
                         t.update(clientRef, { 
@@ -799,6 +786,23 @@ router.post('/:appointmentId/reopen', async (req, res) => {
                             transactionId: appointmentId,
                             timestamp: admin.firestore.FieldValue.serverTimestamp()
                         });
+                    }
+
+                    // [NOVO] 3. Estornar Dívida (Se houve Fiado)
+                    if (data.transaction && data.transaction.payments) {
+                        let debtToRevert = 0;
+                        data.transaction.payments.forEach(p => {
+                            if (p.method && (p.method.toLowerCase() === 'fiado' || p.method.toLowerCase() === 'crediario')) {
+                                debtToRevert += (parseFloat(p.value) || 0);
+                            }
+                        });
+                        
+                        if (debtToRevert > 0) {
+                            console.log(`[DB WRITE] Estornando dívida de R$ ${debtToRevert} do cliente ${safeClientId}.`);
+                            t.update(clientRef, { 
+                                totalDebt: admin.firestore.FieldValue.increment(-debtToRevert) 
+                            });
+                        }
                     }
                 }
             }

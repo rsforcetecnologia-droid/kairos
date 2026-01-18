@@ -22,7 +22,11 @@ let localState = {
     filterCostCenterId: 'all',
     
     // UI Control
-    isFilterOpen: false
+    isFilterOpen: false,
+    
+    // Seleção em Lote
+    selectedIds: new Set(), 
+    isSelectionMode: false
 };
 
 // Listeners globais para limpeza
@@ -170,20 +174,28 @@ async function openHierarchyModal(type) {
 // --- FUNÇÃO DE INICIALIZAÇÃO E LAYOUT ---
 
 export async function loadFinancialPage() {
-    // 1. Renderiza a estrutura base da tela (Mobile-First)
     renderBaseLayout();
-
-    // 2. Configura os Listeners
     setupEventListeners();
-
-    // 3. Carrega dados iniciais
     await fetchAndDisplayData();
 }
 
 function renderBaseLayout() {
     contentDiv.innerHTML = `
-        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 w-full overflow-hidden">
+        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 w-full overflow-hidden relative">
             
+            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-white rounded-xl shadow-xl border border-gray-200 p-3 flex items-center justify-between animate-fade-in-down">
+                <div class="flex items-center gap-3">
+                    <button id="cancel-selection-btn" class="p-2 hover:bg-gray-100 rounded-full text-gray-500">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                    <span class="font-bold text-gray-700 text-sm"><span id="selected-count">0</span> selecionado(s)</span>
+                </div>
+                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 font-semibold rounded-lg hover:bg-red-100 transition-colors text-xs uppercase tracking-wider">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Excluir
+                </button>
+            </div>
+
             <div class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-20 w-full">
                 <div class="max-w-5xl mx-auto px-4 py-3">
                     <div class="flex justify-between items-center mb-3">
@@ -194,7 +206,7 @@ function renderBaseLayout() {
                             </button>
                             <button id="settings-btn" class="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.096 2.572-1.065z"></path>
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                 </svg>
                             </button>
@@ -244,6 +256,13 @@ function renderBaseLayout() {
                             A Pagar
                         </button>
                     </div>
+                    
+                    <div class="mt-3 flex items-center justify-end px-1">
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-500 hover:text-gray-700">
+                            <input type="checkbox" id="select-all-toggle" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            Selecionar Todos
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -266,7 +285,58 @@ function renderBaseLayout() {
 }
 
 function setupEventListeners() {
-    // Toggle Filtros
+    // --- Lógica de Seleção e Exclusão em Lote ---
+    
+    // Toggle Select All
+    document.getElementById('select-all-toggle').addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        const allCheckboxes = document.querySelectorAll('.item-checkbox');
+        
+        localState.selectedIds.clear();
+        
+        allCheckboxes.forEach(cb => {
+            cb.checked = isChecked;
+            if(isChecked) localState.selectedIds.add(cb.dataset.id);
+        });
+        
+        updateBatchActionBar();
+    });
+
+    // Botão Cancelar Seleção
+    document.getElementById('cancel-selection-btn').addEventListener('click', () => {
+        localState.selectedIds.clear();
+        document.getElementById('select-all-toggle').checked = false;
+        document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = false);
+        updateBatchActionBar();
+    });
+
+    // Botão Excluir em Lote
+    document.getElementById('batch-delete-btn').addEventListener('click', async () => {
+        const count = localState.selectedIds.size;
+        if(count === 0) return;
+
+        const confirmed = await showConfirmation(
+            'Excluir Selecionados', 
+            `Tem certeza que deseja excluir ${count} itens? Esta ação não pode ser desfeita.`
+        );
+
+        if(confirmed) {
+            try {
+                const type = localState.currentTab === 'payables' ? 'payables' : 'receivables';
+                await financialApi.deleteBatch(type, Array.from(localState.selectedIds));
+                
+                showNotification('Sucesso', `${count} itens excluídos.`, 'success');
+                localState.selectedIds.clear();
+                updateBatchActionBar();
+                fetchAndDisplayData();
+            } catch (error) {
+                showNotification('Erro', 'Falha ao excluir itens.', 'error');
+                console.error(error);
+            }
+        }
+    });
+
+    // --- Listeners Padrão (Filtros, Tabs, etc) ---
     document.getElementById('toggle-filter-btn').addEventListener('click', () => {
         const panel = document.getElementById('filter-panel');
         const btn = document.getElementById('toggle-filter-btn');
@@ -281,17 +351,14 @@ function setupEventListeners() {
         }
     });
 
-    // Botão Settings
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
 
-    // Botão Add (FAB)
     document.getElementById('fab-add').addEventListener('click', () => {
         // Abre modal baseado na aba atual
         const type = localState.currentTab === 'payables' ? 'payable' : 'receivable';
         openFinancialModal(type);
     });
 
-    // Abas
     const tabRec = document.getElementById('tab-receivables');
     const tabPay = document.getElementById('tab-payables');
 
@@ -332,7 +399,17 @@ function setupEventListeners() {
     financialPageEventListener = (e) => {
         const target = e.target;
         
-        // 1. Verifica se foi clique num botão específico primeiro (Excluir, Baixar)
+        // 1. Checkbox Individual
+        if (target.classList.contains('item-checkbox')) {
+            const id = target.dataset.id;
+            if(target.checked) localState.selectedIds.add(id);
+            else localState.selectedIds.delete(id);
+            updateBatchActionBar();
+            e.stopPropagation();
+            return;
+        }
+
+        // 2. Botões de Ação
         const actionButton = target.closest('button[data-action]');
         if (actionButton) {
             const { action, type, id } = actionButton.dataset;
@@ -341,7 +418,10 @@ function setupEventListeners() {
             e.stopPropagation();
 
             if (action === 'delete') {
-                handleDelete(type, id);
+                // Recupera o objeto completo para verificar recorrência
+                const itemStr = actionButton.closest('.financial-card-item').dataset.item.replace(/&apos;/g, "'");
+                const item = JSON.parse(itemStr);
+                handleSmartDelete(type, item);
                 return;
             }
             if (action === 'mark-as-paid') {
@@ -364,12 +444,15 @@ function setupEventListeners() {
             }
         }
 
-        // 2. Se não foi botão, verifica se foi no CARD (para Editar)
+        // 3. Se não foi botão, verifica se foi no CARD (para Editar)
         const cardItem = target.closest('.financial-card-item');
         if (cardItem && document.getElementById('list-container').contains(cardItem)) {
-            const { type } = cardItem.dataset;
-            const itemData = JSON.parse(cardItem.dataset.item.replace(/&apos;/g, "'"));
-            openFinancialModal(type, itemData);
+            // Verifica se o clique não foi no container do checkbox
+            if (!target.closest('.checkbox-wrapper')) {
+                const { type } = cardItem.dataset;
+                const itemData = JSON.parse(cardItem.dataset.item.replace(/&apos;/g, "'"));
+                openFinancialModal(type, itemData);
+            }
         }
     };
     document.body.addEventListener('click', financialPageEventListener);
@@ -378,14 +461,13 @@ function setupEventListeners() {
     if (genericModalEventListener) document.getElementById('genericModal').removeEventListener('click', genericModalEventListener);
     
     genericModalEventListener = (e) => {
-        // --- CORREÇÃO: Lógica para fechar modal quando clicado em botão com data-action="close-modal" ---
         const closeBtn = e.target.closest('[data-action="close-modal"]');
         if (closeBtn) {
             document.getElementById('genericModal').style.display = 'none';
             return;
         }
 
-        // Lógica existente para Delete
+        // Lógica existente para Delete em Hierarquia
         const deleteBtn = e.target.closest('button[data-action^="delete-"]');
         if (deleteBtn) {
             const type = deleteBtn.dataset.action.split('-')[1];
@@ -395,8 +477,28 @@ function setupEventListeners() {
     document.getElementById('genericModal').addEventListener('click', genericModalEventListener);
 }
 
+function updateBatchActionBar() {
+    const bar = document.getElementById('batch-action-bar');
+    const countSpan = document.getElementById('selected-count');
+    const fab = document.getElementById('fab-add');
+    const count = localState.selectedIds.size;
+
+    countSpan.textContent = count;
+
+    if (count > 0) {
+        bar.classList.remove('hidden');
+        fab.classList.add('hidden'); // Esconde o FAB para não sobrepor
+    } else {
+        bar.classList.add('hidden');
+        fab.classList.remove('hidden');
+    }
+}
+
 function switchTab(tab) {
     localState.currentTab = tab;
+    // Limpa seleção ao trocar aba
+    localState.selectedIds.clear();
+    updateBatchActionBar();
     
     const tabRec = document.getElementById('tab-receivables');
     const tabPay = document.getElementById('tab-payables');
@@ -558,16 +660,23 @@ function renderLists() {
         const amountClass = isPaid ? 'text-gray-400' : (isReceivable ? 'text-green-600' : 'text-red-500');
         const natureName = item.naturezaId ? natureMap.get(item.naturezaId) || 'Geral' : 'Geral';
         const itemDataStr = JSON.stringify(item).replace(/'/g, "&apos;");
+        const isSelected = localState.selectedIds.has(item.id);
+        
+        // Indicador de Recorrência (Agora verificamos diretamente recurrenceId)
+        const isRecurring = !!item.recurrenceId;
+        const recurringIcon = isRecurring ? `<span class="ml-1 text-gray-400"><svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></span>` : '';
 
-        // LAYOUT CORRIGIDO PARA QUEBRAR O TEXTO E NÃO ESTOURAR:
-        // - Adicionado: items-start, break-words, whitespace-normal, leading-snug
-        // - Removido: truncate, items-center
+        // Checkbox SEM stopPropagation para permitir clicar e desmarcar
         return `
-        <div class="financial-card-item w-full max-w-full bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-start gap-3 relative overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
+        <div class="financial-card-item w-full max-w-full bg-white p-3 rounded-xl shadow-sm border ${isSelected ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100'} flex items-start gap-3 relative overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
              data-type="${typeStr}"
              data-item='${itemDataStr}'>
             
             <div class="absolute left-0 top-0 bottom-0 w-1 ${isPaid ? 'bg-gray-300' : (isReceivable ? 'bg-green-500' : 'bg-red-500')}"></div>
+
+            <div class="checkbox-wrapper pt-3 pl-1">
+                <input type="checkbox" class="item-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" data-id="${item.id}" ${isSelected ? 'checked' : ''}>
+            </div>
 
             <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-lg w-12 h-12 border border-gray-100 mt-0.5">
                 <span class="text-base font-bold text-gray-800 leading-none">${dateObj.day}</span>
@@ -579,8 +688,8 @@ function renderLists() {
                     ${item.description}
                 </h3>
                 <div class="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium break-all">
-                        ${natureName}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium break-all flex items-center">
+                        ${natureName} ${recurringIcon}
                     </span>
                     ${isPaid ? '<span class="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 font-medium whitespace-nowrap">Baixado</span>' : ''}
                 </div>
@@ -619,16 +728,160 @@ async function handleMarkAsPaid(type, id) {
     }
 }
 
-async function handleDelete(type, id) {
-    const confirmed = await showConfirmation('Excluir Lançamento', 'Tem certeza? Essa ação não pode ser desfeita.');
-    if (confirmed) {
-        try {
-            await (type === 'payable' ? financialApi.deletePayable(id) : financialApi.deleteReceivable(id));
-            showNotification('Sucesso', 'Lançamento excluído.', 'success');
-            await fetchAndDisplayData();
-        } catch (error) {
-            showNotification('Erro', error.message, 'error');
+// --- DELETE INTELIGENTE E EM LOTE ---
+
+async function handleSmartDelete(type, item) {
+    // Agora verifica estritamente o ID de recorrência
+    const isRecurring = !!item.recurrenceId;
+
+    if (!isRecurring) {
+        // Exclusão Simples (item avulso)
+        const confirmed = await showConfirmation('Excluir Lançamento', 'Tem certeza? Essa ação não pode ser desfeita.');
+        if (confirmed) {
+            await executeDelete(type, [item.id]);
         }
+        return;
+    }
+
+    // Se tiver ID de recorrência, abre o modal para selecionar parcelas
+    openRecurrenceDeleteModal(type, item);
+}
+
+function openRecurrenceDeleteModal(type, currentItem) {
+    const modal = document.getElementById('genericModal');
+    
+    // Filtra itens carregados que possuem o MESMO recurrenceId
+    const list = type === 'payable' ? localState.payables : localState.receivables;
+    
+    const relatedItems = list.filter(i => 
+        i.recurrenceId === currentItem.recurrenceId
+    );
+
+    // Ordena por data
+    relatedItems.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+    modal.innerHTML = `
+        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <div class="p-1.5 bg-white rounded-lg text-red-600 shadow-sm">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </div>
+                    <h2 class="text-lg font-bold text-gray-800">Gerenciar Parcelas</h2>
+                </div>
+                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                <span class="text-xs text-gray-500 font-semibold uppercase">Selecione os itens para excluir</span>
+                <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-800">
+                    <input type="checkbox" id="modal-select-all" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    Marcar Todos
+                </label>
+            </div>
+
+            <div class="overflow-y-auto p-2 space-y-1 custom-scrollbar flex-1">
+                ${relatedItems.map(item => {
+                    const isCurrent = item.id === currentItem.id;
+                    const isPaid = item.status === 'paid';
+                    const dateObj = formatDateDisplay(item.dueDate);
+                    
+                    return `
+                    <label class="flex items-center gap-3 p-3 bg-white rounded-xl border ${isCurrent ? 'border-red-300 ring-1 ring-red-100' : 'border-gray-200'} hover:border-red-300 cursor-pointer transition-all group">
+                        <input type="checkbox" class="modal-item-checkbox w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500" value="${item.id}" ${isCurrent ? 'checked' : ''}>
+                        
+                        <div class="flex-shrink-0 w-10 h-10 bg-gray-50 rounded-lg flex flex-col items-center justify-center border border-gray-100">
+                            <span class="text-xs font-bold text-gray-700">${dateObj.day}</span>
+                            <span class="text-[8px] font-bold text-gray-400 uppercase">${dateObj.month}</span>
+                        </div>
+
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-800 truncate">${item.description}</p>
+                            <p class="text-xs text-gray-500">${formatCurrency(item.amount)} ${isPaid ? '<span class="text-green-600 font-bold ml-1">(Pago)</span>' : '<span class="text-orange-500 ml-1">(Pendente)</span>'}</p>
+                        </div>
+                        
+                        ${isCurrent ? '<span class="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">Este</span>' : ''}
+                    </label>
+                    `;
+                }).join('')}
+            </div>
+
+            <div class="p-4 border-t border-gray-100 bg-white">
+                <button id="confirm-batch-delete" class="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-md active:scale-[0.98] transition-all">
+                    Excluir Selecionados
+                </button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+
+    // Lógica do Modal
+    const selectAll = modal.querySelector('#modal-select-all');
+    const checkboxes = modal.querySelectorAll('.modal-item-checkbox');
+    const confirmBtn = modal.querySelector('#confirm-batch-delete');
+
+    // Toggle Select All
+    selectAll.addEventListener('change', (e) => {
+        checkboxes.forEach(cb => cb.checked = e.target.checked);
+        updateButtonText();
+    });
+
+    // Atualiza botão ao clicar em checkboxes
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateButtonText);
+    });
+
+    function updateButtonText() {
+        const count = Array.from(checkboxes).filter(cb => cb.checked).length;
+        confirmBtn.textContent = count > 0 ? `Excluir ${count} Item(ns)` : 'Selecione itens para excluir';
+        confirmBtn.disabled = count === 0;
+        if(count === 0) confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        else confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+
+    // Ação de Excluir
+    confirmBtn.addEventListener('click', async () => {
+        const idsToDelete = Array.from(checkboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+
+        if (idsToDelete.length === 0) return;
+
+        modal.style.display = 'none'; // Fecha o modal de seleção
+        
+        // Pergunta de confirmação final
+        const confirmed = await showConfirmation(
+            'Confirmar Exclusão', 
+            `Tem certeza que deseja apagar ${idsToDelete.length} itens definitivamente?`
+        );
+
+        if (confirmed) {
+            await executeDelete(type, idsToDelete);
+        }
+    });
+
+    updateButtonText(); // Inicializa estado do botão
+}
+
+async function executeDelete(type, ids) {
+    try {
+        if(ids.length === 1) {
+            // Delete Único (API Original)
+            type === 'payable' 
+                ? await financialApi.deletePayable(ids[0]) 
+                : await financialApi.deleteReceivable(ids[0]);
+        } else {
+            // Delete em Lote (Nova API)
+            const apiType = type === 'payable' ? 'payables' : 'receivables';
+            await financialApi.deleteBatch(apiType, ids);
+        }
+        
+        showNotification('Sucesso', `${ids.length} item(ns) excluído(s).`, 'success');
+        localState.selectedIds.clear();
+        updateBatchActionBar();
+        await fetchAndDisplayData();
+    } catch (error) {
+        showNotification('Erro', error.message, 'error');
     }
 }
 
@@ -676,10 +929,12 @@ function openSettingsModal() {
 function openFinancialModal(type, item = null) {
     const modal = document.getElementById('genericModal');
     const isPayable = type === 'payable';
-    const title = `${item ? 'Editar' : 'Nova'} ${isPayable ? 'Despesa' : 'Receita'}`;
     const colorClass = isPayable ? 'red' : 'green';
+    const title = item 
+        ? `Editar ${isPayable ? 'Despesa' : 'Receita'}` 
+        : `Nova ${isPayable ? 'Despesa' : 'Receita'}`;
 
-    // Helpers para opções
+    // Helpers para opções do select
     const buildOptions = (items, selectedId) => {
         let html = '<option value="">-- Selecione --</option>';
         const hierarchy = buildHierarchy(items);
@@ -693,97 +948,223 @@ function openFinancialModal(type, item = null) {
         return html;
     };
 
+    // Estrutura HTML Moderna
     modal.innerHTML = `
-        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden w-full m-4">
-            <div class="bg-${colorClass}-50 px-6 py-4 border-b border-${colorClass}-100 flex justify-between items-center">
-                <h2 class="text-xl font-bold text-${colorClass}-800">${title}</h2>
-                <button type="button" data-action="close-modal" class="text-${colorClass}-400 hover:text-${colorClass}-600 text-2xl font-bold">&times;</button>
+        <div class="modal-content max-w-xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden m-4 flex flex-col max-h-[90vh]">
+            
+            <div class="bg-${colorClass}-50 px-6 py-4 border-b border-${colorClass}-100 flex justify-between items-center flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-white rounded-lg text-${colorClass}-600 shadow-sm">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${isPayable ? 'M19 14l-7 7m0 0l-7-7m7 7V3' : 'M5 10l7-7m0 0l7 7m-7-7v18'}"/></svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">${title}</h2>
+                        <p class="text-xs text-gray-500">${isPayable ? 'Registre suas saídas' : 'Registre suas entradas'}</p>
+                    </div>
+                </div>
+                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             </div>
             
-            <form id="financial-form" class="p-6 space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Descrição</label>
-                    <input type="text" name="description" required class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none transition-all" value="${item?.description || ''}" placeholder="Ex: Conta de Luz, Venda Balcão...">
-                </div>
+            <form id="financial-form" class="flex-1 overflow-y-auto custom-scrollbar">
+                <div class="p-6 space-y-6">
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" name="amount" required class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none font-bold text-gray-700" value="${item?.amount || ''}">
+                    ${!item ? `
+                    <div class="bg-gray-50 p-1.5 rounded-xl flex border border-gray-200">
+                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-semibold rounded-lg shadow-sm bg-white text-gray-800 transition-all" data-mode="single">
+                            Único
+                        </button>
+                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 transition-all" data-mode="installment">
+                            Parcelado
+                        </button>
+                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 transition-all" data-mode="repeat">
+                            Repetir (Fixo)
+                        </button>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Vencimento</label>
-                        <input type="date" name="dueDate" required class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none" value="${item?.dueDate || new Date().toISOString().split('T')[0]}">
-                    </div>
-                </div>
+                    ` : ''}
 
-                ${!item ? `
-                <div class="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="toggle-installments" class="w-4 h-4 text-${colorClass}-600 rounded focus:ring-${colorClass}-500">
-                        <span class="text-sm font-semibold text-gray-700">Repetir / Parcelar</span>
-                    </label>
-                    <div id="installments-container" class="hidden mt-3">
-                        <label class="block text-xs text-gray-500 mb-1">Número de Parcelas (Mensais)</label>
-                        <input type="number" name="installments" min="2" max="36" value="2" class="w-full p-2 border border-gray-200 rounded-lg">
-                    </div>
-                </div>` : ''}
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Natureza</label>
-                        <select name="naturezaId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm">
-                            ${buildOptions(localState.natures, item?.naturezaId)}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Centro de Custo</label>
-                        <select name="centroDeCustoId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm">
-                            ${buildOptions(localState.costCenters, item?.centroDeCustoId)}
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Observações</label>
-                    <textarea name="notes" rows="2" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm">${item?.notes || ''}</textarea>
-                </div>
-
-                <div class="border-t border-gray-100 pt-4 mt-2">
-                    <label class="flex items-center justify-between cursor-pointer group">
-                        <span class="text-sm font-bold text-gray-700 group-hover:text-${colorClass}-700 transition-colors">Já foi Pago/Recebido?</span>
-                        <div class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" name="status" id="status-toggle" class="sr-only peer" ${item?.status === 'paid' ? 'checked' : ''}>
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-${colorClass}-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-${colorClass}-600"></div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-1">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Valor Total</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
+                                <input type="number" step="0.01" name="amount" required 
+                                    class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none font-bold text-lg text-gray-800" 
+                                    value="${item?.amount || ''}" placeholder="0,00">
+                            </div>
                         </div>
-                    </label>
-                    
-                    <div id="payment-date-wrapper" class="${item?.status === 'paid' ? '' : 'hidden'} mt-3 bg-${colorClass}-50 p-3 rounded-lg animate-fade-in">
-                        <label class="block text-xs font-bold text-${colorClass}-700 mb-1">Data do Pagamento</label>
-                        <input type="date" name="paymentDate" class="w-full p-2 border border-${colorClass}-200 rounded-lg text-sm" value="${item?.paymentDate || new Date().toISOString().split('T')[0]}">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Descrição</label>
+                            <input type="text" name="description" required 
+                                class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none font-medium" 
+                                value="${item?.description || ''}" placeholder="Ex: Conta de Luz, Venda...">
+                        </div>
+                    </div>
+
+                    <div id="recurrence-options" class="hidden animate-fade-in bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <div class="flex flex-col md:flex-row gap-4 items-end">
+                            <div class="w-full md:w-1/2">
+                                <label class="block text-xs font-bold text-indigo-700 uppercase mb-1.5">Quantidade de Meses</label>
+                                <div class="flex items-center">
+                                    <button type="button" id="btn-minus" class="w-10 h-10 bg-white border border-indigo-200 rounded-l-lg text-indigo-600 hover:bg-indigo-50 font-bold">-</button>
+                                    <input type="number" id="installments-input" name="installments" min="2" max="60" value="2" 
+                                        class="w-full h-10 border-y border-indigo-200 text-center font-bold text-indigo-700 outline-none appearance-none">
+                                    <button type="button" id="btn-plus" class="w-10 h-10 bg-white border border-indigo-200 rounded-r-lg text-indigo-600 hover:bg-indigo-50 font-bold">+</button>
+                                </div>
+                            </div>
+                            <div class="w-full md:w-1/2">
+                                <div class="text-sm text-indigo-800 font-medium bg-white/60 p-3 rounded-lg border border-indigo-100 h-full flex items-center">
+                                    <span id="recurrence-summary">Selecione o modo...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Vencimento</label>
+                            <input type="date" name="dueDate" required 
+                                class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-gray-700 font-medium" 
+                                value="${item?.dueDate || new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Natureza</label>
+                            <select name="naturezaId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm appearance-none">
+                                ${buildOptions(localState.natures, item?.naturezaId)}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Centro de Custo</label>
+                            <select name="centroDeCustoId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm appearance-none">
+                                ${buildOptions(localState.costCenters, item?.centroDeCustoId)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Observações (Opcional)</label>
+                        <textarea name="notes" rows="2" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm resize-none">${item?.notes || ''}</textarea>
+                    </div>
+
+                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <div class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="status" id="status-toggle" class="sr-only peer" ${item?.status === 'paid' ? 'checked' : ''}>
+                                <div class="w-12 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-${colorClass}-500 shadow-inner"></div>
+                            </div>
+                            <span class="text-sm font-bold text-gray-600 group-hover:text-gray-800 transition-colors">Marcar como ${isPayable ? 'Pago' : 'Recebido'}</span>
+                        </label>
+                        
+                        <div id="payment-date-wrapper" class="${item?.status === 'paid' ? '' : 'hidden'} flex-1 md:max-w-xs animate-fade-in">
+                            <input type="date" name="paymentDate" 
+                                class="w-full p-2.5 border border-${colorClass}-200 rounded-lg text-sm bg-white focus:ring-1 focus:ring-${colorClass}-500 outline-none shadow-sm" 
+                                value="${item?.paymentDate || new Date().toISOString().split('T')[0]}">
+                        </div>
                     </div>
                 </div>
 
-                <div class="pt-4 flex gap-3">
-                    <button type="button" data-action="close-modal" class="flex-1 py-3 bg-gray-100 text-gray-600 font-semibold rounded-xl hover:bg-gray-200">Cancelar</button>
-                    <button type="submit" class="flex-1 py-3 bg-${colorClass}-600 text-white font-semibold rounded-xl hover:bg-${colorClass}-700 shadow-lg active:scale-95 transition-transform">Salvar</button>
+                <div class="p-4 border-t border-gray-100 bg-gray-50 flex gap-3 flex-shrink-0">
+                    <button type="button" data-action="close-modal" class="flex-1 py-3.5 bg-white border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="flex-[2] py-3.5 bg-${colorClass}-600 text-white font-bold rounded-xl hover:bg-${colorClass}-700 shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                        <span>${item ? 'Salvar Alterações' : 'Confirmar Lançamento'}</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </button>
                 </div>
             </form>
         </div>`;
+    
     modal.style.display = 'flex';
 
-    // Lógica do Form
+    // --- LÓGICA DO FORMULÁRIO ---
     const form = modal.querySelector('#financial-form');
+    
+    // Variáveis de Estado Local do Modal
+    let currentMode = 'single'; // 'single', 'installment', 'repeat'
+    let installmentsCount = 2;
+
+    // Referências DOM
+    const amountInput = form.querySelector('[name="amount"]');
+    const recurrenceOptions = form.querySelector('#recurrence-options');
+    const summaryText = form.querySelector('#recurrence-summary');
+    const installmentsInput = form.querySelector('#installments-input');
     const statusToggle = form.querySelector('#status-toggle');
     const paymentWrapper = form.querySelector('#payment-date-wrapper');
     const paymentInput = form.querySelector('[name="paymentDate"]');
-    
-    // Toggle Parcelas (apenas se criando novo)
+
+    // Funções de Cálculo e Atualização
+    const updateSummary = () => {
+        if (currentMode === 'single') return;
+
+        const totalVal = parseFloat(amountInput.value) || 0;
+        installmentsCount = parseInt(installmentsInput.value) || 2;
+        
+        if (totalVal === 0) {
+            summaryText.innerHTML = 'Digite um valor para ver a simulação.';
+            return;
+        }
+
+        if (currentMode === 'installment') {
+            const installmentVal = totalVal / installmentsCount;
+            summaryText.innerHTML = `
+                <span class="block text-xs text-gray-500 uppercase">Resumo do Parcelamento</span>
+                <span class="font-bold block">${installmentsCount}x de ${formatCurrency(installmentVal)}</span>
+                <span class="text-xs text-gray-400">Total: ${formatCurrency(totalVal)}</span>
+            `;
+        } else if (currentMode === 'repeat') {
+            const totalFinal = totalVal * installmentsCount;
+            summaryText.innerHTML = `
+                <span class="block text-xs text-gray-500 uppercase">Resumo da Recorrência</span>
+                <span class="font-bold block">${installmentsCount}x de ${formatCurrency(totalVal)}</span>
+                <span class="text-xs text-gray-400">Total Gerado: ${formatCurrency(totalFinal)}</span>
+            `;
+        }
+    };
+
+    // Listeners de Modo (Tabs)
     if (!item) {
-        const toggleInstallments = form.querySelector('#toggle-installments');
-        const installmentsDiv = form.querySelector('#installments-container');
-        toggleInstallments.addEventListener('change', () => {
-            installmentsDiv.classList.toggle('hidden', !toggleInstallments.checked);
+        modal.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Atualiza visual dos botões
+                modal.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.remove('bg-white', 'text-gray-800', 'shadow-sm', 'font-semibold');
+                    b.classList.add('text-gray-500', 'font-medium');
+                });
+                e.target.classList.add('bg-white', 'text-gray-800', 'shadow-sm', 'font-semibold');
+                e.target.classList.remove('text-gray-500', 'font-medium');
+
+                // Atualiza Lógica
+                currentMode = e.target.dataset.mode;
+                
+                if (currentMode === 'single') {
+                    recurrenceOptions.classList.add('hidden');
+                } else {
+                    recurrenceOptions.classList.remove('hidden');
+                    // Label dinâmico
+                    const label = recurrenceOptions.querySelector('label');
+                    label.textContent = currentMode === 'installment' ? 'Número de Parcelas' : 'Repetir por quantos meses?';
+                    updateSummary();
+                }
+            });
+        });
+        
+        // Ativa o primeiro modo por padrão
+        modal.querySelector('[data-mode="single"]').click();
+    }
+
+    // Listeners de Input para Recálculo
+    amountInput.addEventListener('input', updateSummary);
+    if(installmentsInput) {
+        installmentsInput.addEventListener('input', updateSummary);
+        form.querySelector('#btn-minus').addEventListener('click', () => {
+            let val = parseInt(installmentsInput.value) || 2;
+            if (val > 2) { installmentsInput.value = val - 1; updateSummary(); }
+        });
+        form.querySelector('#btn-plus').addEventListener('click', () => {
+            let val = parseInt(installmentsInput.value) || 2;
+            if (val < 60) { installmentsInput.value = val + 1; updateSummary(); }
         });
     }
 
@@ -798,29 +1179,49 @@ function openFinancialModal(type, item = null) {
         }
     });
 
+    // --- SUBMIT ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(form);
         const isPaid = statusToggle.checked;
+        const rawAmount = parseFloat(formData.get('amount'));
         
+        // Definição do valor e parcelas baseado no modo
+        let finalAmount = rawAmount;
+        let finalInstallments = 1;
+
+        if (!item && currentMode !== 'single') {
+            finalInstallments = parseInt(formData.get('installments'));
+            
+            if (currentMode === 'repeat') {
+                // TRUQUE: Se é "Repetir" (ex: 100 reais por mes, 3 vezes), 
+                // e o backend divide o total pelas parcelas, enviamos 300.
+                // Assim o backend faz 300 / 3 = 100 por mês.
+                finalAmount = rawAmount * finalInstallments;
+            }
+            // Se for 'installment', enviamos o rawAmount normal (ex: 1000 em 2x),
+            // o backend vai dividir e gerar 500 por mês.
+        } else {
+            // Se for single ou edição, garante que parcelas é 1
+            finalInstallments = 1; 
+        }
+
         const payload = {
             description: formData.get('description'),
-            amount: parseFloat(formData.get('amount')),
+            amount: finalAmount,
             dueDate: formData.get('dueDate'),
             naturezaId: formData.get('naturezaId') || null,
             centroDeCustoId: formData.get('centroDeCustoId') || null,
             notes: formData.get('notes'),
             status: isPaid ? 'paid' : 'pending',
             paymentDate: isPaid ? formData.get('paymentDate') : null,
-            establishmentId: state.establishmentId
+            establishmentId: state.establishmentId,
+            installments: finalInstallments 
         };
 
-        // Parcelas
-        const installmentsInput = formData.get('installments');
-        if (!item && installmentsInput && parseInt(installmentsInput) > 1) {
-            payload.installments = parseInt(installmentsInput);
-        } else {
-            payload.installments = 1;
+        // GERA UM ID ÚNICO PARA RECORRÊNCIA SE FOR PARCELADO/REPETIDO
+        if (finalInstallments > 1 && !item) {
+            payload.recurrenceId = self.crypto.randomUUID();
         }
 
         try {
@@ -829,12 +1230,13 @@ function openFinancialModal(type, item = null) {
                 showNotification('Sucesso', 'Atualizado com sucesso!', 'success');
             } else {
                 await (isPayable ? financialApi.createPayable(payload) : financialApi.createReceivable(payload));
-                showNotification('Sucesso', 'Criado com sucesso!', 'success');
+                showNotification('Sucesso', 'Lançamento criado!', 'success');
             }
             document.getElementById('genericModal').style.display = 'none';
             fetchAndDisplayData();
         } catch (error) {
-            showNotification('Erro', error.message, 'error');
+            console.error(error);
+            showNotification('Erro', error.message || 'Erro ao salvar', 'error');
         }
     });
 }
