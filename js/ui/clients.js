@@ -37,14 +37,13 @@ let localState = {
         loyaltyLog: []
     },
     
-    // Estado do Modal Desktop
-    desktopModalOpen: false
+    // Estado do Modal
+    modalOpen: false
 };
 
 let contentDiv = null;
 
 // --- FUNÇÃO AUXILIAR: LIMPAR TELEFONE ---
-// Remove tudo que não for dígito para garantir busca correta na API
 const cleanPhone = (phone) => {
     if (!phone) return '';
     return String(phone).replace(/\D/g, '');
@@ -52,28 +51,22 @@ const cleanPhone = (phone) => {
 
 // --- 3. FUNÇÕES PRINCIPAIS DE RENDERIZAÇÃO ---
 
-// Layout Base
+// Layout Base (Lista de Clientes)
 function renderLayout() {
     contentDiv.innerHTML = `
-        <section class="h-[calc(100vh-4rem)] sm:h-full flex flex-col bg-gray-50">
+        <section class="h-[calc(100vh-4rem)] sm:h-full flex flex-col bg-gray-50 overflow-x-hidden w-full">
             <div class="bg-white border-b shadow-sm z-30 flex-shrink-0">
-                <div class="p-4 flex flex-col sm:flex-row justify-between items-center gap-3 max-w-7xl mx-auto w-full">
+                <div class="p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-3 max-w-7xl mx-auto w-full">
                     <div class="w-full sm:w-auto text-center sm:text-left">
                         <h2 class="text-xl sm:text-2xl font-bold text-gray-800">Clientes</h2>
                         <p class="text-xs text-gray-500 hidden sm:block">Gerencie sua base de contatos</p>
                     </div>
                     
                     <div class="w-full sm:w-auto flex gap-2">
-                        ${!localState.selectedClient ? `
                         <button id="btn-new-client" class="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition shadow flex items-center justify-center gap-2 text-sm font-bold active:scale-95 transform duration-150">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                             Novo
-                        </button>` : `
-                        <button id="btn-back-list" class="w-full sm:w-auto bg-white text-gray-700 px-4 py-2.5 rounded-lg hover:bg-gray-100 transition border border-gray-300 flex items-center justify-center gap-2 text-sm font-bold active:scale-95 transform duration-150 shadow-sm">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                            Voltar
                         </button>
-                        `}
                     </div>
                 </div>
             </div>
@@ -85,30 +78,27 @@ function renderLayout() {
     `;
 
     const btnNew = document.getElementById('btn-new-client');
-    const btnBack = document.getElementById('btn-back-list');
-
     if (btnNew) btnNew.onclick = openNewClientModal;
-    if (btnBack) btnBack.onclick = () => {
-        localState.selectedClient = null;
-        renderClientList();
-    };
 }
 
-// Renderiza a Lista de Clientes com Filtros Modernos e Ocultos
+// Renderiza a Lista de Clientes
 function renderClientList() {
+    // Se o modal estiver aberto, não renderizamos a lista novamente para não perder o estado visual de fundo
+    if (localState.modalOpen) return;
+
     renderLayout(); 
     
     const container = document.getElementById('clients-content-area');
     const hasActiveFilters = localState.filters.inactiveDays || localState.filters.birthMonth || localState.filters.hasLoyalty || localState.filters.hasDebt;
     
-    // --- BARRA DE FERRAMENTAS (Busca + Botão Toggle) ---
+    // --- BARRA DE FERRAMENTAS ---
     const toolbarHTML = `
-        <div class="sticky top-0 bg-gray-50 z-20 px-4 pt-4 pb-2">
+        <div class="sticky top-0 bg-gray-50 z-20 px-3 sm:px-4 pt-4 pb-2 w-full">
             <div class="flex gap-2 items-center">
                 <div class="relative flex-grow shadow-sm">
                     <input type="text" id="client-search" 
                         class="w-full py-3 pl-10 pr-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 text-sm outline-none transition bg-white" 
-                        placeholder="Buscar por nome ou telefone..." 
+                        placeholder="Buscar cliente..." 
                         value="${localState.filters.search}">
                     <svg class="w-5 h-5 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
@@ -175,14 +165,14 @@ function renderClientList() {
     `;
 
     const listHTML = localState.clients.length > 0 ? `
-        <div class="px-4 pb-20 pt-2">
+        <div class="px-3 sm:px-4 pb-20 pt-2 w-full">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 ${localState.clients.map(client => {
                     const hasDebt = client.totalDebt && parseFloat(client.totalDebt) > 0;
                     const lastVisit = client.lastVisit ? new Date(client.lastVisit).toLocaleDateString('pt-BR') : 'Nunca';
                     
                     return `
-                    <div class="client-card bg-white p-4 rounded-xl border ${hasDebt ? 'border-l-4 border-l-red-500 border-y-red-100 border-r-red-100' : 'border-gray-200 border-l-4 border-l-indigo-500'} shadow-sm hover:shadow-md transition cursor-pointer active:bg-gray-50 flex items-center gap-3 group" data-id="${client.id}">
+                    <div class="client-card bg-white p-3 sm:p-4 rounded-xl border ${hasDebt ? 'border-l-4 border-l-red-500 border-y-red-100 border-r-red-100' : 'border-gray-200 border-l-4 border-l-indigo-500'} shadow-sm hover:shadow-md transition cursor-pointer active:bg-gray-50 flex items-center gap-3 group" data-id="${client.id}">
                         
                         <div class="w-12 h-12 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'} transition-colors flex items-center justify-center font-bold text-lg flex-shrink-0">
                             ${client.name.charAt(0).toUpperCase()}
@@ -231,21 +221,18 @@ function renderClientList() {
     const applyBtn = document.getElementById('btn-apply-filters');
     const clearBtn = document.getElementById('btn-clear-search');
     
-    // Toggle Visibilidade Filtros
     if(toggleBtn) {
         toggleBtn.onclick = () => {
             localState.showFilters = !localState.showFilters;
-            renderClientList(); // Re-render para atualizar classes e ícones
+            renderClientList(); 
         };
     }
 
-    // Pré-selecionar valor no Select de Mês
     const monthSelect = document.getElementById('filter-birth-month');
     if(monthSelect) {
         monthSelect.value = localState.filters.birthMonth;
     }
 
-    // Função Principal de Filtragem
     const executeFilter = () => {
         const inactiveInput = document.getElementById('filter-inactive');
         const loyaltyCheck = document.getElementById('filter-loyalty');
@@ -270,12 +257,10 @@ function renderClientList() {
         fetchClients();
     };
 
-    // Enter na busca
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') executeFilter();
     });
 
-    // Clique no Card (Desktop ou Mobile)
     container.querySelectorAll('.client-card').forEach(card => {
         card.onclick = () => selectClient(card.dataset.id);
     });
@@ -284,8 +269,8 @@ function renderClientList() {
 // --- FUNÇÃO AUXILIAR: GERA HTML DOS DETALHES ---
 function getClientDetailsHTML(client) {
     const tabsHTML = `
-        <div class="bg-white border-b sticky top-0 z-10 shadow-sm">
-            <div class="flex overflow-x-auto no-scrollbar gap-1 px-4 py-1">
+        <div class="bg-white border-b sticky top-0 z-10 shadow-sm w-full">
+            <div class="flex overflow-x-auto no-scrollbar gap-1 px-3 sm:px-4 py-1 w-full">
                 <button class="tab-btn ${localState.activeTab === 'profile' ? 'active' : ''}" data-tab="profile">👤 Perfil</button>
                 <button class="tab-btn ${localState.activeTab === 'appointments' ? 'active' : ''}" data-tab="appointments">📅 Agendamentos</button>
                 <button class="tab-btn ${localState.activeTab === 'history' ? 'active' : ''}" data-tab="history">💰 Histórico</button>
@@ -301,30 +286,30 @@ function getClientDetailsHTML(client) {
     else if (localState.activeTab === 'loyalty') contentHTML = renderLoyaltyTab(client);
 
     return `
-        <div class="w-full bg-white shadow-sm min-h-full flex flex-col">
-            <div class="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 text-white relative">
+        <div class="w-full bg-white shadow-sm min-h-full flex flex-col overflow-x-hidden">
+            <div class="bg-gradient-to-br from-indigo-600 to-purple-700 p-4 sm:p-6 text-white relative overflow-hidden flex-shrink-0">
                 
-                <button id="btn-close-modal" class="absolute top-4 right-4 text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-full transition hidden desktop-modal-close">
+                <button id="btn-close-modal" class="absolute top-4 right-4 text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-full transition z-50 bg-black/10 sm:bg-transparent">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
 
-                <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 pt-6 sm:pt-0">
                     <div class="w-20 h-20 rounded-full bg-white text-indigo-600 flex items-center justify-center text-3xl font-bold shadow-lg ring-4 ring-white/20 flex-shrink-0">
                         ${client.name.charAt(0).toUpperCase()}
                     </div>
                     
-                    <div class="text-center sm:text-left flex-grow">
-                        <h2 class="text-2xl font-bold leading-tight break-words">${escapeHTML(client.name)}</h2>
+                    <div class="text-center sm:text-left flex-grow min-w-0">
+                        <h2 class="text-xl sm:text-2xl font-bold leading-tight break-words">${escapeHTML(client.name)}</h2>
                         <div class="flex flex-col sm:flex-row items-center sm:items-start gap-1 mt-1 opacity-90 text-sm">
                             <span>${client.phone || 'Sem telefone'}</span>
                             <span class="hidden sm:inline">•</span>
-                            <span>${client.email || ''}</span>
+                            <span class="truncate max-w-[200px]">${client.email || ''}</span>
                         </div>
                         
                         ${client.totalDebt && client.totalDebt > 0 ? `
-                            <div class="mt-3 inline-block bg-red-900/40 backdrop-blur-md border border-red-400/30 px-3 py-1.5 rounded-full">
-                                <p class="text-xs font-bold text-red-50 flex items-center justify-center sm:justify-start gap-1">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <div class="mt-3 inline-block bg-red-900/40 backdrop-blur-md border border-red-400/30 px-3 py-1.5 rounded-full max-w-full">
+                                <p class="text-xs font-bold text-red-50 flex items-center justify-center sm:justify-start gap-1 truncate">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                     Débito: R$ ${parseFloat(client.totalDebt).toFixed(2)}
                                 </p>
                             </div>
@@ -340,9 +325,9 @@ function getClientDetailsHTML(client) {
 
             ${tabsHTML}
 
-            <div class="p-4 sm:p-6 flex-grow relative bg-gray-50/50 overflow-y-auto custom-scrollbar">
+            <div class="p-3 sm:p-6 flex-grow relative bg-gray-50/50 overflow-y-auto custom-scrollbar">
                 ${localState.historyLoading ? '<div class="absolute inset-0 bg-white/80 flex items-start justify-center pt-20 z-20"><div class="loader"></div></div>' : ''}
-                <div class="animate-fade-in max-w-4xl mx-auto">
+                <div class="animate-fade-in max-w-4xl mx-auto w-full pb-10">
                     ${contentHTML}
                 </div>
             </div>
@@ -377,7 +362,6 @@ function attachDetailsEvents(container, client) {
             
             renderClientDetails(); 
 
-            // CORREÇÃO: Busca dados se necessário (verifica se já temos appointments carregados)
             const shouldFetch = newTab !== 'profile' && !localState.historyLoading && localState.historyData.appointments.length === 0;
             
             if (shouldFetch) {
@@ -422,131 +406,128 @@ function attachDetailsEvents(container, client) {
 
     container.querySelectorAll('[data-go-agenda]').forEach(btn => {
         btn.onclick = (e) => {
-            closeDesktopModal(); 
+            closeClientModal(); 
             navigateTo('agenda-section', { targetDate: new Date(btn.dataset.date), scrollToAppointmentId: btn.dataset.id });
         };
     });
     container.querySelectorAll('[data-go-comanda]').forEach(btn => {
         btn.onclick = (e) => {
-            closeDesktopModal();
+            closeClientModal();
             navigateTo('comandas-section', { selectedAppointmentId: btn.dataset.id, initialFilter: 'finalizadas' });
         };
     });
 
     const btnClose = container.querySelector('#btn-close-modal');
-    if(btnClose) btnClose.onclick = closeDesktopModal;
+    if(btnClose) btnClose.onclick = closeClientModal;
 }
 
-// --- RENDERIZAÇÃO PRINCIPAL (Decisão Mobile/Desktop) ---
+// --- RENDERIZAÇÃO DO MODAL (FLUTUANTE PARA MOBILE E DESKTOP) ---
 async function renderClientDetails() {
     const client = localState.selectedClient;
     
     if (!client) {
-        closeDesktopModal();
-        return renderClientList();
+        closeClientModal();
+        return;
     }
 
-    const isDesktop = window.innerWidth >= 1024;
-
-    if (isDesktop) {
-        renderDesktopModal(client);
-    } else {
-        renderLayout(); 
-        const container = document.getElementById('clients-content-area');
-        container.innerHTML = getClientDetailsHTML(client);
-        attachDetailsEvents(container, client);
-    }
+    // Agora sempre renderiza como Modal (tela flutuante)
+    renderClientModal(client);
 }
 
-// Renderiza o Modal Desktop (Flutuante)
-function renderDesktopModal(client) {
+function renderClientModal(client) {
     let modalOverlay = document.getElementById('client-details-modal-overlay');
     
     if (!modalOverlay) {
         modalOverlay = document.createElement('div');
         modalOverlay.id = 'client-details-modal-overlay';
-        modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in';
+        // Ajuste: p-0 no mobile (tela cheia), p-4 no desktop
+        modalOverlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4 animate-fade-in';
         
+        // Ajuste: w-full h-full no mobile (tela cheia)
         modalOverlay.innerHTML = `
-            <div class="bg-white w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-scale-in" id="client-modal-content">
-                </div>
+            <div class="bg-white w-full h-full sm:h-[90vh] sm:max-w-5xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-scale-in" id="client-modal-content">
+            </div>
         `;
         
         modalOverlay.onclick = (e) => {
-            if(e.target === modalOverlay) closeDesktopModal();
+            if(e.target === modalOverlay) closeClientModal();
         };
 
         document.body.appendChild(modalOverlay);
-        localState.desktopModalOpen = true;
+        // Bloqueia rolagem do fundo
+        document.body.classList.add('overflow-hidden');
+        localState.modalOpen = true;
     }
 
     const modalContent = modalOverlay.querySelector('#client-modal-content');
     modalContent.innerHTML = getClientDetailsHTML(client);
     
-    const closeBtn = modalContent.querySelector('.desktop-modal-close');
-    if(closeBtn) closeBtn.classList.remove('hidden');
-
     attachDetailsEvents(modalContent, client);
 }
 
-function closeDesktopModal() {
+function closeClientModal() {
     const modal = document.getElementById('client-details-modal-overlay');
     if (modal) {
         modal.remove();
     }
-    localState.desktopModalOpen = false;
+    // Libera rolagem do fundo
+    document.body.classList.remove('overflow-hidden');
+    localState.modalOpen = false;
     localState.selectedClient = null;
+    
+    // Atualiza a lista caso algo tenha mudado
+    renderClientList();
 }
 
-// HTML: Aba Perfil
+// HTML: Aba Perfil (Edit)
 function renderProfileTab(client) {
     return `
-        <form id="form-edit-client" class="space-y-5 pb-20">
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <form id="form-edit-client" class="space-y-5 w-full">
+            <div class="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm w-full">
                 <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                     Dados Pessoais
                 </h3>
                 
-                <div class="space-y-4">
-                    <div>
+                <div class="space-y-4 w-full">
+                    <div class="w-full">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nome Completo</label>
-                        <input type="text" name="name" value="${escapeHTML(client.name)}" required class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base">
+                        <input type="text" name="name" value="${escapeHTML(client.name)}" required class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base box-border">
                     </div>
                     
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                        <div class="w-full">
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Telefone</label>
-                            <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base">
+                            <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base box-border">
                         </div>
-                        <div>
+                        <div class="w-full">
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">E-mail</label>
-                            <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base">
+                            <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base box-border">
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
+                    <div class="grid grid-cols-2 gap-4 w-full">
+                        <div class="w-full">
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Dia Nasc.</label>
-                            <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="block w-full p-3 rounded-lg border border-gray-300 bg-gray-50 text-base text-center">
+                            <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="block w-full p-3 rounded-lg border border-gray-300 bg-gray-50 text-base text-center box-border">
                         </div>
-                        <div>
+                        <div class="w-full">
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Mês Nasc.</label>
-                            <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="block w-full p-3 rounded-lg border border-gray-300 bg-gray-50 text-base text-center">
+                            <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="block w-full p-3 rounded-lg border border-gray-300 bg-gray-50 text-base text-center box-border">
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div class="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm w-full">
                 <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-2">
                     <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                     Anotações
                 </h3>
-                <textarea name="notes" rows="4" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base" placeholder="Preferências, alergias...">${escapeHTML(client.notes || '')}</textarea>
+                <textarea name="notes" rows="4" class="block w-full p-3 rounded-lg border border-gray-300 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition text-base box-border" placeholder="Preferências, alergias...">${escapeHTML(client.notes || '')}</textarea>
             </div>
             
-            <div class="flex flex-col gap-3 pt-2">
+            <div class="flex flex-col gap-3 pt-2 w-full">
                 <button type="submit" class="w-full bg-indigo-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition transform active:scale-95 text-base">
                     Salvar Alterações
                 </button>
@@ -590,7 +571,7 @@ function renderAppointmentsTab(client) {
         }
 
         return `
-            <div class="relative bg-white border rounded-xl p-3 shadow-sm mb-3 flex gap-3 cursor-pointer active:scale-[0.99] transition"
+            <div class="relative bg-white border rounded-xl p-3 shadow-sm mb-3 flex gap-3 cursor-pointer active:scale-[0.99] transition w-full overflow-hidden"
                  data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
                 
                 <div class="flex-shrink-0 w-14 flex flex-col items-center justify-center rounded-lg bg-gray-100 border border-gray-200 p-1">
@@ -617,9 +598,9 @@ function renderAppointmentsTab(client) {
     };
 
     return `
-        <div class="space-y-4 pb-20">
-            <div class="sticky top-0 bg-gray-50 pt-2 pb-2 z-10">
-                <div class="relative">
+        <div class="space-y-4 w-full">
+            <div class="sticky top-0 bg-gray-50 pt-2 pb-2 z-10 w-full">
+                <div class="relative w-full">
                     <input type="text" id="history-search-input" 
                         class="w-full p-3 pl-10 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm" 
                         placeholder="Filtrar histórico..." 
@@ -628,7 +609,7 @@ function renderAppointmentsTab(client) {
                 </div>
             </div>
 
-            <div>
+            <div class="w-full">
                 ${appointments.length ? appointments.map(renderCard).join('') : '<p class="text-center text-gray-400 py-10 italic">Nenhum agendamento encontrado.</p>'}
             </div>
             
@@ -656,9 +637,9 @@ function renderHistoryTab(client) {
     }
 
     return `
-        <div class="space-y-4 pb-20">
-            <div class="sticky top-0 bg-gray-50 pt-2 pb-2 z-10">
-                <div class="relative">
+        <div class="space-y-4 w-full">
+            <div class="sticky top-0 bg-gray-50 pt-2 pb-2 z-10 w-full">
+                <div class="relative w-full">
                     <input type="text" id="history-search-input" 
                         class="w-full p-3 pl-10 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm" 
                         placeholder="Buscar código da venda..." 
@@ -667,13 +648,13 @@ function renderHistoryTab(client) {
                 </div>
             </div>
 
-            <div class="space-y-3">
+            <div class="space-y-3 w-full">
                 ${sales.map(sale => {
                     const date = new Date(sale.date || sale.createdAt);
                     const total = sale.totalAmount || 0;
                     
                     return `
-                    <div class="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center shadow-sm active:bg-gray-50 cursor-pointer"
+                    <div class="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center shadow-sm active:bg-gray-50 cursor-pointer w-full"
                          data-go-comanda="true" data-id="${sale.id}">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
@@ -709,7 +690,7 @@ function renderLoyaltyTab(client) {
     const historyItems = log.length > 0 ? log.map(entry => {
         const isRedemption = entry.type === 'redemption';
         return `
-            <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
+            <div class="flex justify-between items-center py-3 border-b border-gray-100 last:border-0 w-full">
                 <div class="flex items-center gap-3">
                     <div class="w-2 h-2 rounded-full ${isRedemption ? 'bg-red-500' : 'bg-green-500'}"></div>
                     <div>
@@ -725,15 +706,15 @@ function renderLoyaltyTab(client) {
     }).join('') : '<p class="text-center text-gray-400 py-4 text-xs italic">Sem histórico recente.</p>';
 
     return `
-        <div class="space-y-6 pb-20">
-            <div class="bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+        <div class="space-y-6 w-full">
+            <div class="bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden w-full">
                 <div class="absolute right-0 top-0 opacity-10 transform translate-x-4 -translate-y-4">
                     <svg class="w-40 h-40" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                 </div>
                 
                 <p class="text-amber-100 font-bold uppercase tracking-wider text-xs mb-1">Saldo de Pontos</p>
                 <div class="flex items-baseline gap-2">
-                    <h1 class="text-5xl font-black">${client.loyaltyPoints || 0}</h1>
+                    <h1 class="text-4xl sm:text-5xl font-black">${client.loyaltyPoints || 0}</h1>
                     <span class="text-lg opacity-80">pts</span>
                 </div>
                 
@@ -743,7 +724,7 @@ function renderLoyaltyTab(client) {
                 </button>
             </div>
 
-            <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm w-full">
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3 border-b pb-2">Últimas Movimentações</h4>
                 ${historyItems}
             </div>
@@ -751,23 +732,20 @@ function renderLoyaltyTab(client) {
     `;
 }
 
-// --- 4. FUNÇÕES DE DADOS E LÓGICA (Corrigida e Otimizada) ---
+// --- 4. FUNÇÕES DE DADOS E LÓGICA ---
 
 async function fetchClients() {
     localState.loading = true;
     renderLayout(); 
     
     try {
-        // Constrói a URL base com o ID do estabelecimento e limite
         let url = `/api/clients/${state.establishmentId}?limit=20`;
         
-        // Verifica cada filtro e concatena na URL se existir valor
         if (localState.filters.search) url += `&search=${encodeURIComponent(localState.filters.search)}`;
         if (localState.filters.inactiveDays) url += `&inactiveDays=${localState.filters.inactiveDays}`;
         if (localState.filters.hasLoyalty) url += `&hasLoyalty=true`;
         if (localState.filters.hasDebt) url += `&hasDebt=true`;
 
-        // Faz a chamada direta usando authenticatedFetch com a URL montada
         localState.clients = await authenticatedFetch(url);
         renderClientList();
     } catch (error) {
@@ -788,12 +766,6 @@ async function fetchClientHistory(clientId) {
 
     localState.historyLoading = true;
     
-    // Mostra loading no card
-    const container = document.querySelector('.animate-fade-in');
-    if(container) {
-        // Apenas para feedback visual caso a UI já esteja renderizada
-    }
-
     try {
         const end = new Date();
         end.setMonth(end.getMonth() + 12); 
@@ -801,8 +773,6 @@ async function fetchClientHistory(clientId) {
         start.setFullYear(start.getFullYear() - 5); 
 
         let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}`;
-        // CORREÇÃO: Limpa o telefone antes de enviar (remove parênteses, traços, etc)
-        // Isso resolve o problema de não encontrar agendamentos se o telefone no cadastro estiver formatado
         url += `&clientPhone=${encodeURIComponent(cleanPhone(client.phone))}`;
         url += `&limit=${localState.historyLimit}`;
 
@@ -816,7 +786,7 @@ async function fetchClientHistory(clientId) {
                  id: a.id,
                  date: a.startTime,
                  totalAmount: a.totalAmount || 0,
-                 items: a.services || []
+                 items: a.comandaItems || a.services || [] 
              }));
 
         const loyaltyLog = [];
@@ -835,8 +805,10 @@ async function fetchClientHistory(clientId) {
         console.error("Erro ao buscar histórico", e);
     } finally {
         localState.historyLoading = false;
-        // Re-renderiza para atualizar as listas
-        if(localState.selectedClient) renderClientDetails();
+        // Atualiza apenas se o modal estiver aberto
+        if(localState.modalOpen && localState.selectedClient) {
+            renderClientDetails();
+        }
     }
 }
 
@@ -870,7 +842,11 @@ function openManualRedemptionModal(client) {
         </form>
     `;
 
-    const { modalElement, close } = showGenericModal({ title: "Ajuste de Pontos", contentHTML: contentHTML, maxWidth: 'max-w-xs' });
+    const { modalElement, close } = showGenericModal({ 
+        title: "Ajuste de Pontos", 
+        contentHTML: contentHTML, 
+        maxWidth: 'w-[90%] max-w-xs' 
+    });
 
     modalElement.querySelector('form').onsubmit = async (e) => {
         e.preventDefault();
@@ -928,7 +904,13 @@ function openNewClientModal() {
             </div>
         </form>
     `;
-    const { modalElement, close } = showGenericModal({ title: "Novo Cliente", contentHTML: content, maxWidth: 'max-w-sm' });
+    
+    // Modal Responsivo: 90% no mobile, max-w-sm no desktop
+    const { modalElement, close } = showGenericModal({ 
+        title: "Novo Cliente", 
+        contentHTML: content, 
+        maxWidth: 'w-[90%] max-w-sm' 
+    });
     
     modalElement.querySelector('form').onsubmit = async (e) => {
         e.preventDefault();
@@ -973,9 +955,7 @@ async function handleDeleteClient() {
         localState.clients = localState.clients.filter(c => c.id !== localState.selectedClient.id);
         localState.selectedClient = null;
         showNotification('Sucesso', 'Cliente removido.', 'success');
-        
-        // Se estiver em modal desktop, fecha-o
-        closeDesktopModal();
+        closeClientModal();
         renderClientList();
     } catch (err) {
         showNotification('Erro', err.message, 'error');
@@ -988,7 +968,7 @@ export async function loadClientsPage() {
     localState.searchTerm = '';
     localState.historyLimit = 20;
     localState.showFilters = false;
-    localState.desktopModalOpen = false;
+    localState.modalOpen = false;
     localState.filters = { search: '', inactiveDays: '', birthMonth: '', hasLoyalty: false, hasDebt: false };
     
     renderLayout(); 

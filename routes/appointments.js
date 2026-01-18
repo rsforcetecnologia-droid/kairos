@@ -14,6 +14,18 @@ function cleanId(id) {
     return String(id).replace(/\D/g, '');
 }
 
+// [NOVO] Função auxiliar para formatar telefone (Ajuda na busca)
+function formatPhone(cleanPhone) {
+    if (!cleanPhone) return null;
+    if (cleanPhone.length === 11) { // Celular: (11) 99999-9999
+        return `(${cleanPhone.substring(0,2)}) ${cleanPhone.substring(2,7)}-${cleanPhone.substring(7)}`;
+    }
+    if (cleanPhone.length === 10) { // Fixo: (11) 3333-4444
+        return `(${cleanPhone.substring(0,2)}) ${cleanPhone.substring(2,6)}-${cleanPhone.substring(6)}`;
+    }
+    return null;
+}
+
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
@@ -171,6 +183,7 @@ router.post('/', async (req, res) => {
             let newAppointment = {
                 establishmentId, services: servicesDetails, professionalId, professionalName,
                 clientName, clientPhone, 
+                clientId: safeClientId, // [CORREÇÃO] Salva o ID limpo para facilitar buscas futuras
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'confirmed', createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -221,7 +234,7 @@ router.post('/', async (req, res) => {
 
 router.use(verifyToken, hasAccess);
 
-// 2. LISTAR AGENDAMENTOS (OTIMIZADA)
+// 2. LISTAR AGENDAMENTOS (OTIMIZADA E CORRIGIDA)
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
@@ -242,8 +255,23 @@ router.get('/:establishmentId', async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
+        // [CORREÇÃO] Busca Robusta por Telefone
+        // Tenta encontrar o agendamento seja pelo formato limpo (clientId) OU pelo formato formatado
         if (clientPhone) {
-            query = query.where('clientPhone', '==', clientPhone);
+            const clean = cleanId(clientPhone);
+            const possiblePhones = [clean];
+            
+            // Adiciona a versão formatada (ex: (11) 99999-9999) à lista de busca
+            const formatted = formatPhone(clean);
+            if (formatted) possiblePhones.push(formatted);
+
+            // Se o clientPhone original for diferente dos acima, adiciona também
+            if (clientPhone !== clean && clientPhone !== formatted) {
+                possiblePhones.push(clientPhone);
+            }
+
+            // Usa query IN para buscar qualquer uma das variações
+            query = query.where('clientPhone', 'in', possiblePhones);
         }
 
         if (role === 'employee' && !canViewAll) {
@@ -418,7 +446,9 @@ router.put('/:appointmentId', async (req, res) => {
             let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
             
             const updatePayload = {
-                clientName, clientPhone, professionalId, professionalName: profDoc.data().name,
+                clientName, clientPhone, 
+                clientId: safeClientId, // [CORREÇÃO] Salva ID limpo
+                professionalId, professionalName: profDoc.data().name,
                 startTime: admin.firestore.Timestamp.fromDate(start), endTime: admin.firestore.Timestamp.fromDate(end),
                 services: servicesDetails, redeemedReward: redeemedReward || null, hasRewards,
                 totalAmount: totalAmount 
