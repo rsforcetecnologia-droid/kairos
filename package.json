@@ -33,7 +33,6 @@
     "mercadopago": "^2.0.0",
     "multer": "^2.0.2",
     "nodemon": "^3.1.10",
-    "stripe": "^16.5.0",
     "tailwindcss": "^4.1.17",
     "xlsx": "^0.18.5"
   },

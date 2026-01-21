@@ -1,12 +1,17 @@
-// routes/publicSubscriptions.js
 const express = require('express');
 const router = express.Router();
-// Certifica-te de configurar a chave no .env ou hardcoded para testes (não recomendado para produção)
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'SUA_CHAVE_SECRETA_STRIPE'); 
+const axios = require('axios'); // Usaremos axios para chamar a API do Pagar.me
 
-/**
- * Rota pública para obter todos os planos de assinatura.
- */
+// Autenticação Basic Auth para Pagar.me (API Key + :)
+const pagarmeAuth = Buffer.from(`${process.env.PAGARME_SECRET_KEY}:`).toString('base64');
+const pagarmeApi = axios.create({
+    baseURL: 'https://api.pagar.me/core/v5',
+    headers: {
+        'Authorization': `Basic ${pagarmeAuth}`,
+        'Content-Type': 'application/json'
+    }
+});
+
 router.get('/plans', async (req, res) => {
     try {
         const { db } = req;
@@ -18,9 +23,9 @@ router.get('/plans', async (req, res) => {
                 id: doc.id,
                 name: data.name,
                 description: data.description || '',
-                // stripePriceId é crucial para o frontend saber o que cobrar
-                stripePriceId: data.stripePriceId, 
-                prices: data.prices, // Sugestão: Ter um objeto com { monthly: 'price_x', yearly: 'price_y' }
+                // IMPORTANTE: Você deve ter o 'pagarmePlanId' salvo no Firestore agora, não mais 'stripePriceId'
+                pagarmePlanId: data.pagarmePlanId, 
+                price: data.price,
                 maxProfessionals: data.maxProfessionals,
                 maxUsers: data.maxUsers,
             };
@@ -34,40 +39,60 @@ router.get('/plans', async (req, res) => {
 });
 
 /**
- * Rota para criar a Sessão de Checkout do Stripe
- * Recebe: { priceId: 'price_...', establishmentId: 'ID_DO_FIREBASE' }
+ * Cria uma assinatura no Pagar.me
+ * Recebe: { planId: 'plan_xyz...', cardToken: 'token_gerado_no_front', customer: { ... }, establishmentId: '...' }
  */
-router.post('/create-checkout-session', async (req, res) => {
-    const { priceId, establishmentId } = req.body;
+router.post('/create-subscription', async (req, res) => {
+    const { pagarmePlanId, cardToken, customerData, establishmentId } = req.body;
 
-    if (!priceId || !establishmentId) {
-        return res.status(400).json({ error: 'PriceId e EstablishmentId são obrigatórios.' });
+    if (!pagarmePlanId || !cardToken || !establishmentId || !customerData) {
+        return res.status(400).json({ error: 'Dados incompletos (PlanId, CardToken, Customer, EstablishmentId).' });
     }
 
     try {
-        // Cria a sessão de checkout
-        const session = await stripe.checkout.sessions.create({
-            mode: 'subscription',
-            payment_method_types: ['card'],
-            line_items: [
-                {
-                    price: priceId,
-                    quantity: 1,
-                },
-            ],
-            // Metadados são CRUCIAIS para o Webhook saber quem pagou
-            metadata: {
-                establishmentId: establishmentId
+        // 1. Cria a assinatura na API V5
+        // Nota: O Pagar.me V5 permite criar Cliente e Assinatura numa chamada só ou separados.
+        // Aqui faremos a assinatura direta passando os dados do cliente e cartão.
+        
+        const subscriptionPayload = {
+            plan_id: pagarmePlanId,
+            payment_method: 'credit_card',
+            card_token: cardToken, // Token gerado no frontend
+            customer: {
+                name: customerData.name,
+                email: customerData.email,
+                document: customerData.document, // CPF/CNPJ (apenas números)
+                type: customerData.document.length > 11 ? 'company' : 'individual',
+                phones: {
+                    mobile_phone: {
+                        country_code: '55',
+                        area_code: customerData.areaCode, // Ex: '11'
+                        number: customerData.phone // Ex: '999999999'
+                    }
+                }
             },
-            // URLs para onde o utilizador volta após o pagamento
-            success_url: `https://seusite.com/app.html?session_id={CHECKOUT_SESSION_ID}&payment=success`,
-            cancel_url: `https://seusite.com/login.html?payment=canceled`,
+            metadata: {
+                establishmentId: establishmentId // CRUCIAL para o Webhook identificar
+            }
+        };
+
+        const response = await pagarmeApi.post('/subscriptions', subscriptionPayload);
+        
+        const newSubscription = response.data;
+
+        // Retorna sucesso para o frontend
+        res.json({ 
+            success: true, 
+            subscriptionId: newSubscription.id,
+            status: newSubscription.status 
         });
 
-        res.json({ url: session.url });
     } catch (error) {
-        console.error("Erro ao criar sessão Stripe:", error);
-        res.status(500).json({ error: error.message });
+        console.error("Erro ao criar assinatura Pagar.me:", error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Erro ao processar pagamento.', 
+            details: error.response?.data?.message || error.message 
+        });
     }
 });
 

@@ -87,10 +87,14 @@ const commissionsRoutes = require('./routes/commissions');
 const packagesRoutes = require('./routes/packages'); 
 const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
 const publicRegisterRoutes = require('./routes/publicRegister'); 
-const stripeWebhookRoutes = require('./routes/stripeWebhook');
+
+// 🔄 ALTERAÇÃO: Trocando Stripe por Pagar.me
+// const stripeWebhookRoutes = require('./routes/stripeWebhook'); // (Comentado/Removido)
+const pagarmeWebhookRoutes = require('./routes/pagarmeWebhook'); // (Novo arquivo que criamos)
 
 // --- 0. ROTAS DE WEBHOOK ---
-app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); 
+// app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); // (Comentado/Removido)
+app.use('/api/webhook/pagarme', addFirebaseInstances, pagarmeWebhookRoutes); // (Nova rota)
 
 // --- 1. ROTA DE UPLOAD DE LOGOTIPO ---
 const storage = multer.memoryStorage();
