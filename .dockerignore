@@ -6,7 +6,7 @@ npm-debug.log
 
 # Ignorar pastas de build local e credenciais (para segurança)
 dist/
-firebase-credentials.json
+# firebase-credentials.json
 .gcloudignore
 .git
 .gitignore

@@ -12,7 +12,7 @@ npm-debug.log
 dist/
 
 # Ignorar credenciais e ficheiros sensíveis
-firebase-credentials.json
+# firebase-credentials.json
 key.json
 serviceAccountKey.json
 

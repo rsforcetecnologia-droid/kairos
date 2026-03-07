@@ -22,7 +22,7 @@ export function escapeHTML(str) {
 /**
  * Redimensiona e comprime uma imagem no cliente (navegador) antes do upload.
  * Transforma ficheiros grandes (5MB+) em ficheiros leves (~50KB-100KB) para poupar Storage/Bandwidth.
- * * @param {File} file - O ficheiro de imagem original vindo do <input type="file">
+ * @param {File} file - O ficheiro de imagem original vindo do <input type="file">
  * @param {number} maxWidth - Largura máxima permitida (padrão 800px)
  * @param {number} maxHeight - Altura máxima permitida (padrão 800px)
  * @param {number} quality - Qualidade da compressão JPEG (0.0 a 1.0, padrão 0.7)
@@ -77,5 +77,43 @@ export function resizeAndCompressImage(file, maxWidth = 800, maxHeight = 800, qu
         };
 
         reader.onerror = (error) => reject(new Error("Erro ao ler o ficheiro."));
+    });
+}
+
+/**
+ * Formata uma data para o padrão PT-BR.
+ * Aceita objetos Date, strings ISO ou Timestamps.
+ * @param {Date|string|number} dateValue - A data a formatar.
+ * @returns {string} - Data formatada (ex: 25/01/2026 14:30) ou mensagem de erro.
+ */
+export function formatDate(dateValue) {
+    if (!dateValue) return 'Data indefinida';
+    
+    // Tratamento básico para tentar converter strings ou números em Date
+    const date = new Date(dateValue);
+    
+    if (isNaN(date.getTime())) return 'Data inválida';
+    
+    return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+/**
+ * Formata um valor numérico para Moeda BRL (Real Brasileiro).
+ * @param {number|string} value - O valor monetário.
+ * @returns {string} - Valor formatado (ex: R$ 150,00).
+ */
+export function formatCurrency(value) {
+    const num = parseFloat(value);
+    if (isNaN(num)) return 'R$ 0,00';
+    
+    return num.toLocaleString('pt-BR', { 
+        style: 'currency', 
+        currency: 'BRL' 
     });
 }

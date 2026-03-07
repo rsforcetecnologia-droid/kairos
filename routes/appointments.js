@@ -206,9 +206,9 @@ router.post('/', async (req, res) => {
             });
         });
 
-        sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
+        /*sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
             .catch(e => console.error("Falha push:", e));
-
+        */
         res.status(200).json({ message: 'Agendamento criado!' });
     } catch (error) {
         handleFirestoreError(res, error, 'criar agendamento');
