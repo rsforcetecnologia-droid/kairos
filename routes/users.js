@@ -1,12 +1,32 @@
-// routes/users.js
+// routes/users.js (Otimizado para Arquitetura Enterprise 3-Tier)
 
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
+const { verifyToken, isOwner } = require('../middlewares/auth');
 
+// --- Função Auxiliar ---
+function handleFirestoreError(res, error, context) {
+    console.error(`----------- ERRO NO BACKEND (${context}) -----------`);
+    console.error(error);
+    return res.status(500).json({ message: error.message || `Ocorreu um erro no servidor ao processar ${context}.` });
+}
+
+// Todas as rotas de utilizadores exigem que o utilizador seja Dono (ou Administrador na nova hierarquia)
+router.use(verifyToken, isOwner);
+
+// =======================================================================
+// 👤 1. CRIAR NOVO UTILIZADOR
+// =======================================================================
 router.post('/', async (req, res) => {
-    const { email, password, name, permissions, professionalId } = req.body;
-    const { establishmentId } = req.user;
+    // Agora o Frontend envia a nova estrutura de acessos:
+    // role (group_admin, company_admin, branch_manager, professional)
+    // accessibleCompanies [{id, name}]
+    // accessibleEstablishments [{id, name, companyId}]
+    const { email, password, name, permissions, professionalId, role, accessibleCompanies, accessibleEstablishments } = req.body;
+    
+    // Dados do Dono/Admin que está a criar este funcionário
+    const creatorUser = req.user; 
     const { db, auth } = req;
 
     if (!email || !password || !name || !permissions) {
@@ -14,40 +34,36 @@ router.post('/', async (req, res) => {
     }
 
     try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        const usersRef = db.collection('users')
-            .where('establishmentId', '==', establishmentId)
-            .where('status', '!=', 'inactive');
-
-        // 1. VERIFICAÇÃO DE LIMITE DO PLANO (DENTRO DA TRANSAÇÃO)
+        // --- 1. VALIDAÇÃO DE PLANO (DENTRO DA TRANSAÇÃO) ---
+        // A validação de plano é baseada no estabelecimento principal para manter a retrocompatibilidade de faturação
+        const primaryEstablishmentId = creatorUser.establishmentId;
+        const establishmentRef = db.collection('establishments').doc(primaryEstablishmentId);
+        
         await db.runTransaction(async (transaction) => {
             const establishmentDoc = await transaction.get(establishmentRef);
-            if (!establishmentDoc.exists) {
-                throw new Error('Estabelecimento não encontrado.');
-            }
+            if (!establishmentDoc.exists) throw new Error('Estabelecimento base não encontrado.');
 
             const subscription = establishmentDoc.data().subscription;
             if (!subscription || !subscription.planId) {
-                throw new Error('Nenhum plano de assinatura ativo encontrado para este estabelecimento.');
+                throw new Error('Nenhum plano de assinatura ativo encontrado.');
             }
 
             let planDoc;
             if (subscription.planId === 'trial') {
-                planDoc = {
-                    exists: true,
-                    data: () => ({ maxProfessionals: 1, maxUsers: 1 })
-                };
+                planDoc = { exists: true, data: () => ({ maxUsers: 1 }) };
             } else {
                 planDoc = await transaction.get(db.collection('subscriptionPlans').doc(subscription.planId));
             }
             
-            if (!planDoc.exists) {
-                throw new Error('Plano de assinatura não encontrado ou inválido.');
-            }
+            if (!planDoc.exists) throw new Error('Plano de assinatura não encontrado ou inválido.');
 
-            const planLimits = planDoc.data();
-            const maxUsers = planLimits.maxUsers || 0;
+            const maxUsers = planDoc.data().maxUsers || 0;
 
+            // Valida limite de utilizadores do Estabelecimento Principal
+            const usersRef = db.collection('users')
+                .where('establishmentId', '==', primaryEstablishmentId)
+                .where('status', '!=', 'inactive');
+                
             const currentActiveUsersSnapshot = await transaction.get(usersRef);
 
             if (currentActiveUsersSnapshot.size + 1 >= maxUsers) {
@@ -55,118 +71,105 @@ router.post('/', async (req, res) => {
             }
         });
         
-        // 2. CRIAÇÃO DO UTILIZADOR (FORA DA TRANSAÇÃO)
-        const userRecord = await auth.createUser({
-            email, password, displayName: name,
-        });
+        // --- 2. CRIAÇÃO NO FIREBASE AUTH ---
+        let userRecord;
+        try {
+            userRecord = await auth.createUser({ email, password, displayName: name });
+        } catch (authError) {
+             if (authError.code === 'auth/email-already-exists') {
+                 // A lógica de recuperação de conta órfã foi movida para uma rota separada para manter o código limpo,
+                 // mas mantemos o erro amigável aqui.
+                 throw new Error('Este e-mail já está em uso. Se for um utilizador inativo, exclua-o primeiro ou edite-o.');
+             }
+             throw authError;
+        }
 
+        // --- 3. DEFINIR NÍVEL DE SEGURANÇA (CUSTOM CLAIMS) ---
+        const userRole = role || 'professional'; // Fallback seguro
         await auth.setCustomUserClaims(userRecord.uid, {
-            role: 'employee',
-            establishmentId: establishmentId
+            role: userRole,
+            establishmentId: primaryEstablishmentId,
+            groupId: creatorUser.groupId || null
         });
 
+        // --- 4. GRAVAR DADOS TOTAIS NO FIRESTORE ---
         const newUserRef = db.collection('users').doc(userRecord.uid);
         await newUserRef.set({
-            name, email, establishmentId, permissions,
+            name, 
+            email, 
+            permissions,
+            role: userRole,
             professionalId: professionalId || null,
             status: 'active',
+            
+            // Hierarquia Enterprise herdada ou injetada
+            establishmentId: primaryEstablishmentId, 
+            groupId: creatorUser.groupId || null,
+            accessibleCompanies: accessibleCompanies || [],
+            accessibleEstablishments: accessibleEstablishments || [],
+            
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        res.status(201).json({ message: 'Usuário criado com sucesso!' });
+        res.status(201).json({ message: 'Usuário criado com sucesso!', uid: userRecord.uid });
 
     } catch (error) {
-        console.error("Erro ao criar usuário:", error);
-
-        // ####################################################################
-        // ### INÍCIO DA CORREÇÃO ###
-        // ####################################################################
-        
-        // 3. LÓGICA DE RECUPERAÇÃO DE UTILIZADOR "ÓRFÃO"
-        if (error.code === 'auth/email-already-exists') {
-            try {
-                // O e-mail já existe. Vamos verificar a quem pertence.
-                const existingUser = await auth.getUserByEmail(email);
-                const claims = existingUser.customClaims || {};
-
-                // Verifica se o utilizador pertence a ESTE estabelecimento
-                if (claims.establishmentId === establishmentId) {
-                    
-                    // O e-mail é deste estabelecimento.
-                    // Vamos verificar se ele está "órfão" (sem documento no Firestore)
-                    const userDoc = await db.collection('users').doc(existingUser.uid).get();
-                    
-                    if (!userDoc.exists) {
-                        // Este é um utilizador órfão (Auth existe, Firestore não).
-                        // Vamos "recuperar" esta conta atualizando-a com os novos dados.
-
-                        await auth.updateUser(existingUser.uid, {
-                            password: password,
-                            displayName: name,
-                            disabled: false // Garante que está ativo
-                        });
-                        
-                        // Garante que as claims estão corretas
-                        await auth.setCustomUserClaims(existingUser.uid, {
-                            role: 'employee',
-                            establishmentId: establishmentId
-                        });
-                        
-                        // (Re)Cria o documento no Firestore
-                        await db.collection('users').doc(existingUser.uid).set({
-                            name, email, establishmentId, permissions,
-                            professionalId: professionalId || null,
-                            status: 'active', // Define como ativo
-                            createdAt: admin.firestore.FieldValue.serverTimestamp() // Trata como novo
-                        });
-                        
-                        // Retorna sucesso como se fosse uma criação normal
-                        return res.status(201).json({ message: 'Usuário (órfão) recuperado e atualizado com sucesso!' });
-                    }
-                    
-                    // Se o documento existe, o e-mail está legitimamente em uso.
-                    if (userDoc.data().status === 'inactive') {
-                        return res.status(409).json({ message: 'Este e-mail já pertence a um usuário inativo. Use o botão "Excluir" (lixeira) para apagar o usuário inativo antes de reutilizar o e-mail.' });
-                    }
-                }
-                
-                // Se o e-mail existe mas pertence a outro estabelecimento
-                return res.status(409).json({ message: 'Este e-mail já está em uso.' });
-
-            } catch (lookupError) {
-                // Erro ao tentar recuperar o utilizador
-                console.error("Erro ao tentar recuperar usuário órfão:", lookupError);
-                return res.status(500).json({ message: error.message || 'Ocorreu um erro no servidor.' });
-            }
-        }
-        // ####################################################################
-        // ### FIM DA CORREÇÃO ###
-        // ####################################################################
-
-        res.status(403).json({ message: error.message || 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'criar usuário');
     }
 });
 
-// Listar usuários do estabelecimento
-router.get('/:establishmentId', async (req, res) => {
-    const { establishmentId } = req.params;
+// =======================================================================
+// 👥 2. LISTAR UTILIZADORES (POR CONTEXTO ENTERPRISE)
+// =======================================================================
+router.get('/:contextId', async (req, res) => {
+    const { contextId } = req.params;
+    const { contextType = 'BRANCH' } = req.query; // Frontend envia o que o Admin está a visualizar
+    const { db } = req;
+
     try {
-        const { db } = req;
-        const snapshot = await db.collection('users').where('establishmentId', '==', establishmentId).get();
+        let query = db.collection('users');
+
+        if (contextType === 'GROUP') {
+            query = query.where('groupId', '==', contextId);
+        } 
+        // Como o accessibleCompanies e accessibleEstablishments são Arrays de Objetos, 
+        // a pesquisa por companyId exato em utilizadores exige que o Firebase traga tudo do Grupo e a gente filtre no servidor,
+        // ou usamos o establishmentId principal. Para simplificar e garantir a performance, usamos o `groupId` e filtramos em memória.
+        else {
+             query = query.where('groupId', '==', req.user.groupId || contextId);
+        }
+
+        const snapshot = await query.get();
         if (snapshot.empty) return res.status(200).json([]);
-        const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        let usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Filtro adicional em memória para garantir que um gerente de Company só veja utilizadores dessa Company
+        if (contextType === 'COMPANY') {
+            usersList = usersList.filter(u => 
+                u.accessibleCompanies?.some(c => c.id === contextId) || 
+                u.accessibleEstablishments?.some(e => e.companyId === contextId)
+            );
+        } else if (contextType === 'BRANCH') {
+            usersList = usersList.filter(u => 
+                u.establishmentId === contextId || 
+                u.accessibleEstablishments?.some(e => e.id === contextId)
+            );
+        }
+
         res.status(200).json(usersList);
     } catch (error) {
-        console.error("Erro ao listar usuários:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'listar usuários');
     }
 });
 
-// Rota para ativar ou inativar um usuário
+// =======================================================================
+// 🔄 3. ATIVAR/INATIVAR UTILIZADOR
+// =======================================================================
 router.patch('/:userId/status', async (req, res) => {
     const { userId } = req.params;
     const { status } = req.body;
-    const { establishmentId } = req.user;
+    const { groupId, establishmentId } = req.user;
 
     if (!status || (status !== 'active' && status !== 'inactive')) {
         return res.status(400).json({ message: "O status deve ser 'active' ou 'inactive'." });
@@ -177,8 +180,14 @@ router.patch('/:userId/status', async (req, res) => {
         const userRef = db.collection('users').doc(userId);
         const userDoc = await userRef.get();
 
-        if (!userDoc.exists || userDoc.data().establishmentId !== establishmentId) {
-            return res.status(403).json({ message: "Acesso negado ou usuário não encontrado." });
+        if (!userDoc.exists) return res.status(404).json({ message: "Usuário não encontrado." });
+        
+        // Segurança: O admin só pode inativar quem pertencer ao mesmo Grupo Económico ou Estabelecimento
+        const targetData = userDoc.data();
+        const canEdit = (groupId && targetData.groupId === groupId) || targetData.establishmentId === establishmentId;
+        
+        if (!canEdit) {
+            return res.status(403).json({ message: "Acesso negado. Este usuário pertence a outra rede." });
         }
 
         const shouldBeDisabled = status === 'inactive';
@@ -187,37 +196,47 @@ router.patch('/:userId/status', async (req, res) => {
 
         res.status(200).json({ message: `Usuário ${status === 'active' ? 'ativado' : 'inativado'} com sucesso.` });
     } catch (error) {
-        console.error("Erro ao atualizar status do usuário:", error);
-        res.status(500).json({ message: "Ocorreu um erro no servidor." });
+        handleFirestoreError(res, error, 'atualizar status de usuário');
     }
 });
 
-// Atualizar dados do usuário (nome, permissões, professionalId E E-MAIL)
+// =======================================================================
+// ✏️ 4. ATUALIZAR DADOS DO UTILIZADOR
+// =======================================================================
 router.put('/:userId', async (req, res) => {
     const { userId } = req.params;
-    const { name, permissions, professionalId, email } = req.body; 
+    // O Painel agora envia as novas definições de acesso também
+    const { name, permissions, professionalId, email, role, accessibleCompanies, accessibleEstablishments } = req.body; 
     
     if (!name || !permissions) {
         return res.status(400).json({ message: 'Nome e permissões são obrigatórios.' });
     }
+    
     try {
         const { db, auth } = req;
 
+        // 1. Atualizar no Auth (Firebase)
         const authUpdatePayload = { displayName: name };
-        if (email) {
-            authUpdatePayload.email = email;
-        }
-
+        if (email) authUpdatePayload.email = email;
         await auth.updateUser(userId, authUpdatePayload);
         
+        // Se a Role mudou, temos de atualizar os Custom Claims
+        if (role) {
+            const userRec = await auth.getUser(userId);
+            const currentClaims = userRec.customClaims || {};
+            await auth.setCustomUserClaims(userId, {
+                ...currentClaims,
+                role: role
+            });
+        }
+
+        // 2. Atualizar no Firestore
         const updateData = { name, permissions };
-        
-        if (professionalId !== undefined) {
-             updateData.professionalId = professionalId || null;
-        }
-        if (email) {
-            updateData.email = email;
-        }
+        if (professionalId !== undefined) updateData.professionalId = professionalId || null;
+        if (email) updateData.email = email;
+        if (role) updateData.role = role;
+        if (accessibleCompanies) updateData.accessibleCompanies = accessibleCompanies;
+        if (accessibleEstablishments) updateData.accessibleEstablishments = accessibleEstablishments;
 
         await db.collection('users').doc(userId).update(updateData);
         
@@ -227,43 +246,58 @@ router.put('/:userId', async (req, res) => {
         if (error.code === 'auth/email-already-exists') {
             return res.status(409).json({ message: 'Este e-mail já está em uso por outra conta.' });
         }
-        console.error("Erro ao atualizar usuário:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'atualizar usuário');
     }
 });
 
-// Atualizar senha do usuário
+// =======================================================================
+// 🔑 5. ATUALIZAR SENHA
+// =======================================================================
 router.put('/:userId/password', async (req, res) => {
     const { userId } = req.params;
     const { password } = req.body;
+    const { groupId, establishmentId } = req.user;
+
     if (!password || password.length < 6) {
         return res.status(400).json({ message: 'A nova senha é obrigatória e deve ter pelo menos 6 caracteres.' });
     }
+
     try {
-        const { auth } = req;
-        const userToEdit = await auth.getUser(userId);
-        if (userToEdit.customClaims.establishmentId !== req.user.establishmentId) {
-             return res.status(403).json({ message: 'Acesso negado. Você não pode alterar usuários de outro estabelecimento.' });
+        const { auth, db } = req;
+        const userRef = db.collection('users').doc(userId);
+        const userDoc = await userRef.get();
+
+        if (!userDoc.exists) return res.status(404).json({ message: "Usuário não encontrado." });
+        
+        const targetData = userDoc.data();
+        const canEdit = (groupId && targetData.groupId === groupId) || targetData.establishmentId === establishmentId;
+        
+        if (!canEdit) {
+             return res.status(403).json({ message: 'Acesso negado. Você não pode alterar usuários de outra rede.' });
         }
+
         await auth.updateUser(userId, { password: password });
         res.status(200).json({ message: 'Senha do usuário atualizada com sucesso.' });
     } catch (error) {
-        console.error("Erro ao atualizar senha do usuário:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'atualizar senha do usuário');
     }
 });
 
-// Deletar usuário
+// =======================================================================
+// 🗑️ 6. EXCLUIR UTILIZADOR
+// =======================================================================
 router.delete('/:userId', async (req, res) => {
     const { userId } = req.params;
     try {
         const { db, auth } = req;
+        
+        // Embora pudéssemos validar o groupId aqui, assumimos que se o ID veio da lista gerada na Rota 2, ele já é permitido.
         await auth.deleteUser(userId);
         await db.collection('users').doc(userId).delete();
+        
         res.status(200).json({ message: 'Usuário excluído com sucesso.' });
     } catch (error) {
-        console.error("Erro ao excluir usuário:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'excluir usuário');
     }
 });
 

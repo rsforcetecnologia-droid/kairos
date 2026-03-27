@@ -1,242 +1,207 @@
-// routes/establishments.js
+// routes/establishments.js (Arquitetura Multi-Tenant Enterprise 3 Níveis)
 
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-const { verifyToken, isOwner, hasAccess } = require('../middlewares/auth');
+const { verifyToken, isOwner } = require('../middlewares/auth');
 
-/**
- * Rota GET para buscar detalhes de UM estabelecimento.
- * ATUALIZADO: Busca por urlId (slug) ou docId.
- */
-router.get('/:establishmentId', async (req, res) => { 
-    const { establishmentId } = req.params;
-    const { db } = req; 
+// --- FUNÇÃO AUXILIAR DE ERRO ---
+function handleFirestoreError(res, error, context) {
+    console.error(`----------- ERRO NO BACKEND (${context}) -----------`);
+    console.error(error);
+    return res.status(500).json({ message: `Ocorreu um erro no servidor ao processar ${context}.` });
+}
+
+// Segurança: Quase todas as rotas de criação/edição de estrutura exigem token
+router.use(verifyToken);
+
+// =======================================================================
+// 🏢 1. GESTÃO DE GRUPOS ECONÓMICOS (Nível 1 - Holding)
+// =======================================================================
+
+router.post('/groups', isOwner, async (req, res) => {
+    const { name } = req.body;
+    const { uid } = req.user;
+
+    if (!name) return res.status(400).json({ message: 'O nome do grupo é obrigatório.' });
 
     try {
-        let doc;
-        let establishmentRef;
-
-        // 1. Tenta buscar pelo campo personalizado 'urlId' (Slug)
-        const slugQuery = await db.collection('establishments')
-            .where('urlId', '==', establishmentId)
-            .limit(1)
-            .get();
-
-        if (!slugQuery.empty) {
-            doc = slugQuery.docs[0];
-            establishmentRef = doc.ref;
-        } else {
-            // 2. Fallback: Tenta buscar pelo ID do documento (comportamento antigo)
-            establishmentRef = db.collection('establishments').doc(establishmentId);
-            doc = await establishmentRef.get();
-        }
-
-        if (!doc || !doc.exists) {
-            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
-        }
+        const { db } = req;
+        const newGroupRef = db.collection('economicGroups').doc();
         
-        const data = doc.data();
-        const realDocId = doc.id; // ID real do documento
+        await newGroupRef.set({
+            id: newGroupRef.id,
+            name,
+            ownerId: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'active'
+        });
 
-        // Verifica se é um usuário autenticado (dono/funcionário)
-        const { authorization } = req.headers;
-        let isAuthenticated = false;
-        if (authorization && authorization.startsWith('Bearer ')) {
-            const token = authorization.split('Bearer ')[1];
-            try {
-                const decodedToken = await admin.auth().verifyIdToken(token);
-                if (decodedToken.establishmentId === realDocId) {
-                    isAuthenticated = true;
-                }
-            } catch (error) {
-                isAuthenticated = false; 
-            }
-        }
+        res.status(201).json({ message: 'Grupo Económico criado com sucesso!', groupId: newGroupRef.id });
+    } catch (error) {
+        handleFirestoreError(res, error, 'criar grupo');
+    }
+});
 
-        // Se for autenticado (vindo do painel admin), retorna todos os dados
-        if (isAuthenticated) {
-            return res.status(200).json({ id: realDocId, ...data });
-        }
+// =======================================================================
+// 🏬 2. GESTÃO DE EMPRESAS/MATRIZES (Nível 2 - CNPJ)
+// =======================================================================
+
+router.post('/companies', isOwner, async (req, res) => {
+    const { name, cnpj, groupId } = req.body;
+
+    if (!name || !groupId) return res.status(400).json({ message: 'Nome e Grupo são obrigatórios.' });
+
+    try {
+        const { db } = req;
+        const newCompanyRef = db.collection('companies').doc();
         
-        // Se for acesso público (cliente.html):
-        if (data.publicBookingEnabled === false) {
-             return res.status(403).json({ message: 'Este estabelecimento não está aceitando agendamentos online no momento.' });
-        }
+        await newCompanyRef.set({
+            id: newCompanyRef.id,
+            groupId,
+            name,
+            cnpj: cnpj || null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'active'
+        });
 
-        // 2. Retorna dados públicos
-        const publicData = {
-            id: realDocId, // Retorna o ID real para as operações internas
-            urlId: data.urlId || realDocId, // Retorna o ID visual
-            name: data.name,
-            logo: data.logo || null,
-            themeColor: data.themeColor || 'indigo',
-            primaryColor: data.primaryColor || null,
-            textColor: data.textColor || '#111827',
-            backgroundImage: data.backgroundImage || null,
-            welcomeMessage: data.welcomeMessage || 'Seja bem-vindo(a)!'
+        res.status(201).json({ message: 'Empresa criada com sucesso!', companyId: newCompanyRef.id });
+    } catch (error) {
+        handleFirestoreError(res, error, 'criar empresa');
+    }
+});
+
+// =======================================================================
+// 📍 3. GESTÃO DE ESTABELECIMENTOS/FILIAIS (Nível 3)
+// =======================================================================
+
+// 3.1. Criar Nova Filial (Agora exige CompanyId e GroupId)
+router.post('/', isOwner, async (req, res) => {
+    const { name, companyId, groupId, phone, address, timezone } = req.body;
+    const { uid } = req.user;
+
+    if (!name || !companyId || !groupId) {
+        return res.status(400).json({ message: 'Nome, Empresa e Grupo são obrigatórios para criar uma filial.' });
+    }
+
+    try {
+        const { db } = req;
+        const newBranchRef = db.collection('establishments').doc();
+        
+        const branchData = {
+            id: newBranchRef.id,
+            groupId,
+            companyId,
+            name,
+            phone: phone || null,
+            address: address || null,
+            type: 'branch', // filial
+            timezone: timezone || 'America/Sao_Paulo',
+            ownerId: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'active',
+            // Módulos base ativados por defeito
+            modules: {
+                'agenda-section': true,
+                'comandas-section': true,
+                'financial-section': true,
+                'reports-section': true
+            },
+            loyaltyProgram: { enabled: false, pointsPerVisit: 1, tiers: [] },
+            financialIntegration: { defaultNaturezaId: null, defaultCentroDeCustoId: null }
         };
-        
-        res.status(200).json(publicData);
 
-    } catch (error) {
-        console.error("Erro ao buscar detalhes do estabelecimento:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-
-/**
- * Rota PUT para atualizar os detalhes de UM estabelecimento.
- */
-router.put('/:establishmentId', verifyToken, isOwner, async (req, res) => {
-    const { establishmentId } = req.params;
-    const { db } = req;
-    const updatedData = req.body; 
-
-    try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        const doc = await establishmentRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
-        }
-
-        if (doc.id !== req.user.establishmentId) {
-             return res.status(403).json({ message: 'Acesso negado.' });
-        }
-
-        // Proteção: Não permitir alterar urlId por aqui sem validação (feito pelo Admin)
-        delete updatedData.urlId; 
-
-        await establishmentRef.set(updatedData, { merge: true });
-
-        res.status(200).json({ message: 'Estabelecimento atualizado com sucesso.' });
-
-    } catch (error) {
-        console.error("Erro ao atualizar estabelecimento:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-/**
- * Rota PATCH para atualizar SOMENTE o status do agendamento público.
- */
-router.patch('/:establishmentId/booking-status', verifyToken, isOwner, async (req, res) => {
-    const { establishmentId } = req.params;
-    const { db } = req;
-    const { publicBookingEnabled } = req.body; 
-
-    if (typeof publicBookingEnabled !== 'boolean') {
-        return res.status(400).json({ message: 'O valor de "publicBookingEnabled" deve ser um booleano (true/false).' });
-    }
-
-    try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        const doc = await establishmentRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
-        }
-
-        if (doc.id !== req.user.establishmentId) {
-             return res.status(403).json({ message: 'Acesso negado.' });
-        }
-
-        await establishmentRef.update({
-            publicBookingEnabled: publicBookingEnabled
-        });
-
-        res.status(200).json({ message: `Agendamento online ${publicBookingEnabled ? 'ativado' : 'desativado'} com sucesso.` });
-
-    } catch (error) {
-        console.error("Erro ao atualizar status do agendamento:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-/**
- * Rota PATCH para atualizar SOMENTE o e-mail do proprietário.
- */
-router.patch('/:establishmentId/owner-email', verifyToken, isOwner, async (req, res) => {
-    const { establishmentId } = req.params;
-    const { db } = req;
-    const { newEmail } = req.body;
-
-    if (!newEmail || typeof newEmail !== 'string') {
-        return res.status(400).json({ message: 'O "newEmail" é obrigatório.' });
-    }
-
-    if (establishmentId !== req.user.establishmentId) {
-        return res.status(403).json({ message: 'Acesso negado.' });
-    }
-
-    try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        
-        await establishmentRef.update({
-            ownerEmail: newEmail
-        });
-
-        res.status(200).json({ message: `E-mail do proprietário atualizado com sucesso.` });
-
-    } catch (error) {
-        console.error("Erro ao atualizar e-mail do proprietário:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
-    }
-});
-
-/**
- * Rota DELETE para o DONO cancelar sua própria conta (CHURN).
- * Inativa o estabelecimento e expira a assinatura imediatamente, sem apagar dados.
- */
-router.delete('/:establishmentId', verifyToken, isOwner, async (req, res) => {
-    const { establishmentId } = req.params;
-    const { db, auth } = req;
-
-    try {
-        const establishmentRef = db.collection('establishments').doc(establishmentId);
-        const doc = await establishmentRef.get();
-
-        if (!doc.exists) {
-            return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
-        }
-
-        // Segurança: Garante que o ID da rota bate com o token do usuário logado
-        if (doc.id !== req.user.establishmentId) {
-             return res.status(403).json({ message: 'Acesso negado.' });
-        }
-
-        const now = new Date();
-
-        // --- LÓGICA DE CHURN / INATIVAÇÃO ---
-        // Não apagamos nada. Apenas alteramos o estado.
-        await establishmentRef.update({
-            status: 'inactive', // Define como inativo para o painel Admin contar como Churn
+        // Usa uma transação para criar a filial e adicionar o utilizador como branch_manager se ele não for group_admin
+        await db.runTransaction(async (transaction) => {
+            transaction.set(newBranchRef, branchData);
             
-            // Registra o fim da assinatura como agora
-            'subscription.expiryDate': admin.firestore.Timestamp.fromDate(now), 
-            'subscription.status': 'canceled',
+            // Atualiza os acessos do utilizador dono (Admin)
+            const userRef = db.collection('users').doc(uid);
+            const userDoc = await transaction.get(userRef);
             
-            // Metadados de cancelamento para auditoria
-            canceledAt: admin.firestore.Timestamp.fromDate(now),
-            cancellationReason: 'Solicitado pelo próprio usuário (Botão Excluir)'
-        });
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                const currentAccessible = userData.accessibleEstablishments || [];
+                
+                // Adiciona a nova filial ao array de acessos do dono
+                currentAccessible.push({
+                    id: newBranchRef.id,
+                    companyId: companyId,
+                    name: name
+                });
 
-        // Desabilitar o acesso do usuário Dono no Auth para bloquear login imediato
-        if (doc.data().ownerUid) {
-            try {
-                await auth.updateUser(doc.data().ownerUid, { disabled: true });
-            } catch (e) {
-                console.warn("Não foi possível desabilitar o usuário Auth (pode já estar deletado):", e.message);
+                transaction.update(userRef, { 
+                    accessibleEstablishments: currentAccessible 
+                });
             }
+        });
+
+        res.status(201).json({ message: 'Filial criada com sucesso!', branchId: newBranchRef.id });
+    } catch (error) {
+        handleFirestoreError(res, error, 'criar filial');
+    }
+});
+
+// 3.2. Listar Estrutura Completa (Grupos > Empresas > Filiais) para o Dono
+router.get('/hierarchy', async (req, res) => {
+    const { uid, role, groupId } = req.user;
+    const { db } = req;
+
+    try {
+        let responsePayload = {
+            group: null,
+            companies: [],
+            branches: []
+        };
+
+        // Se for um Dono Geral, carrega a árvore toda a partir do GroupID dele
+        if (role === 'group_admin' && groupId) {
+            const groupDoc = await db.collection('economicGroups').doc(groupId).get();
+            responsePayload.group = groupDoc.exists ? groupDoc.data() : null;
+
+            const companiesSnap = await db.collection('companies').where('groupId', '==', groupId).get();
+            responsePayload.companies = companiesSnap.docs.map(d => d.data());
+
+            const branchesSnap = await db.collection('establishments').where('groupId', '==', groupId).get();
+            responsePayload.branches = branchesSnap.docs.map(d => d.data());
+        } 
+        // Se for um utilizador com acessos restritos, devolve apenas o que está no array dele
+        else {
+            const userDoc = await db.collection('users').doc(uid).get();
+            const userData = userDoc.data();
+
+            responsePayload.companies = userData.accessibleCompanies || [];
+            responsePayload.branches = userData.accessibleEstablishments || [];
         }
 
-        res.status(200).json({ message: 'Conta cancelada e inativada com sucesso.' });
-
+        res.status(200).json(responsePayload);
     } catch (error) {
-        console.error("Erro ao processar cancelamento:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        handleFirestoreError(res, error, 'listar hierarquia');
+    }
+});
+
+// 3.3. Atualizar Dados de uma Filial
+router.put('/:branchId', isOwner, async (req, res) => {
+    const { branchId } = req.params;
+    const updateData = req.body;
+
+    // Impedir que o utilizador mude IDs de hierarquia por aqui para evitar quebrar a árvore
+    delete updateData.id;
+    delete updateData.groupId;
+    delete updateData.companyId;
+
+    try {
+        const { db } = req;
+        const branchRef = db.collection('establishments').doc(branchId);
+        
+        await branchRef.update({
+            ...updateData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.status(200).json({ message: 'Filial atualizada com sucesso.' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'atualizar filial');
     }
 });
 

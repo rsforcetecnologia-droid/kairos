@@ -1,23 +1,20 @@
-// js/ui/establishment.js (Blindado, Multitenancy, Suporte, Cancelamento, Foto de Perfil e Fidelidade Avançada)
+// js/ui/establishment.js (Otimizado com Multi-Tenant Enterprise - 3 Níveis)
 
 import * as establishmentApi from '../api/establishments.js';
 import * as financialApi from '../api/financial.js';
-// --- NOVOS IMPORTS PARA FIDELIDADE ---
 import * as servicesApi from '../api/services.js';
 import * as productsApi from '../api/products.js';
 import * as packagesApi from '../api/packages.js';
-// -------------------------------------
 import { state } from '../state.js';
-import { showNotification } from '../components/modal.js';
+import { showNotification, showGenericModal } from '../components/modal.js';
 import { auth } from '../firebase-config.js';
 import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
 import { navigateTo } from '../main.js';
-import { escapeHTML } from '../utils.js'; // --- IMPORTAÇÃO DE SEGURANÇA ---
+import { escapeHTML } from '../utils.js'; 
 
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
 
-// --- PALETA DE CORES EXPANDIDA (Sincronizada com main.js) ---
 const colorThemes = {
     indigo: { name: 'Padrão (Índigo)', main: '#4f46e5' },
     blue:   { name: 'Azul', main: '#2563eb' },
@@ -38,21 +35,31 @@ const colorThemes = {
     black:  { name: 'Preto', main: '#111827' },
 };
 
-// MENU DE DEFINIÇÕES
-const menuItems = [
-    { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais' },
-    { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
-    { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
-    { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
-    { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
-    { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
-    { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
-    { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
-    { id: 'support', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z', label: 'Suporte e Ajuda' },
-    { id: 'cancellation', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Cancelar Assinatura' },
-];
+// MENU DE DEFINIÇÕES DINÂMICO
+function getMenuItems() {
+    let items = [
+        { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais da Unidade' },
+        { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
+        { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
+        { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
+        { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
+        { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
+        { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
+        { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
+        { id: 'support', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z', label: 'Suporte e Ajuda' },
+        { id: 'cancellation', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Cancelar Assinatura' },
+    ];
+
+    // Se o usuário for Administrador de Grupo ou de Empresa, liberta o menu de Rede
+    if (state.userRole === 'group_admin' || state.userRole === 'company_admin') {
+        items.unshift({ id: 'manage-network', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4', label: 'Gestão de Múltiplas Filiais e Empresas' });
+    }
+
+    return items;
+}
 
 let establishmentData = null; 
+let currentHierarchyData = null; // Cache da Hierarquia
 
 // --- 1. FUNÇÕES AUXILIARES ---
 
@@ -104,7 +111,6 @@ function buildHierarchyOptions(items, currentId = null) {
     };
     const renderOption = (item, prefix = '') => {
         const isSelected = item.id === currentId ? 'selected' : '';
-        // BLINDAGEM XSS: escapeHTML no nome do item
         optionsHTML += `<option value="${item.id}" ${isSelected}>${prefix}${escapeHTML(item.name)}</option>`;
         item.children.forEach(child => renderOption(child, prefix + '— '));
     };
@@ -128,16 +134,13 @@ async function handleSave(formData, event) {
         if (ownerName && ownerName !== state.userName) {
              const user = auth.currentUser;
              if (user) {
-                   updatePromises.push(updateProfile(user, { displayName: ownerName })
-                        .then(() => {
-                            state.userName = ownerName;
-                        })
-                );
+                   updatePromises.push(updateProfile(user, { displayName: ownerName }).then(() => { state.userName = ownerName; }));
              }
         }
         
         const updatedData = { ...existingData, ...firestoreData };
-        updatePromises.push(establishmentApi.updateEstablishmentDetails(state.establishmentId, updatedData));
+        // Atualiza SEMPRE na filial que o Administrador está a editar (o contexto atual)
+        updatePromises.push(establishmentApi.updateEstablishmentDetails(state.currentViewContext?.id || state.establishmentId, updatedData));
 
         await Promise.all(updatePromises);
         
@@ -147,13 +150,6 @@ async function handleSave(formData, event) {
         
         if (firestoreData.themeColor) {
             setTimeout(() => window.location.reload(), 1500);
-        } else {
-            const panelEstablishmentName = document.getElementById('panelEstablishmentName');
-            if (firestoreData.name && panelEstablishmentName) {
-                // BLINDAGEM XSS: textContent em vez de innerHTML
-                panelEstablishmentName.textContent = firestoreData.name;
-                state.establishmentName = firestoreData.name;
-            }
         }
         
     } catch (error) {
@@ -166,10 +162,213 @@ async function handleSave(formData, event) {
     }
 }
 
-// --- 2. FUNÇÕES DE RENDERIZAÇÃO DAS SECÇÕES ---
+// =========================================================================================
+// NOVO MÓDULO: GESTÃO DE REDES (ENTERPRISE)
+// =========================================================================================
 
+async function loadHierarchyData() {
+    try {
+        const token = await state.getAuthToken?.() || await auth.currentUser.getIdToken();
+        const res = await fetch('/api/establishments/hierarchy', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Falha ao obter hierarquia.');
+        currentHierarchyData = await res.json();
+    } catch (e) {
+        console.error(e);
+        showNotification('Erro', 'Não foi possível carregar a hierarquia da empresa.', 'error');
+        currentHierarchyData = { companies: [], branches: [] };
+    }
+}
+
+async function renderManageNetworkSection(container) {
+    container.innerHTML = `<div class="flex justify-center py-10"><div class="loader"></div></div>`;
+    await loadHierarchyData();
+
+    let html = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b pb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-indigo-900">Gestão de Empresas e Filiais</h3>
+                    <p class="text-sm text-gray-500">Controle a estrutura completa da sua rede.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button data-action="new-company" class="bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold py-2 px-3 rounded-lg hover:bg-indigo-100 text-xs">
+                        + Nova Empresa (Matriz)
+                    </button>
+                    <button data-action="new-branch" class="bg-indigo-600 text-white font-semibold py-2 px-3 rounded-lg hover:bg-indigo-700 text-xs shadow-sm">
+                        + Nova Filial (Loja)
+                    </button>
+                </div>
+            </div>
+            
+            <div class="space-y-6">
+    `;
+
+    if (currentHierarchyData.companies.length === 0) {
+        html += `<p class="text-gray-500 text-center py-8">Nenhuma empresa registada na sua rede.</p>`;
+    } else {
+        currentHierarchyData.companies.forEach(company => {
+            const branches = currentHierarchyData.branches.filter(b => b.companyId === company.id);
+            
+            html += `
+                <div class="border border-gray-200 rounded-xl overflow-hidden">
+                    <div class="bg-gray-50 p-4 border-b flex justify-between items-center">
+                        <div>
+                            <h4 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                                🏢 ${escapeHTML(company.name)}
+                            </h4>
+                            <p class="text-xs text-gray-500 ml-6">CNPJ: ${escapeHTML(company.cnpj || 'Não registado')}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 bg-white">
+                        <h5 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Filiais Registadas (${branches.length})</h5>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            ${branches.length === 0 ? `<p class="text-sm text-gray-400 italic">Nenhuma filial associada a esta matriz.</p>` : ''}
+                            ${branches.map(branch => `
+                                <div class="p-3 border rounded-lg bg-gray-50 hover:border-indigo-300 transition-colors flex justify-between items-center">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800">📍 ${escapeHTML(branch.name)}</p>
+                                        <p class="text-[10px] text-gray-500">ID: ${branch.id}</p>
+                                    </div>
+                                    <button data-action="switch-context" data-id="${branch.id}" data-name="${escapeHTML(branch.name)}" class="text-xs bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-100 font-semibold shadow-sm">
+                                        Gerir Unidade
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    html += `</div></div>`;
+    container.innerHTML = html;
+
+    // Listeners do Menu de Redes
+    container.querySelector('[data-action="new-company"]').addEventListener('click', () => openCompanyModal());
+    container.querySelector('[data-action="new-branch"]').addEventListener('click', () => openBranchModal());
+    
+    container.querySelectorAll('[data-action="switch-context"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const { id, name } = e.target.dataset;
+            // Dispara mudança de contexto para a unidade escolhida para que o dono a edite diretamente
+            if (state.setContext) {
+                state.setContext('BRANCH', id, name);
+                showNotification('A carregar...', `Mudando o painel para a filial ${name}`, 'info');
+            } else {
+                showNotification('Erro', 'O mecanismo de multi-empresa ainda está a carregar.', 'error');
+            }
+        });
+    });
+}
+
+function openCompanyModal() {
+    const modalHtml = `
+        <form id="newCompanyForm" class="space-y-4 p-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Nome da Matriz (Empresa)</label>
+                <input type="text" id="compName" required class="mt-1 w-full p-2 border rounded-md">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">CNPJ (Opcional)</label>
+                <input type="text" id="compCnpj" class="mt-1 w-full p-2 border rounded-md">
+            </div>
+            <div class="flex justify-end gap-2 pt-4">
+                <button type="button" data-action="close-modal" data-target="genericModal" class="px-4 py-2 bg-gray-200 text-gray-800 rounded">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded font-bold">Criar Matriz</button>
+            </div>
+        </form>
+    `;
+    
+    showGenericModal({ title: 'Adicionar Nova Empresa (Matriz)', contentHTML: modalHtml, maxWidth: 'max-w-md' });
+
+    document.getElementById('newCompanyForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true; btn.textContent = '...';
+        try {
+            const token = await state.getAuthToken?.() || await auth.currentUser.getIdToken();
+            const res = await fetch('/api/establishments/companies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    name: document.getElementById('compName').value,
+                    cnpj: document.getElementById('compCnpj').value,
+                    groupId: state.groupId // Passa o grupo pai
+                })
+            });
+            if (!res.ok) throw new Error('Falha ao criar');
+            showNotification('Sucesso', 'Nova Matriz criada!', 'success');
+            document.getElementById('genericModal').style.display = 'none';
+            // Recarrega a view
+            renderManageNetworkSection(document.getElementById('settings-content-detail'));
+        } catch (error) {
+            showNotification('Erro', error.message, 'error');
+            btn.disabled = false; btn.textContent = 'Criar Matriz';
+        }
+    });
+}
+
+function openBranchModal() {
+    const companiesOptions = currentHierarchyData.companies.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+    if (!companiesOptions) {
+        return showNotification('Aviso', 'Crie uma Empresa (Matriz) primeiro.', 'error');
+    }
+
+    const modalHtml = `
+        <form id="newBranchForm" class="space-y-4 p-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Selecione a Matriz</label>
+                <select id="branchCompanyId" required class="mt-1 w-full p-2 border rounded-md bg-white">
+                    <option value="">Selecione...</option>
+                    ${companiesOptions}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Nome da Filial (Ex: Shopping Sul)</label>
+                <input type="text" id="branchName" required class="mt-1 w-full p-2 border rounded-md">
+            </div>
+            <div class="flex justify-end gap-2 pt-4">
+                <button type="button" data-action="close-modal" data-target="genericModal" class="px-4 py-2 bg-gray-200 text-gray-800 rounded">Cancelar</button>
+                <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded font-bold">Criar Filial</button>
+            </div>
+        </form>
+    `;
+    
+    showGenericModal({ title: 'Adicionar Nova Filial', contentHTML: modalHtml, maxWidth: 'max-w-md' });
+
+    document.getElementById('newBranchForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        btn.disabled = true; btn.textContent = '...';
+        try {
+            const token = await state.getAuthToken?.() || await auth.currentUser.getIdToken();
+            const res = await fetch('/api/establishments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    name: document.getElementById('branchName').value,
+                    companyId: document.getElementById('branchCompanyId').value,
+                    groupId: state.groupId
+                })
+            });
+            if (!res.ok) throw new Error('Falha ao criar');
+            showNotification('Sucesso', 'Nova Filial criada e configurada!', 'success');
+            document.getElementById('genericModal').style.display = 'none';
+            renderManageNetworkSection(document.getElementById('settings-content-detail'));
+        } catch (error) {
+            showNotification('Erro', error.message, 'error');
+            btn.disabled = false; btn.textContent = 'Criar Filial';
+        }
+    });
+}
+
+// =========================================================================================
+
+// --- FUNÇÕES ORIGINAIS DE RENDERIZAÇÃO DAS SECÇÕES ---
 function renderPersonalDataSection(data, container) {
-    // BLINDAGEM XSS
     const safeName = escapeHTML(data.name || '');
     const safePhone = escapeHTML(data.phone || '');
     const safeDoc = escapeHTML(data.document || '');
@@ -350,7 +549,6 @@ function renderChangeEmailSection(data, container) {
 }
 
 function renderBrandingSection(data, container) {
-    // BLINDAGEM XSS
     const safeWelcome = escapeHTML(data.welcomeMessage || '');
     
     container.innerHTML = `
@@ -432,18 +630,15 @@ function renderBrandingSection(data, container) {
 
     renderColorPalette(data.themeColor || 'indigo', container);
 
-    // Listeners de Imagens com Compressão Automática
     container.querySelector('#establishmentLogoButton').onclick = () => container.querySelector('#establishmentLogoInput').click();
     container.querySelector('#establishmentLogoInput').onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
             try {
-                // Redimensiona o Logo (max 300px é suficiente para logos)
                 const resizedBase64 = await compressImage(file, 300, 0.9);
                 container.querySelector('#establishmentLogoPreview').src = resizedBase64;
                 container.querySelector('#establishmentLogoBase64').value = resizedBase64;
             } catch (error) {
-                console.error("Erro ao processar logo:", error);
                 showNotification('Erro', 'Formato de imagem inválido ou corrompido.', 'error');
             }
         }
@@ -458,16 +653,12 @@ function renderBrandingSection(data, container) {
             try {
                 btn.textContent = 'A processar...';
                 btn.disabled = true;
-
-                // Redimensiona a Imagem de Fundo (max 1280px e 70% de qualidade para ficar leve)
                 const resizedBase64 = await compressImage(file, 1280, 0.7);
-                
                 container.querySelector('#establishmentBgPreview').src = resizedBase64;
                 container.querySelector('#establishmentBgPreview').classList.remove('hidden');
                 container.querySelector('#establishmentBgPlaceholder').classList.add('hidden');
                 container.querySelector('#establishmentBackgroundImageBase64').value = resizedBase64;
             } catch (error) {
-                console.error("Erro ao processar fundo:", error);
                 showNotification('Erro', 'Não foi possível processar esta imagem. Tente outra.', 'error');
             } finally {
                 btn.textContent = originalText;
@@ -499,17 +690,11 @@ function renderBrandingSection(data, container) {
 
 function renderBookingSection(data, container) {
     const linkId = data.urlId || state.establishmentId;
-    
-    // --- LÓGICA DE URL DE PRODUÇÃO ---
     const productionUrl = 'https://www.kairosagenda.com.br'; 
-    
     let baseUrl = window.location.origin;
-    
     if (baseUrl.includes('localhost') || baseUrl.includes('capacitor://') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168')) {
         baseUrl = productionUrl;
     }
-
-    // BLINDAGEM XSS (Embora o link seja gerado internamente, boa prática)
     const bookingLink = escapeHTML(`${baseUrl}/agendar?id=${linkId}`);
     
     const isChecked = data.publicBookingEnabled || false;
@@ -522,32 +707,15 @@ function renderBookingSection(data, container) {
                 <div class="flex justify-between items-center mb-6 border-b pb-4">
                     <h3 class="text-xl font-bold text-gray-800">Link Público de Agendamento</h3>
                 </div>
-                <p class="text-sm text-gray-600 mb-4">
-                    Este é o link exclusivo que você pode partilhar com os seus clientes para que eles façam agendamentos online.
-                </p>
+                <p class="text-sm text-gray-600 mb-4">Este é o link exclusivo que você pode partilhar com os seus clientes.</p>
                 <div class="flex flex-col sm:flex-row gap-2">
-                    <input 
-                        type="text" 
-                        id="publicBookingLink" 
-                        value="${bookingLink}" 
-                        readonly 
-                        class="flex-1 p-3 border border-gray-300 rounded-md bg-gray-50 text-gray-700"
-                    >
-                    <button 
-                        type="button" 
-                        id="copyBookingLinkBtn"
-                        class="py-3 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition"
-                    >
-                        Copiar Link
-                    </button>
+                    <input type="text" id="publicBookingLink" value="${bookingLink}" readonly class="flex-1 p-3 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                    <button type="button" id="copyBookingLinkBtn" class="py-3 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition">Copiar Link</button>
                 </div>
             </div>
 
             <div>
                 <h3 class="text-xl font-bold text-gray-800 mb-6 border-b pb-4">Status do Agendamento Online</h3>
-                <p class="text-sm text-gray-600 mb-4">
-                    Se o agendamento online estiver inativo, os clientes que tentarem aceder ao link verão uma mensagem a informar que o estabelecimento não está a aceitar agendamentos no momento.
-                </p>
                 <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                     <label for="publicBookingToggle" class="flex items-center cursor-pointer">
                         <div class="relative">
@@ -555,9 +723,7 @@ function renderBookingSection(data, container) {
                             <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
                         </div>
                     </label>
-                    <span id="publicBookingStatusText" class="text-sm font-semibold ${statusColor}">
-                        ${toggleText}
-                    </span>
+                    <span id="publicBookingStatusText" class="text-sm font-semibold ${statusColor}">${toggleText}</span>
                 </div>
             </div>
 
@@ -569,7 +735,6 @@ function renderBookingSection(data, container) {
                 <form id="booking-form" class="space-y-4">
                     <input type="hidden" id="establishmentSlotInterval">
                     <h4 class="text-md font-semibold text-gray-800 mb-2">Intervalo entre agendamentos</h4>
-                    <p class="text-sm text-gray-600 mb-4">Defina o intervalo de tempo entre os horários disponíveis na agenda online.</p>
                     <div id="slotIntervalContainer" class="flex flex-wrap gap-2"></div>
                 </form>
             </div>
@@ -578,37 +743,19 @@ function renderBookingSection(data, container) {
 
     container.querySelector('#copyBookingLinkBtn').addEventListener('click', () => {
         const linkInput = container.querySelector('#publicBookingLink');
-        
         if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(linkInput.value).then(() => {
-                showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
-            }).catch(err => {
-                showNotification('Erro', 'Não foi possível copiar o link.', 'error');
-            });
+            navigator.clipboard.writeText(linkInput.value).then(() => showNotification('Sucesso', 'Link copiado!', 'success'));
         } else {
-            try {
-                linkInput.select(); 
-                document.execCommand('copy'); 
-                linkInput.blur(); 
-                showNotification('Sucesso', 'Link copiado para a área de transferência!', 'success');
-            } catch (err) {
-                showNotification('Erro', 'Não foi possível copiar o link. Por favor, copie manualmente.', 'error');
-            }
+            linkInput.select(); document.execCommand('copy'); linkInput.blur(); 
+            showNotification('Sucesso', 'Link copiado!', 'success');
         }
     });
 
     container.querySelector('#publicBookingToggle').addEventListener('change', async (e) => {
         const isEnabled = e.target.checked;
         const statusTextEl = container.querySelector('#publicBookingStatusText');
-        
-        if (isEnabled) {
-            statusTextEl.textContent = "Agendamento Online ATIVO";
-            statusTextEl.className = "text-sm font-semibold text-green-600";
-        } else {
-            statusTextEl.textContent = "Agendamento Online INATIVO";
-            statusTextEl.className = "text-sm font-semibold text-red-600";
-        }
-        
+        statusTextEl.textContent = isEnabled ? "Agendamento Online ATIVO" : "Agendamento Online INATIVO";
+        statusTextEl.className = isEnabled ? "text-sm font-semibold text-green-600" : "text-sm font-semibold text-red-600";
         try {
             e.target.disabled = true; 
             await establishmentApi.updatePublicBookingStatus(state.establishmentId, isEnabled);
@@ -617,29 +764,17 @@ function renderBookingSection(data, container) {
         } catch (error) {
             showNotification('Erro', `Não foi possível alterar o status: ${error.message}`, 'error');
             e.target.checked = !isEnabled;
-             if (!isEnabled) {
-                statusTextEl.textContent = "Agendamento Online INATIVO";
-                statusTextEl.className = "text-sm font-semibold text-red-600";
-            } else {
-                statusTextEl.textContent = "Agendamento Online ATIVO";
-                statusTextEl.className = "text-sm font-semibold text-green-600";
-            }
-        } finally {
-            e.target.disabled = false; 
-        }
+        } finally { e.target.disabled = false; }
     });
 
     renderSlotIntervalSelector(data.slotInterval || 30, container); 
     
     container.querySelector('#booking-form').addEventListener('submit', (e) => {
         e.preventDefault();
-        const formData = {
-            slotInterval: parseInt(container.querySelector('#establishmentSlotInterval').value, 10)
-        };
+        const formData = { slotInterval: parseInt(container.querySelector('#establishmentSlotInterval').value, 10) };
         handleSave(formData, e);
     });
 }
-
 
 function renderWorkingHoursSection(data, container) {
     container.innerHTML = `
@@ -652,7 +787,6 @@ function renderWorkingHoursSection(data, container) {
              <form id="working-hours-form">
                  <div class="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-100">
                     <label for="establishmentTimezone" class="block text-sm font-bold text-gray-700 mb-2">Fuso Horário da Região</label>
-                    <p class="text-sm text-gray-600 mb-3">Defina o fuso horário correto para que os agendamentos e notificações coincidam com a hora local dos seus clientes.</p>
                     <select id="establishmentTimezone" class="block w-full p-2 border border-gray-300 rounded-md bg-white focus:ring-indigo-500 focus:border-indigo-500">
                         <option value="" disabled>Selecione a região...</option>
                         <optgroup label="Brasil">
@@ -676,23 +810,15 @@ function renderWorkingHoursSection(data, container) {
          </div>
     `;
     
-    // Lógica para preencher o fuso horário
     const timezoneSelect = container.querySelector('#establishmentTimezone');
     if (data.timezone) {
         timezoneSelect.value = data.timezone;
     } else {
-        // Tenta detectar automaticamente se não houver nada salvo
         try {
             const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
             const optionExists = Array.from(timezoneSelect.options).some(opt => opt.value === userTimezone);
-            if (optionExists) {
-                timezoneSelect.value = userTimezone;
-            } else {
-                timezoneSelect.value = "America/Sao_Paulo"; // Fallback padrão
-            }
-        } catch (e) {
-            timezoneSelect.value = "America/Sao_Paulo";
-        }
+            timezoneSelect.value = optionExists ? userTimezone : "America/Sao_Paulo";
+        } catch (e) { timezoneSelect.value = "America/Sao_Paulo"; }
     }
 
     const workingHoursContainer = container.querySelector('#establishmentWorkingHoursContainer');
@@ -742,23 +868,15 @@ function renderWorkingHoursSection(data, container) {
                 breakEnd: container.querySelector(`#est-${dayKey}-breakEnd`).value,
             };
         });
-        
-        // Agora salvamos também o fuso horário junto com os horários
         const timezone = container.querySelector('#establishmentTimezone').value;
-        
         handleSave({ workingHours, timezone }, e);
     });
 }
 
-// --- MODIFICADO: FIDELIDADE AVANÇADA (Itens Específicos) ---
-// --- MODIFICADO: FIDELIDADE SIMPLIFICADA (Apenas Visita) ---
 async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
-    
-    // Define valores padrão se não existirem
     const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
 
-    // Carrega dados para os selects (Serviços, Produtos, Pacotes)
     let services = [], products = [], packages = [];
     try {
         [services, products, packages] = await Promise.all([
@@ -820,12 +938,8 @@ async function renderLoyaltySection(data, container) {
         </div>
     `;
 
-    // --- Lógica de UI ---
-    
-    // Checkbox Habilitado
     container.querySelector('#loyaltyEnabled').checked = loyaltyProgram.enabled || false;
 
-    // --- Lógica dos Tiers (Prémios) - MANTIDA IGUAL ---
     const tiersContainer = container.querySelector('#loyaltyTiersContainer');
     
     const createTierRow = (tier = {}) => {
@@ -943,13 +1057,9 @@ async function renderLoyaltySection(data, container) {
         if (removeButton) removeButton.closest('.loyalty-tier-row').remove();
     });
     
-    // --- Salvar ---
     container.querySelector('#loyalty-form').addEventListener('submit', e => {
         e.preventDefault();
         
-        // MODIFICAÇÃO: Não lemos mais o input radio. Fixamos o tipo.
-        const selectedType = 'visit'; 
-
         const loyaltyTiers = Array.from(container.querySelectorAll('#loyaltyTiersContainer .loyalty-tier-row')).map(row => {
             const type = row.querySelector('.type-select').value;
             const itemId = type === 'money' ? null : row.querySelector('.item-select').value;
@@ -976,9 +1086,9 @@ async function renderLoyaltySection(data, container) {
         const formData = {
             loyaltyProgram: {
                 enabled: container.querySelector('#loyaltyEnabled').checked,
-                type: selectedType, // Forçado para 'visit'
+                type: 'visit', 
                 pointsPerVisit: parseInt(container.querySelector('#loyaltyPointsPerVisit').value, 10) || 1,
-                pointsPerCurrency: 0, // Zera para limpar
+                pointsPerCurrency: 0, 
                 tiers: loyaltyTiers.filter(t => t.points > 0 && t.reward)
             }
         };
@@ -986,7 +1096,6 @@ async function renderLoyaltySection(data, container) {
     });
 }
 
-// --- SECÇÃO ATUALIZADA: INTEGRAÇÃO FINANCEIRA ---
 async function renderFinancialIntegrationSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
@@ -1074,17 +1183,14 @@ async function renderFinancialIntegrationSection(data, container) {
         
         const financialIntegration = data.financialIntegration || {};
         const commissionConfig = data.commissionConfig || {};
-        const purchaseConfig = data.purchaseConfig || {}; // Carrega config de compras
+        const purchaseConfig = data.purchaseConfig || {}; 
 
-        // Populate Vendas
         container.querySelector('#financialNatureId').innerHTML = buildHierarchyOptions(natures, financialIntegration.defaultNaturezaId);
         container.querySelector('#financialCostCenterId').innerHTML = buildHierarchyOptions(costCenters, financialIntegration.defaultCentroDeCustoId);
 
-        // Populate Compras (NOVO)
         container.querySelector('#purchaseNatureId').innerHTML = buildHierarchyOptions(natures, purchaseConfig.defaultNatureId);
         container.querySelector('#purchaseCostCenterId').innerHTML = buildHierarchyOptions(costCenters, purchaseConfig.defaultCostCenterId);
 
-        // Populate Comissões
         container.querySelector('#commissionNatureId').innerHTML = buildHierarchyOptions(natures, commissionConfig.defaultNatureId);
         container.querySelector('#commissionCostCenterId').innerHTML = buildHierarchyOptions(costCenters, commissionConfig.defaultCostCenterId);
 
@@ -1099,7 +1205,7 @@ async function renderFinancialIntegrationSection(data, container) {
                 defaultNaturezaId: container.querySelector('#financialNatureId').value || null,
                 defaultCentroDeCustoId: container.querySelector('#financialCostCenterId').value || null,
             },
-            purchaseConfig: { // Salva config de compras
+            purchaseConfig: { 
                 defaultNatureId: container.querySelector('#purchaseNatureId').value || null,
                 defaultCostCenterId: container.querySelector('#purchaseCostCenterId').value || null,
             },
@@ -1112,9 +1218,7 @@ async function renderFinancialIntegrationSection(data, container) {
     });
 }
 
-// --- NOVO: FUNÇÃO DE RENDERIZAÇÃO DA SECÇÃO DE SUPORTE ---
 function renderSupportSection(data, container) {
-    // Configurações do WhatsApp
     const supportNumber = "5516997859430";
     const message = encodeURIComponent("Olá, preciso de ajuda com o sistema Kairos.");
     const whatsappLink = `https://wa.me/${supportNumber}?text=${message}`;
@@ -1134,25 +1238,16 @@ function renderSupportSection(data, container) {
                         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                     </svg>
                 </div>
-                
                 <h4 class="text-lg font-semibold text-gray-800">Falar com Suporte via WhatsApp</h4>
-                <p class="text-gray-600 max-w-md text-center">
-                    Encontrou algum erro, tem dúvidas sobre funcionalidades ou precisa de ajuda com a sua conta? Clique abaixo para iniciar uma conversa.
-                </p>
-
                 <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer" 
-                   class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full transition-all transform hover:scale-105 shadow-lg">
+                   class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full transition-all shadow-lg">
                     <span>Iniciar Atendimento</span>
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                 </a>
-                
-                <p class="text-xs text-gray-400 mt-4">Horário de atendimento: Seg a Sex, das 09h às 18h.</p>
             </div>
         </div>
     `;
 }
 
-// --- NOVO: FUNÇÃO DE RENDERIZAÇÃO DA SECÇÃO DE CANCELAMENTO ---
 function renderCancellationSection(data, container) {
     const supportNumber = "5516997859430";
     const cancellationMessage = encodeURIComponent("Olá, gostaria de solicitar o cancelamento da minha assinatura.");
@@ -1169,38 +1264,16 @@ function renderCancellationSection(data, container) {
             </div>
 
             <div class="space-y-6">
-                <p class="text-gray-700">
-                    Para solicitar o cancelamento da sua assinatura, por favor, entre em contato conosco através de um dos canais abaixo. Nossa equipe financeira irá processar sua solicitação o mais breve possível.
-                </p>
-
+                <p class="text-gray-700">Para solicitar o cancelamento da sua assinatura, por favor, entre em contato conosco através de um dos canais abaixo. Nossa equipe financeira irá processar sua solicitação o mais breve possível.</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="border rounded-lg p-6 bg-gray-50 flex flex-col items-center text-center">
-                        <div class="bg-white p-3 rounded-full shadow-sm mb-4">
-                            <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                        </div>
                         <h4 class="font-bold text-gray-800 mb-2">Via E-mail</h4>
-                        <p class="text-sm text-gray-600 mb-4">Envie um e-mail com seus dados para:</p>
                         <a href="mailto:${emailContato}" class="text-indigo-600 font-semibold hover:underline">${emailContato}</a>
                     </div>
-
                     <div class="border rounded-lg p-6 bg-green-50 border-green-100 flex flex-col items-center text-center">
-                        <div class="bg-white p-3 rounded-full shadow-sm mb-4">
-                             <svg class="w-8 h-8 text-green-500" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                            </svg>
-                        </div>
                         <h4 class="font-bold text-gray-800 mb-2">Via WhatsApp</h4>
-                        <p class="text-sm text-gray-600 mb-4">Fale diretamente com nosso suporte financeiro.</p>
-                        <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer" 
-                           class="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full transition-colors text-sm">
-                            <span>Solicitar Cancelamento</span>
-                        </a>
+                        <a href="${whatsappLink}" target="_blank" rel="noopener noreferrer" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full transition-colors text-sm">Solicitar Cancelamento</a>
                     </div>
-                </div>
-                
-                <div class="mt-8 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700">
-                    <p class="font-bold">Importante:</p>
-                    <p class="text-sm">O cancelamento pode levar até 48h úteis para ser processado. Seus dados permanecerão seguros conforme nossa política de privacidade.</p>
                 </div>
             </div>
         </div>
@@ -1208,15 +1281,9 @@ function renderCancellationSection(data, container) {
 }
 
 function renderPlaceholderSection(title, container) {
-    container.innerHTML = `
-        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-bold text-gray-800">${title}</h3>
-            <p class="mt-4 text-gray-500">Esta secção ainda não foi implementada.</p>
-        </div>
-    `;
+    container.innerHTML = `<div class="bg-white p-4 md:p-6 rounded-lg shadow-md"><h3 class="text-xl font-bold text-gray-800">${title}</h3><p class="mt-4 text-gray-500">Esta secção ainda não foi implementada.</p></div>`;
 }
 
-// Renderizador da Paleta
 function renderColorPalette(currentThemeKey = 'indigo', container) {
     const paletteContainer = container.querySelector('#color-palette-container');
     const themeInput = container.querySelector('#establishmentThemeColor');
@@ -1235,7 +1302,7 @@ function renderColorPalette(currentThemeKey = 'indigo', container) {
         `;
         swatch.addEventListener('click', () => {
             themeInput.value = key;
-            renderColorPalette(key, container); // Re-renderiza para atualizar a seleção visual
+            renderColorPalette(key, container); 
         });
         paletteContainer.appendChild(swatch);
     });
@@ -1278,22 +1345,25 @@ function renderSlotIntervalSelector(currentValue, container) {
 // --- 2. FUNÇÃO PRINCIPAL E NAVEGAÇÃO ---
 
 async function showSettingsDetailView(sectionId) {
-    const menuItem = menuItems.find(item => item.id === sectionId);
+    const dynamicMenuItems = getMenuItems();
+    const menuItem = dynamicMenuItems.find(item => item.id === sectionId);
+    
     if (!menuItem) {
         console.error("Secção de definições não encontrada:", sectionId);
         return;
     }
 
     contentDiv.innerHTML = `
-        <div class="bg-white p-4 shadow-md sticky top-0 z-10 md:relative">
-            <button data-action="back-to-list" class="flex items-center gap-2 font-semibold text-indigo-600 hover:text-indigo-800">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+        <div class="bg-white p-4 shadow-sm sticky top-0 z-10 md:relative flex justify-between items-center">
+            <button data-action="back-to-list" class="flex items-center gap-2 font-bold text-gray-600 hover:text-gray-900 bg-gray-100 px-3 py-1.5 rounded-lg text-sm transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path></svg>
                 Voltar
             </button>
+            <span class="text-sm font-bold text-gray-800">${menuItem.label}</span>
         </div>
         
-        <div id="settings-content-detail" class="p-4">
-            <div class="flex justify-center items-center h-full"><div class="loader"></div></div>
+        <div id="settings-content-detail" class="p-2 md:p-4 pb-20">
+            <div class="flex justify-center items-center py-10"><div class="loader"></div></div>
         </div>
     `;
 
@@ -1305,94 +1375,85 @@ async function showSettingsDetailView(sectionId) {
     const detailContainer = document.getElementById('settings-content-detail');
 
     switch (sectionId) {
+        case 'manage-network': await renderManageNetworkSection(detailContainer); break;
         case 'personal-data': renderPersonalDataSection(establishmentData, detailContainer); break;
         case 'change-password': renderChangePasswordSection(establishmentData, detailContainer); break;
         case 'change-email': renderChangeEmailSection(establishmentData, detailContainer); break; 
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
-        case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; // Agora é async
+        case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; 
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
-        // --- NOVOS CASOS ---
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
         case 'cancellation': renderCancellationSection(establishmentData, detailContainer); break;
-        default:
-            renderPlaceholderSection(menuItem ? menuItem.label : 'Definições', detailContainer);
+        default: renderPlaceholderSection(menuItem.label, detailContainer);
     }
 }
 
 export async function loadEstablishmentPage() {
     contentDiv.innerHTML = `
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" /></svg>
-                Definições
+                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Definições do Sistema
             </h2>
         </div>
         <div class="flex justify-center items-center h-64"><div class="loader"></div></div>
     `;
 
-    if (!establishmentData) {
-        try {
-            establishmentData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
-        } catch (error) {
-            showNotification('Erro Fatal', 'Não foi possível carregar os dados do estabelecimento.', 'error');
-            contentDiv.innerHTML = '<p class="text-red-500">Erro ao carregar dados.</p>';
-            return;
+    try {
+        // Lógica Inteligente: Carrega os dados da Matriz ou da Filial dependendo de onde ele estiver
+        let targetId = state.currentViewContext?.id || state.establishmentId;
+        
+        // Se estiver na visão de Holding, não tem um "estabelecimento" físico para editar os horários, 
+        // então forçamos ele a ver o menu de Gestão da Rede e dados de uma unidade base dele.
+        if (state.currentViewContext?.type === 'GROUP') {
+             targetId = state.accessibleEstablishments[0]?.id || state.establishmentId;
         }
+
+        establishmentData = await establishmentApi.getEstablishmentDetails(targetId);
+    } catch (error) {
+        showNotification('Erro Fatal', 'Não foi possível carregar as definições.', 'error');
+        contentDiv.innerHTML = '<p class="text-red-500 text-center py-10">Erro ao carregar dados.</p>';
+        return;
     }
 
     const user = auth.currentUser;
-    if (user && user.displayName) {
-        state.userName = user.displayName;
-    }
+    if (user && user.displayName) state.userName = user.displayName;
 
-    // BLINDAGEM XSS
     const displayName = escapeHTML(state.userName || auth.currentUser.email);
     const displayInitials = displayName ? displayName.charAt(0).toUpperCase() : 'U';
-
-    // --- CORREÇÃO: Lógica para exibir a foto de perfil se existir ---
-    let userAvatarUrl = `https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}`; // Fallback padrão
+    let userAvatarUrl = `https://placehold.co/96x96/E2E8F0/4A5568?text=${displayInitials}`; 
+    if (user && user.photoURL) userAvatarUrl = user.photoURL;
     
-    if (user && user.photoURL) {
-        userAvatarUrl = user.photoURL;
-    }
-    // ----------------------------------------------------------------
+    // Obtém os menus certos para a role da pessoa logada
+    const currentMenuItems = getMenuItems();
 
     contentDiv.innerHTML = `
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4">
             <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" /></svg>
+                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.096 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 Definições
             </h2>
         </div>
         
-        <div data-action="go-to-my-profile" class="bg-white p-4 rounded-lg shadow-md mb-6 cursor-pointer hover:bg-gray-50 transition-all">
+        <div data-action="go-to-my-profile" class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-4 cursor-pointer hover:bg-gray-50 transition-all">
             <div class="text-center relative">
-                
-                <div class="absolute top-0 right-0 p-2 text-gray-400 hover:text-indigo-600" title="Ver Meu Perfil">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
+                 <div class="relative w-20 h-20 mx-auto">
+                    <img id="user-avatar" src="${userAvatarUrl}" class="w-20 h-20 rounded-full object-cover border-4 border-gray-100">
                  </div>
-
-                 <div class="relative w-24 h-24 mx-auto">
-                    <img id="user-avatar" src="${userAvatarUrl}" class="w-24 h-24 rounded-full object-cover">
-                 </div>
-                 <h3 class="font-bold mt-2 text-lg truncate">${displayName}</h3>
-                 ${(state.userName && state.userName !== auth.currentUser.email) ? `<p class="text-sm text-gray-500">${escapeHTML(auth.currentUser.email)}</p>` : ''}
-                 
-                 <p class="text-xs text-indigo-600 font-semibold mt-2">VER MEU PERFIL / MEUS BLOQUEIOS</p>
+                 <h3 class="font-bold mt-2 text-base text-gray-800 truncate">${displayName}</h3>
+                 <p class="text-xs text-indigo-600 font-bold mt-1">MEU PERFIL (VER BLOQUEIOS)</p>
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded-lg shadow-md">
+        <div class="bg-white p-2 rounded-xl shadow-sm border border-gray-100 mb-20">
             <nav id="settings-menu-list" class="space-y-1">
-                ${menuItems.map(item => `
-                    <button data-section="${item.id}" class="w-full flex items-center gap-3 p-3 rounded-lg text-gray-700 hover:bg-gray-100 font-semibold text-sm">
-                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${item.icon}"></path></svg>
+                ${currentMenuItems.map(item => `
+                    <button data-section="${item.id}" class="w-full flex items-center gap-3 p-3 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold text-sm transition-colors ${item.id === 'manage-network' ? 'bg-indigo-50 border border-indigo-100 text-indigo-800 hover:bg-indigo-100 mb-3' : ''}">
+                        <svg class="w-5 h-5 ${item.id === 'manage-network' ? 'text-indigo-600' : 'text-gray-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${item.icon}"></path></svg>
                         <span class="flex-1 text-left">${item.label}</span>
-                        <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        <svg class="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                 `).join('')}
             </nav>
