@@ -1,4 +1,4 @@
-// js/ui/agenda.js (Otimizado: Layout Premium Mobile, Sticky Headers e Scroll Nativo)
+// js/ui/agenda.js (Layout Definitivo: 3 Colunas Travadas, Header Compacto e Filtros Ocultos)
 
 // --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
@@ -66,7 +66,7 @@ let newAppointmentState = {
 };
 
 function formatDateReduced(date) {
-    return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }).format(date).replace(/\./g, '');
+    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(date);
 }
 
 function getWeekStart(date) {
@@ -118,7 +118,7 @@ function renderProfessionalSelector() {
         const borderStyle = `border: 3px solid ${borderColor}; box-shadow: ${isSelected ? '0 0 0 2px ' + profColor.border : 'none'};`;
 
         return `
-            <div class="prof-card ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
+            <div class="prof-card flex-shrink-0 ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
                  data-action="select-professional" 
                  data-prof-id="${prof.id}">
                 ${prof.id === 'all' 
@@ -252,11 +252,10 @@ function renderWeekView(allEvents) {
     const isMobile = window.innerWidth < 768;
     const daysToShow = isMobile ? 3 : numDays; 
     
-    // FIX: Garante rigorosamente a divisão em partes iguais para evitar o "estouro"
+    // Teto Rigoroso para 3 colunas: Força a largura máxima de cada dia para 33.333% e barra quebras.
     const percentWidth = 100 / daysToShow;
-    const colStyle = `flex: 0 0 ${percentWidth}%; width: ${percentWidth}%; max-width: ${percentWidth}%; box-sizing: border-box;`;
+    const colStyle = `flex: 0 0 ${percentWidth}%; width: ${percentWidth}%; max-width: ${percentWidth}%; box-sizing: border-box; overflow: hidden;`;
 
-    // CSS Customizado para esconder as barras de scroll mantendo a fluidez
     let weekHTML = `
         <style>
             .agenda-scroll-container::-webkit-scrollbar { display: none; }
@@ -275,8 +274,7 @@ function renderWeekView(allEvents) {
             .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
-        // Área dos eventos com proteção contra largura excessiva
-        let eventsHTML = '<div class="flex-grow overflow-y-auto overflow-x-hidden px-1.5 py-2 space-y-2.5 pb-24">'; 
+        let eventsHTML = '<div class="flex-grow overflow-y-auto overflow-x-hidden px-1 py-1.5 space-y-2 pb-24 min-w-0">'; 
         if (dayEvents.length > 0) {
             eventsHTML += dayEvents.map(event => {
                 const startTime = new Date(event.startTime);
@@ -290,12 +288,12 @@ function renderWeekView(allEvents) {
 
                 if (event.type === 'blockage') {
                     return `
-                        <div class="relative p-2 rounded-xl bg-red-50 border border-red-100 shadow-sm overflow-hidden min-w-0">
+                        <div class="relative p-1.5 rounded-md bg-red-50 border border-red-100 shadow-sm overflow-hidden min-w-0 w-full">
                             <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
-                            <div class="pl-1 min-w-0">
-                                <span class="font-bold text-[11px] text-red-900 tracking-tight block">${startTimeStr}</span>
-                                <p class="font-bold text-xs text-red-800 truncate leading-tight mt-0.5">${safeReason}</p>
-                                <p class="text-[9px] text-red-600 truncate mt-1">${safeProfName}</p>
+                            <div class="pl-1 min-w-0 flex flex-col">
+                                <span class="font-bold text-[10px] text-red-900 tracking-tight block truncate">${startTimeStr}</span>
+                                <p class="font-bold text-[10px] text-red-800 truncate leading-tight mt-0.5 w-full">${safeReason}</p>
+                                <p class="text-[9px] text-red-600 truncate mt-1 w-full">${safeProfName}</p>
                             </div>
                         </div>
                     `;
@@ -306,52 +304,44 @@ function renderWeekView(allEvents) {
                 const hasRewards = event.hasRewards && !isRedeemed;
                 const isCompleted = event.status === 'completed';
 
-                // NOVO DESIGN DE CARD: Mais compacto, premium e evita quebra lateral
+                // Aplicação da classe w-full e min-w-0 em cada card para impedir que eles empurrem a coluna
                 return `
-                    <div class="relative p-2 rounded-xl bg-white border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden min-w-0" 
+                    <div class="relative p-1.5 rounded-md bg-white border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden min-w-0 w-full flex flex-col" 
                          data-action="open-comanda" data-appointment='${apptDataString}'>
                         
                         <div class="absolute left-0 top-0 bottom-0 w-1" style="background-color: ${profColor.main};"></div>
 
-                        <div class="pl-1 min-w-0 flex flex-col h-full justify-center">
-                            <div class="flex justify-between items-center mb-0.5">
-                                <span class="font-bold text-[11px] text-gray-800 tracking-tight">${startTimeStr}</span>
-                                ${isCompleted ? '<span class="text-[8px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full leading-none">OK</span>' : ''}
+                        <div class="pl-1 min-w-0 w-full flex flex-col h-full justify-center">
+                            <div class="flex justify-between items-center mb-0.5 min-w-0 gap-1">
+                                <span class="font-bold text-[10px] text-gray-800 truncate flex-grow">${startTimeStr}</span>
+                                ${isCompleted ? '<span class="text-[7px] font-bold bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded-sm leading-none flex-shrink-0">OK</span>' : ''}
                             </div>
 
-                            <p class="font-bold text-xs text-gray-800 truncate leading-tight">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
-                            <p class="text-[10px] text-gray-500 truncate mt-0.5 leading-tight">${safeServiceName}</p>
-                            
-                            <div class="flex items-center gap-1 mt-1.5 min-w-0">
-                                <div class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white flex-shrink-0" style="background-color: ${profColor.main};">
-                                    ${safeProfName.charAt(0).toUpperCase()}
-                                </div>
-                                <p class="text-[9px] text-gray-400 truncate leading-none">${safeProfName.split(' ')[0]}</p>
-                            </div>
+                            <p class="font-bold text-[10px] text-gray-800 truncate leading-tight w-full">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
+                            <p class="text-[9px] text-gray-500 truncate mt-0.5 leading-tight w-full">${safeServiceName}</p>
+                            <p class="text-[8px] text-gray-400 truncate leading-none mt-1.5 w-full">${safeProfName.split(' ')[0]}</p>
                         </div>
                     </div>
                 `;
             }).join('');
         } else {
             eventsHTML += `
-                <div class="flex flex-col items-center justify-center pt-8 opacity-40">
-                    <svg class="w-6 h-6 text-gray-300 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <span class="text-[10px] font-medium text-gray-400">Livre</span>
+                <div class="flex flex-col items-center justify-center pt-8 opacity-40 min-w-0 w-full">
+                    <span class="text-[10px] font-medium text-gray-400 truncate">Livre</span>
                 </div>`;
         }
         eventsHTML += '</div>';
 
-        // Cabeçalho Premium e Sticky
         const headerClass = isCurrentDay 
             ? 'bg-indigo-600 text-white shadow-md' 
             : 'bg-gray-50/95 backdrop-blur-sm text-gray-700 border-b border-gray-200';
 
         weekHTML += `
             <div class="flex flex-col snap-start shrink-0 relative" style="${colStyle}">
-                <div class="sticky top-0 z-10 text-center py-2.5 ${headerClass}">
-                    <p class="text-[9px] uppercase tracking-widest font-bold opacity-80 mb-0.5">${weekDays[day.getDay()]}</p>
-                    <div class="flex items-baseline justify-center gap-0.5">
-                        <span class="text-xl font-extrabold leading-none">${day.getDate()}</span>
+                <div class="sticky top-0 z-10 text-center py-2 ${headerClass}">
+                    <p class="text-[9px] uppercase tracking-widest font-bold opacity-80 mb-0.5 leading-none">${weekDays[day.getDay()]}</p>
+                    <div class="flex items-baseline justify-center gap-0.5 mt-1">
+                        <span class="text-[16px] font-extrabold leading-none">${day.getDate()}</span>
                     </div>
                 </div>
                 ${eventsHTML}
@@ -362,7 +352,6 @@ function renderWeekView(allEvents) {
     weekHTML += '</div>';
     agendaView.innerHTML = weekHTML;
     
-    // Auto-Scroll suave para focar no "Hoje"
     setTimeout(() => {
         const container = agendaView.querySelector('.agenda-scroll-container');
         const todayCol = container?.querySelector('.bg-indigo-600');
@@ -439,10 +428,13 @@ async function fetchAndDisplayAgenda() {
         end = new Date(start);
         end.setDate(start.getDate() + (numDays - 1)); 
         end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = `${start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})} - ${end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'})}`;
+        
+        // MODIFICAÇÃO DE TEXTO DA SEMANA: Encurtado para DD/MM para não quebrar a tela do mobile
+        const startStr = start.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+        const endStr = end.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+        weekRangeSpan.textContent = `${startStr} a ${endStr}`;
     }
 
-    // --- Sincronizar o valor do input de Data com o estado atual ---
     const dateInput = document.getElementById('dateFilterInput');
     if (dateInput) {
         const d = localState.currentDate;
@@ -1382,57 +1374,75 @@ export async function loadAgendaPage(params = {}) {
         localState.currentView = 'list';
     }
 
+    // CABEÇALHO SUPER LIMPO: Todos os botões extra e filtros estão no botão "Opções".
+    // Data colada na descrição da semana e sem espaços brancos!
     contentDiv.innerHTML = `
+        <style>
+            .agenda-scroll-container::-webkit-scrollbar { display: none; }
+            .agenda-scroll-container { -ms-overflow-style: none; scrollbar-width: none; }
+            .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
+            .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+            
+            /* Switch toggle customizado */
+            .toggle-bg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.3s; }
+            #showInactiveProfsToggle:checked + .toggle-bg { background-color: #4f46e5; }
+            #showInactiveProfsToggle:checked + .toggle-bg::after { transform: translateX(100%); }
+        </style>
+        
         <section class="w-full flex flex-col gap-3 pb-20 overflow-hidden">
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 w-full flex-shrink-0">
+            
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 w-full flex-shrink-0 z-10 transition-all duration-300">
                 
-                <div class="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center mb-4 gap-3">
-                    <span id="weekRange" class="font-semibold text-lg w-full text-left sm:text-right sm:flex-grow order-1 sm:order-2"></span>
+                <div class="flex items-center justify-between gap-2 w-full">
                     
-                    <div class="flex flex-col sm:flex-row w-full sm:w-auto gap-3 order-2 sm:order-1">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span id="weekRange" class="font-bold text-gray-800 text-sm sm:text-base flex-shrink-0"></span>
+                        <input type="date" id="dateFilterInput" class="p-1 text-xs border border-gray-300 rounded-md shadow-sm text-gray-700 bg-white w-[110px] cursor-pointer flex-shrink-0" title="Ir para a data">
+                    </div>
+                    
+                    <button id="btn-toggle-filters" class="p-1.5 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center gap-1 flex-shrink-0" title="Filtros e Opções">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                        <span class="text-xs font-semibold hidden sm:inline">Opções</span>
+                    </button>
+                </div>
+
+                <div id="filters-panel" class="hidden flex-col gap-3 pt-3 mt-3 border-t border-gray-100">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="todayBtn" class="p-1.5 px-3 border rounded-md shadow-sm text-xs font-semibold bg-white text-gray-700 hover:bg-gray-50">Hoje</button>
                         
-                        <div class="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto">
-                            <button id="btn-toggle-select" class="p-2 border rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1" title="Selecionar Múltiplos">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                                <span class="hidden sm:inline">Selecionar</span>
-                            </button>
-                            
-                            <div class="flex items-center gap-1 rounded-lg bg-gray-200 p-1">
-                                <button data-view="list" class="view-btn ${localState.currentView === 'list' ? 'active' : ''}">Lista</button>
-                                <button data-view="week" class="view-btn ${localState.currentView === 'week' ? 'active' : ''}">Semana</button>
-                            </div>
-                            <div id="week-days-toggle" class="${localState.currentView === 'week' ? 'hidden sm:flex' : 'hidden'} items-center gap-1 rounded-lg bg-gray-200 p-1">
-                                <button data-days="3" class="week-days-btn view-btn">3 dias</button>
-                                <button data-days="5" class="week-days-btn view-btn hidden sm:block">5 dias</button>
-                                <button data-days="7" class="week-days-btn view-btn active hidden sm:block">7 dias</button>
-                            </div>
+                        <div class="flex items-center gap-1 rounded-md bg-gray-200 p-1">
+                            <button data-view="list" class="view-btn text-xs px-3 py-1 rounded-sm ${localState.currentView === 'list' ? 'bg-white shadow-sm' : 'text-gray-600'}">Lista</button>
+                            <button data-view="week" class="view-btn text-xs px-3 py-1 rounded-sm ${localState.currentView === 'week' ? 'bg-white shadow-sm' : 'text-gray-600'}">Semana</button>
                         </div>
                         
-                        <div class="flex items-center gap-2 w-full sm:w-auto mt-1 sm:mt-0">
-                            <input type="date" id="dateFilterInput" class="flex-1 min-w-0 p-2 border rounded-md shadow-sm text-sm text-gray-700 bg-white" title="Ir para a data">
-                            <button id="todayBtn" class="p-2 border rounded-md shadow-sm font-semibold bg-white flex-shrink-0 text-gray-700">Hoje</button>
+                        <div id="week-days-toggle" class="${localState.currentView === 'week' ? 'flex' : 'hidden'} items-center gap-1 rounded-md bg-gray-200 p-1">
+                            <button data-days="3" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm">3 dias</button>
+                            <button data-days="5" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm hidden sm:block">5 dias</button>
+                            <button data-days="7" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm hidden sm:block">7 dias</button>
                         </div>
-                        
+
+                        <button id="btn-toggle-select" class="p-1.5 px-3 border rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1 text-xs font-semibold transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                            Excluir Múltiplos
+                        </button>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <input type="search" id="profSearchInput" placeholder="Pesquisar profissional pelo nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        <label class="flex items-center gap-2 cursor-pointer flex-shrink-0">
+                            <div class="relative">
+                                <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
+                                <div class="toggle-bg block bg-gray-300 w-10 h-5 rounded-full"></div>
+                            </div>
+                            <span class="text-xs font-medium text-gray-700">Exibir Inativos</span>
+                        </label>
                     </div>
                 </div>
-                
-                <div class="border-t border-gray-100 -mx-4 mb-4"></div>
 
-                <div>
-                     <div class="prof-search-bar flex flex-col sm:flex-row sm:items-center gap-4">
-                         <input type="search" id="profSearchInput" placeholder="Pesquisar profissional por nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm min-w-0 text-sm">
-                         <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 self-start sm:self-center">
-                             <div class="relative">
-                                 <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
-                                 <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div>
-                             </div>
-                             <span class="text-sm font-medium text-gray-700">Inativos</span>
-                         </label>
-                     </div>
-                     
-                     <div id="profSelectorContainer" class="prof-selector-container mt-3">
+                <div class="border-t border-gray-100 mt-3 pt-2">
+                    <div id="profSelectorContainer" class="flex overflow-x-auto custom-scrollbar pb-2 items-start gap-2">
                         <div class="loader mx-auto"></div>
-                     </div>
+                    </div>
                 </div>
 
             </div> 
@@ -1448,6 +1458,20 @@ export async function loadAgendaPage(params = {}) {
             <div id="batch-delete-container" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
         </section>`;
 
+    // --- CONTROLE DO BOTÃO DE FILTROS ---
+    const btnToggleFilters = document.getElementById('btn-toggle-filters');
+    const filtersPanel = document.getElementById('filters-panel');
+    if (btnToggleFilters && filtersPanel) {
+        btnToggleFilters.addEventListener('click', () => {
+            filtersPanel.classList.toggle('hidden');
+            filtersPanel.classList.toggle('flex');
+            
+            btnToggleFilters.classList.toggle('bg-blue-50');
+            btnToggleFilters.classList.toggle('text-blue-600');
+            btnToggleFilters.classList.toggle('border-blue-300');
+        });
+    }
+
     // --- SELEÇÃO DE ITENS E AÇÕES EM LOTE ---
     const toggleSelectBtn = document.getElementById('btn-toggle-select');
     toggleSelectBtn.addEventListener('click', () => {
@@ -1457,27 +1481,30 @@ export async function loadAgendaPage(params = {}) {
         }
         toggleSelectBtn.classList.toggle('bg-blue-100', localState.isSelectionMode);
         toggleSelectBtn.classList.toggle('text-blue-700', localState.isSelectionMode);
+        toggleSelectBtn.classList.toggle('border-blue-300', localState.isSelectionMode);
         renderAgenda(); 
     });
 
     // --- EVENTOS GERAIS DA PÁGINA ---
     document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
+            btn.classList.add('bg-white', 'shadow-sm');
             localState.currentView = btn.dataset.view;
 
             const weekDaysToggle = document.getElementById('week-days-toggle');
             if (localState.currentView === 'week') {
-                weekDaysToggle.className = 'hidden sm:flex items-center gap-1 rounded-lg bg-gray-200 p-1';
+                weekDaysToggle.classList.remove('hidden');
+                weekDaysToggle.classList.add('flex');
                 if (window.innerWidth < 768) {
                     localState.weekViewDays = 7;
-                    document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
                     const btn7dias = document.querySelector('.week-days-btn[data-days="7"]');
-                    if (btn7dias) btn7dias.classList.add('active');
+                    if (btn7dias) btn7dias.classList.add('bg-white', 'shadow-sm');
                 }
             } else {
-                weekDaysToggle.className = 'hidden items-center gap-1 rounded-lg bg-gray-200 p-1';
+                weekDaysToggle.classList.remove('flex');
+                weekDaysToggle.classList.add('hidden');
             }
             fetchAndDisplayAgenda();
         });
@@ -1485,8 +1512,8 @@ export async function loadAgendaPage(params = {}) {
 
     document.querySelectorAll('.week-days-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
+            btn.classList.add('bg-white', 'shadow-sm');
             localState.weekViewDays = parseInt(btn.dataset.days, 10);
             fetchAndDisplayAgenda();
         });
@@ -1549,7 +1576,10 @@ export async function loadAgendaPage(params = {}) {
                         showNotification(`${successCount} agendamento(s) excluído(s).`, 'success');
                         localState.selectedItems.clear();
                         localState.isSelectionMode = false;
-                        document.getElementById('btn-toggle-select').classList.remove('bg-blue-100', 'text-blue-700');
+                        const btnToggleSelect = document.getElementById('btn-toggle-select');
+                        if (btnToggleSelect) {
+                            btnToggleSelect.classList.remove('bg-blue-100', 'text-blue-700', 'border-blue-300');
+                        }
                         fetchAndDisplayAgenda();
                     } catch (error) {
                         showNotification('Erro ao processar exclusão em lote.', 'error');

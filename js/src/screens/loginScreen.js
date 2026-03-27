@@ -1,16 +1,16 @@
-//src\screens\login.Screen.js
+// src\screens\login.Screen.js
 import React, { useState, useEffect } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { initializeApp } from "firebase/app";
-// --- CORREÇÃO 1: Adicionamos setPersistence e browserLocalPersistence aos imports ---
 import { getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+// --- NOVO: Importações do Firestore para buscar a hierarquia Multi-Tenant ---
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 
 // Registar os componentes do Chart.js que vamos usar
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// --- CORREÇÃO 2: CONFIGURAÇÃO UNIFICADA DO FIREBASE (kairos-agenda-us) ---
-// Esta configuração DEVE ser a mesma do firebase-messaging-sw.js e do firebase-config.js
+// CONFIGURAÇÃO UNIFICADA DO FIREBASE (kairos-agenda-us)
 const firebaseConfig = {
     apiKey: "AIzaSyAxiJ2ssSvD7IlNKF5dXzYYD4lg7Zs4yeo",
     authDomain: "kairos-agenda-us.firebaseapp.com",
@@ -22,6 +22,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app); // Inicialização do Firestore
 
 // --- Ícones para a Barra de Navegação e UI (SVG) ---
 const icons = {
@@ -68,33 +69,78 @@ const LoginScreen = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-        // --- CORREÇÃO 3: Persistência Local ---
-        // Garante que o login sobreviva ao fechar o PWA no celular
         await setPersistence(auth, browserLocalPersistence);
-
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
-        const idTokenResult = await user.getIdTokenResult();
-        const claims = idTokenResult.claims;
 
-        if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
-            const userData = { 
-                name: user.displayName, 
+        // --- IMPLEMENTAÇÃO ENTERPRISE (MULTI-TENANT 3 NÍVEIS) ---
+        // Vamos buscar as permissões e hierarquia diretamente ao documento do utilizador no Firestore
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+
+        let userData = null;
+
+        if (userDocSnap.exists()) {
+            const dbData = userDocSnap.data();
+            
+            // Monta o objeto com a nova arquitetura
+            userData = {
+                name: user.displayName || dbData.name || 'Utilizador',
                 email: user.email,
                 uid: user.uid,
                 token: await user.getIdToken(),
-                establishmentId: claims.establishmentId
+                
+                // Dados Multi-Tenant (Se não existirem, define defaults seguros)
+                role: dbData.role || 'professional',
+                groupId: dbData.groupId || null,
+                groupName: dbData.groupName || 'A Minha Rede',
+                accessibleCompanies: dbData.accessibleCompanies || [],
+                accessibleEstablishments: dbData.accessibleEstablishments || [],
+                
+                // Fallback para ecrãs antigos que ainda pedem `user.establishmentId`
+                establishmentId: dbData.accessibleEstablishments?.length > 0 
+                                 ? dbData.accessibleEstablishments[0].id 
+                                 : (dbData.establishmentId || null)
             };
+
+            // Se o utilizador for profissional mas não estiver associado a lado nenhum
+            if (!userData.groupId && !userData.establishmentId) {
+                 setErrorMessage('Acesso negado. A sua conta não está vinculada a nenhuma empresa.');
+                 await signOut(auth);
+                 return;
+            }
+
             onLoginSuccess(userData);
         } else {
-            setErrorMessage('Acesso negado. Permissões insuficientes.');
-            await signOut(auth);
+            // --- FALLBACK (SISTEMA ANTIGO) ---
+            // Se não houver documento Firestore, tenta usar os Custom Claims antigos.
+            const idTokenResult = await user.getIdTokenResult();
+            const claims = idTokenResult.claims;
+
+            if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+                userData = { 
+                    name: user.displayName, 
+                    email: user.email,
+                    uid: user.uid,
+                    token: await user.getIdToken(),
+                    role: claims.role,
+                    establishmentId: claims.establishmentId,
+                    // Campos simulados para o código não quebrar
+                    groupId: null,
+                    accessibleCompanies: [],
+                    accessibleEstablishments: [{ id: claims.establishmentId, name: 'Unidade Principal' }]
+                };
+                onLoginSuccess(userData);
+            } else {
+                setErrorMessage('Acesso negado. Perfil não configurado no sistema.');
+                await signOut(auth);
+            }
         }
     } catch (error) {
         if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
             setErrorMessage('E-mail ou senha inválidos.');
         } else {
-            setErrorMessage('Ocorreu um erro ao tentar entrar.');
+            setErrorMessage('Ocorreu um erro ao tentar entrar. Verifique a sua ligação.');
             console.error("Erro de login:", error);
         }
     } finally {
@@ -107,7 +153,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
       <div className="w-full max-w-md">
         <div className="text-center mb-12 px-6">
           <h1 className="text-3xl font-bold text-gray-50">Acesso ao Painel</h1>
-          <p className="text-base text-gray-400 mt-2">Administre o seu estabelecimento</p>
+          <p className="text-base text-gray-400 mt-2">Administre a sua rede</p>
         </div>
         <div className="px-6">
           <div className="mb-5">
@@ -123,7 +169,7 @@ const LoginScreen = ({ onLoginSuccess }) => {
             {isLoading ? (
               <div className="flex justify-center items-center">
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                A entrar...
+                A autenticar...
               </div>
             ) : ('Entrar')}
           </button>
@@ -159,6 +205,8 @@ const AppointmentModal = ({ isOpen, onClose, onSave, appointmentToEdit, user }) 
             services: [mockService],
             professionalId: mockProfessional.id,
             startTime: new Date(`${new Date().toISOString().split('T')[0]}T${time}:00`).toISOString(),
+            // Adicionamos o campo base do establishmentId para a API saber onde gravar
+            establishmentId: user.establishmentId
         };
 
         await onSave(appointmentData);
@@ -210,7 +258,11 @@ const AgendaScreen = ({ user }) => {
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(currentDate);
       endOfDay.setHours(23, 59, 59, 999);
-      const url = `/api/appointments/${user.establishmentId}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`;
+      
+      // Quando for ALL, a sua API deve suportar buscar pela Rede Inteira
+      const establishmentQuery = user.establishmentId || 'ALL';
+      
+      const url = `/api/appointments/${establishmentQuery}?startDate=${startOfDay.toISOString()}&endDate=${endOfDay.toISOString()}`;
       const response = await fetch(url, { headers: { 'Authorization': `Bearer ${user.token}` } });
       if (!response.ok) {
           const err = await response.json();
@@ -413,7 +465,8 @@ const ComandasScreen = ({ user }) => {
         setIsLoading(true);
         setError(null);
         try {
-            const url = `/api/comandas/${user.establishmentId}`;
+            const establishmentQuery = user.establishmentId || 'ALL';
+            const url = `/api/comandas/${establishmentQuery}`;
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${user.token}` }
             });
@@ -498,7 +551,8 @@ const RelatoriosScreen = ({ user }) => {
             setIsLoading(true);
             setError(null);
             try {
-                const url = `/api/analytics/${user.establishmentId}`;
+                const establishmentQuery = user.establishmentId || 'ALL';
+                const url = `/api/analytics/${establishmentQuery}`;
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${user.token}` }
                 });
@@ -560,35 +614,42 @@ const RelatoriosScreen = ({ user }) => {
     );
 };
 
-// --- NOVO: Ecrã de Gestão ---
+// --- Ecrã de Gestão ---
 const GestaoScreen = ({ user, onLogout, onNavigate }) => {
     return (
         <div className="p-4 space-y-6">
-            {/* Perfil do Usuário */}
-            <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
-                <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-3xl">
+            {/* Perfil do Usuário e Contexto Multi-Tenant */}
+            <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-2 h-full bg-blue-500"></div>
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center text-blue-600 font-bold text-3xl border-2 border-blue-100">
                     {user.name.charAt(0).toUpperCase()}
                 </div>
-                <div>
+                <div className="flex-1">
                     <h3 className="font-bold text-xl text-gray-900">{user.name}</h3>
-                    <p className="text-gray-600">{user.email}</p>
+                    <p className="text-xs text-gray-500 mb-1">{user.email}</p>
+                    <span className="inline-block bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border border-blue-200">
+                        {user.role === 'group_admin' ? 'Administrador Geral' : user.role === 'company_admin' ? 'Gestor de Empresa' : 'Profissional'}
+                    </span>
                 </div>
             </div>
 
             {/* Menu de Gestão */}
             <div className="bg-white rounded-lg shadow-md">
-                <button onClick={() => onNavigate('Servicos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Serviços</button>
-                <button className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50">Gerir Produtos</button>
-                <button className="w-full text-left p-4 text-gray-700 hover:bg-gray-50">Gerir Equipa</button>
+                <button onClick={() => onNavigate('Servicos')} className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50 font-medium">Serviços e Catálogo</button>
+                <button className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50 font-medium">Produtos e Inventário</button>
+                <button className="w-full text-left p-4 border-b text-gray-700 hover:bg-gray-50 font-medium">Equipa e Comissões</button>
+                {user.role === 'group_admin' && (
+                     <button className="w-full text-left p-4 text-indigo-700 hover:bg-indigo-50 font-bold">Gerir Múltiplas Filiais</button>
+                )}
             </div>
 
             {/* Ações */}
             <div className="pt-4">
                  <button 
                     onClick={onLogout}
-                    className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition-colors"
+                    className="w-full bg-white border border-red-200 text-red-600 font-bold py-3 rounded-lg hover:bg-red-50 transition-colors shadow-sm"
                 >
-                    Sair
+                    Sair da Conta
                 </button>
             </div>
         </div>
@@ -624,9 +685,6 @@ const MainScreen = ({ user, onLogout }) => {
         switch (currentManagementScreen) {
             case 'menu':
                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
-            // Adicionar cases para outros ecrãs de gestão aqui
-            // case 'Servicos':
-            //     return <ServicosScreen user={user} onBack={() => setCurrentManagementScreen('menu')} />;
             default:
                 return <GestaoScreen user={user} onLogout={onLogout} onNavigate={handleManagementNavigation} />;
         }
@@ -637,22 +695,29 @@ const MainScreen = ({ user, onLogout }) => {
 
   return (
     <div className="h-screen w-full flex flex-col bg-gray-100 font-sans">
-      <header className="bg-white shadow-md p-4">
-        <h1 className="text-xl font-bold text-gray-900 text-center">
-            {activeTab === 'Gestão' ? (currentManagementScreen === 'menu' ? 'Gestão' : currentManagementScreen) : activeTab}
+      <header className="bg-white shadow-sm p-4 border-b border-gray-200 flex justify-between items-center">
+        <h1 className="text-xl font-bold text-gray-900">
+            {activeTab === 'Gestão' ? (currentManagementScreen === 'menu' ? 'Definições' : currentManagementScreen) : activeTab}
         </h1>
+        {/* Placeholder do Dropdown Multi-Tenant - A ser implementado no UI Navigation */}
+        {user.groupName && (
+             <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100 truncate max-w-[120px]">
+                {user.groupName}
+             </span>
+        )}
       </header>
 
       <main className="flex-1 overflow-y-auto">
         {renderContent()}
       </main>
 
-      <nav className="bg-white border-t border-gray-200">
+      <nav className="bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20">
         <div className="flex justify-around max-w-md mx-auto">
           {tabs.map(tab => (
-            <button key={tab.name} onClick={() => { setActiveTab(tab.name); setCurrentManagementScreen('menu'); }} className="flex-1 flex flex-col items-center justify-center py-2 transition-colors">
-              {icons[tab.icon](activeTab === tab.name ? '#3B82F6' : '#6B7280')}
-              <span className={`text-xs mt-1 ${activeTab === tab.name ? 'text-blue-600 font-bold' : 'text-gray-500'}`}>
+            <button key={tab.name} onClick={() => { setActiveTab(tab.name); setCurrentManagementScreen('menu'); }} className="flex-1 flex flex-col items-center justify-center py-3 transition-colors relative">
+              {activeTab === tab.name && <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-blue-600 rounded-b-md"></div>}
+              {icons[tab.icon](activeTab === tab.name ? '#2563EB' : '#9CA3AF')}
+              <span className={`text-[10px] mt-1 ${activeTab === tab.name ? 'text-blue-600 font-bold' : 'text-gray-500 font-medium'}`}>
                 {tab.name}
               </span>
             </button>

@@ -1,15 +1,14 @@
-// routes/analytics.js
+// routes/analytics.js (Otimizado para Arquitetura Enterprise 3-Tier)
 
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// --- FUNÇÃO AUXILIAR DE ERRO (PADRÃO OTIMIZADO) ---
+// --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
     console.error(`----------- ERRO NO BACKEND (${context}) -----------`);
     console.error(error);
     
-    // Extrai o link de criação de índice
     const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
     const indexLink = linkMatch ? linkMatch[0] : null;
 
@@ -22,23 +21,20 @@ function handleFirestoreError(res, error, context) {
     return res.status(500).json({ message: `Ocorreu um erro no servidor ao processar ${context}.` });
 }
 
-// Helper para converter data UTC do banco para o fuso do estabelecimento
 function getDateInTimezone(dateObj, timezone) {
     if (!dateObj) return new Date();
-    // Converte para string no fuso local e recria o objeto Date
     const localString = dateObj.toLocaleString("en-US", { timeZone: timezone });
     return new Date(localString);
 }
 
 // =======================================================================
-// 📊 ROTAS DE ANALYTICS
+// 📊 ROTAS DE ANALYTICS MULTI-TENANT
 // =======================================================================
 
 // 1. DASHBOARD PRINCIPAL
-router.get('/:establishmentId', async (req, res) => {
-    // console.log(`[ANALYTICS] Geral: ${req.params.establishmentId}`); // Log opcional
-    const { establishmentId } = req.params;
-    const { startDate, endDate } = req.query;
+router.get('/:contextId', async (req, res) => {
+    const { contextId } = req.params;
+    const { startDate, endDate, contextType = 'BRANCH' } = req.query;
 
     if (!startDate || !endDate) {
         return res.status(400).json({ message: 'As datas de início e fim são obrigatórias.' });
@@ -47,30 +43,41 @@ router.get('/:establishmentId', async (req, res) => {
     try {
         const { db } = req;
         
-        // 1. Busca Timezone (Leitura leve)
-        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+        let timezone = 'America/Sao_Paulo';
+        if (contextType === 'BRANCH') {
+            const establishmentDoc = await db.collection('establishments').doc(contextId).get();
+            timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+        }
 
         const start = admin.firestore.Timestamp.fromDate(new Date(startDate));
         const end = admin.firestore.Timestamp.fromDate(new Date(endDate + "T23:59:59"));
 
-        // 2. Buscas Otimizadas (.select)
-        // Trazemos apenas campos essenciais para contagem e soma
-        const [apptSnap, salesSnap] = await Promise.all([
-            db.collection('appointments')
-                .where('establishmentId', '==', establishmentId)
-                .where('startTime', '>=', start)
-                .where('startTime', '<=', end)
-                .where('status', '==', 'completed')
-                .select('startTime', 'transaction', 'totalAmount', 'services', 'comandaItems') // <--- OTIMIZAÇÃO
-                .get(),
-            db.collection('sales')
-                .where('establishmentId', '==', establishmentId)
-                .where('startTime', '>=', start)
-                .where('startTime', '<=', end)
-                .select('startTime', 'transaction', 'totalAmount', 'items') // <--- OTIMIZAÇÃO
-                .get()
-        ]);
+        // Montagem Dinâmica da Query Baseada no Contexto
+        let apptQuery = db.collection('appointments')
+            .where('status', '==', 'completed')
+            .where('startTime', '>=', start)
+            .where('startTime', '<=', end);
+
+        let salesQuery = db.collection('sales')
+            .where('startTime', '>=', start)
+            .where('startTime', '<=', end);
+
+        if (contextType === 'GROUP') {
+            apptQuery = apptQuery.where('groupId', '==', contextId);
+            salesQuery = salesQuery.where('groupId', '==', contextId);
+        } else if (contextType === 'COMPANY') {
+            apptQuery = apptQuery.where('companyId', '==', contextId);
+            salesQuery = salesQuery.where('companyId', '==', contextId);
+        } else {
+            apptQuery = apptQuery.where('establishmentId', '==', contextId);
+            salesQuery = salesQuery.where('establishmentId', '==', contextId);
+        }
+
+        // Seleção de campos otimizada
+        apptQuery = apptQuery.select('startTime', 'transaction', 'totalAmount', 'services', 'comandaItems');
+        salesQuery = salesQuery.select('startTime', 'transaction', 'totalAmount', 'items');
+
+        const [apptSnap, salesSnap] = await Promise.all([apptQuery.get(), salesQuery.get()]);
         
         let totalRevenue = 0;
         const itemCount = {};
@@ -81,10 +88,7 @@ router.get('/:establishmentId', async (req, res) => {
             const data = doc.data();
             if (!data.startTime) return; 
             
-            // Conversão de Fuso
-            const transactionTimeUtc = data.startTime.toDate();
-            const transactionTimeLocal = getDateInTimezone(transactionTimeUtc, timezone);
-
+            const transactionTimeLocal = getDateInTimezone(data.startTime.toDate(), timezone);
             const monthKey = `${transactionTimeLocal.getFullYear()}-${transactionTimeLocal.getMonth()}`;
             
             if (!transactionsByMonth[monthKey]) {
@@ -128,42 +132,48 @@ router.get('/:establishmentId', async (req, res) => {
 });
 
 // 2. DETALHES MENSAIS
-router.get('/:establishmentId/monthly-details', async (req, res) => {
-    const { establishmentId } = req.params;
-    const { year, month } = req.query;
+router.get('/:contextId/monthly-details', async (req, res) => {
+    const { contextId } = req.params;
+    const { year, month, contextType = 'BRANCH' } = req.query;
 
     if (!year || !month) return res.status(400).json({ message: 'Ano e mês obrigatórios.' });
 
     try {
         const { db } = req;
         
-        const establishmentDoc = await db.collection('establishments').doc(establishmentId).get();
-        const timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+        let timezone = 'America/Sao_Paulo';
+        if (contextType === 'BRANCH') {
+            const establishmentDoc = await db.collection('establishments').doc(contextId).get();
+            timezone = establishmentDoc.exists ? (establishmentDoc.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
+        }
 
         const startDate = new Date(year, month, 1);
         const endDate = new Date(year, parseInt(month) + 1, 0, 23, 59, 59);
         const startTs = admin.firestore.Timestamp.fromDate(startDate);
         const endTs = admin.firestore.Timestamp.fromDate(endDate);
 
-        // Otimização: Select fields
+        let apptQuery = db.collection('appointments').where('status', '==', 'completed').where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+        let salesQuery = db.collection('sales').where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+        let profQuery = db.collection('professionals');
+
+        if (contextType === 'GROUP') {
+            apptQuery = apptQuery.where('groupId', '==', contextId);
+            salesQuery = salesQuery.where('groupId', '==', contextId);
+            profQuery = profQuery.where('groupId', '==', contextId);
+        } else if (contextType === 'COMPANY') {
+            apptQuery = apptQuery.where('companyId', '==', contextId);
+            salesQuery = salesQuery.where('companyId', '==', contextId);
+            profQuery = profQuery.where('companyId', '==', contextId);
+        } else {
+            apptQuery = apptQuery.where('establishmentId', '==', contextId);
+            salesQuery = salesQuery.where('establishmentId', '==', contextId);
+            profQuery = profQuery.where('establishmentId', '==', contextId);
+        }
+
         const [apptSnap, salesSnap, profSnap] = await Promise.all([
-            db.collection('appointments')
-                .where('establishmentId', '==', establishmentId)
-                .where('status', '==', 'completed')
-                .where('startTime', '>=', startTs)
-                .where('startTime', '<=', endTs)
-                .select('startTime', 'transaction', 'totalAmount', 'services', 'comandaItems', 'professionalId', 'professionalName') 
-                .get(),
-            db.collection('sales')
-                .where('establishmentId', '==', establishmentId)
-                .where('startTime', '>=', startTs)
-                .where('startTime', '<=', endTs)
-                .select('startTime', 'transaction', 'totalAmount', 'items', 'professionalId', 'professionalName')
-                .get(),
-            db.collection('professionals')
-                .where('establishmentId', '==', establishmentId)
-                .select('name') // Só precisamos do nome
-                .get()
+            apptQuery.select('startTime', 'transaction', 'totalAmount', 'services', 'comandaItems', 'professionalId', 'professionalName').get(),
+            salesQuery.select('startTime', 'transaction', 'totalAmount', 'items', 'professionalId', 'professionalName').get(),
+            profQuery.select('name').get()
         ]);
         
         let revenueByDay = {};
@@ -216,9 +226,9 @@ router.get('/:establishmentId/monthly-details', async (req, res) => {
 });
 
 // 3. DETALHES DIÁRIOS
-router.get('/:establishmentId/daily-details', async (req, res) => {
-    const { establishmentId } = req.params;
-    const { year, month, day, professionalId: filterProfessionalId } = req.query; 
+router.get('/:contextId/daily-details', async (req, res) => {
+    const { contextId } = req.params;
+    const { year, month, day, professionalId: filterProfessionalId, contextType = 'BRANCH' } = req.query; 
 
     if (!year || !month || !day) return res.status(400).json({ message: 'Data completa obrigatória.' });
 
@@ -229,36 +239,36 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
         const startTs = admin.firestore.Timestamp.fromDate(startDate);
         const endTs = admin.firestore.Timestamp.fromDate(endDate);
 
-        // Queries base
-        let apptQuery = db.collection('appointments')
-            .where('establishmentId', '==', establishmentId)
-            .where('status', '==', 'completed')
-            .where('startTime', '>=', startTs)
-            .where('startTime', '<=', endTs)
-            .select('startTime', 'clientName', 'professionalName', 'professionalId', 'services', 'comandaItems', 'transaction.totalAmount', 'cashierSessionId');
-            
-        let salesQuery = db.collection('sales')
-            .where('establishmentId', '==', establishmentId)
-            .where('startTime', '>=', startTs)
-            .where('startTime', '<=', endTs)
-            .select('startTime', 'clientName', 'professionalName', 'professionalId', 'items', 'totalAmount', 'cashierSessionId');
+        let apptQuery = db.collection('appointments').where('status', '==', 'completed').where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+        let salesQuery = db.collection('sales').where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+        let profQuery = db.collection('professionals');
+
+        if (contextType === 'GROUP') {
+            apptQuery = apptQuery.where('groupId', '==', contextId);
+            salesQuery = salesQuery.where('groupId', '==', contextId);
+            profQuery = profQuery.where('groupId', '==', contextId);
+        } else if (contextType === 'COMPANY') {
+            apptQuery = apptQuery.where('companyId', '==', contextId);
+            salesQuery = salesQuery.where('companyId', '==', contextId);
+            profQuery = profQuery.where('companyId', '==', contextId);
+        } else {
+            apptQuery = apptQuery.where('establishmentId', '==', contextId);
+            salesQuery = salesQuery.where('establishmentId', '==', contextId);
+            profQuery = profQuery.where('establishmentId', '==', contextId);
+        }
             
         if (filterProfessionalId && filterProfessionalId !== 'all') {
             apptQuery = apptQuery.where('professionalId', '==', filterProfessionalId);
             salesQuery = salesQuery.where('professionalId', '==', filterProfessionalId);
         }
 
-        const [apptSnap, salesSnap, profSnap, sessionSnap] = await Promise.all([
-            apptQuery.get(),
-            salesQuery.get(),
-            db.collection('professionals').where('establishmentId', '==', establishmentId).select('name').get(),
-            // Sessões de caixa apenas do dia (se possível filtrar) ou todas do estab.
-            // Para garantir, pegamos todas pois o volume é baixo, mas limitando campos.
-            db.collection('cashierSessions').where('establishmentId', '==', establishmentId).select('openedByName', 'closedByName').get()
+        const [apptSnap, salesSnap, profSnap] = await Promise.all([
+            apptQuery.select('startTime', 'clientName', 'professionalName', 'professionalId', 'services', 'comandaItems', 'transaction.totalAmount', 'cashierSessionId').get(),
+            salesQuery.select('startTime', 'clientName', 'professionalName', 'professionalId', 'items', 'totalAmount', 'cashierSessionId').get(),
+            profQuery.select('name').get()
         ]);
 
         const professionalsMap = new Map(profSnap.docs.map(doc => [doc.id, doc.data().name]));
-        const cashierSessionMap = new Map(sessionSnap.docs.map(doc => [doc.id, doc.data().openedByName || doc.data().closedByName || 'N/A']));
         
         let allTransactions = [];
         let totalRevenue = 0;
@@ -269,9 +279,7 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
             totalRevenue += value;
             
             const professionalName = data.professionalName || professionalsMap.get(data.professionalId) || 'N/A';
-            const items = type === 'appointment' 
-                ? [...(data.services || []), ...(data.comandaItems || [])] 
-                : (data.items || []);
+            const items = type === 'appointment' ? [...(data.services || []), ...(data.comandaItems || [])] : (data.items || []);
 
             allTransactions.push({
                 date: data.startTime.toDate(),
@@ -279,14 +287,12 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
                 professionalName,
                 items: items.map(i => i.name).join(', '),
                 value,
-                type: type === 'appointment' ? 'Agendamento' : 'Venda Avulsa',
-                responsavelCaixa: cashierSessionMap.get(data.cashierSessionId) || 'Não definido'
+                type: type === 'appointment' ? 'Agendamento' : 'Venda Avulsa'
             });
         };
 
         apptSnap.forEach(doc => processItem(doc, 'appointment'));
         salesSnap.forEach(doc => processItem(doc, 'sale'));
-        
         allTransactions.sort((a, b) => a.date - b.date);
         
         res.status(200).json({
@@ -300,9 +306,9 @@ router.get('/:establishmentId/daily-details', async (req, res) => {
 });
 
 // 4. DETALHES POR PROFISSIONAL
-router.get('/:establishmentId/professional-details', async (req, res) => {
-    const { establishmentId } = req.params;
-    const { year, month, professionalId } = req.query;
+router.get('/:contextId/professional-details', async (req, res) => {
+    const { contextId } = req.params;
+    const { year, month, professionalId, contextType = 'BRANCH' } = req.query;
 
     if (!year || !month || !professionalId) return res.status(400).json({ message: 'Parâmetros insuficientes.' });
 
@@ -313,23 +319,23 @@ router.get('/:establishmentId/professional-details', async (req, res) => {
         const startTs = admin.firestore.Timestamp.fromDate(startDate);
         const endTs = admin.firestore.Timestamp.fromDate(endDate);
 
-        // Otimização: .select
+        let apptQuery = db.collection('appointments').where('status', '==', 'completed').where('professionalId', '==', professionalId).where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+        let salesQuery = db.collection('sales').where('professionalId', '==', professionalId).where('startTime', '>=', startTs).where('startTime', '<=', endTs);
+
+        if (contextType === 'GROUP') {
+            apptQuery = apptQuery.where('groupId', '==', contextId);
+            salesQuery = salesQuery.where('groupId', '==', contextId);
+        } else if (contextType === 'COMPANY') {
+            apptQuery = apptQuery.where('companyId', '==', contextId);
+            salesQuery = salesQuery.where('companyId', '==', contextId);
+        } else {
+            apptQuery = apptQuery.where('establishmentId', '==', contextId);
+            salesQuery = salesQuery.where('establishmentId', '==', contextId);
+        }
+
         const [apptSnap, salesSnap] = await Promise.all([
-             db.collection('appointments')
-                 .where('establishmentId', '==', establishmentId)
-                 .where('status', '==', 'completed')
-                 .where('professionalId', '==', professionalId)
-                 .where('startTime', '>=', startTs)
-                 .where('startTime', '<=', endTs)
-                 .select('startTime', 'clientName', 'services', 'comandaItems', 'transaction.totalAmount')
-                 .get(),
-             db.collection('sales')
-                 .where('establishmentId', '==', establishmentId)
-                 .where('professionalId', '==', professionalId)
-                 .where('startTime', '>=', startTs)
-                 .where('startTime', '<=', endTs)
-                 .select('startTime', 'clientName', 'items', 'totalAmount')
-                 .get()
+             apptQuery.select('startTime', 'clientName', 'services', 'comandaItems', 'transaction.totalAmount').get(),
+             salesQuery.select('startTime', 'clientName', 'items', 'totalAmount').get()
         ]);
         
         let allTransactions = [];
@@ -339,10 +345,7 @@ router.get('/:establishmentId/professional-details', async (req, res) => {
             const data = doc.data();
             const value = Number(type === 'appointment' ? data.transaction?.totalAmount : data.totalAmount) || 0;
             totalRevenue += value;
-            
-            const items = type === 'appointment' 
-                ? [...(data.services || []), ...(data.comandaItems || [])] 
-                : (data.items || []);
+            const items = type === 'appointment' ? [...(data.services || []), ...(data.comandaItems || [])] : (data.items || []);
 
             allTransactions.push({
                 date: data.startTime.toDate(),
@@ -355,7 +358,6 @@ router.get('/:establishmentId/professional-details', async (req, res) => {
 
         apptSnap.forEach(doc => processItem(doc, 'appointment'));
         salesSnap.forEach(doc => processItem(doc, 'sale'));
-        
         allTransactions.sort((a, b) => a.date - b.date);
         
         res.status(200).json({
