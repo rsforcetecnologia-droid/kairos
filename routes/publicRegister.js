@@ -3,8 +3,6 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
-// ⚠️ CORREÇÃO: As aspas foram removidas para ler a variável de ambiente corretamente
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); 
 
 // ####################################################################
 // ### PERMISSÕES DO USUÁRIO MASTER ###
