@@ -4,38 +4,16 @@ import { authenticatedFetch } from './apiService.js';
 import { state } from '../state.js';
 
 // ============================================================================
-// 🏢 GESTÃO DA ARQUITETURA MULTI-TENANT (GRUPOS, EMPRESAS E FILIAIS)
+// 🏢 GESTÃO DA ARQUITETURA MULTI-TENANT (MATRIZ E FILIAIS)
 // ============================================================================
 
 /**
- * Cria um novo Grupo Económico (Nível 1)
- * @param {string} name - Nome do Grupo
+ * Cria um novo Estabelecimento (Matriz ou Filial)
+ * Se data.parentId for null/vazio, cria como Matriz Independente. 
+ * Se data.parentId tiver um ID válido, cria como Filial vinculada àquela Matriz.
+ * @param {object} data - Dados (name, cnpj, parentId, phone, address, timezone, etc)
  */
-export const createEconomicGroup = (name) => {
-    return authenticatedFetch(`/api/establishments/groups`, {
-        method: 'POST',
-        body: JSON.stringify({ name }),
-    });
-};
-
-/**
- * Cria uma nova Empresa / Matriz (Nível 2)
- * @param {string} name - Nome da Empresa
- * @param {string} cnpj - CNPJ da Empresa
- * @param {string} groupId - ID do Grupo Económico ao qual pertence
- */
-export const createCompany = (name, cnpj, groupId) => {
-    return authenticatedFetch(`/api/establishments/companies`, {
-        method: 'POST',
-        body: JSON.stringify({ name, cnpj, groupId }),
-    });
-};
-
-/**
- * Cria uma nova Filial (Nível 3)
- * @param {object} data - Dados da filial (name, companyId, groupId, phone, address, timezone)
- */
-export const createBranch = (data) => {
+export const createEstablishment = (data) => {
     return authenticatedFetch(`/api/establishments/`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -43,8 +21,8 @@ export const createBranch = (data) => {
 };
 
 /**
- * Busca a estrutura de hierarquia completa (Grupos > Empresas > Filiais)
- * O backend já decide se traz a árvore toda (group_admin) ou só o que o utilizador tem acesso.
+ * Busca a estrutura de hierarquia completa (Matrizes > Filiais)
+ * O backend já agrupa as filiais dentro do array 'branches' de suas matrizes.
  */
 export const getHierarchy = () => {
     return authenticatedFetch(`/api/establishments/hierarchy`, {
@@ -54,7 +32,7 @@ export const getHierarchy = () => {
 
 
 // ============================================================================
-// 📍 FUNÇÕES ESPECÍFICAS DA FILIAL (LEGADO MANTIDO)
+// 📍 FUNÇÕES ESPECÍFICAS DA FILIAL / MATRIZ
 // ============================================================================
 
 /**

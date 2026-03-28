@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-// [IMPORTANTE] Adicionado 'arrayUnion' para salvar tokens corretamente
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
@@ -69,7 +68,7 @@ import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
 import { loadMyProfilePage } from './ui/my-profile.js'; 
 
-// [NOVO] IMPORTAÇÃO DA TELA DE HIERARQUIA
+// [NOVO] IMPORTAÇÃO DA TELA DE HIERARQUIA (MATRIZ/FILIAIS)
 import { renderHierarchyScreen } from './ui/hierarchy.js'; 
 
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
@@ -90,7 +89,32 @@ const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const sidebar = document.getElementById('sidebar');
 const mobileOverlay = document.getElementById('mobile-overlay');
 
-// --- PALETA DE CORES EXPANDIDA ---
+// --- 3. MAPEAMENTO DE ROTAS ---
+const pageLoader = {
+    'agenda-section': loadAgendaPage,
+    'comandas-section': loadComandasPage,
+    'relatorios-section': loadReportsPage,
+    'servicos-section': loadServicesPage,
+    'produtos-section': loadProductsPage,
+    'suppliers-section': loadSuppliersPage,
+    'profissionais-section': loadProfessionalsPage,
+    'clientes-section': loadClientsPage,
+    'estabelecimento-section': (params) => loadEstablishmentPage(params), // Ajustado para receber parâmetros dinâmicos
+    'ausencias-section': loadAusenciasPage,
+    'users-section': loadUsersPage,
+    'sales-report-section': loadSalesReportPage,
+    'financial-section': loadFinancialPage,
+    'commissions-section': loadCommissionsPage,
+    'packages-section': loadPackagesPage,
+    'my-profile-section': loadMyProfilePage,
+    
+    // Rotas para a tela de Hierarquia e Gestão de Lojas
+    'hierarquia-section': () => renderHierarchyScreen(contentDiv),
+    'establishments-section': () => renderHierarchyScreen(contentDiv),
+};
+
+// --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
+
 const colorThemes = {
     indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' },
     blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
@@ -110,33 +134,6 @@ const colorThemes = {
     gray:   { main: '#4b5563', hover: '#374151', light: '#f3f4f6', text: '#ffffff' },
     black:  { main: '#111827', hover: '#000000', light: '#e5e7eb', text: '#ffffff' },
 };
-
-let unsubscribeNotificationsListener = null;
-let notifications = [];
-
-// --- 3. MAPEAMENTO DE ROTAS ---
-const pageLoader = {
-    'agenda-section': loadAgendaPage,
-    'comandas-section': loadComandasPage,
-    'relatorios-section': loadReportsPage,
-    'servicos-section': loadServicesPage,
-    'produtos-section': loadProductsPage,
-    'suppliers-section': loadSuppliersPage,
-    'profissionais-section': loadProfessionalsPage,
-    'clientes-section': loadClientsPage,
-    'estabelecimento-section': loadEstablishmentPage,
-    'ausencias-section': loadAusenciasPage,
-    'users-section': loadUsersPage,
-    'sales-report-section': loadSalesReportPage,
-    'financial-section': loadFinancialPage,
-    'commissions-section': loadCommissionsPage,
-    'packages-section': loadPackagesPage,
-    'my-profile-section': loadMyProfilePage,
-    // [NOVO] Adicionada a rota para a tela de Hierarquia
-    'hierarquia-section': () => renderHierarchyScreen(contentDiv),
-};
-
-// --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 
 function applyTheme(themeKey) {
     const theme = colorThemes[themeKey] || colorThemes.indigo;
@@ -178,6 +175,9 @@ function applyTheme(themeKey) {
         .text-indigo-800 { color: var(--theme-color-hover) !important; }
     `;
 }
+
+let unsubscribeNotificationsListener = null;
+let notifications = [];
 
 function renderNotificationPanel() {
     const unreadCount = notifications.filter(n => !n.read).length;
@@ -221,10 +221,8 @@ function setupRealtimeListeners(establishmentId) {
                 renderNotificationPanel();
                 const activeLink = document.querySelector('.sidebar-link.active');
                 if (activeLink && activeLink.dataset.target === 'agenda-section') {
-                    if (notification.type === 'cancellation' || notification.type === 'new_appointment') {
-                        console.log('Atualizando agenda em tempo real...');
-                        loadAgendaPage();
-                    }
+                    console.log('Atualizando agenda em tempo real...');
+                    loadAgendaPage();
                 }
             }
         });
@@ -238,8 +236,7 @@ export function navigateTo(sectionId, params = {}) {
     if (sectionId === 'my-profile-section') {
          // Apenas carrega a página
     } else {
-        // [MODIFICADO] Permitir visualização se for a nova aba de hierarquia e for dono
-        const isHierarchyOrConfig = ['hierarquia-section', 'estabelecimento-section'].includes(sectionId);
+        const isHierarchyOrConfig = ['hierarquia-section', 'establishments-section', 'estabelecimento-section'].includes(sectionId);
         
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
@@ -275,6 +272,9 @@ export function navigateTo(sectionId, params = {}) {
         contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold">Página em Construção</h2><p class="text-gray-600">O módulo para "${sectionId}" ainda não foi implementado.</p></div>`;
     }
 }
+
+// Torna o navigateTo global para ser acionado pelos cards HTML gerados em js/ui/hierarchy.js
+window.navigateTo = navigateTo;
 
 async function loadHeaderKPIs(userPermissions) {
     const kpiAppointmentsWrapper = document.getElementById('kpi-appointments-wrapper');
@@ -324,7 +324,6 @@ async function initializePushNotifications(userUid) {
                 visibility: 1, 
                 vibration: true
             });
-            console.log('Canal Android criado.');
         }
 
         let permStatus = await PushNotifications.checkPermissions();
@@ -340,35 +339,27 @@ async function initializePushNotifications(userUid) {
         await PushNotifications.register();
 
         PushNotifications.addListener('registration', async (token) => {
-            console.log('Push Token gerado:', token.value);
             try {
                 const userRef = doc(db, 'users', userUid);
                 await updateDoc(userRef, {
                     fcmTokens: arrayUnion(token.value),
                     platform: 'native_mobile'
                 });
-                console.log('Token FCM salvo no perfil do utilizador (Nativo).');
             } catch (error) {
                 console.error("Erro ao salvar token FCM:", error);
             }
         });
 
-        PushNotifications.addListener('registrationError', (error) => {
-             console.error('Erro no registo de push notifications:', error);
-        });
-
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('Notificação Push recebida:', notification);
             showNotification(notification.title, notification.body, 'info', true);
         });
 
-        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-            console.log('Ação na notificação push:', notification);
+        PushNotifications.addListener('pushNotificationActionPerformed', () => {
             navigateTo('agenda-section');
         });
 
     } catch (e) {
-        console.log('Push Notifications não suportado/inicializado:', e);
+        console.log('Push Notifications não suportado:', e);
     }
 }
 
@@ -379,7 +370,7 @@ function setupBackButtonHandling() {
 
     const showModal = () => exitModal.style.display = 'block';
     const hideModal = () => exitModal.style.display = 'none';
-    const isModalVisible = () => exitModal.style.display === 'block';
+    const isModalVisible = () => exitModal && exitModal.style.display === 'block';
 
     if (!exitModal) return;
 
@@ -400,7 +391,7 @@ function setupBackButtonHandling() {
     });
 
     if (Capacitor.isNativePlatform()) {
-        App.addListener('backButton', ({ canGoBack }) => {
+        App.addListener('backButton', () => {
             if (isModalVisible()) {
                 hideModal();
             } else {
@@ -412,10 +403,9 @@ function setupBackButtonHandling() {
                     return;
                 }
 
-                const sidebar = document.getElementById('sidebar');
                 if (sidebar && !sidebar.classList.contains('hidden') && window.innerWidth < 768) {
                     sidebar.classList.add('hidden');
-                    document.getElementById('mobile-overlay').classList.add('hidden');
+                    if (mobileOverlay) mobileOverlay.classList.add('hidden');
                     return;
                 }
 
@@ -430,7 +420,7 @@ function setupBackButtonHandling() {
     } else {
         history.pushState(null, document.title, location.href);
 
-        window.addEventListener('popstate', (event) => {
+        window.addEventListener('popstate', () => {
             if (isModalVisible()) {
                 hideModal();
                 history.pushState(null, document.title, location.href); 
@@ -461,14 +451,12 @@ function setupBackButtonHandling() {
 async function initialize() {
     try {
         await setPersistence(auth, browserLocalPersistence);
-        console.log("Persistência LOCAL configurada na inicialização.");
     } catch (e) {
-        console.error("Erro ao definir persistência no main.js", e);
+        console.error("Erro ao definir persistência:", e);
     }
 
     if (Capacitor.isNativePlatform()) {
         document.body.classList.add('is-app-native');
-        console.log('Modo App Nativo detectado: Layout ajustado para Safe Areas.');
     }
     
     initializeModalClosers();
@@ -479,7 +467,7 @@ async function initialize() {
             e.stopPropagation();
             sidebar.classList.remove('hidden');
             sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
-            mobileOverlay.classList.remove('hidden');
+            if (mobileOverlay) mobileOverlay.classList.remove('hidden');
         });
     }
 
@@ -491,39 +479,50 @@ async function initialize() {
         });
     }
 
-    notificationBell.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notificationPanel.classList.toggle('hidden');
-        if (!notificationPanel.classList.contains('hidden')) {
-            notifications.forEach(n => n.read = true);
-            renderNotificationPanel();
-        }
-    });
+    if (notificationBell) {
+        notificationBell.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (notificationPanel) {
+                notificationPanel.classList.toggle('hidden');
+                if (!notificationPanel.classList.contains('hidden')) {
+                    notifications.forEach(n => n.read = true);
+                    renderNotificationPanel();
+                }
+            }
+        });
+    }
 
-    profileMenuButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        profileDropdown.classList.toggle('active');
-        if (profileDropdown.classList.contains('active')) {
-            profileDropdown.classList.remove('hidden');
-        } else {
-            setTimeout(() => profileDropdown.classList.add('hidden'), 200);
-        }
-    });
+    if (profileMenuButton) {
+        profileMenuButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (profileDropdown) {
+                profileDropdown.classList.toggle('active');
+                if (profileDropdown.classList.contains('active')) {
+                    profileDropdown.classList.remove('hidden');
+                } else {
+                    setTimeout(() => profileDropdown.classList.add('hidden'), 200);
+                }
+            }
+        });
+    }
     
     if (myProfileLink) {
         myProfileLink.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo('my-profile-section');
-            profileDropdown.classList.remove('active');
-            profileDropdown.classList.add('hidden');
+            if (profileDropdown) {
+                profileDropdown.classList.remove('active');
+                profileDropdown.classList.add('hidden');
+            }
         });
     }
 
+    // Fecha dropdowns se clicar fora deles (verificações adicionadas)
     document.addEventListener('click', (e) => {
-        if (!notificationPanel.contains(e.target) && e.target !== notificationBell) {
+        if (notificationPanel && !notificationPanel.contains(e.target) && e.target !== notificationBell) {
             notificationPanel.classList.add('hidden');
         }
-        if (!profileDropdown.contains(e.target) && e.target !== profileMenuButton) {
+        if (profileDropdown && !profileDropdown.contains(e.target) && e.target !== profileMenuButton) {
             if (profileDropdown.classList.contains('active')) {
                  profileDropdown.classList.remove('active');
                  setTimeout(() => profileDropdown.classList.add('hidden'), 200);
@@ -533,10 +532,7 @@ async function initialize() {
 
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            console.log("Usuário detectado:", user.email);
-
             if (!Capacitor.isNativePlatform()) {
-                console.log("Inicializando Web Push (PWA)...");
                 initWebPush(); 
 
                 if ('Notification' in window && Notification.permission === 'default') {
@@ -545,19 +541,17 @@ async function initialize() {
                     const btnDeny = document.getElementById('btn-deny-toast');
                     const btnClose = document.getElementById('btn-close-toast');
 
-                    setTimeout(() => {
-                        if (toast) toast.style.display = 'block';
-                    }, 3500);
-
+                    if (toast) {
+                        setTimeout(() => { toast.style.display = 'block'; }, 3500);
+                    }
+                    
                     if (btnEnable) {
                         btnEnable.addEventListener('click', async () => {
                             const granted = await requestWebPermission();
-                            if (granted && toast) {
-                                toast.style.display = 'none';
-                            }
+                            if (granted && toast) toast.style.display = 'none';
                         });
                     }
-
+                    
                     const closeAction = () => { if (toast) toast.style.display = 'none'; };
                     if (btnDeny) btnDeny.addEventListener('click', closeAction);
                     if (btnClose) btnClose.addEventListener('click', closeAction);
@@ -578,18 +572,14 @@ async function initialize() {
                     let userName = user.displayName; 
                     let userProfessionalId = null; 
 
-                    if (claims.role === 'employee' || claims.role === 'owner') {
-                        const userDocRef = doc(db, 'users', user.uid);
-                        const userDoc = await getDoc(userDocRef);
-                        
-                        if (userDoc.exists()) {
-                            const userData = userDoc.data();
-                            userPermissions = (claims.role === 'employee') ? (userData.permissions || {}) : null;
-                            userName = userData.name || userName;
-                            userProfessionalId = userData.professionalId || null; 
-                        } else if (claims.role === 'employee') {
-                            throw new Error("Dados de permissão do funcionário não encontrados.");
-                        }
+                    const userDocRef = doc(db, 'users', user.uid);
+                    const userDoc = await getDoc(userDocRef);
+                    
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        userPermissions = (claims.role === 'employee') ? (userData.permissions || {}) : null;
+                        userName = userData.name || userName;
+                        userProfessionalId = userData.professionalId || null; 
                     }
                     
                     state.userProfessionalId = userProfessionalId; 
@@ -602,19 +592,21 @@ async function initialize() {
                     
                     setGlobalState(claims.establishmentId, establishmentDetails.name, userPermissions);
 
-                    profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
-                    profileName.textContent = finalUserName;
-                    profileEmail.textContent = user.email;
+                    if (profileMenuButton) profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
+                    if (profileName) profileName.textContent = finalUserName;
+                    if (profileEmail) profileEmail.textContent = user.email;
 
                     const handleLogout = () => {
                         if (unsubscribeNotificationsListener) unsubscribeNotificationsListener();
                         signOut(auth).then(() => window.location.href = '/login.html');
                     };
 
-                    logoutButton.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        handleLogout();
-                    });
+                    if (logoutButton) {
+                        logoutButton.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            handleLogout();
+                        });
+                    }
 
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     loadHeaderKPIs(userPermissions); 
@@ -622,39 +614,25 @@ async function initialize() {
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
                     
-                    loadingScreen.classList.add('fade-out');
-                    dashboardContent.style.display = 'flex';
-                    setTimeout(() => {
-                        loadingScreen.style.display = 'none';
-                    }, 500);
+                    if (loadingScreen) {
+                        loadingScreen.classList.add('fade-out');
+                        setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
+                    }
+                    if (dashboardContent) dashboardContent.style.display = 'flex';
 
-                    console.log("Verificando Onboarding...");
-                    setTimeout(() => {
-                        checkAndStartOnboarding();
-                    }, 1500); 
+                    setTimeout(() => { checkAndStartOnboarding(); }, 1500); 
 
                     navigateTo('agenda-section');
                 } else {
-                    throw new Error("Utilizador não tem permissão de 'owner' ou 'employee' ou 'establishmentId'.");
+                    throw new Error("Permissão ou estabelecimento não configurado.");
                 }
             } catch (error) {
-                console.error("Erro crítico na inicialização do painel:", error);
-                
-                loadingScreen.classList.add('fade-out');
-                setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
-
-                dashboardContent.innerHTML = `
-                    <div class="w-full h-full flex flex-col items-center justify-center bg-gray-100 p-4">
-                        <h2 class="text-2xl font-bold text-red-600 mb-4">Erro de Acesso</h2>
-                        <p class="text-gray-700 text-center mb-6">Não foi possível carregar os seus dados ou permissões. Isto pode acontecer se a sua conta foi desativada ou está configurada incorretamente.</p>
-                        <p class="text-sm text-gray-500 mb-6">Detalhe do erro: ${error.message}</p>
-                        <button id="errorLogoutButton" class="bg-red-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-red-700">Sair e Tentar Novamente</button>
-                    </div>
-                `;
-                dashboardContent.style.display = 'flex'; 
-                document.getElementById('errorLogoutButton').addEventListener('click', () => {
-                      signOut(auth).then(() => window.location.href = '/login.html');
-                });
+                console.error("Erro na inicialização:", error);
+                if (loadingScreen) loadingScreen.style.display = 'none';
+                if (dashboardContent) {
+                    dashboardContent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center p-4 text-center"><h2>Erro de Acesso</h2><p>${error.message}</p></div>`;
+                    dashboardContent.style.display = 'flex'; 
+                }
             }
         } else {
             window.location.href = '/login.html';

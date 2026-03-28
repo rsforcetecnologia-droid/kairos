@@ -1,4 +1,4 @@
-// routes/establishments.js (Arquitetura Multi-Tenant Enterprise 3 Níveis)
+// routes/establishments.js (Arquitetura Multi-Tenant Matriz/Filial)
 
 const express = require('express');
 const router = express.Router();
@@ -14,90 +14,34 @@ function handleFirestoreError(res, error, context) {
 router.use(verifyToken);
 
 // =======================================================================
-// 🏢 1. GESTÃO DE GRUPOS ECONÓMICOS (Nível 1)
+// 🏢 1. GESTÃO DE ESTABELECIMENTOS (Matriz e Filiais)
 // =======================================================================
-router.post('/groups', isOwner, async (req, res) => {
-    const { name } = req.body;
+
+// 1.1. Criar Novo Estabelecimento (Matriz ou Filial)
+router.post('/', isOwner, async (req, res) => {
+    // parentId: Se null, será uma Matriz. Se preenchido com ID de outra empresa, será Filial.
+    const { name, cnpj, phone, address, timezone, parentId } = req.body;
     const { uid } = req.user;
 
-    if (!name) return res.status(400).json({ message: 'O nome do grupo é obrigatório.' });
-
-    try {
-        const { db } = req;
-        const newGroupRef = db.collection('economicGroups').doc();
-        
-        await newGroupRef.set({
-            id: newGroupRef.id,
-            name,
-            ownerId: uid,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: 'active'
-        });
-
-        // UPDATE: Transforma o dono atual num Administrador de Grupo
-        await db.collection('users').doc(uid).update({
-            role: 'group_admin',
-            groupId: newGroupRef.id
-        }).catch(err => console.error("Aviso: Erro ao dar permissão de group_admin", err));
-
-        res.status(201).json({ message: 'Grupo Económico criado com sucesso!', groupId: newGroupRef.id });
-    } catch (error) {
-        handleFirestoreError(res, error, 'criar grupo');
+    if (!name) {
+        return res.status(400).json({ message: 'O nome do estabelecimento é obrigatório.' });
     }
-});
-
-// =======================================================================
-// 🏬 2. GESTÃO DE EMPRESAS/MATRIZES (Nível 2)
-// =======================================================================
-router.post('/companies', isOwner, async (req, res) => {
-    const { name, cnpj, groupId } = req.body;
-
-    if (!name || !groupId) return res.status(400).json({ message: 'Nome e Grupo são obrigatórios.' });
 
     try {
         const { db } = req;
-        const newCompanyRef = db.collection('companies').doc();
+        const newEstablishmentRef = db.collection('establishments').doc();
         
-        await newCompanyRef.set({
-            id: newCompanyRef.id,
-            groupId,
+        // Regra de Negócio: Se não tem vínculo, nasce como Matriz.
+        const isMatriz = !parentId; 
+
+        const establishmentData = {
+            id: newEstablishmentRef.id,
+            parentId: parentId || null,
+            isMatriz: isMatriz,
             name,
             cnpj: cnpj || null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: 'active'
-        });
-
-        res.status(201).json({ message: 'Empresa criada com sucesso!', companyId: newCompanyRef.id });
-    } catch (error) {
-        handleFirestoreError(res, error, 'criar empresa');
-    }
-});
-
-// =======================================================================
-// 📍 3. GESTÃO DE ESTABELECIMENTOS/FILIAIS (Nível 3)
-// =======================================================================
-
-// 3.1. Criar Nova Filial
-router.post('/', isOwner, async (req, res) => {
-    const { name, companyId, groupId, phone, address, timezone } = req.body;
-    const { uid } = req.user;
-
-    if (!name || !companyId || !groupId) {
-        return res.status(400).json({ message: 'Nome, Empresa e Grupo são obrigatórios.' });
-    }
-
-    try {
-        const { db } = req;
-        const newBranchRef = db.collection('establishments').doc();
-        
-        const branchData = {
-            id: newBranchRef.id,
-            groupId,
-            companyId,
-            name,
             phone: phone || null,
             address: address || null,
-            type: 'branch',
             timezone: timezone || 'America/Sao_Paulo',
             ownerId: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -111,96 +55,161 @@ router.post('/', isOwner, async (req, res) => {
         };
 
         await db.runTransaction(async (transaction) => {
-            transaction.set(newBranchRef, branchData);
             const userRef = db.collection('users').doc(uid);
+            
+            // --- 1º PASSO: LEITURAS (Reads) ---
             const userDoc = await transaction.get(userRef);
+            
+            let parentDoc = null;
+            if (parentId) {
+                const parentRef = db.collection('establishments').doc(parentId);
+                parentDoc = await transaction.get(parentRef);
+                if (!parentDoc.exists) {
+                    throw new Error("MATRIZ_NOT_FOUND");
+                }
+            }
+            
+            // --- 2º PASSO: ESCRITAS (Writes) ---
+            transaction.set(newEstablishmentRef, establishmentData);
+            
+            // Se foi vinculada a uma matriz, garantimos que o cadastro da matriz exiba visualmente que ela é Matriz
+            if (parentId && parentDoc && parentDoc.exists) {
+                transaction.update(parentDoc.ref, { isMatriz: true });
+            }
             
             if (userDoc.exists) {
                 const userData = userDoc.data();
                 const currentAccessible = userData.accessibleEstablishments || [];
-                currentAccessible.push({ id: newBranchRef.id, companyId: companyId, name: name });
-                transaction.update(userRef, { accessibleEstablishments: currentAccessible });
+                
+                currentAccessible.push({ 
+                    id: newEstablishmentRef.id, 
+                    parentId: parentId || null, 
+                    name: name 
+                });
+                
+                let updates = { accessibleEstablishments: currentAccessible };
+                
+                // Opcional: Promover usuário a Owner se ele criou sua primeira empresa independente
+                if (isMatriz && userData.role !== 'admin' && userData.role !== 'owner') {
+                    updates.role = 'owner'; 
+                }
+                
+                transaction.update(userRef, updates);
             }
         });
 
-        res.status(201).json({ message: 'Filial criada com sucesso!', branchId: newBranchRef.id });
+        res.status(201).json({ 
+            message: isMatriz ? 'Matriz criada com sucesso!' : 'Filial criada com sucesso!', 
+            establishmentId: newEstablishmentRef.id,
+            isMatriz
+        });
+
     } catch (error) {
-        handleFirestoreError(res, error, 'criar filial');
+        if (error.message === "MATRIZ_NOT_FOUND") {
+            return res.status(404).json({ message: 'A Matriz especificada para vínculo não foi encontrada.' });
+        }
+        handleFirestoreError(res, error, 'criar estabelecimento');
     }
 });
 
-// 3.2. Listar Estrutura Completa (Grupos > Empresas > Filiais)
+// 1.2. Listar Estrutura Completa (Matrizes e suas respectivas Filiais)
 router.get('/hierarchy', async (req, res) => {
     const { uid } = req.user;
     const { db } = req;
 
     try {
-        let responsePayload = { group: null, companies: [], branches: [] };
-
-        // Busca dados atualizados do user direto no Firestore para evitar delay de Token
         const userDoc = await db.collection('users').doc(uid).get();
         const userData = userDoc.exists ? userDoc.data() : {};
 
-        let activeGroupId = userData.groupId || null;
+        let allEstablishments = [];
 
-        // Se ele não tem groupId no cadastro de usuário, mas é o criador de algum grupo, acha esse grupo
-        if (!activeGroupId) {
-            const myGroups = await db.collection('economicGroups').where('ownerId', '==', uid).limit(1).get();
-            if (!myGroups.empty) {
-                activeGroupId = myGroups.docs[0].id;
-                responsePayload.group = myGroups.docs[0].data();
-            }
-        } else {
-            const groupDoc = await db.collection('economicGroups').doc(activeGroupId).get();
-            responsePayload.group = groupDoc.exists ? groupDoc.data() : null;
-        }
-
-        // Se encontrou o grupo, carrega toda a árvore abaixo dele
-        if (activeGroupId) {
-            const companiesSnap = await db.collection('companies').where('groupId', '==', activeGroupId).get();
-            responsePayload.companies = companiesSnap.docs.map(d => d.data());
-
-            const branchesSnap = await db.collection('establishments').where('groupId', '==', activeGroupId).get();
-            responsePayload.branches = branchesSnap.docs.map(d => d.data());
+        // Se for dono/admin total, enxerga tudo que for dele
+        if (userData.role === 'owner' || userData.role === 'admin') {
+            const snap = await db.collection('establishments').where('ownerId', '==', uid).get();
+            allEstablishments = snap.docs.map(d => d.data());
         } 
-        // Se for um funcionário restrito sem acesso ao grupo
+        // Se for um funcionário/gerente comum, enxerga apenas o que está liberado para ele
         else {
-            responsePayload.companies = userData.accessibleCompanies || [];
-            responsePayload.branches = userData.accessibleEstablishments || [];
+            const accessibleIds = (userData.accessibleEstablishments || []).map(est => est.id);
+            
+            if (accessibleIds.length > 0) {
+                // Firestore 'in' aceita arrays de até 10 itens, então fatiamos em lotes de 10
+                for (let i = 0; i < accessibleIds.length; i += 10) {
+                    const chunk = accessibleIds.slice(i, i + 10);
+                    const snap = await db.collection('establishments').where('id', 'in', chunk).get();
+                    allEstablishments.push(...snap.docs.map(d => d.data()));
+                }
+            }
         }
 
-        res.status(200).json(responsePayload);
+        // Montando a Lista de Adjacência
+        const hierarchy = [];
+        const filiais = [];
+
+        // 1. Separa quem é raiz (sem parentId) de quem é galho (com parentId)
+        allEstablishments.forEach(est => {
+            if (!est.parentId) {
+                hierarchy.push({ ...est, branches: [] });
+            } else {
+                filiais.push(est);
+            }
+        });
+
+        // 2. Coloca as filiais dentro de suas respectivas Matrizes
+        filiais.forEach(filial => {
+            const matriz = hierarchy.find(m => m.id === filial.parentId);
+            if (matriz) {
+                matriz.branches.push(filial);
+            } else {
+                // Caso de borda: Se o usuário logado só tiver acesso de leitura na filial 
+                // e não na Matriz, a filial é retornada na raiz para ele conseguir acessar
+                hierarchy.push({ ...filial, branches: [], isOrphanBranch: true });
+            }
+        });
+
+        res.status(200).json({ matrizes: hierarchy });
     } catch (error) {
         handleFirestoreError(res, error, 'listar hierarquia');
     }
 });
 
-// 3.3. Atualizar Dados de uma Filial
-router.put('/:branchId', isOwner, async (req, res) => {
-    const { branchId } = req.params;
+// 1.3. Atualizar Dados de um Estabelecimento
+router.put('/:id', isOwner, async (req, res) => {
+    const { id } = req.params;
     const updateData = req.body;
-    delete updateData.id; delete updateData.groupId; delete updateData.companyId;
+    
+    // Trava para evitar que o frontend modifique campos cruciais por engano
+    delete updateData.id; 
+    delete updateData.ownerId;
+    delete updateData.createdAt;
 
     try {
         const { db } = req;
-        const branchRef = db.collection('establishments').doc(branchId);
-        await branchRef.update({ ...updateData, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-        res.status(200).json({ message: 'Filial atualizada com sucesso.' });
+        const ref = db.collection('establishments').doc(id);
+        
+        await ref.update({ 
+            ...updateData, 
+            updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+        });
+        
+        res.status(200).json({ message: 'Estabelecimento atualizado com sucesso.' });
     } catch (error) {
-        handleFirestoreError(res, error, 'atualizar filial');
+        handleFirestoreError(res, error, 'atualizar estabelecimento');
     }
 });
 
-// 3.4. Obter Detalhes de uma Filial Específica
-router.get('/:branchId', async (req, res) => {
-    const { branchId } = req.params;
+// 1.4. Obter Detalhes de um Estabelecimento Específico
+router.get('/:id', async (req, res) => {
+    const { id } = req.params;
     try {
         const { db } = req;
-        const branchDoc = await db.collection('establishments').doc(branchId).get();
-        if (!branchDoc.exists) return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
-        res.status(200).json(branchDoc.data());
+        const doc = await db.collection('establishments').doc(id).get();
+        
+        if (!doc.exists) return res.status(404).json({ message: 'Estabelecimento não encontrado.' });
+        
+        res.status(200).json(doc.data());
     } catch (error) {
-        handleFirestoreError(res, error, 'obter detalhes da filial');
+        handleFirestoreError(res, error, 'obter detalhes do estabelecimento');
     }
 });
 

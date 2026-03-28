@@ -1,265 +1,205 @@
 // js/ui/hierarchy.js
 
-import { getHierarchy, createEconomicGroup, createCompany, createBranch } from '../api/establishments.js';
-import { state } from '../state.js';
+import { getHierarchy, createEstablishment } from '../api/establishments.js';
 
+// Variável de controlo para evitar duplicar listeners de eventos
+let isFormSetup = false;
+
+/**
+ * Renderiza a ecrã de Gestão da Rede (Matrizes e Filiais)
+ * @param {HTMLElement} container - O contentor principal (#content)
+ */
 export async function renderHierarchyScreen(container) {
+    if (!container) return;
+
+    // 1. Define a estrutura base da tela
     container.innerHTML = `
-        <div class="flex items-center justify-center h-64">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 m-0">Gestão da Rede</h2>
+                    <p class="text-sm text-gray-500">Clique numa unidade para gerir dados, módulos e identidade visual.</p>
+                </div>
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-lg flex items-center gap-2 transition-colors shadow-sm" 
+                        data-bs-toggle="modal" data-bs-target="#modal-create-establishment">
+                    <i class="bi bi-plus-lg"></i> Novo Estabelecimento
+                </button>
+            </div>
+            
+            <div id="hierarchy-list-container" class="space-y-6">
+                <div class="text-center p-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <div class="inline-block animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full mb-3" role="status"></div>
+                    <p class="text-gray-500 font-medium">A carregar estrutura organizacional...</p>
+                </div>
+            </div>
         </div>
     `;
 
+    const listContainer = document.getElementById('hierarchy-list-container');
+    const parentSelect = document.getElementById('est-parent');
+
     try {
-        // Busca a estrutura no backend
+        // 2. Procura a hierarquia no Backend
         const payload = await getHierarchy();
-        const { group, companies, branches } = payload;
+        const matrizes = payload.matrizes || [];
 
-        let html = `
-            <div class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-800">Hierarquia da Rede</h2>
-                    <p class="text-sm text-gray-500">Faça a gestão de empresas e filiais do seu grupo económico.</p>
-                </div>
-                <div class="flex gap-2">
-                    ${group ? `<button id="btn-new-company" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">+ Nova Empresa</button>` : ''}
-                    ${companies && companies.length > 0 ? `<button id="btn-new-branch" class="bg-white hover:bg-gray-50 text-indigo-600 border border-indigo-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">+ Nova Filial</button>` : ''}
-                </div>
-            </div>
-            <div class="space-y-6">
-        `;
+        // 3. Prepara o seletor de vínculos no modal (apenas matrizes podem ser "pais")
+        if (parentSelect) {
+            parentSelect.innerHTML = '<option value="">Nenhuma (Criar como Matriz Independente)</option>';
+        }
 
-        // Se NÃO tiver Grupo (Nível 1), exige criar primeiro
-        if (!group) {
-            html += `
+        if (matrizes.length === 0) {
+            listContainer.innerHTML = `
                 <div class="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300 shadow-sm">
                     <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                        <i class="bi bi-building-add text-3xl"></i>
                     </div>
-                    <h3 class="text-xl font-bold text-gray-900 mb-2">Bem-vindo à Gestão Multi-Lojas</h3>
-                    <p class="text-gray-500 max-w-md mx-auto mb-6">Para começar a estruturar sua rede, crie o seu <b>Grupo Económico</b> (a marca principal ou holding que gerenciará todas as empresas e filiais).</p>
-                    <button id="btn-create-group" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold transition-colors shadow-md">
-                        Criar Meu Grupo Económico
-                    </button>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2">A sua rede está vazia</h3>
+                    <p class="text-gray-500 max-w-md mx-auto mb-6">Comece por criar a sua primeira Matriz ou Loja principal para expandir o seu negócio.</p>
                 </div>
             `;
         } else {
-            // Renderiza o cabeçalho do Grupo
-            html += `
-                <div class="bg-gray-800 rounded-xl p-4 text-white flex items-center justify-between shadow-md">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                        </div>
-                        <div>
-                            <p class="text-xs text-gray-400 font-bold uppercase tracking-wider">Grupo Económico Principal</p>
-                            <h3 class="text-lg font-bold">${group.name}</h3>
-                        </div>
-                    </div>
-                </div>
-            `;
+            let html = '';
+            
+            matrizes.forEach(matriz => {
+                // Adiciona matrizes ao select para permitir vincular futuras filiais
+                if (parentSelect && !matriz.isOrphanBranch) {
+                    const option = document.createElement('option');
+                    option.value = matriz.id;
+                    option.textContent = matriz.name;
+                    parentSelect.appendChild(option);
+                }
 
-            // Renderiza Empresas e suas Filiais
-            if (companies && companies.length > 0) {
-                companies.forEach(company => {
-                    const companyBranches = branches.filter(b => b.companyId === company.id);
+                // Badge visual
+                const badge = (matriz.isMatriz || !matriz.parentId) 
+                    ? `<span class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded ml-3 tracking-wider">🏢 MATRIZ</span>`
+                    : `<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded ml-3 tracking-wider">📍 UNIDADE</span>`;
 
-                    html += `
-                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div class="bg-gray-50 border-b border-gray-200 p-4 flex justify-between items-center">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-8 h-8 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center font-bold text-sm">
-                                        ${company.name.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div>
-                                        <h4 class="text-md font-bold text-gray-800">${company.name}</h4>
-                                        <p class="text-xs text-gray-500">CNPJ: ${company.cnpj || 'Não informado'}</p>
-                                    </div>
-                                </div>
-                                <span class="bg-white text-xs font-medium px-2.5 py-1 rounded-full border border-gray-200 text-gray-600">${companyBranches.length} Filial(is)</span>
-                            </div>
-                            
-                            <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    `;
-
-                    if (companyBranches.length > 0) {
-                        companyBranches.forEach(branch => {
-                            html += `
-                                <div class="border border-gray-100 rounded-lg p-4 hover:border-indigo-300 transition-colors cursor-pointer group relative overflow-hidden">
-                                    <div class="absolute top-0 left-0 w-1 h-full ${branch.status === 'active' ? 'bg-green-500' : 'bg-red-500'}"></div>
-                                    <div class="flex justify-between items-start mb-2 pl-2">
-                                        <h5 class="font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">${branch.name}</h5>
-                                    </div>
-                                    <p class="text-xs text-gray-500 mb-1 flex items-center gap-1 pl-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
-                                        ${branch.address || 'Endereço não definido'}
-                                    </p>
-                                    <p class="text-xs text-gray-500 flex items-center gap-1 pl-2">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                                        ${branch.phone || 'Sem telefone'}
-                                    </p>
-                                </div>
-                            `;
-                        });
-                    } else {
-                        html += `<p class="text-sm text-gray-400 italic col-span-full py-2">Nenhuma filial cadastrada nesta empresa.</p>`;
-                    }
-
-                    html += `</div></div>`;
-                });
-            } else {
+                // 4. Constrói o Card da Matriz (Clicável)
                 html += `
-                    <div class="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                        <h3 class="text-lg font-medium text-gray-900">Nenhuma empresa encontrada</h3>
-                        <p class="mt-1 text-sm text-gray-500">Comece criando sua primeira Empresa Matriz no botão acima.</p>
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6 transition-all hover:border-indigo-400 group">
+                        <div class="bg-gray-50 border-b border-gray-200 p-4 md:p-5 flex justify-between items-center cursor-pointer hover:bg-gray-100/50" 
+                             onclick="window.navigateTo('estabelecimento-section', { id: '${matriz.id}' })">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-xl shadow-sm group-hover:scale-105 transition-transform">
+                                    ${matriz.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <h4 class="text-lg font-bold text-gray-800 flex items-center">
+                                        ${matriz.name} ${badge}
+                                    </h4>
+                                    <p class="text-sm text-gray-500 mt-0.5">Clique para configurar esta unidade</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs text-gray-400 font-medium hidden md:block">Gerir Unidade</span>
+                                <i class="bi bi-gear text-gray-400 text-xl group-hover:text-indigo-600 transition-colors"></i>
+                            </div>
+                        </div>
+                        
+                        <div class="p-4 md:p-5 bg-white border-l-4 border-l-indigo-500">
+                            <h5 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <i class="bi bi-diagram-3"></i> Unidades Vinculadas
+                            </h5>
+                            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                `;
+
+                // 5. Constrói os Cards das Filiais (Clicáveis)
+                if (matriz.branches && matriz.branches.length > 0) {
+                    matriz.branches.forEach(branch => {
+                        html += `
+                            <div class="border border-gray-100 rounded-lg p-4 hover:border-indigo-300 transition-colors cursor-pointer bg-gray-50 flex justify-between items-center group/item"
+                                 onclick="event.stopPropagation(); window.navigateTo('estabelecimento-section', { id: '${branch.id}' })">
+                                <div class="pl-2 border-l-2 border-indigo-400">
+                                    <h5 class="font-bold text-gray-800 text-sm group-hover/item:text-indigo-700 transition-colors">${branch.name}</h5>
+                                    <p class="text-[11px] text-gray-500 mt-0.5 truncate max-w-[150px]">
+                                        <i class="bi bi-geo-alt"></i> ${branch.address || 'Configurar morada'}
+                                    </p>
+                                </div>
+                                <i class="bi bi-chevron-right text-gray-300 group-hover/item:text-indigo-500 transition-all"></i>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += `
+                        <div class="col-span-full py-4 text-center border border-dashed border-gray-100 rounded-lg bg-gray-50/30">
+                            <p class="text-xs text-gray-400 italic">Nenhuma filial vinculada.</p>
+                        </div>
+                    `;
+                }
+
+                html += `
+                            </div>
+                        </div>
                     </div>
                 `;
-            }
+            });
+
+            listContainer.innerHTML = html;
         }
 
-        html += `</div>`; // Fecha space-y-6
-
-        // Modais Ocultos para Cadastro
-        html += `
-            <div id="modal-company" class="fixed inset-0 z-[1000] hidden flex items-center justify-center bg-black bg-opacity-50">
-                <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
-                    <h3 class="text-xl font-bold mb-4 text-gray-800">Nova Empresa</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia / Razão Social *</label>
-                            <input type="text" id="comp-name" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
-                            <input type="text" id="comp-cnpj" placeholder="00.000.000/0000-00" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                    </div>
-                    <div class="mt-6 flex justify-end gap-3">
-                        <button id="btn-close-comp" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">Cancelar</button>
-                        <button id="btn-save-comp" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">Salvar</button>
-                    </div>
-                </div>
-            </div>
-
-            <div id="modal-branch" class="fixed inset-0 z-[1000] hidden flex items-center justify-center bg-black bg-opacity-50">
-                <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
-                    <h3 class="text-xl font-bold mb-4 text-gray-800">Nova Filial</h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Empresa Pertencente *</label>
-                            <select id="branch-company" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                ${(companies || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nome da Filial *</label>
-                            <input type="text" id="branch-name" placeholder="Ex: Filial Centro" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-                                <input type="text" id="branch-phone" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Fuso Horário</label>
-                                <select id="branch-timezone" class="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                    <option value="America/Sao_Paulo">Brasília (BRT)</option>
-                                    <option value="America/Manaus">Manaus (AMT)</option>
-                                    <option value="Europe/Lisbon">Lisboa (WET)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mt-6 flex justify-end gap-3">
-                        <button id="btn-close-branch" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">Cancelar</button>
-                        <button id="btn-save-branch" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">Criar Filial</button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        container.innerHTML = html;
-
-        // --- LÓGICA DOS EVENTOS ---
-        
-        // 1. Criar Grupo Económico (Se não existir)
-        const btnCreateGroup = document.getElementById('btn-create-group');
-        if (btnCreateGroup) {
-            btnCreateGroup.onclick = async () => {
-                const name = prompt("Qual o nome da sua Marca ou Grupo Principal? (Ex: Grupo Kairos)");
-                if (name && name.trim() !== '') {
-                    btnCreateGroup.innerText = "Criando...";
-                    try {
-                        await createEconomicGroup(name.trim());
-                        renderHierarchyScreen(container); // Recarrega a tela, agora com o grupo criado!
-                    } catch(e) {
-                        alert(e.message);
-                        btnCreateGroup.innerText = "Criar Meu Grupo Económico";
-                    }
-                }
-            };
-        }
-
-        // 2. Modal Empresa
-        const btnNewComp = document.getElementById('btn-new-company');
-        const modalComp = document.getElementById('modal-company');
-        if(btnNewComp && modalComp) {
-            btnNewComp.onclick = () => { modalComp.classList.remove('hidden'); document.getElementById('comp-name').value = ''; };
-            document.getElementById('btn-close-comp').onclick = () => modalComp.classList.add('hidden');
-            
-            document.getElementById('btn-save-comp').onclick = async () => {
-                const name = document.getElementById('comp-name').value.trim();
-                const cnpj = document.getElementById('comp-cnpj').value.trim();
-                if(!name) return alert('O nome da empresa é obrigatório.');
-                
-                document.getElementById('btn-save-comp').innerText = 'Salvando...';
-                try {
-                    await createCompany(name, cnpj, group.id);
-                    renderHierarchyScreen(container);
-                } catch(e) {
-                    alert(e.message);
-                    document.getElementById('btn-save-comp').innerText = 'Salvar';
-                }
-            };
-        }
-
-        // 3. Modal Filial
-        const btnNewBranch = document.getElementById('btn-new-branch');
-        const modalBranch = document.getElementById('modal-branch');
-        if(btnNewBranch && modalBranch) {
-            btnNewBranch.onclick = () => {
-                if(!companies || companies.length === 0) return alert('Crie uma empresa primeiro.');
-                modalBranch.classList.remove('hidden');
-                document.getElementById('branch-name').value = '';
-            };
-            document.getElementById('btn-close-branch').onclick = () => modalBranch.classList.add('hidden');
-
-            document.getElementById('btn-save-branch').onclick = async () => {
-                const companyId = document.getElementById('branch-company').value;
-                const name = document.getElementById('branch-name').value.trim();
-                const phone = document.getElementById('branch-phone').value.trim();
-                const timezone = document.getElementById('branch-timezone').value;
-                
-                if(!name) return alert('O nome da filial é obrigatório.');
-
-                document.getElementById('btn-save-branch').innerText = 'Criando...';
-                try {
-                    await createBranch({ name, companyId, groupId: group.id, phone, timezone });
-                    renderHierarchyScreen(container);
-                } catch(e) {
-                    alert(e.message);
-                    document.getElementById('btn-save-branch').innerText = 'Criar Filial';
-                }
-            };
+        // 6. Ativa os eventos do formulário apenas uma vez
+        if (!isFormSetup) {
+            setupEstablishmentForm();
+            isFormSetup = true;
         }
 
     } catch (error) {
-        console.error(error);
-        container.innerHTML = `
-            <div class="bg-red-50 text-red-600 p-4 rounded-lg flex items-center gap-3 border border-red-200">
-                <span>Erro ao carregar hierarquia: ${error.message}</span>
+        console.error("Erro na renderização da rede:", error);
+        listContainer.innerHTML = `
+            <div class="bg-red-50 text-red-600 p-6 rounded-lg border border-red-100 text-center">
+                <i class="bi bi-exclamation-triangle text-2xl mb-2 block"></i>
+                <p class="font-bold text-sm">Não foi possível carregar a estrutura organizacional.</p>
             </div>
         `;
     }
 }
+
+/**
+ * Listener do Formulário de Criação (Modal no app.html)
+ */
+function setupEstablishmentForm() {
+    const form = document.getElementById('form-create-establishment');
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const btnSubmit = form.querySelector('button[type="submit"]');
+        const originalContent = btnSubmit.innerHTML;
+        btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> A gravar...';
+        btnSubmit.disabled = true;
+
+        const payload = {
+            name: document.getElementById('est-name').value.trim(),
+            cnpj: document.getElementById('est-cnpj').value.trim(),
+            parentId: document.getElementById('est-parent').value || null,
+            timezone: document.getElementById('est-timezone').value
+        };
+
+        try {
+            const res = await createEstablishment(payload);
+            
+            alert(res.message || "Sucesso!");
+            form.reset();
+            
+            // Fecha o modal via Bootstrap
+            const modalEl = document.getElementById('modal-create-establishment');
+            const modalInstance = window.bootstrap?.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide();
+
+            // Recarrega a tela de hierarquia para refletir a nova empresa
+            await renderHierarchyScreen(document.getElementById('content'));
+
+        } catch (error) {
+            console.error("Erro ao criar estabelecimento:", error);
+            alert("Erro: " + (error.message || "Falha ao gravar dados."));
+        } finally {
+            btnSubmit.innerHTML = originalContent;
+            btnSubmit.disabled = false;
+        }
+    });
+}
+
+// Expõe globalmente para que cliques fora do módulo possam aceder
+window.loadAndRenderHierarchy = () => renderHierarchyScreen(document.getElementById('content'));
