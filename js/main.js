@@ -45,10 +45,9 @@ import { checkAndStartOnboarding } from './ui/onboarding.js';
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
-import { App } from '@capacitor/app'; // <--- ADICIONADO AQUI
+import { App } from '@capacitor/app'; 
 
 // --- IMPORTAÇÃO DAS NOTIFICAÇÕES WEB (PWA) ---
-// [AJUSTE] Importamos 'requestWebPermission' para ligar ao botão do Toast
 import { initPushNotifications as initWebPush, requestWebPermission } from './ui/push-notifications.js';
 
 import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
@@ -70,6 +69,9 @@ import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
 import { loadMyProfilePage } from './ui/my-profile.js'; 
 
+// [NOVO] IMPORTAÇÃO DA TELA DE HIERARQUIA
+import { renderHierarchyScreen } from './ui/hierarchy.js'; 
+
 // --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
@@ -83,7 +85,6 @@ const profileDropdown = document.getElementById('profileDropdown');
 const profileName = document.getElementById('profileName');
 const profileEmail = document.getElementById('profileEmail');
 const logoutButton = document.getElementById('logoutButton');
-// REMOVIDO: const cancellationHistoryBtn ... (O botão já não existe no HTML)
 const myProfileLink = document.getElementById('myProfileLink'); 
 const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const sidebar = document.getElementById('sidebar');
@@ -131,6 +132,8 @@ const pageLoader = {
     'commissions-section': loadCommissionsPage,
     'packages-section': loadPackagesPage,
     'my-profile-section': loadMyProfilePage,
+    // [NOVO] Adicionada a rota para a tela de Hierarquia
+    'hierarquia-section': () => renderHierarchyScreen(contentDiv),
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
@@ -235,19 +238,23 @@ export function navigateTo(sectionId, params = {}) {
     if (sectionId === 'my-profile-section') {
          // Apenas carrega a página
     } else {
+        // [MODIFICADO] Permitir visualização se for a nova aba de hierarquia e for dono
+        const isHierarchyOrConfig = ['hierarquia-section', 'estabelecimento-section'].includes(sectionId);
+        
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
-        if (!isModuleEnabled || !hasEmployeePermission) {
+        
+        if (!isHierarchyOrConfig && (!isModuleEnabled || !hasEmployeePermission)) {
             contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
-            // Fechar sidebar mobile se estiver aberta
-            if (sidebar.classList.contains('absolute')) { // Check simples para ver se estamos em modo mobile
+            if (sidebar.classList.contains('absolute')) { 
                  sidebar.classList.add('hidden');
                  mobileOverlay.classList.add('hidden');
             }
             return;
         }
     }
+    
     const loadPage = pageLoader[sectionId];
     if (loadPage) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -258,8 +265,7 @@ export function navigateTo(sectionId, params = {}) {
         }
         contentDiv.innerHTML = '';
         
-        // Fechar sidebar mobile ao navegar
-        if (window.innerWidth < 768) { // Verifica se é mobile
+        if (window.innerWidth < 768) { 
             sidebar.classList.add('hidden');
             mobileOverlay.classList.add('hidden');
         }
@@ -279,14 +285,13 @@ async function loadHeaderKPIs(userPermissions) {
     const canViewAgenda = userPermissions === null || userPermissions['agenda-section']?.view === true;
     const canViewFinancial = userPermissions === null || userPermissions['financial-section']?.view === true;
 
-    // Remove hidden para exibir os novos cards flex
     if (canViewAgenda && kpiAppointmentsWrapper) {
         kpiAppointmentsWrapper.classList.remove('hidden');
-        kpiAppointmentsWrapper.classList.add('inline-flex'); // Garante inline-flex para centralizar no container
+        kpiAppointmentsWrapper.classList.add('inline-flex'); 
     }
     if (canViewFinancial && kpiFinancialWrapper) {
         kpiFinancialWrapper.classList.remove('hidden');
-        kpiFinancialWrapper.classList.add('inline-flex'); // Garante inline-flex
+        kpiFinancialWrapper.classList.add('inline-flex'); 
     }
 
     if (!canViewAgenda && !canViewFinancial) {
@@ -305,10 +310,6 @@ async function loadHeaderKPIs(userPermissions) {
         console.error("Erro ao carregar KPIs do cabeçalho:", error);
     }
 }
-
-// ####################################################################
-// ### INÍCIO DA FUNÇÃO DE PUSH NOTIFICATIONS (NATIVO - COM DIAGNÓSTICO) ###
-// ####################################################################
 
 async function initializePushNotifications(userUid) {
     try {
@@ -336,7 +337,6 @@ async function initializePushNotifications(userUid) {
             return;
         }
 
-        // Tenta registrar no GCM/FCM
         await PushNotifications.register();
 
         PushNotifications.addListener('registration', async (token) => {
@@ -372,50 +372,39 @@ async function initializePushNotifications(userUid) {
     }
 }
 
-// --- FUNÇÃO PARA GERENCIAR O BOTÃO VOLTAR (Nativo e PWA) ---
 function setupBackButtonHandling() {
     const exitModal = document.getElementById('exitConfirmationModal');
     const btnCancel = document.getElementById('btn-cancel-exit');
     const btnConfirm = document.getElementById('btn-confirm-exit');
 
-    // Funções auxiliares
     const showModal = () => exitModal.style.display = 'block';
     const hideModal = () => exitModal.style.display = 'none';
     const isModalVisible = () => exitModal.style.display === 'block';
 
     if (!exitModal) return;
 
-    // Ação do botão "Não" (Cancelar)
     btnCancel.addEventListener('click', () => {
         hideModal();
-        // Se for PWA, precisamos "rearmar" a armadilha do histórico
         if (!Capacitor.isNativePlatform()) {
             history.pushState(null, document.title, location.href);
         }
     });
 
-    // Ação do botão "Sim" (Sair)
     btnConfirm.addEventListener('click', () => {
         hideModal();
         if (Capacitor.isNativePlatform()) {
-            App.exitApp(); // Fecha o app nativo
+            App.exitApp(); 
         } else {
-            // No PWA/Browser, tentamos voltar o histórico real para fechar ou sair
             history.back(); 
-            // Opcional: Redirecionar para uma página de "Até logo" se o navegador não fechar
-            // window.location.href = 'about:blank'; 
         }
     });
 
-    // --- LÓGICA PARA APP NATIVO (ANDROID) ---
     if (Capacitor.isNativePlatform()) {
         App.addListener('backButton', ({ canGoBack }) => {
             if (isModalVisible()) {
                 hideModal();
             } else {
-                // Se tiver algum modal do sistema aberto (ex: agendamento), fecha ele primeiro
                 const openModals = document.querySelectorAll('.modal[style*="display: block"]');
-                // Filtra o modal de confirmação para não fechar ele mesmo se já estiver aberto
                 const activeModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
                 
                 if (activeModals.length > 0) {
@@ -423,7 +412,6 @@ function setupBackButtonHandling() {
                     return;
                 }
 
-                // Se o menu lateral estiver aberto, fecha ele
                 const sidebar = document.getElementById('sidebar');
                 if (sidebar && !sidebar.classList.contains('hidden') && window.innerWidth < 768) {
                     sidebar.classList.add('hidden');
@@ -431,54 +419,38 @@ function setupBackButtonHandling() {
                     return;
                 }
 
-                // Se estivermos na tela inicial (Agenda), pede para sair
-                // Se estiver em outra tela, volta para a Agenda
                 const activeLink = document.querySelector('.sidebar-link.active');
                 if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
                     showModal();
                 } else {
-                    // Simula navegação para home
                     navigateTo('agenda-section');
                 }
             }
         });
-    } 
-    // --- LÓGICA PARA PWA (NAVEGADOR) ---
-    else {
-        // Empurra um estado no histórico ao carregar para criar a "armadilha"
+    } else {
         history.pushState(null, document.title, location.href);
 
         window.addEventListener('popstate', (event) => {
-            // Se o modal já estiver aberto e o usuário clicar em voltar de novo
             if (isModalVisible()) {
                 hideModal();
-                history.pushState(null, document.title, location.href); // Rearma
+                history.pushState(null, document.title, location.href); 
                 return;
             }
 
-            // Verifica se tem outros modais abertos
             const openModals = document.querySelectorAll('.modal[style*="display: block"], .modal[style*="display: flex"]');
-            // Filtra para não pegar o próprio modal de exit se ele estivesse abrindo
             const otherModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
 
             if (otherModals.length > 0) {
-                // Fecha modais e rearma o histórico para não sair da página
                 otherModals.forEach(m => m.style.display = 'none');
                 history.pushState(null, document.title, location.href);
                 return;
             }
 
-            // Lógica de Navegação PWA
             const activeLink = document.querySelector('.sidebar-link.active');
             
-            // Se estiver na Home (Agenda), mostra confirmação de sair
             if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
                 showModal();
-                // Importante: NÃO damos pushState aqui imediatamente, 
-                // deixamos o estado "voltar" acontecer visualmente, mas o modal bloqueia a ação.
-                // Se ele cancelar, aí damos pushState no clique do botão cancelar.
             } else {
-                // Se estiver em outra página, volta para a Agenda e previne a saída
                 navigateTo('agenda-section');
                 history.pushState(null, document.title, location.href);
             }
@@ -486,10 +458,7 @@ function setupBackButtonHandling() {
     }
 }
 
-// --- 6. INICIALIZAÇÃO DA APLICAÇÃO ---
 async function initialize() {
-    
-    // --- FIX: DEFINIR PERSISTÊNCIA LOCAL IMEDIATAMENTE (PWA) ---
     try {
         await setPersistence(auth, browserLocalPersistence);
         console.log("Persistência LOCAL configurada na inicialização.");
@@ -503,14 +472,12 @@ async function initialize() {
     }
     
     initializeModalClosers();
-    setupBackButtonHandling(); // <--- INICIA O HANDLER DO BOTÃO VOLTAR
+    setupBackButtonHandling(); 
 
-    // --- FIX DO MENU MOBILE ---
     if (hamburgerMenuBtn) {
         hamburgerMenuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             sidebar.classList.remove('hidden');
-            // Classes para o menu mobile aparecer sobreposto
             sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
             mobileOverlay.classList.remove('hidden');
         });
@@ -532,8 +499,6 @@ async function initialize() {
             renderNotificationPanel();
         }
     });
-
-    // REMOVIDO LISTENER DE CANCELLATION HISTORY BTN POIS O BOTÃO JÁ NÃO EXISTE
 
     profileMenuButton.addEventListener('click', (e) => {
         e.stopPropagation();
