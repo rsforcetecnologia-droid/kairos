@@ -6,12 +6,12 @@
     <title>Agendamento Online</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
         :root {
-            /* Cores Padrão (serão sobrescritas pelo JS se houver personalização) */
             --theme-main: #4f46e5;
             --theme-contrast: #ffffff;
-            --content-text-color: #111827; /* Cor escura padrão para textos */
+            --content-text-color: #111827; 
         }
         
         body {
@@ -22,51 +22,37 @@
             background-attachment: fixed;
             background-repeat: no-repeat;
             min-height: 100vh;
-            
-            /* Necessário para posicionar o overlay corretamente */
             position: relative;
         }
 
-        /* --- AJUSTE VISUAL: Camada Translúcida (Overlay) --- */
         body::before {
             content: "";
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            /* Cor de fundo base com 85% de opacidade para suavizar a imagem */
+            top: 0; left: 0; width: 100%; height: 100%;
             background-color: rgba(0, 0, 0, 0.40); 
-            /* Desfoque suave para melhorar a leitura */
             backdrop-filter: blur(3px); 
-            z-index: 0; /* Fica atrás do conteúdo */
-            pointer-events: none; /* Permite clicar através da camada */
+            z-index: 0; 
+            pointer-events: none; 
         }
 
-        /* Garante que o painel de agendamento fique ACIMA da camada translúcida */
-        #booking-view {
+        #booking-view, #branch-selector-view {
             position: relative;
             z-index: 1;
         }
 
-        /* Classes Utilitárias de Tema */
         .theme-bg { background-color: var(--theme-main); color: var(--theme-contrast); }
         .theme-text { color: var(--theme-main); }
         .theme-border { border-color: var(--theme-main); }
         .theme-ring:focus { --tw-ring-color: var(--theme-main); }
-        
-        /* Classe para a Cor do Texto Personalizada (Nome do Salão) */
         .custom-text-color { color: var(--content-text-color); }
 
-        /* Painel de Vidro (Conteúdo Principal) - Fundo claro translúcido */
         .glass-panel {
-            background-color: rgba(255, 255, 255, 0.92);
-            backdrop-filter: blur(8px);
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.5);
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
         }
         
-        /* Painel de Vidro Escuro (Barra Superior) - Contraste para o logo */
         .glass-panel-dark {
             background-color: rgba(17, 24, 39, 0.85);
             backdrop-filter: blur(12px);
@@ -74,8 +60,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* Transições e Interações */
-        .service-card, .professional-card, .time-slot-btn { transition: all 0.2s ease; }
+        .service-card, .professional-card, .time-slot-btn, .branch-card { transition: all 0.2s ease; }
         
         .service-card.selected, .professional-card.selected {
             border-color: var(--theme-main);
@@ -85,8 +70,7 @@
         }
         
         .service-card.selected .check-icon, .professional-card.selected .check-icon { 
-            opacity: 1; 
-            transform: scale(1); 
+            opacity: 1; transform: scale(1); 
         }
         
         .time-slot-selected { 
@@ -100,13 +84,11 @@
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
         .hidden { display: none; }
         
-        /* Loader simples para feedback visual */
         .loader {
             border: 3px solid #f3f3f3;
             border-top: 3px solid var(--theme-main);
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            width: 24px; height: 24px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -129,7 +111,21 @@
         </div>
     </div>
 
-    <div id="booking-view" class="pt-20 pb-10 px-3 min-h-screen flex flex-col items-center justify-start">
+    <div id="branch-selector-view" class="pt-24 pb-10 px-4 min-h-screen flex-col items-center justify-center hidden">
+        <div class="w-full max-w-2xl glass-panel rounded-3xl p-6 sm:p-10 shadow-2xl text-center fade-in">
+            <div id="network-logo-container" class="h-24 w-24 rounded-full bg-white p-1.5 shadow-lg mx-auto overflow-hidden mb-6 hidden">
+                <img id="networkLogo" src="" alt="Logo da Rede" class="h-full w-full rounded-full object-cover">
+            </div>
+            
+            <h1 id="networkName" class="text-3xl font-bold text-gray-900 mb-2">Bem-vindo(a)</h1>
+            <p class="text-gray-600 font-medium mb-8">Por favor, escolha em qual das nossas unidades deseja ser atendido hoje:</p>
+            
+            <div id="branches-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+                </div>
+        </div>
+    </div>
+
+    <div id="booking-view" class="pt-20 pb-10 px-3 min-h-screen flex flex-col items-center justify-start hidden">
         
         <header class="w-full max-w-lg mb-6 text-center fade-in"> 
             <div class="relative inline-block mb-3">
@@ -157,7 +153,7 @@
                     Qual serviço deseja?
                 </h2>
                 <div id="services-container" class="space-y-2">
-                    <p class="text-center text-gray-500 text-sm py-4">A carregar serviços...</p>
+                    <div class="flex justify-center py-10"><div class="loader"></div></div>
                 </div>
             </section>
 
@@ -169,9 +165,7 @@
                     </h2>
                     <button id="professionals-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
                 </div>
-                <div id="professionals-container" class="grid grid-cols-3 gap-2">
-                    <p class="col-span-full text-center text-gray-500 text-sm">A carregar...</p>
-                </div>
+                <div id="professionals-container" class="grid grid-cols-3 gap-2"></div>
             </section>
 
             <section id="schedule-section" class="hidden">
@@ -183,14 +177,14 @@
                     <button id="schedule-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
                 </div>
                 
-                <div class="bg-gray-50 rounded-lg p-2 mb-4 border border-gray-100">
-                    <div class="flex justify-between items-center mb-2">
-                        <button id="prev-week-btn" class="p-1 text-gray-400 hover:text-gray-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                <div class="bg-gray-50/80 rounded-xl p-3 mb-4 border border-gray-100">
+                    <div class="flex justify-between items-center mb-3">
+                        <button id="prev-week-btn" class="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition">
+                            <i class="bi bi-chevron-left"></i>
                         </button>
-                        <h3 id="month-year-display" class="text-sm font-semibold text-gray-700 capitalize"></h3>
-                        <button id="next-week-btn" class="p-1 text-gray-400 hover:text-gray-700">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        <h3 id="month-year-display" class="text-sm font-bold text-gray-700 capitalize"></h3>
+                        <button id="next-week-btn" class="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition">
+                            <i class="bi bi-chevron-right"></i>
                         </button>
                     </div>
                     <div id="week-container" class="grid grid-cols-7 gap-1"></div>
@@ -198,11 +192,11 @@
 
                 <div id="time-slots-container" class="space-y-4">
                     <div>
-                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Manhã</h4>
+                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Manhã</h4>
                         <div id="morning-slots" class="grid grid-cols-4 gap-2"></div>
                     </div>
                     <div>
-                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Tarde</h4>
+                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tarde / Noite</h4>
                         <div id="afternoon-slots" class="grid grid-cols-4 gap-2"></div>
                     </div>
                 </div>
@@ -217,104 +211,85 @@
                     <button id="confirmation-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
                 </div>
 
-                <div class="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-100 text-sm">
-                    <div class="flex items-start gap-3">
+                <div class="bg-gray-50/80 rounded-xl p-4 mb-5 border border-gray-100 shadow-inner">
+                    <div class="flex items-start gap-4">
                         <div id="summary-service-images" class="flex-shrink-0"></div>
                         <div>
-                            <p class="font-bold text-gray-900" id="summary-service"></p>
-                            <p class="text-gray-600 text-xs mt-0.5">com <span id="summary-professional" class="font-medium"></span></p>
-                            <p class="theme-text font-medium mt-1" id="summary-datetime"></p>
+                            <p class="font-bold text-gray-900 text-base" id="summary-service"></p>
+                            <p class="text-gray-600 text-sm mt-0.5">com <span id="summary-professional" class="font-bold text-gray-800"></span></p>
+                            <div class="mt-2 inline-flex items-center gap-1.5 bg-white border border-gray-200 px-2.5 py-1 rounded-md">
+                                <i class="bi bi-calendar-event theme-text text-sm"></i>
+                                <p class="theme-text font-bold text-sm" id="summary-datetime"></p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <form id="confirmation-form" class="space-y-3">
+                <form id="confirmation-form" class="space-y-4">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Seu Nome</label>
-                        <input type="text" id="clientName" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="Ex: Maria Silva" required>
+                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Como se chama?</label>
+                        <input type="text" id="clientName" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 theme-ring focus:border-transparent outline-none shadow-sm transition-all" placeholder="Ex: João Silva" required>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">WhatsApp</label>
-                        <input type="tel" id="clientPhone" maxlength="15" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-1 theme-ring focus:border-transparent outline-none" placeholder="(00) 00000-0000" required>
+                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">WhatsApp</label>
+                        <input type="tel" id="clientPhone" maxlength="15" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 theme-ring focus:border-transparent outline-none shadow-sm transition-all" placeholder="(00) 00000-0000" required>
                     </div>
-                    <button type="submit" id="btn-confirm" class="w-full theme-bg text-white font-bold py-3 rounded-lg shadow-md hover:opacity-90 transition mt-2">
-                        Confirmar Agendamento
+                    <button type="submit" id="btn-confirm" class="w-full theme-bg text-white font-bold text-lg py-3.5 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2">
+                        <i class="bi bi-check2-circle"></i> Confirmar Horário
                     </button>
                 </form>
             </section>
-
         </main>
         
-        <footer class="mt-6 text-center opacity-60">
-            <p class="text-xs custom-text-color font-medium">Desenvolvido por Kairos System</p>
+        <footer class="mt-8 text-center opacity-70">
+            <p class="text-xs custom-text-color font-medium">Powered by <a href="#" class="font-bold hover:underline">Kairos System</a></p>
         </footer>
     </div>
     
     <div id="my-appointments-view" class="hidden fixed inset-0 z-50 bg-gray-100 flex flex-col fade-in">
         <div class="bg-white shadow-sm p-4 flex items-center gap-3">
             <button data-action="close-appointments-view" class="p-1 rounded-full hover:bg-gray-100">
-                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                <i class="bi bi-arrow-left text-xl text-gray-600"></i>
             </button>
             <h2 class="text-lg font-bold text-gray-800">Meus Agendamentos</h2>
         </div>
-        <div id="appointments-content" class="flex-grow p-4 overflow-y-auto">
-             </div>
+        <div id="appointments-content" class="flex-grow p-4 overflow-y-auto"></div>
     </div>
     
     <div id="notificationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-6 hidden backdrop-blur-sm">
-        <div class="bg-white rounded-xl shadow-2xl p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
           <h3 id="modal-title" class="text-lg font-bold text-gray-900 mb-2"></h3>
           <p id="modal-message" class="text-sm text-gray-600 mb-6"></p>
-          <button id="modal-ok-btn" class="w-full py-2.5 theme-bg text-white font-semibold rounded-lg shadow hover:opacity-90">Entendi</button>
+          <button id="modal-ok-btn" class="w-full py-3 theme-bg text-white font-bold rounded-xl shadow hover:opacity-90 transition-opacity">Entendi</button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
-            // --- NOVO: Função de Máscara de Telefone ---
             function setupPhoneMask(inputId) {
                 const input = document.getElementById(inputId);
                 if (!input) return;
 
                 input.addEventListener('input', (e) => {
-                    let value = e.target.value.replace(/\D/g, ""); // Remove tudo que não é dígito
-                    
-                    // Limita a 11 dígitos
+                    let value = e.target.value.replace(/\D/g, ""); 
                     if (value.length > 11) value = value.substring(0, 11);
-
-                    // Aplica a formatação (XX) XXXXX-XXXX
-                    if (value.length > 10) {
-                        value = value.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-                    } else if (value.length > 6) {
-                        value = value.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
-                    } else if (value.length > 2) {
-                        value = value.replace(/^(\d{2})(\d{0,5})/, "($1) $2");
-                    } else if (value.length > 0) {
-                        value = value.replace(/^(\d*)/, "($1");
-                    }
-                    
+                    if (value.length > 10) { value = value.replace(/^(\d{2})(\d{5})(\d{4})/, "($1) $2-$3"); } 
+                    else if (value.length > 6) { value = value.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3"); } 
+                    else if (value.length > 2) { value = value.replace(/^(\d{2})(\d{0,5})/, "($1) $2"); } 
+                    else if (value.length > 0) { value = value.replace(/^(\d*)/, "($1"); }
                     e.target.value = value;
                 });
             }
 
-            // Inicializa a máscara no campo de cadastro
             setupPhoneMask('clientPhone');
 
-            // 1. Função para Aplicar Personalizações (Cores e Fundo)
             function applyCustomization(data) {
                 const root = document.documentElement;
-                
-                // Cor Principal
                 const primaryColor = data.primaryColor || data.themeColor || '#4f46e5'; 
                 root.style.setProperty('--theme-main', primaryColor);
-                
-                // Cor do Texto do Estabelecimento
-                if (data.textColor) {
-                    root.style.setProperty('--content-text-color', data.textColor);
-                }
+                if (data.textColor) root.style.setProperty('--content-text-color', data.textColor);
 
-                // Imagem de Fundo
                 if (data.backgroundImage) {
                     document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
                 } else {
@@ -323,52 +298,44 @@
                 }
             }
 
-            // 2. Configurações Iniciais
             const API_BASE_URL = window.location.origin;
             const urlParams = new URLSearchParams(window.location.search);
-            const URL_ID = urlParams.get('id'); // Pode ser o ID Real ou o Slug
+            const URL_ID = urlParams.get('id'); 
             
-            // *** VARIÁVEL NOVA PARA O ID REAL ***
+            // 🔥 A NOVA BANDEIRA (Força abrir a agenda em vez do menu de filiais)
+            const FORCE_DIRECT = urlParams.get('direct') === 'true';
+            
             let REAL_ESTABLISHMENT_ID = null; 
-            
             let currentWeekStart = getStartOfWeek(new Date());
             let allServicesData = [];
             let allProfessionalsData = [];
             
-            // Estado do Agendamento em memória
-            const booking = { professionalId: null, professionalName: null, services: [], date: null, time: null, totalDuration: 0 };
+            const booking = { professionalId: null, professionalName: null, services: [], date: null, time: null };
 
-            // 3. Elementos DOM
             const bookingView = document.getElementById('booking-view');
+            const branchSelectorView = document.getElementById('branch-selector-view');
+            
             const myAppointmentsView = document.getElementById('my-appointments-view');
             const myAppointmentsContent = document.getElementById('appointments-content');
             const myAppointmentsBtn = document.getElementById('myAppointmentsBtn');
-            const establishmentNameEl = document.getElementById('establishmentName');
-            const establishmentLogoEl = document.getElementById('establishmentLogo');
-            const establishmentWelcomeMessageEl = document.getElementById('establishmentWelcomeMessage');
+            
             const servicesContainer = document.getElementById('services-container');
             const professionalsContainer = document.getElementById('professionals-container');
-            const timeSlotsContainer = document.getElementById('time-slots-container');
             const morningSlotsContainer = document.getElementById('morning-slots');
             const afternoonSlotsContainer = document.getElementById('afternoon-slots');
-            const confirmationForm = document.getElementById('confirmation-form');
             const weekContainer = document.getElementById('week-container');
-            const monthYearDisplay = document.getElementById('month-year-display');
+            
+            const confirmationForm = document.getElementById('confirmation-form');
             const prevWeekBtn = document.getElementById('prev-week-btn');
             const nextWeekBtn = document.getElementById('next-week-btn');
-            const notificationModal = document.getElementById('notificationModal');
-            const modalTitle = document.getElementById('modal-title');
-            const modalMessage = document.getElementById('modal-message');
-            const modalOkBtn = document.getElementById('modal-ok-btn');
-            const progressBar = document.getElementById('progress-bar');
+            const monthYearDisplay = document.getElementById('month-year-display');
             
-            // Botões de Navegação ("Voltar")
             document.getElementById('professionals-back-btn').addEventListener('click', () => showSection('services'));
             document.getElementById('schedule-back-btn').addEventListener('click', () => showSection('professionals'));
             document.getElementById('confirmation-back-btn').addEventListener('click', () => showSection('schedule'));
 
             if (!URL_ID) {
-                document.body.innerHTML = '<div class="flex h-screen items-center justify-center p-4 text-center text-gray-500">Link inválido ou incompleto.</div>';
+                document.body.innerHTML = '<div class="flex h-screen items-center justify-center p-4 text-center text-gray-500 font-bold">Link da loja não encontrado. Peça o link correto ao estabelecimento.</div>';
                 return;
             }
 
@@ -380,15 +347,15 @@
             };
 
             function updateProgress(step) {
-                progressBar.style.width = `${step * 25}%`;
+                document.getElementById('progress-bar').style.width = `${step * 25}%`;
             }
 
             function showNotificationModal(title, message) {
-                modalTitle.textContent = title;
-                modalMessage.textContent = message;
-                notificationModal.classList.remove('hidden');
+                document.getElementById('modal-title').textContent = title;
+                document.getElementById('modal-message').textContent = message;
+                document.getElementById('notificationModal').classList.remove('hidden');
             }
-            modalOkBtn.addEventListener('click', () => notificationModal.classList.add('hidden'));
+            document.getElementById('modal-ok-btn').addEventListener('click', () => document.getElementById('notificationModal').classList.add('hidden'));
 
             function getStartOfWeek(date) {
                 const d = new Date(date);
@@ -405,69 +372,97 @@
                 const steps = { services: 1, professionals: 2, schedule: 3, confirmation: 4 };
                 updateProgress(steps[sectionName]);
 
-                // --- CORREÇÃO: Atualizar horários automaticamente se já houver data selecionada ---
-                // Isso resolve o problema de voltar para mudar o serviço e os horários não atualizarem.
                 if (sectionName === 'schedule' && booking.date) {
-                    // Coloca um loader visual para indicar que estamos buscando novos horários
                     morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
                     afternoonSlotsContainer.innerHTML = '';
                     loadAvailability(booking.date);
                 }
             };
 
-            // 4. Carregar Dados do Estabelecimento
-            const loadEstablishmentDetails = async () => {
+            // 🔥 LÓGICA MULTI-TENANT: VERIFICA SE O LINK É MATRIZ COM FILIAIS E SE DEVE SALTAR O MENU
+            const checkNetworkAndLoad = async () => {
                 try {
-                    // Busca pelo SLUG ou ID (O backend já suporta ambos na rota /:id)
-                    const response = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}`);
-                    if (!response.ok) throw new Error('Falha ao carregar dados.');
-                    const data = await response.json();
+                    const estRes = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}`);
+                    if (!estRes.ok) throw new Error('Estabelecimento não encontrado.');
+                    const establishmentData = await estRes.json();
+                    
+                    applyCustomization(establishmentData);
 
-                    if (data.publicBookingEnabled === false) {
-                        document.body.innerHTML = ''; 
-                        document.body.className = 'bg-gray-100 h-screen flex items-center justify-center p-4 font-sans';
+                    if (establishmentData.publicBookingEnabled === false) {
                         document.body.innerHTML = `
-                            <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center">
-                                <div class="bg-red-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                                    </svg>
+                            <div class="bg-gray-100 h-screen flex items-center justify-center p-4">
+                                <div class="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full">
+                                    <i class="bi bi-calendar-x text-5xl text-red-500 mb-4 block"></i>
+                                    <h2 class="text-xl font-bold text-gray-900 mb-2">Agenda Temporariamente Fechada</h2>
+                                    <p class="text-gray-600 text-sm">O agendamento online para <strong class="text-gray-800">${establishmentData.name}</strong> está desativado no momento.</p>
                                 </div>
-                                <h2 class="text-xl font-bold text-gray-900 mb-3">Link Indisponível</h2>
-                                <p class="text-gray-600 mb-6 text-sm leading-relaxed">
-                                    O agendamento online para <strong class="text-gray-800">${data.name || 'este estabelecimento'}</strong> está temporariamente desativado.
-                                </p>
                             </div>
                         `;
-                        return false;
+                        return;
                     }
 
-                    // *** IMPORTANTE: CAPTURA O ID REAL ***
-                    REAL_ESTABLISHMENT_ID = data.id; 
+                    const branchesRes = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}/branches`);
+                    const branches = branchesRes.ok ? await branchesRes.json() : [];
 
-                    applyCustomization(data);
+                    // 🔥 SE TEM FILIAIS E NÃO TEM A BANDEIRA DE "DIRETO", MOSTRA O MENU
+                    if (branches && branches.length > 0 && !FORCE_DIRECT) {
+                        document.getElementById('booking-view').classList.add('hidden');
+                        branchSelectorView.classList.remove('hidden');
+                        branchSelectorView.classList.add('flex');
 
-                    establishmentNameEl.innerHTML = data.name || 'Bem-vindo';
-                    establishmentWelcomeMessageEl.textContent = data.welcomeMessage || 'Agende seu horário online.';
-                    
-                    if (data.logo) {
-                        establishmentLogoEl.src = data.logo;
-                        establishmentLogoEl.classList.remove('opacity-0');
+                        if (establishmentData.logo) {
+                            document.getElementById('networkLogo').src = establishmentData.logo;
+                            document.getElementById('network-logo-container').classList.remove('hidden');
+                        }
+                        document.getElementById('networkName').textContent = `Bem-vindo(a) à ${establishmentData.name}`;
+
+                        const todasUnidades = [
+                            { id: URL_ID, name: establishmentData.name + " (Matriz)", address: establishmentData.address },
+                            ...branches
+                        ];
+
+                        document.getElementById('branches-list').innerHTML = todasUnidades.map(unidade => {
+                            // Se ele clicar na matriz novamente, adicionamos &direct=true na URL
+                            const destinationUrl = unidade.id === URL_ID ? `?id=${unidade.id}&direct=true` : `?id=${unidade.id}`;
+                            
+                            return `
+                            <button onclick="window.location.href='${destinationUrl}'" class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-[color:var(--theme-main)] hover:bg-gray-50 transition-all text-left flex items-start gap-4 group">
+                                <div class="w-12 h-12 theme-bg rounded-full flex items-center justify-center flex-shrink-0 text-white shadow-inner group-hover:scale-105 transition-transform">
+                                    <i class="bi bi-geo-alt-fill text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-gray-800 group-hover:theme-text">${unidade.name}</h3>
+                                    <p class="text-xs text-gray-500 mt-1 line-clamp-2">${unidade.address || 'Localização principal'}</p>
+                                </div>
+                            </button>
+                            `;
+                        }).join('');
+
+                    } else {
+                        // NÃO TEM FILIAIS (OU FOI FORÇADO A ENTRAR DIRETO) -> Abre a agenda!
+                        branchSelectorView.classList.add('hidden');
+                        bookingView.classList.remove('hidden');
+
+                        REAL_ESTABLISHMENT_ID = establishmentData.id;
+                        document.getElementById('establishmentName').innerHTML = establishmentData.name;
+                        document.getElementById('establishmentWelcomeMessage').textContent = establishmentData.welcomeMessage || 'Selecione um serviço abaixo para começar.';
+                        
+                        if (establishmentData.logo) {
+                            document.getElementById('establishmentLogo').src = establishmentData.logo;
+                            document.getElementById('establishmentLogo').classList.remove('opacity-0');
+                        }
+                        
+                        loadServices(); 
                     }
-                    return true;
 
                 } catch(error) {
-                    console.error(error);
-                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="text-center text-red-500 p-4">Não é possível realizar agendamentos para este estabelecimento.</div></div>`;
-                    return false;
+                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen bg-gray-50 font-bold text-gray-600">Erro: ${error.message}</div>`;
                 }
             };
             
-            // 5. Carregar Serviços (USANDO REAL_ESTABLISHMENT_ID)
             const loadServices = async () => {
-                servicesContainer.innerHTML = '<div class="loader mx-auto"></div>';
+                servicesContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
                 try {
-                    // Usa o ID REAL, não o da URL
                     const response = await fetch(`${API_BASE_URL}/api/services/${REAL_ESTABLISHMENT_ID}`);
                     if (!response.ok) throw new Error();
                     const services = await response.json();
@@ -475,36 +470,37 @@
                     servicesContainer.innerHTML = '';
                     
                     if (services.length === 0) {
-                        servicesContainer.innerHTML = '<p class="text-center text-sm text-gray-500">Nenhum serviço disponível.</p>';
+                        servicesContainer.innerHTML = '<div class="text-center py-10 bg-white/50 rounded-xl"><i class="bi bi-box-seam text-3xl text-gray-400"></i><p class="mt-2 text-sm font-medium text-gray-600">Nenhum serviço partilhado com esta unidade ainda.</p></div>';
                         return;
                     }
 
                     services.forEach(serv => {
+                        if(serv.active === false) return; 
+
                         const card = document.createElement('div');
-                        card.className = 'service-card group flex items-center justify-between p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300';
-                        card.dataset.id = serv.id;
+                        card.className = 'service-card group flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300';
                         
-                        const duration = serv.duration ? `<span class="text-xs text-gray-400 font-medium ml-2">• ${serv.duration} min</span>` : '';
+                        const duration = serv.duration ? `<span class="text-xs text-gray-400 font-medium ml-2 bg-gray-100 px-2 py-0.5 rounded-md"><i class="bi bi-clock"></i> ${serv.duration} min</span>` : '';
                         const photoSrc = serv.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(serv.name.charAt(0))}`;
                         
                         card.innerHTML = `
-                            <div class="flex items-center gap-3 w-full">
-                                <img src="${photoSrc}" alt="${serv.name}" class="w-12 h-12 rounded-lg object-cover border border-gray-200 flex-shrink-0">
+                            <div class="flex items-center gap-4 w-full">
+                                <img src="${photoSrc}" alt="${serv.name}" class="w-16 h-16 rounded-xl object-cover border border-gray-100 flex-shrink-0 shadow-sm">
                                 <div class="flex-grow min-w-0">
                                     <h3 class="font-bold text-gray-800 text-sm leading-tight truncate">${serv.name}</h3>
-                                    <p class="text-xs font-semibold theme-text mt-0.5">R$ ${serv.price.toFixed(2)} ${duration}</p>
+                                    <div class="flex items-center mt-1.5">
+                                        <p class="text-sm font-bold theme-text">R$ ${serv.price.toFixed(2)}</p>
+                                        ${duration}
+                                    </div>
                                 </div>
-                                <div class="w-5 h-5 rounded-full border-2 border-gray-300 flex-shrink-0 flex items-center justify-center check-icon transition-all duration-200 ml-2">
-                                    <div class="w-2.5 h-2.5 rounded-full theme-bg opacity-0 transition-opacity"></div>
+                                <div class="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0 flex items-center justify-center check-icon transition-all duration-200 ml-2">
+                                    <div class="w-3 h-3 rounded-full theme-bg opacity-0 transition-opacity"></div>
                                 </div>
                             </div>
                         `;
                         
                         card.addEventListener('click', () => {
-                            const icon = card.querySelector('.check-icon div');
-                            const border = card.querySelector('.check-icon');
                             const isSelected = card.classList.contains('selected');
-                            
                             document.querySelectorAll('.service-card').forEach(c => {
                                 c.classList.remove('selected');
                                 c.querySelector('.check-icon').classList.remove('border-[color:var(--theme-main)]');
@@ -513,13 +509,10 @@
 
                             if (!isSelected) {
                                 card.classList.add('selected');
-                                border.classList.add('border-[color:var(--theme-main)]');
-                                icon.classList.remove('opacity-0');
+                                card.querySelector('.check-icon').classList.add('border-[color:var(--theme-main)]');
+                                card.querySelector('.check-icon div').classList.remove('opacity-0');
                                 
-                                booking.services = [{
-                                    id: serv.id, name: serv.name, duration: serv.duration, price: serv.price,
-                                    bufferTime: serv.bufferTime || 0, photo: serv.photo
-                                }];
+                                booking.services = [{ id: serv.id, name: serv.name, duration: serv.duration, price: serv.price, bufferTime: serv.bufferTime || 0, photo: serv.photo }];
                                 loadProfessionalsForService();
                                 setTimeout(() => showSection('professionals'), 300); 
                             }
@@ -527,15 +520,13 @@
                         servicesContainer.appendChild(card);
                     });
                 } catch {
-                    servicesContainer.innerHTML = '<p class="text-red-500 text-sm">Erro ao carregar serviços.</p>';
+                    servicesContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Erro ao carregar serviços.</p>';
                 }
             };
             
-            // 6. Carregar Profissionais (USANDO REAL_ESTABLISHMENT_ID)
             const loadProfessionalsForService = async () => {
-                professionalsContainer.innerHTML = '<div class="loader mx-auto col-span-3"></div>';
+                professionalsContainer.innerHTML = '<div class="loader mx-auto col-span-3 my-10"></div>';
                 try {
-                    // Usa o ID REAL
                     const response = await fetch(`${API_BASE_URL}/api/professionals/${REAL_ESTABLISHMENT_ID}`);
                     if (!response.ok) throw new Error();
                     allProfessionalsData = await response.json();
@@ -547,17 +538,22 @@
                     
                     professionalsContainer.innerHTML = '';
                     if (professionals.length === 0) {
-                        professionalsContainer.innerHTML = '<p class="col-span-full text-sm text-gray-500 text-center">Indisponível.</p>';
+                        professionalsContainer.innerHTML = '<div class="col-span-full text-center py-10 bg-white/50 rounded-xl"><i class="bi bi-person-x text-3xl text-gray-400"></i><p class="mt-2 text-sm font-medium text-gray-600">Nenhum profissional realiza este serviço.</p></div>';
                         return;
                     }
 
                     professionals.forEach(prof => {
                         const card = document.createElement('div');
-                        card.className = 'professional-card flex flex-col items-center justify-center p-2 bg-white border border-gray-200 rounded-xl cursor-pointer aspect-square';
+                        card.className = 'professional-card flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-2xl cursor-pointer aspect-square hover:shadow-md';
                         const photoSrc = prof.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name)}&background=random&color=fff`;
                         
                         card.innerHTML = `
-                            <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mb-2 border border-gray-100 shadow-sm">
+                            <div class="relative mb-2">
+                                <img src="${photoSrc}" class="w-16 h-16 rounded-full object-cover border-2 border-gray-100 shadow-sm">
+                                <div class="absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center check-icon transition-all scale-0 opacity-0">
+                                    <i class="bi bi-check-circle-fill text-green-500 text-lg leading-none bg-white rounded-full"></i>
+                                </div>
+                            </div>
                             <h4 class="font-bold text-xs text-gray-800 text-center leading-tight line-clamp-2">${prof.name.split(' ')[0]}</h4>
                         `;
                         card.addEventListener('click', () => {
@@ -571,51 +567,40 @@
                         professionalsContainer.appendChild(card);
                     });
                 } catch {
-                    professionalsContainer.innerHTML = '<p class="text-red-500 text-xs">Erro.</p>';
+                    professionalsContainer.innerHTML = '<p class="text-red-500 text-xs col-span-full text-center">Erro.</p>';
                 }
             };
 
-            // 7. Carregar Disponibilidade (USANDO REAL_ESTABLISHMENT_ID)
             const loadAvailability = async (selectedDate) => {
-                morningSlotsContainer.innerHTML = '';
-                afternoonSlotsContainer.innerHTML = '';
+                morningSlotsContainer.innerHTML = ''; afternoonSlotsContainer.innerHTML = '';
                 booking.date = selectedDate;
                 const serviceIds = booking.services.map(s => s.id).join(',');
                 
                 try {
-                    // Usa o ID REAL na query string
                     const response = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${REAL_ESTABLISHMENT_ID}&professionalId=${booking.professionalId}&serviceIds=${serviceIds}&date=${selectedDate}`);
                     if (!response.ok) throw new Error();
                     const slots = await response.json();
                     
                     if (slots.length === 0) {
-                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs text-gray-400 text-center py-2">Sem horários</p>';
+                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs text-gray-500 text-center py-4 bg-gray-100 rounded-lg">Totalmente Ocupado</p>';
                         return;
                     }
 
-                    // --- CORREÇÃO DEFINITIVA DE DATA E HORA ---
                     const now = new Date();
-                    
-                    // Cria uma data local para o dia selecionado (evitando a conversão UTC do toISOString)
                     const selectedDateObj = new Date(selectedDate + 'T00:00:00');
-                    
-                    // Compara usando toDateString (que ignora a hora e usa o fuso local)
                     const isToday = selectedDateObj.toDateString() === now.toDateString();
-
-                    // Calcula os minutos atuais para comparação precisa
                     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
                     slots.forEach(slot => {
                         const [h, m] = slot.split(':').map(Number);
                         
-                        // Se for hoje, filtra horários passados com base em minutos
                         if (isToday) {
                             const slotMinutes = h * 60 + m;
                             if (slotMinutes <= currentMinutes) return;
                         }
 
                         const btn = document.createElement('button');
-                        btn.className = 'time-slot-btn py-2 text-xs font-medium bg-white border border-gray-200 rounded-lg hover:border-gray-400 transition shadow-sm';
+                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold bg-white text-gray-700 border border-gray-200 rounded-xl hover:border-[color:var(--theme-main)] hover:text-[color:var(--theme-main)] transition shadow-sm';
                         btn.textContent = slot;
                         btn.onclick = () => {
                             document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
@@ -629,15 +614,14 @@
                         else afternoonSlotsContainer.appendChild(btn);
                     });
                     
-                    if (!morningSlotsContainer.hasChildNodes()) morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic">---</span>';
-                    if (!afternoonSlotsContainer.hasChildNodes()) afternoonSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic">---</span>';
+                    if (!morningSlotsContainer.hasChildNodes()) morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic bg-white p-2 rounded">Indisponível</span>';
+                    if (!afternoonSlotsContainer.hasChildNodes()) afternoonSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic bg-white p-2 rounded">Indisponível</span>';
 
                 } catch {
-                    morningSlotsContainer.innerHTML = '<p class="text-red-500 text-xs">Erro</p>';
+                    morningSlotsContainer.innerHTML = '<p class="text-red-500 text-xs col-span-4">Erro</p>';
                 }
             };
 
-            // 8. Renderizar Calendário
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
@@ -648,31 +632,38 @@
                     day.setDate(day.getDate() + i);
                     
                     const btn = document.createElement('button');
-                    btn.className = 'day-button flex flex-col items-center justify-center p-1 rounded-lg transition hover:bg-gray-100';
+                    btn.className = 'day-button flex flex-col items-center justify-center p-2 rounded-xl transition-all border border-transparent';
                     const isSelected = booking.date === day.toISOString().split('T')[0];
                     
                     if(isSelected) {
-                        btn.classList.add('bg-gray-800', 'text-white', 'shadow-md');
+                        btn.classList.add('theme-bg', 'shadow-md');
+                    } else {
+                        btn.classList.add('bg-white', 'hover:border-gray-300');
                     }
 
-                    const dayColorClass = isSelected ? 'text-white' : 'text-gray-500';
-                    const numColorClass = isSelected ? 'text-white' : 'text-gray-800';
+                    const dayColorClass = isSelected ? 'theme-text-contrast opacity-90' : 'text-gray-400';
+                    const numColorClass = isSelected ? 'theme-text-contrast' : 'text-gray-800';
 
                     btn.innerHTML = `
-                        <span class="text-[10px] uppercase ${dayColorClass}">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                        <span class="text-sm font-semibold ${numColorClass}">${day.getDate()}</span>
+                        <span class="text-[10px] uppercase font-bold ${dayColorClass}">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                        <span class="text-base font-bold ${numColorClass} mt-0.5">${day.getDate()}</span>
                     `;
 
                     if (day < today) {
-                        btn.classList.add('opacity-30', 'cursor-not-allowed');
+                        btn.classList.add('opacity-30', 'cursor-not-allowed', 'bg-gray-100');
+                        btn.classList.remove('bg-white');
                     } else {
                         btn.onclick = () => {
                             document.querySelectorAll('.day-button').forEach(b => {
-                                b.classList.remove('bg-gray-800', 'text-white', 'shadow-md');
-                                b.querySelectorAll('span').forEach(s => s.className = s.className.replace('text-white', '').replace('text-gray-500', 'text-gray-500').replace('text-gray-800', 'text-gray-800'));
+                                b.classList.remove('theme-bg', 'shadow-md');
+                                b.classList.add('bg-white');
+                                b.querySelectorAll('span')[0].className = 'text-[10px] uppercase font-bold text-gray-400';
+                                b.querySelectorAll('span')[1].className = 'text-base font-bold text-gray-800 mt-0.5';
                             });
-                            btn.classList.add('bg-gray-800', 'text-white', 'shadow-md');
-                            btn.querySelectorAll('span').forEach(s => s.className = s.className.replace('text-gray-500', 'text-white').replace('text-gray-800', 'text-white'));
+                            btn.classList.remove('bg-white');
+                            btn.classList.add('theme-bg', 'shadow-md');
+                            btn.querySelectorAll('span')[0].className = 'text-[10px] uppercase font-bold theme-text-contrast opacity-90';
+                            btn.querySelectorAll('span')[1].className = 'text-base font-bold theme-text-contrast mt-0.5';
                             
                             const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
                             loadAvailability(dateStr);
@@ -683,34 +674,31 @@
                 monthYearDisplay.textContent = currentWeekStart.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             };
 
-            // 9. Atualizar Resumo
             const updateSummary = () => {
                 const s = booking.services[0];
                 document.getElementById('summary-service').textContent = s.name;
                 document.getElementById('summary-professional').textContent = booking.professionalName;
                 
                 const dateObj = new Date(booking.date + 'T00:00:00');
-                const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
-                document.getElementById('summary-datetime').textContent = `${dateFormatted} às ${booking.time}`;
+                const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+                document.getElementById('summary-datetime').textContent = `${dateFormatted} - ${booking.time}`;
                 
                 const imgContainer = document.getElementById('summary-service-images');
-                imgContainer.innerHTML = '';
                 if(s.photo) {
-                    imgContainer.innerHTML = `<img src="${s.photo}" class="w-12 h-12 rounded-lg object-cover border border-gray-200">`;
+                    imgContainer.innerHTML = `<img src="${s.photo}" class="w-14 h-14 rounded-xl object-cover border border-gray-200 shadow-sm">`;
                 } else {
-                    imgContainer.innerHTML = `<div class="w-12 h-12 rounded-lg theme-bg flex items-center justify-center text-white font-bold text-lg">${s.name[0]}</div>`;
+                    imgContainer.innerHTML = `<div class="w-14 h-14 rounded-xl theme-bg flex items-center justify-center text-white font-bold text-xl shadow-sm">${s.name[0]}</div>`;
                 }
             };
 
-            // 10. Confirmar Agendamento (USANDO REAL_ESTABLISHMENT_ID)
             confirmationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const btn = document.getElementById('btn-confirm');
                 btn.disabled = true;
-                btn.innerText = 'Agendando...';
+                btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> Agendando...';
                 
                 const data = {
-                    establishmentId: REAL_ESTABLISHMENT_ID, // Usa ID REAL
+                    establishmentId: REAL_ESTABLISHMENT_ID, 
                     services: booking.services,
                     professionalId: booking.professionalId,
                     clientName: document.getElementById('clientName').value,
@@ -727,90 +715,95 @@
                     if(!res.ok) throw new Error();
                     
                     document.querySelector('main').innerHTML = `
-                        <div class="text-center py-10 fade-in">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <div class="text-center py-12 fade-in">
+                            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border-4 border-white">
+                                <i class="bi bi-check-lg text-4xl text-green-500"></i>
                             </div>
-                            <h2 class="text-xl font-bold text-gray-800 mb-2">Agendado!</h2>
-                            <p class="text-sm text-gray-600 px-4">Seu horário está confirmado. Enviaremos uma mensagem para o seu WhatsApp em breve.</p>
-                            <button onclick="location.reload()" class="mt-6 text-sm theme-text font-semibold hover:underline">Agendar outro</button>
+                            <h2 class="text-2xl font-bold text-gray-800 mb-3">Tudo Certo!</h2>
+                            <p class="text-gray-600 px-4 mb-8">O seu horário foi reservado com sucesso. Lembre-se de chegar com 5 minutinhos de antecedência.</p>
+                            <button onclick="location.reload()" class="bg-gray-100 text-gray-700 font-bold py-3 px-8 rounded-xl hover:bg-gray-200 transition-colors">Voltar ao Início</button>
                         </div>
                     `;
                 } catch {
-                    showNotificationModal('Erro', 'Não foi possível agendar. Tente novamente.');
+                    showNotificationModal('Erro', 'Não foi possível agendar. Verifique a sua ligação e tente novamente.');
                     btn.disabled = false;
-                    btn.innerText = 'Confirmar Agendamento';
+                    btn.innerHTML = '<i class="bi bi-check2-circle"></i> Confirmar Horário';
                 }
             });
 
-            // 11. Meus Agendamentos (USANDO REAL_ESTABLISHMENT_ID)
             const openAppointments = () => {
                 myAppointmentsView.classList.remove('hidden');
                 document.getElementById('booking-view').classList.add('hidden');
+                document.getElementById('branch-selector-view').classList.add('hidden');
+
                 myAppointmentsContent.innerHTML = `
-                    <div class="text-center mt-10">
-                        <h3 class="font-bold text-gray-700 mb-2">Consultar Agendamentos</h3>
-                        <p class="text-xs text-gray-500 mb-4">Digite seu WhatsApp para buscar</p>
+                    <div class="text-center mt-10 fade-in">
+                        <div class="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="bi bi-calendar2-heart text-2xl text-indigo-500"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Seus Agendamentos</h3>
+                        <p class="text-sm text-gray-500 mb-8 px-4">Digite o seu WhatsApp para consultar os seus horários.</p>
                         <form id="lookupForm" class="max-w-xs mx-auto">
-                            <input type="tel" id="lookupPhone" maxlength="15" class="w-full p-3 border rounded-lg text-center mb-3" placeholder="(00) 00000-0000" required>
-                            <button type="submit" class="w-full theme-bg text-white py-3 rounded-lg font-bold">Buscar</button>
+                            <input type="tel" id="lookupPhone" maxlength="15" class="w-full p-3.5 border border-gray-300 rounded-xl text-center mb-4 text-lg font-medium shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="(00) 00000-0000" required>
+                            <button type="submit" class="w-full theme-bg text-white py-3.5 rounded-xl font-bold text-lg shadow-md hover:opacity-90 transition-opacity">Buscar Horários</button>
                         </form>
                     </div>
                 `;
                 
-                // Aplica a máscara no campo recém-criado
                 setupPhoneMask('lookupPhone');
                 
                 document.getElementById('lookupForm').onsubmit = async (e) => {
                     e.preventDefault();
                     const phone = document.getElementById('lookupPhone').value;
-                    myAppointmentsContent.innerHTML = '<div class="loader mx-auto mt-10"></div>';
+                    myAppointmentsContent.innerHTML = '<div class="loader mx-auto mt-20"></div>';
                     
                     try {
-                        // Usa ID REAL
-                        const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${REAL_ESTABLISHMENT_ID}?phone=${encodeURIComponent(phone)}`);
+                        const targetId = REAL_ESTABLISHMENT_ID || URL_ID; // Se for loja mãe, busca nela
+                        const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${targetId}?phone=${encodeURIComponent(phone)}`);
                         if(!res.ok) throw new Error();
                         const appts = await res.json();
                         
                         if(appts.length === 0) {
-                            myAppointmentsContent.innerHTML = '<p class="text-center text-gray-500 mt-10">Nenhum agendamento encontrado.</p>';
+                            myAppointmentsContent.innerHTML = `
+                                <div class="text-center mt-20">
+                                    <i class="bi bi-calendar-x text-4xl text-gray-300 mb-3 block"></i>
+                                    <p class="text-gray-500 font-medium">Nenhum agendamento encontrado para este número.</p>
+                                </div>`;
                             return;
                         }
                         
-                        myAppointmentsContent.innerHTML = `<div class="space-y-3 pb-10">
+                        myAppointmentsContent.innerHTML = `<div class="space-y-4 pb-10 max-w-lg mx-auto mt-6">
                             ${appts.map(a => {
                                 const photoUrl = a.professionalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(a.professionalName || 'P')}&background=random&color=fff`;
                                 const dateFormatted = new Date(a.startTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
                                 
-                                // CORREÇÃO DE LÓGICA DE STATUS AQUI
                                 let statusLabel = 'Confirmado';
-                                let statusClass = 'bg-green-50 text-green-600';
+                                let statusClass = 'bg-green-100 text-green-700 border-green-200';
                                 
                                 if (a.status === 'completed') {
                                     statusLabel = 'Finalizado';
-                                    statusClass = 'bg-gray-100 text-gray-500';
+                                    statusClass = 'bg-gray-100 text-gray-600 border-gray-200';
                                 } else if (a.status === 'cancelled') {
                                     statusLabel = 'Cancelado';
-                                    statusClass = 'bg-red-50 text-red-600';
+                                    statusClass = 'bg-red-50 text-red-600 border-red-100';
                                 }
 
                                 return `
-                                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-start gap-3">
-                                    <img src="${photoUrl}" alt="Profissional" class="w-12 h-12 rounded-full object-cover border border-gray-100 flex-shrink-0">
+                                <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-start gap-4">
+                                    <img src="${photoUrl}" alt="Profissional" class="w-14 h-14 rounded-full object-cover border-2 border-gray-50 flex-shrink-0">
                                     <div class="flex-grow min-w-0">
-                                        <div class="flex justify-between items-start">
-                                            <p class="font-bold text-sm text-gray-800 truncate">${a.professionalName || 'Profissional'}</p>
-                                            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded ${statusClass}">
+                                        <div class="flex justify-between items-start mb-1">
+                                            <p class="font-bold text-base text-gray-900 truncate">${a.professionalName || 'Profissional'}</p>
+                                            <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${statusClass}">
                                                 ${statusLabel}
                                             </span>
                                         </div>
-                                        <p class="text-xs text-gray-600 mt-0.5 font-medium">${a.serviceName}</p>
-                                        <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                            ${dateFormatted}
+                                        <p class="text-sm text-gray-600 font-medium truncate">${a.serviceName}</p>
+                                        <p class="text-xs text-gray-500 mt-2 bg-gray-50 inline-block px-2 py-1 rounded-md border border-gray-100">
+                                            <i class="bi bi-clock mr-1"></i> ${dateFormatted}
                                         </p>
                                         ${a.status !== 'completed' && a.status !== 'cancelled' ? 
-                                            `<button onclick="cancelAppt('${a.id}', '${phone}')" class="mt-3 w-full text-xs text-red-500 border border-red-200 py-1.5 rounded hover:bg-red-50 font-semibold transition-colors">Cancelar Agendamento</button>` 
+                                            `<button onclick="cancelAppt('${a.id}', '${phone}')" class="mt-4 w-full text-sm text-red-600 border border-red-200 py-2 rounded-xl hover:bg-red-50 font-bold transition-colors">Cancelar Horário</button>` 
                                             : ''}
                                     </div>
                                 </div>
@@ -818,38 +811,40 @@
                             }).join('')}
                         </div>`;
                     } catch {
-                        myAppointmentsContent.innerHTML = '<p class="text-center text-red-500 mt-10">Erro ao buscar.</p>';
+                        myAppointmentsContent.innerHTML = '<p class="text-center text-red-500 mt-10">Erro na base de dados.</p>';
                     }
                 };
             };
             
             window.cancelAppt = async (id, phone) => {
-                if(!confirm('Deseja cancelar?')) return;
+                if(!confirm('Deseja realmente cancelar este horário?')) return;
                 try {
+                    const targetId = REAL_ESTABLISHMENT_ID || URL_ID;
                     await fetch(`${API_BASE_URL}/api/client-portal/appointments/${id}/cancel`, {
                         method: 'POST',
                         headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({phone, establishmentId: REAL_ESTABLISHMENT_ID}) // Usa ID REAL
+                        body: JSON.stringify({phone, establishmentId: targetId}) 
                     });
-                    alert('Cancelado com sucesso.');
-                    location.reload(); 
+                    showNotificationModal('Sucesso', 'O seu agendamento foi cancelado.');
+                    setTimeout(() => location.reload(), 1500); 
                 } catch {
-                    alert('Erro ao cancelar.');
+                    showNotificationModal('Erro', 'Não foi possível cancelar.');
                 }
             };
 
             myAppointmentsBtn.addEventListener('click', openAppointments);
             document.querySelector('[data-action="close-appointments-view"]').addEventListener('click', () => {
                 myAppointmentsView.classList.add('hidden');
-                document.getElementById('booking-view').classList.remove('hidden');
-            });
-
-            // --- EXECUÇÃO INICIAL ---
-            loadEstablishmentDetails().then((success) => {
-                if (success) {
-                    loadServices();
+                
+                if (document.getElementById('branches-list').innerHTML.trim() !== '') {
+                    branchSelectorView.classList.remove('hidden');
+                } else {
+                    document.getElementById('booking-view').classList.remove('hidden');
                 }
             });
+
+            // --- INICIA A VERIFICAÇÃO MULTI-TENANT ---
+            checkNetworkAndLoad();
             
             prevWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() - 7); renderWeek(); };
             nextWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() + 7); renderWeek(); };

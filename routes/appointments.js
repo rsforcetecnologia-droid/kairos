@@ -111,8 +111,8 @@ router.post('/', async (req, res) => {
         
         const estData = establishmentDocGlobal.data();
         const timezone = estData.timezone || 'America/Sao_Paulo';
-        const groupId = estData.groupId || null;     // NOVO: Propagar a hierarquia
-        const companyId = estData.companyId || null; // NOVO: Propagar a hierarquia
+        const groupId = estData.groupId || null;     
+        const companyId = estData.companyId || null; 
 
         const professionalDoc = await db.collection('professionals').doc(professionalId).get();
         if (!professionalDoc.exists) throw new Error('Profissional inválido.');
@@ -160,8 +160,8 @@ router.post('/', async (req, res) => {
             if (!clientDoc.exists) {
                 transaction.set(clientRef, {
                     establishmentId, 
-                    groupId,   // NOVO
-                    companyId, // NOVO
+                    groupId,   
+                    companyId, 
                     name: clientName, 
                     phone: clientPhone, 
                     id: safeClientId, 
@@ -176,8 +176,8 @@ router.post('/', async (req, res) => {
             
             let newAppointment = {
                 establishmentId, 
-                groupId,   // NOVO: Permite buscas pelo Dono Geral
-                companyId, // NOVO: Permite buscas pelo Gerente da Matriz
+                groupId,   
+                companyId, 
                 services: servicesDetails, professionalId, professionalName,
                 clientName, clientPhone, 
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
@@ -215,9 +215,6 @@ router.post('/', async (req, res) => {
             });
         });
 
-        /*sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
-            .catch(e => console.error("Falha push:", e));
-        */
         res.status(200).json({ message: 'Agendamento criado!' });
     } catch (error) {
         handleFirestoreError(res, error, 'criar agendamento');
@@ -234,7 +231,6 @@ router.use(verifyToken, hasAccess);
 router.get('/:contextId', async (req, res) => {
     try {
         const { contextId } = req.params;
-        // O Frontend passa `contextType` (GROUP, COMPANY, BRANCH). Se não passar, assume BRANCH.
         const { startDate, endDate, professionalId, clientPhone, limit, contextType = 'BRANCH' } = req.query; 
 
         if (!startDate || !endDate) return res.status(400).json({ message: 'Período obrigatório.' });
@@ -251,23 +247,18 @@ router.get('/:contextId', async (req, res) => {
             .where('startTime', '<=', end)
             .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
 
-        // --- MAGIA ENTERPRISE: Define o filtro base dependendo da Visão do Utilizador ---
+        // Filtro Base dependendo da Visão do Utilizador
         if (contextId === 'ALL') {
-            // Lógica antiga ou global não restrita (Cuidado com desempenho, evite usar ALL sem limitação de empresa)
             console.warn("Aviso: Tentativa de busca 'ALL' genérica sem contexto.");
         } else if (contextType === 'GROUP') {
             query = query.where('groupId', '==', contextId);
         } else if (contextType === 'COMPANY') {
             query = query.where('companyId', '==', contextId);
         } else {
-            // Padrão: Busca por Filial (BRANCH)
             query = query.where('establishmentId', '==', contextId);
         }
-        // --------------------------------------------------------------------------------
 
-        if (clientPhone) {
-            query = query.where('clientPhone', '==', clientPhone);
-        }
+        if (clientPhone) query = query.where('clientPhone', '==', clientPhone);
 
         if (role === 'employee' && !canViewAll) {
             if (userProfessionalId) query = query.where('professionalId', '==', userProfessionalId);
@@ -277,23 +268,27 @@ router.get('/:contextId', async (req, res) => {
         }
 
         query = query.orderBy('startTime', 'desc');
+        if (limit) query = query.limit(parseInt(limit));
 
-        if (limit) {
-            query = query.limit(parseInt(limit));
-        }
-
-        // Executar a query principal de agendamentos
         const appointmentsSnapshot = await query.get();
         if (appointmentsSnapshot.empty) return res.status(200).json([]);
 
-        // Buscar profissionais relacionados ao contexto para preencher nomes (Otimização)
-        let profQuery = db.collection('professionals');
-        if (contextType === 'GROUP') profQuery = profQuery.where('groupId', '==', contextId);
-        else if (contextType === 'COMPANY') profQuery = profQuery.where('companyId', '==', contextId);
-        else profQuery = profQuery.where('establishmentId', '==', contextId);
-        
-        const professionalsSnapshot = await profQuery.get();
-        const professionalsMap = new Map(professionalsSnapshot.docs.map(d => [d.id, d.data().name]));
+        // 🔥 CORREÇÃO: Dupla Query (Legacy + Rede) para encontrar o Nome do Profissional
+        const professionalsMap = new Map();
+        if (contextType === 'GROUP') {
+            const snap = await db.collection('professionals').where('groupId', '==', contextId).get();
+            snap.docs.forEach(d => professionalsMap.set(d.id, d.data().name));
+        } else if (contextType === 'COMPANY') {
+            const snap = await db.collection('professionals').where('companyId', '==', contextId).get();
+            snap.docs.forEach(d => professionalsMap.set(d.id, d.data().name));
+        } else {
+            const [legacySnap, newSnap] = await Promise.all([
+                db.collection('professionals').where('establishmentId', '==', contextId).get(),
+                db.collection('professionals').where('accessibleIn', 'array-contains', contextId).get()
+            ]);
+            legacySnap.docs.forEach(d => professionalsMap.set(d.id, d.data().name));
+            newSnap.docs.forEach(d => professionalsMap.set(d.id, d.data().name));
+        }
         
         const clientRewardsCache = new Map();
 
@@ -301,8 +296,6 @@ router.get('/:contextId', async (req, res) => {
             const data = doc.data();
             const serviceName = (data.services || []).map(s => s.name).join(', ') || data.serviceName || 'N/A';
             let hasRewards = data.hasRewards;
-
-            // Se for visão global, precisamos saber de qual filial veio para validar pontos
             const appointmentEstId = data.establishmentId;
 
             if (hasRewards === undefined && appointmentEstId) {
@@ -315,12 +308,13 @@ router.get('/:contextId', async (req, res) => {
                 }
             }
 
+            // 🔥 CORREÇÃO: Prioridade ao nome já salvo, ou fallback inteligente na rede
             return {
                 id: doc.id, ...data,
                 startTime: data.startTime.toDate(),
                 endTime: data.endTime.toDate(),
                 serviceName,
-                professionalName: professionalsMap.get(data.professionalId) || 'Não encontrado',
+                professionalName: data.professionalName || professionalsMap.get(data.professionalId) || 'Não Encontrado',
                 hasRewards
             };
         }));
@@ -331,7 +325,7 @@ router.get('/:contextId', async (req, res) => {
     }
 });
 
-// 3. HISTÓRICO CANCELADOS (Com suporte a Enterprise)
+// 3. HISTÓRICO CANCELADOS
 router.get('/cancelled/:contextId', async (req, res) => {
     const { contextId } = req.params;
     const { startDate, endDate, contextType = 'BRANCH' } = req.query;
@@ -357,7 +351,7 @@ router.get('/cancelled/:contextId', async (req, res) => {
             serviceName: (doc.data().services || []).map(s => s.name).join(', '),
             professionalName: doc.data().professionalName || 'N/A',
             date: doc.data().startTime.toDate().toISOString(),
-            establishmentId: doc.data().establishmentId // Retornar para saber a origem se visão global
+            establishmentId: doc.data().establishmentId 
         }));
         res.status(200).json(list);
     } catch (error) { handleFirestoreError(res, error, 'cancelados'); }
@@ -521,7 +515,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'atualizar comanda'); }
 });
 
-// 7. CHECKOUT - CORRIGIDO
+// 7. CHECKOUT 
 router.post('/:appointmentId/checkout', async (req, res) => {
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount, loyaltyRedemption } = req.body;
@@ -646,8 +640,8 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 type: 'appointment', 
                 appointmentId, 
                 establishmentId, 
-                groupId,   // NOVO
-                companyId, // NOVO
+                groupId, 
+                companyId, 
                 items,
                 totalAmount: Number(totalAmount), 
                 discount: discount || null,
@@ -677,7 +671,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 if (paymentMethod === 'credito') {
                      const financialRef = db.collection('financial_receivables').doc();
                      transaction.set(financialRef, {
-                        establishmentId, groupId, companyId, // Multi-Tenant
+                        establishmentId, groupId, companyId, 
                         description: `Venda: ${apptData.clientName} (Crédito ${installmentCount}x)`,
                         amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
                         transactionId: saleRef.id, createdAt: paidAtTimestamp,
@@ -700,7 +694,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                         
                         const financialRef = db.collection('financial_receivables').doc();
                         transaction.set(financialRef, {
-                            establishmentId, groupId, companyId, // Multi-Tenant
+                            establishmentId, groupId, companyId, 
                             description: `Venda: ${apptData.clientName} (Parcela ${i}/${installmentCount} - ${typeLabel})`,
                             amount: currentInstallmentValue, dueDate: dueDateString, paymentDate: null, status: 'pending', 
                             transactionId: saleRef.id, createdAt: paidAtTimestamp,
@@ -712,7 +706,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
 
                 const finRef = db.collection('financial_receivables').doc();
                 transaction.set(finRef, {
-                    establishmentId, groupId, companyId, // Multi-Tenant
+                    establishmentId, groupId, companyId, 
                     description: `Venda: ${apptData.clientName} (${payment.method})`,
                     amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
                     transactionId: saleRef.id, createdAt: paidAtTimestamp,

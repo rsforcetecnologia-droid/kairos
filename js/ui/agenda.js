@@ -161,7 +161,7 @@ function renderListView(allEvents) {
         const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
         
         const safeReason = escapeHTML(event.reason);
-        const safeProfName = escapeHTML(event.professionalName);
+        const safeProfName = escapeHTML(event.professionalName || 'Indefinido');
         const safeClientName = escapeHTML(event.clientName);
         const safeServiceName = escapeHTML(event.serviceName);
 
@@ -214,7 +214,7 @@ function renderListView(allEvents) {
                 <div class="details-info min-w-0" ${cardAction}>
                     <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
                     <p class="text-sm text-gray-600 truncate">${safeServiceName}</p>
-                    <p class="text-xs text-gray-500 truncate">com ${safeProfName || 'Indefinido'}</p>
+                    <p class="text-xs text-gray-500 truncate">com ${safeProfName}</p>
                     ${isRedeemed ? '<p class="text-xs font-semibold text-purple-600">Resgate de Prémio</p>' : ''}
                 </div>
                 <div class="status-info">
@@ -252,7 +252,6 @@ function renderWeekView(allEvents) {
     const isMobile = window.innerWidth < 768;
     const daysToShow = isMobile ? 3 : numDays; 
     
-    // Teto Rigoroso para 3 colunas: Força a largura máxima de cada dia para 33.333% e barra quebras.
     const percentWidth = 100 / daysToShow;
     const colStyle = `flex: 0 0 ${percentWidth}%; width: ${percentWidth}%; max-width: ${percentWidth}%; box-sizing: border-box; overflow: hidden;`;
 
@@ -293,7 +292,7 @@ function renderWeekView(allEvents) {
                             <div class="pl-1 min-w-0 flex flex-col">
                                 <span class="font-bold text-[10px] text-red-900 tracking-tight block truncate">${startTimeStr}</span>
                                 <p class="font-bold text-[10px] text-red-800 truncate leading-tight mt-0.5 w-full">${safeReason}</p>
-                                <p class="text-[9px] text-red-600 truncate mt-1 w-full">${safeProfName}</p>
+                                <p class="text-[9px] text-red-600 truncate mt-1 w-full">${safeProfName.split(' ')[0]}</p>
                             </div>
                         </div>
                     `;
@@ -304,7 +303,6 @@ function renderWeekView(allEvents) {
                 const hasRewards = event.hasRewards && !isRedeemed;
                 const isCompleted = event.status === 'completed';
 
-                // Aplicação da classe w-full e min-w-0 em cada card para impedir que eles empurrem a coluna
                 return `
                     <div class="relative p-1.5 rounded-md bg-white border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden min-w-0 w-full flex flex-col" 
                          data-action="open-comanda" data-appointment='${apptDataString}'>
@@ -429,7 +427,6 @@ async function fetchAndDisplayAgenda() {
         end.setDate(start.getDate() + (numDays - 1)); 
         end.setHours(23, 59, 59, 999);
         
-        // MODIFICAÇÃO DE TEXTO DA SEMANA: Encurtado para DD/MM para não quebrar a tela do mobile
         const startStr = start.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
         const endStr = end.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
         weekRangeSpan.textContent = `${startStr} a ${endStr}`;
@@ -461,6 +458,23 @@ async function fetchAndDisplayAgenda() {
         
         if (!document.getElementById('agenda-view')) return;
 
+        // 🔥 CORREÇÃO: Injetar o Nome do Profissional nos Agendamentos!
+        const enrichedAppointments = appointmentsData.map(a => {
+            let profName = a.professionalName;
+            if (!profName && a.professionalId) {
+                const prof = state.professionals ? state.professionals.find(p => p.id === a.professionalId) : null;
+                if (prof) {
+                    profName = prof.name;
+                }
+            }
+            return { 
+                ...a, 
+                type: 'appointment',
+                professionalName: profName || 'Indefinido' 
+            };
+        });
+
+        // 🔥 CORREÇÃO: Injetar o Nome do Profissional nos Bloqueios!
         const enrichedBlockages = blockagesData.map(b => {
             let profName = b.professionalName;
             if (!profName && b.professionalId) {
@@ -472,12 +486,12 @@ async function fetchAndDisplayAgenda() {
             return { 
                 ...b, 
                 type: 'blockage',
-                professionalName: profName || 'Não identificado' 
+                professionalName: profName || 'Indefinido' 
             };
         });
         
         const allEvents = [
-            ...appointmentsData.map(a => ({ ...a, type: 'appointment' })),
+            ...enrichedAppointments,
             ...enrichedBlockages 
         ];
         
@@ -509,24 +523,15 @@ async function fetchAndDisplayAgenda() {
 
 async function populateFilters() {
     try {
+        // 🔥 CORREÇÃO: Força sempre a busca na API. Resolve o bug do "cache fantasma" ao trocar de Lojas/Filiais.
         const [profs, services, establishmentDetails] = await Promise.all([
-            (state.professionals && state.professionals.length > 0) 
-                ? Promise.resolve(state.professionals) 
-                : professionalsApi.getProfessionals(state.establishmentId),
-            (state.services && state.services.length > 0) 
-                ? Promise.resolve(state.services)
-                : servicesApi.getServices(state.establishmentId),
-            (loyaltySettingsForModal.enabled !== undefined)
-                ? Promise.resolve(null)
-                : establishmentApi.getEstablishmentDetails(state.establishmentId)
+            professionalsApi.getProfessionals(state.establishmentId),
+            servicesApi.getServices(state.establishmentId),
+            establishmentApi.getEstablishmentDetails(state.establishmentId)
         ]);
 
-        if (!state.professionals || state.professionals.length === 0) {
-            state.professionals = profs || [];
-        }
-        if (!state.services || state.services.length === 0) {
-            state.services = services || [];
-        }
+        state.professionals = profs || [];
+        state.services = services || [];
         
         allClientsData = []; 
 
@@ -542,7 +547,7 @@ async function populateFilters() {
 
     } catch (error) {
         console.error("Erro ao popular filtros e dependências do modal:", error);
-        showNotification('Atenção', 'Não foi possível pré-carregar os dados para agendamento. A abertura do modal pode ser lenta.', 'error');
+        showNotification('Atenção', 'Não foi possível pré-carregar os dados para agendamento.', 'error');
     }
 }
 
@@ -588,7 +593,7 @@ function handleProfessionalCardClick(professionalId, element) {
     const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
     
     newAppointmentState.data.professionalId = professionalId;
-    newAppointmentState.data.professionalName = professional ? professional.name : 'N/A';
+    newAppointmentState.data.professionalName = professional ? professional.name : 'Indefinido';
 }
 
 function handleTimeSlotClick(slot, element) {
@@ -760,12 +765,14 @@ async function handleAppointmentFormSubmit(e) {
     const [hours, minutes] = newAppointmentState.data.time.split(':');
     const startTimeAsDate = new Date(`${newAppointmentState.data.date}T${hours}:${minutes}:00`);
 
+    // 🔥 CORREÇÃO: Incluído explicitamente o Nome do Profissional no pacote que vai para a base de dados
     const appointmentData = {
         establishmentId: state.establishmentId,
         clientName: newAppointmentState.data.clientName,
         clientPhone: newAppointmentState.data.clientPhone,
         services: servicesData,
         professionalId: newAppointmentState.data.professionalId,
+        professionalName: newAppointmentState.data.professionalName, // ADICIONADO AQUI!
         startTime: startTimeAsDate.toISOString(),
         redeemedReward: newAppointmentState.data.redeemedReward
     };
@@ -1374,8 +1381,6 @@ export async function loadAgendaPage(params = {}) {
         localState.currentView = 'list';
     }
 
-    // CABEÇALHO SUPER LIMPO: Todos os botões extra e filtros estão no botão "Opções".
-    // Data colada na descrição da semana e sem espaços brancos!
     contentDiv.innerHTML = `
         <style>
             .agenda-scroll-container::-webkit-scrollbar { display: none; }
@@ -1383,7 +1388,6 @@ export async function loadAgendaPage(params = {}) {
             .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
             .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
             
-            /* Switch toggle customizado */
             .toggle-bg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.3s; }
             #showInactiveProfsToggle:checked + .toggle-bg { background-color: #4f46e5; }
             #showInactiveProfsToggle:checked + .toggle-bg::after { transform: translateX(100%); }
@@ -1458,7 +1462,6 @@ export async function loadAgendaPage(params = {}) {
             <div id="batch-delete-container" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
         </section>`;
 
-    // --- CONTROLE DO BOTÃO DE FILTROS ---
     const btnToggleFilters = document.getElementById('btn-toggle-filters');
     const filtersPanel = document.getElementById('filters-panel');
     if (btnToggleFilters && filtersPanel) {
@@ -1472,7 +1475,6 @@ export async function loadAgendaPage(params = {}) {
         });
     }
 
-    // --- SELEÇÃO DE ITENS E AÇÕES EM LOTE ---
     const toggleSelectBtn = document.getElementById('btn-toggle-select');
     toggleSelectBtn.addEventListener('click', () => {
         localState.isSelectionMode = !localState.isSelectionMode;
@@ -1485,7 +1487,6 @@ export async function loadAgendaPage(params = {}) {
         renderAgenda(); 
     });
 
-    // --- EVENTOS GERAIS DA PÁGINA ---
     document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));

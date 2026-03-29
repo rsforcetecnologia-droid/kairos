@@ -1,12 +1,14 @@
-// js/ui/professionals.js (Versão Completa e Blindada + Resize Otimizado)
+// js/ui/professionals.js (Versão Completa + Multi-Tenant / Distribuição na Rede)
 
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
 import * as servicesApi from '../api/services.js';
 import * as blockagesApi from '../api/blockages.js';
+import { getHierarchy } from '../api/establishments.js'; // NOVO: Para buscar a estrutura da rede
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
-// CORREÇÃO: Importamos resizeAndCompressImage para centralizar a lógica e evitar duplicação
+import { logAction } from '../api/audit.js';
+import { auth } from '../firebase-config.js';
 import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
@@ -15,7 +17,14 @@ const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', 
 let selectedProfessionals = new Set();
 let pageEventListener = null;
 let modalEventListener = null;
+let hierarchyCache = []; // NOVO: Cache da hierarquia da rede
 
+// --- FUNÇÃO AUXILIAR PARA OBTER UTILIZADOR ATUAL (Para o Log) ---
+function getCurrentUserForLog() {
+    const user = auth.currentUser;
+    if (!user) return { uid: 'unknown', name: 'Desconhecido' };
+    return { uid: user.uid, name: user.displayName || user.email };
+}
 
 // --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
 
@@ -44,12 +53,17 @@ function renderProfessionalsListHTML(professionals) {
 
     return professionals.map(prof => {
         const isInactive = prof.status === 'inactive';
-        // BLINDAGEM XSS
         const safeName = escapeHTML(prof.name);
         const safeSpecialty = escapeHTML(prof.specialty || 'Especialidade');
         
         const photoSrc = prof.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
         const profDataString = JSON.stringify(prof).replace(/'/g, "&apos;");
+
+        // NOVO: Distintivo de Multi-Loja
+        const unitCount = prof.accessibleIn ? prof.accessibleIn.length : 1;
+        const unitBadge = unitCount > 1 
+            ? `<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded ml-2 border border-indigo-200" title="Atende em ${unitCount} unidades"><i class="bi bi-diagram-3"></i> ${unitCount} Lojas</span>` 
+            : '';
 
         return `
             <div class="professional-card bg-white rounded-lg shadow-md flex items-center gap-4 p-3 cursor-pointer transition-transform transform hover:shadow-lg hover:bg-gray-50
@@ -62,10 +76,12 @@ function renderProfessionalsListHTML(professionals) {
                 <div class="flex-1 sm:p-4">
                     <div class="flex justify-between items-start">
                         <div>
-                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base">${safeName}</h3>
-                            <p class="text-xs text-gray-500 text-left sm:text-sm">${safeSpecialty}</p>
+                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base flex items-center">
+                                ${safeName} ${unitBadge}
+                            </h3>
+                            <p class="text-xs text-gray-500 text-left sm:text-sm mt-0.5">${safeSpecialty}</p>
                         </div>
-                        <span class="text-xs font-semibold py-1 px-2 rounded-full hidden sm:inline-block ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
+                        <span class="text-[10px] font-bold py-1 px-2 rounded-full hidden sm:inline-block uppercase tracking-wider ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
                             ${isInactive ? 'Inativo' : 'Ativo'}
                         </span>
                     </div>
@@ -73,7 +89,7 @@ function renderProfessionalsListHTML(professionals) {
                         <span class="text-xs font-semibold ${isInactive ? 'text-red-700' : 'text-green-700'}">${isInactive ? 'Inativo' : 'Ativo'}</span>
                     </div>
                     <div class="hidden sm:block mt-3 pt-3 border-t">
-                        <p class="text-xs text-gray-600">Serviços: <span class="font-semibold">${prof.services?.length || 0}</span></p>
+                        <p class="text-xs text-gray-600">Serviços Habilitados: <span class="font-semibold text-indigo-600">${prof.services?.length || 0}</span></p>
                     </div>
                 </div>
             </div>`;
@@ -94,7 +110,6 @@ async function openProfessionalModal(professional) {
     const modal = document.getElementById('genericModal');
     const prof = professional.id ? professional : { name: 'Novo Profissional', specialty: '', status: 'active', workingHours: {}, services: [] };
     
-    // BLINDAGEM XSS
     const safeTitle = escapeHTML(prof.name);
 
     const services = state.services || await servicesApi.getServices(state.establishmentId);
@@ -102,37 +117,37 @@ async function openProfessionalModal(professional) {
 
     const modalHTML = `
         <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> 
-            <div class="modal-header px-6 py-4 flex justify-between items-center border-b">
+            <div class="modal-header px-6 py-4 flex justify-between items-center border-b bg-white sticky top-0 z-10">
                 <h2 class="text-2xl font-bold text-gray-800">${safeTitle}</h2>
-                <button data-action="close-modal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+                <button data-action="close-modal" class="text-gray-400 hover:text-red-500 transition-colors text-3xl leading-none">&times;</button>
             </div>
-            <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto">
-                <button class="tab-link active whitespace-nowrap" data-tab="cadastro">Cadastro</button>
-                <button class="tab-link whitespace-nowrap" data-tab="jornada">Jornada</button>
-                <button class="tab-link whitespace-nowrap" data-tab="bloqueios">Bloqueios</button>
+            <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto bg-gray-50/50">
+                <button class="tab-link active whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-indigo-600 text-indigo-600" data-tab="cadastro">Cadastro e Rede</button>
+                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700" data-tab="jornada">Jornada Semanal</button>
+                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700" data-tab="bloqueios">Bloqueios e Férias</button>
             </div>
-            <div class="modal-body p-6 bg-gray-50 flex-1 overflow-y-auto"> 
+            <div class="modal-body p-6 bg-white flex-1 overflow-y-auto"> 
                 <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
                 <div id="jornada" class="tab-content hidden"></div>
                 <div id="bloqueios" class="tab-content hidden"></div>
             </div>
-            <div class="modal-footer px-6 py-4 bg-gray-100 flex justify-between items-center">
+            <div class="modal-footer px-6 py-4 bg-gray-50 border-t flex justify-between items-center">
                 
                 <button 
                     type="button" 
                     data-action="delete-professional" 
                     data-id="${prof.id || ''}" 
-                    class="text-red-600 hover:text-red-800 transition-colors ${prof.id ? '' : 'hidden'}" 
+                    class="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg font-medium transition-colors ${prof.id ? '' : 'hidden'}" 
                     title="Excluir Profissional"
                 >
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                    </svg>
+                    <i class="bi bi-trash3 mr-1"></i> Excluir Profissional
                 </button>
 
-                <div class="flex gap-2">
-                    <button data-action="close-modal" class="py-2 px-4 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400">Cancelar</button>
-                    <button type="button" data-action="save-professional" class="py-2 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Salvar</button>
+                <div class="flex gap-3">
+                    <button data-action="close-modal" class="py-2.5 px-5 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 shadow-sm transition-colors">Cancelar</button>
+                    <button type="button" data-action="save-professional" class="py-2.5 px-6 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition-colors">
+                        <i class="bi bi-save"></i> Salvar
+                    </button>
                 </div>
             </div>
         </div>`;
@@ -147,6 +162,45 @@ async function openProfessionalModal(professional) {
     setupModalEventListeners(prof);
 }
 
+// --- NOVO: GERADOR DE CHECKBOXES PARA MULTI-TENANT ---
+function generateUnitCheckboxesHTML(selectedIds = []) {
+    if (!hierarchyCache || hierarchyCache.length === 0) {
+        return `
+            <input type="hidden" name="accessibleIn" value="${state.establishmentId}">
+            <div class="bg-gray-50 p-3 rounded border text-sm text-gray-500">
+                <i class="bi bi-info-circle mr-1"></i> Profissional exclusivo desta unidade.
+            </div>`;
+    }
+
+    let html = '<div class="space-y-1 mt-2 max-h-48 overflow-y-auto p-3 border border-indigo-100 rounded-lg bg-indigo-50/30">';
+    
+    hierarchyCache.forEach(matriz => {
+        const isMatrizSelected = selectedIds.includes(matriz.id) || (selectedIds.length === 0 && matriz.id === state.establishmentId);
+        
+        html += `
+            <label class="flex items-center space-x-3 py-1.5 cursor-pointer hover:bg-white rounded px-2 transition-colors">
+                <input type="checkbox" name="accessibleIn" value="${matriz.id}" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isMatrizSelected ? 'checked' : ''}>
+                <span class="text-sm font-bold text-gray-800">🏢 ${escapeHTML(matriz.name)} (Matriz)</span>
+            </label>
+        `;
+        
+        if (matriz.branches && matriz.branches.length > 0) {
+            matriz.branches.forEach(branch => {
+                const isBranchSelected = selectedIds.includes(branch.id) || (selectedIds.length === 0 && branch.id === state.establishmentId);
+                html += `
+                    <label class="flex items-center space-x-3 py-1.5 ml-6 cursor-pointer hover:bg-white rounded px-2 transition-colors border-l-2 border-indigo-100 pl-4">
+                        <input type="checkbox" name="accessibleIn" value="${branch.id}" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isBranchSelected ? 'checked' : ''}>
+                        <span class="text-sm font-medium text-gray-600">📍 ${escapeHTML(branch.name)}</span>
+                    </label>
+                `;
+            });
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
 function fillCadastroTab(prof, services) {
     const form = document.getElementById('professionalForm');
     const dob = prof.dob ? prof.dob.split('/') : ['', ''];
@@ -159,7 +213,6 @@ function fillCadastroTab(prof, services) {
     
     const currentStatus = prof.status || 'active';
 
-    // BLINDAGEM XSS
     const safeName = escapeHTML(prof.name || '');
     const safeSpecialty = escapeHTML(prof.specialty || '');
     const safePhone = escapeHTML(prof.phone || '');
@@ -169,19 +222,19 @@ function fillCadastroTab(prof, services) {
         <input type="hidden" id="professionalId" value="${prof.id || ''}">
         <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div class="md:col-span-1 space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Foto de Perfil</label>
-                    <div class="mt-1 flex flex-col items-center">
-                        <img id="profPhotoPreview" src="${prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`}" alt="Foto de Perfil" class="w-32 h-32 rounded-full object-cover mb-3 border-4 border-gray-200">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Foto de Perfil</label>
+                    <div class="flex flex-col items-center p-4 border border-dashed border-gray-300 rounded-xl bg-gray-50">
+                        <img id="profPhotoPreview" src="${prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`}" alt="Foto de Perfil" class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-white shadow-sm">
                         <input type="file" id="profPhotoInput" class="hidden" accept="image/*">
-                        <button type="button" id="profPhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Foto</button>
+                        <button type="button" id="profPhotoButton" class="bg-white py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors w-full">Alterar Foto</button>
                     </div>
                 </div>
                  <div class="form-group">
-                    <label for="profStatus">Status</label>
-                    <select id="profStatus" class="mt-1 w-full p-2 border rounded-md bg-white">
+                    <label for="profStatus" class="block text-sm font-medium text-gray-700 mb-1">Status na Rede</label>
+                    <select id="profStatus" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
                         <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
                         <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
                     </select>
@@ -190,22 +243,44 @@ function fillCadastroTab(prof, services) {
 
             <div class="md:col-span-2 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="form-group"><label for="profName">Nome</label><input type="text" id="profName" value="${safeName}" required class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profSpecialty">Especialidade</label><input type="text" id="profSpecialty" value="${safeSpecialty}" required class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profPhone">Número de telefone</label><input type="tel" id="profPhone" value="${safePhone}" class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profDobDay">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="mt-1 w-full p-2 border rounded-md"></div>
-                    <div class="form-group"><label for="profDobMonth">Aniversário (Mês)</label><select id="profDobMonth" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="">Selecione...</option>${monthOptions}</select></div>
-                    <div class="form-group"><label for="profOrderOnAgenda">Ordem na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="mt-1 w-full p-2 border rounded-md"></div>
+                    <div class="form-group"><label for="profName" class="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label><input type="text" id="profName" value="${safeName}" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
+                    <div class="form-group"><label for="profSpecialty" class="block text-sm font-medium text-gray-700 mb-1">Especialidade / Cargo</label><input type="text" id="profSpecialty" value="${safeSpecialty}" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
+                    <div class="form-group"><label for="profPhone" class="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Telefone</label><input type="tel" id="profPhone" value="${safePhone}" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
+                    <div class="form-group"><label for="profOrderOnAgenda" class="block text-sm font-medium text-gray-700 mb-1">Ordem de exibição na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
+                    <div class="form-group"><label for="profDobDay" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
+                    <div class="form-group"><label for="profDobMonth" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Mês)</label><select id="profDobMonth" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Selecione...</option>${monthOptions}</select></div>
                 </div>
-                 <div class="grid grid-cols-2 gap-4 pt-4 border-t">
-                    <div class="form-group"><label for="profCommission">Recebe comissão?</label><select id="profCommission" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
-                    <div class="form-group"><label for="profShowOnAgenda">Mostrar na agenda</label><select id="profShowOnAgenda" class="mt-1 w-full p-2 border rounded-md bg-white"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
+                 <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                    <div class="form-group"><label for="profCommission" class="block text-sm font-medium text-gray-700 mb-1">Paga Comissão?</label><select id="profCommission" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
+                    <div class="form-group"><label for="profShowOnAgenda" class="block text-sm font-medium text-gray-700 mb-1">Exibir aos Clientes (App)</label><select id="profShowOnAgenda" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
                 </div>
             </div>
         </div>
 
-        <div><label class="block text-sm font-medium text-gray-700">Serviços Realizados</label><div id="profServicesContainer" class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4 p-4 border rounded-md bg-white max-h-48 overflow-y-auto">${services.map(s => `<label class="flex items-center space-x-2"><input type="checkbox" value="${s.id}" class="rounded" ${prof.services?.includes(s.id) ? 'checked' : ''}><span>${escapeHTML(s.name)}</span></label>`).join('')}</div></div>
-        <div class="form-group"><label for="profNotes">Observações</label><textarea id="profNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${safeNotes}</textarea></div>`;
+        <div class="pt-6 border-t border-gray-100">
+            <label class="block text-base font-bold text-indigo-900 mb-1">
+                <i class="bi bi-diagram-3 mr-1"></i> Locais de Atendimento
+            </label>
+            <p class="text-xs text-gray-500 mb-3">Marque em quais unidades da rede este profissional trabalha e recebe agendamentos.</p>
+            ${generateUnitCheckboxesHTML(prof.accessibleIn || [])}
+        </div>
+
+        <div class="pt-6 border-t border-gray-100">
+            <label class="block text-base font-bold text-gray-800 mb-3">Serviços que realiza</label>
+            <div id="profServicesContainer" class="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border border-gray-200 rounded-xl bg-gray-50 max-h-64 overflow-y-auto">
+                ${services.map(s => `
+                    <label class="flex items-center space-x-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-200 hover:shadow-sm">
+                        <input type="checkbox" value="${s.id}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" ${prof.services?.includes(s.id) ? 'checked' : ''}>
+                        <span class="text-sm font-medium text-gray-700">${escapeHTML(s.name)}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="form-group pt-4">
+            <label for="profNotes" class="block text-sm font-medium text-gray-700 mb-1">Observações Internas</label>
+            <textarea id="profNotes" rows="3" class="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500">${safeNotes}</textarea>
+        </div>`;
 
     const photoInput = document.getElementById('profPhotoInput');
     const photoButton = document.getElementById('profPhotoButton');
@@ -214,9 +289,7 @@ function fillCadastroTab(prof, services) {
     const originalPhotoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
     const originalBase64 = prof.photo || '';
 
-    if (photoButton) {
-        photoButton.addEventListener('click', () => photoInput.click());
-    }
+    if (photoButton) photoButton.addEventListener('click', () => photoInput.click());
 
     if (photoInput) {
         photoInput.onchange = async () => {
@@ -225,16 +298,13 @@ function fillCadastroTab(prof, services) {
              photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...';
              
              try {
-                 // OTIMIZAÇÃO: Usa função importada, remove argumento de formato para usar o padrão JPEG
                  const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 0.8);
                  
                  const stringLength = resizedBase64.length;
                  const sizeInBytes = (stringLength * 3) / 4; 
                  const maxSizeInBytes = 1000 * 1024; // 1MB Hard Limit
                  
-                 if (sizeInBytes > maxSizeInBytes) {
-                     throw new Error('A imagem é muito grande mesmo após a compressão.');
-                 }
+                 if (sizeInBytes > maxSizeInBytes) throw new Error('A imagem é muito grande mesmo após a compressão.');
 
                  photoPreview.src = resizedBase64;
                  photoBase64Input.value = resizedBase64;
@@ -248,56 +318,69 @@ function fillCadastroTab(prof, services) {
     }
 }
 
-// NOTA: Função local resizeAndCompressImage removida
-
 function fillJornadaTab(prof) {
     const container = document.getElementById('jornada');
-    container.innerHTML = `<div><h3 class="text-xl font-semibold mb-4">Jornada de Trabalho Semanal</h3><p class="text-sm text-gray-600 mb-4">Defina os horários de trabalho padrão para este profissional.</p><div id="profScheduleContainer" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4"></div></div>`;
+    container.innerHTML = `
+        <div class="max-w-4xl mx-auto">
+            <h3 class="text-xl font-bold text-gray-800 mb-2">Jornada de Trabalho Semanal</h3>
+            <p class="text-sm text-gray-500 mb-6">Defina os dias e os horários em que este profissional atende.</p>
+            <div id="profScheduleContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
+        </div>`;
     renderAdvancedScheduleSelector(container.querySelector('#profScheduleContainer'), prof.workingHours || {});
 }
 
 async function fillBloqueiosTab(prof, allProfessionals) {
     const container = document.getElementById('bloqueios');
     container.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
             <div>
-                <h3 class="text-xl font-semibold mb-4">Lançamento de Bloqueios</h3>
-                <form id="batchBlockageForm" class="p-4 bg-white rounded-lg shadow-inner space-y-3 mb-4">
-                    <h4 class="font-semibold text-gray-800">Selecione os Profissionais</h4>
-                    <div id="batchProfSelectionContainer" class="max-h-32 overflow-y-auto p-2 border rounded-md space-y-2">
-                        ${allProfessionals.map(p => `<label class="flex items-center"><input type="checkbox" name="batch-professionals" value="${p.id}" class="rounded mr-2" ${p.id === prof.id ? 'checked' : ''}><span>${escapeHTML(p.name)}</span></label>`).join('')}
+                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="bi bi-calendar-x text-orange-500"></i> Lançar Bloqueio / Férias</h3>
+                <form id="batchBlockageForm" class="p-5 bg-orange-50/50 border border-orange-100 rounded-xl space-y-4">
+                    <div>
+                        <h4 class="font-bold text-gray-700 mb-2 text-sm">Aplicar aos Profissionais:</h4>
+                        <div id="batchProfSelectionContainer" class="max-h-40 overflow-y-auto p-3 border border-orange-200 rounded-lg bg-white space-y-2 shadow-sm">
+                            ${allProfessionals.map(p => `
+                                <label class="flex items-center space-x-3 hover:bg-orange-50 p-1 rounded cursor-pointer transition-colors">
+                                    <input type="checkbox" name="batch-professionals" value="${p.id}" class="rounded border-gray-300 text-orange-500 focus:ring-orange-500" ${p.id === prof.id ? 'checked' : ''}>
+                                    <span class="text-sm font-medium text-gray-700">${escapeHTML(p.name)}</span>
+                                </label>`).join('')}
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label for="batchBlockageStartDate" class="text-sm">Data Início</label><input type="date" id="batchBlockageStartDate" required class="w-full p-2 border rounded-md"></div>
-                        <div><label for="batchBlockageEndDate" class="text-sm">Data Fim (Opcional)</label><input type="date" id="batchBlockageEndDate" class="w-full p-2 border rounded-md"></div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label for="batchBlockageStartDate" class="block text-sm font-medium text-gray-700 mb-1">Data Início</label><input type="date" id="batchBlockageStartDate" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                        <div><label for="batchBlockageEndDate" class="block text-sm font-medium text-gray-700 mb-1">Data Fim (Opcional)</label><input type="date" id="batchBlockageEndDate" class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label class="text-sm">Início</label><input type="time" id="batchBlockageStartTime" required class="w-full p-2 border rounded-md"></div>
-                        <div><label class="text-sm">Fim</label><input type="time" id="batchBlockageEndTime" required class="w-full p-2 border rounded-md"></div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Início</label><input type="time" id="batchBlockageStartTime" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Fim</label><input type="time" id="batchBlockageEndTime" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
                     </div>
-                    <div><label class="text-sm">Motivo</label><input type="text" id="batchBlockageReason" placeholder="Ex: Feriado, Evento" class="w-full p-2 border rounded-md"></div>
-                    <button type="submit" class="w-full bg-orange-500 text-white font-semibold py-2 rounded-lg hover:bg-orange-600">Lançar Bloqueio em Lote</button>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Motivo / Descrição</label><input type="text" id="batchBlockageReason" placeholder="Ex: Férias, Médico, Casamento" class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                    <button type="submit" class="w-full bg-orange-500 text-white font-bold py-3 rounded-lg hover:bg-orange-600 shadow-sm transition-colors mt-2">Gravar Bloqueio</button>
                 </form>
             </div>
             <div>
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold">Bloqueios de ${escapeHTML(prof.name)}</h3>
-                    <select id="prof-blockages-filter" class="p-1 border rounded text-sm bg-white">
-                        <option value="future">Futuros</option>
-                        <option value="history">Histórico</option>
+                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3">
+                    <h3 class="text-xl font-bold text-gray-800">Registos de ${escapeHTML(prof.name.split(' ')[0])}</h3>
+                    <select id="prof-blockages-filter" class="p-2 border border-gray-300 rounded-lg text-sm bg-white font-medium outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="future">Apenas Futuros</option>
+                        <option value="history">Histórico Passado</option>
                     </select>
                 </div>
-                <div id="blockagesList" class="space-y-2 max-h-96 overflow-y-auto pr-2"></div>
+                <div id="blockagesList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2"></div>
             </div>
         </div>`;
     
-    // Anexa listener ao formulário de bloqueio
     const batchBlockageForm = document.getElementById('batchBlockageForm');
     if(batchBlockageForm) {
         batchBlockageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            const btn = batchBlockageForm.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> A gravar...';
+
             const selectedProfIds = Array.from(e.target.querySelectorAll('input[name="batch-professionals"]:checked')).map(cb => cb.value);
             if (selectedProfIds.length === 0) {
+                btn.disabled = false; btn.innerHTML = originalText;
                 return showNotification('Atenção', 'Selecione pelo menos um profissional.', 'error');
             }
 
@@ -308,7 +391,8 @@ async function fillBloqueiosTab(prof, allProfessionals) {
             const reason = e.target.batchBlockageReason.value;
             
             if(!batchStartDate || !batchStartTime || !batchEndTime) {
-                 return showNotification('Atenção', 'Preencha Data de Início, Início e Fim.', 'error');
+                 btn.disabled = false; btn.innerHTML = originalText;
+                 return showNotification('Atenção', 'Preencha Data de Início, Hora de Início e Fim.', 'error');
             }
 
             const blockagePromises = selectedProfIds.map(profId => {
@@ -326,20 +410,25 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 await Promise.all(blockagePromises);
                 showNotification('Sucesso!', `${selectedProfIds.length} bloqueios foram criados.`);
                 
-                // Atualiza a lista respeitando o filtro
+                // Limpa o form exceto o profissional atual
+                batchBlockageForm.reset();
+                e.target.querySelectorAll('input[name="batch-professionals"]').forEach(cb => {
+                    cb.checked = cb.value === prof.id;
+                });
+
                 const currentFilter = document.getElementById('prof-blockages-filter').value;
                 fetchAndRenderBlockages(prof.id, currentFilter);
             } catch (error) {
                 showNotification('Erro', error.message, 'error');
+            } finally {
+                btn.disabled = false; btn.innerHTML = originalText;
             }
         });
     }
 
-    // Listener do Filtro da Lista
     const filterSelect = document.getElementById('prof-blockages-filter');
     filterSelect.addEventListener('change', (e) => fetchAndRenderBlockages(prof.id, e.target.value));
 
-    // Carregamento Inicial (Futuros)
     await fetchAndRenderBlockages(prof.id, 'future');
 }
 
@@ -348,25 +437,38 @@ function renderAdvancedScheduleSelector(container, scheduleData) {
         const dayData = scheduleData[dayKey] || {};
         const isChecked = dayData.active !== false;
         return `
-            <div class="day-schedule-card p-3 rounded-lg ${isChecked ? 'bg-white' : 'bg-gray-100 disabled'} border">
-                 <div class="flex justify-between items-center"><span class="font-semibold text-gray-800">${daysOfWeek[dayKey]}</span><label class="flex items-center cursor-pointer"><div class="relative"><input type="checkbox" data-day="${dayKey}" data-field="active" class="sr-only" ${isChecked ? 'checked' : ''}><div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full"></div></div></label></div>
-                <div class="time-inputs grid grid-cols-2 gap-2 mt-2 text-sm">
-                    <div><label>Início:</label><input type="time" data-day="${dayKey}" data-field="start" value="${dayData.start || '09:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
-                    <div><label>Fim:</label><input type="time" data-day="${dayKey}" data-field="end" value="${dayData.end || '18:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
-                    <div><label>Intervalo:</label><input type="time" data-day="${dayKey}" data-field="breakStart" value="${dayData.breakStart || '12:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
-                    <div><label>Fim Int.:</label><input type="time" data-day="${dayKey}" data-field="breakEnd" value="${dayData.breakEnd || '13:00'}" class="w-full p-1 border rounded" ${!isChecked ? 'disabled' : ''}></div>
+            <div class="day-schedule-card p-4 rounded-xl ${isChecked ? 'bg-white border-gray-200 shadow-sm' : 'bg-gray-50 border-gray-100 disabled opacity-60'} border transition-all">
+                 <div class="flex justify-between items-center mb-3">
+                    <span class="font-bold text-gray-800">${daysOfWeek[dayKey]}</span>
+                    <label class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <input type="checkbox" data-day="${dayKey}" data-field="active" class="sr-only" ${isChecked ? 'checked' : ''}>
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full peer-checked:bg-indigo-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </div>
+                    </label>
+                 </div>
+                <div class="time-inputs grid grid-cols-2 gap-3 mt-2 text-sm">
+                    <div><label class="text-xs text-gray-500 font-medium">Abertura:</label><input type="time" data-day="${dayKey}" data-field="start" value="${dayData.start || '09:00'}" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 bg-white" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label class="text-xs text-gray-500 font-medium">Fecho:</label><input type="time" data-day="${dayKey}" data-field="end" value="${dayData.end || '18:00'}" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 bg-white" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label class="text-xs text-gray-500 font-medium">Início Pausa:</label><input type="time" data-day="${dayKey}" data-field="breakStart" value="${dayData.breakStart || '12:00'}" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 bg-white" ${!isChecked ? 'disabled' : ''}></div>
+                    <div><label class="text-xs text-gray-500 font-medium">Fim Pausa:</label><input type="time" data-day="${dayKey}" data-field="breakEnd" value="${dayData.breakEnd || '13:00'}" class="w-full p-2 border border-gray-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 bg-white" ${!isChecked ? 'disabled' : ''}></div>
                 </div>
             </div>`;
     }).join('');
 
-    // Adiciona listener para toggle
     container.querySelectorAll('input[type="checkbox"][data-field="active"]').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             const card = e.target.closest('.day-schedule-card');
             const isDisabled = !e.target.checked;
             card.classList.toggle('bg-white', !isDisabled);
-            card.classList.toggle('bg-gray-100', isDisabled);
+            card.classList.toggle('shadow-sm', !isDisabled);
+            card.classList.toggle('border-gray-200', !isDisabled);
+            
+            card.classList.toggle('bg-gray-50', isDisabled);
+            card.classList.toggle('border-gray-100', isDisabled);
+            card.classList.toggle('opacity-60', isDisabled);
             card.classList.toggle('disabled', isDisabled);
+            
             card.querySelectorAll('.time-inputs input').forEach(input => input.disabled = isDisabled);
         });
     });
@@ -375,18 +477,16 @@ function renderAdvancedScheduleSelector(container, scheduleData) {
 async function fetchAndRenderBlockages(professionalId, mode = 'future') {
     const listDiv = document.getElementById('blockagesList');
     if (!listDiv) return;
-    listDiv.innerHTML = '<div class="loader mx-auto"></div>';
+    listDiv.innerHTML = '<div class="loader mx-auto mt-6"></div>';
     try {
         const now = new Date();
         let startDate, endDate;
 
         if (mode === 'history') {
-            // Histórico: 2 anos atrás até hoje
             endDate = new Date();
             startDate = new Date();
             startDate.setFullYear(startDate.getFullYear() - 2); 
         } else {
-            // Futuro: Hoje até 2 anos à frente
             startDate = new Date();
             endDate = new Date();
             endDate.setFullYear(endDate.getFullYear() + 2);
@@ -403,65 +503,82 @@ async function fetchAndRenderBlockages(professionalId, mode = 'future') {
         if (mode === 'history') {
              filteredBlockages = filteredBlockages
                 .filter(b => b.endTime < now)
-                .sort((a, b) => b.startTime - a.startTime); // Decrescente (mais recente primeiro)
+                .sort((a, b) => b.startTime - a.startTime); 
         } else {
              filteredBlockages = filteredBlockages
                 .filter(b => b.endTime >= now)
-                .sort((a, b) => a.startTime - b.startTime); // Crescente
+                .sort((a, b) => a.startTime - b.startTime); 
         }
 
         const groupedByReason = filteredBlockages.reduce((acc, b) => {
-            const reason = b.reason || 'Sem motivo';
+            const reason = b.reason || 'Sem motivo detalhado';
             if (!acc[reason]) acc[reason] = [];
             acc[reason].push(b);
             return acc;
         }, {});
 
         if (Object.keys(groupedByReason).length === 0) {
-            listDiv.innerHTML = `<p class="text-center text-gray-500 text-sm py-4">Nenhum bloqueio ${mode === 'history' ? 'no histórico' : 'futuro'}.</p>`;
+            listDiv.innerHTML = `
+                <div class="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                    <i class="bi bi-calendar-check text-3xl text-gray-300 mb-2 block"></i>
+                    <p class="text-gray-500 font-medium">Nenhum bloqueio ${mode === 'history' ? 'no histórico' : 'agendado para o futuro'}.</p>
+                </div>`;
             return;
         }
 
         listDiv.innerHTML = Object.entries(groupedByReason).map(([reason, group]) => `
-            <div class="bg-gray-100 rounded-lg p-3 my-2 space-y-2">
-                <div class="flex justify-between items-center pb-2 border-b">
-                    <h4 class="font-bold text-gray-700">${escapeHTML(reason)} (${group.length})</h4>
-                    ${group.length > 1 ? `<button data-action="batch-delete-blockage" data-ids='${JSON.stringify(group.map(b => b.id))}' class="text-xs text-red-600 font-semibold hover:underline">Apagar Todos (${group.length})</button>` : ''}
+            <div class="bg-white border border-gray-200 rounded-xl shadow-sm mb-4 overflow-hidden">
+                <div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                    <h4 class="font-bold text-gray-800 flex items-center gap-2"><i class="bi bi-tag text-orange-500"></i> ${escapeHTML(reason)}</h4>
+                    ${group.length > 1 ? `<button data-action="batch-delete-blockage" data-ids='${JSON.stringify(group.map(b => b.id))}' class="text-xs text-red-600 bg-red-50 hover:bg-red-100 font-bold px-2 py-1 rounded transition-colors">Apagar Grupo (${group.length})</button>` : ''}
                 </div>
+                <div class="divide-y divide-gray-100">
                 ${group.map(b => `
-                    <div class="flex justify-between items-center bg-white p-2 rounded-md text-sm border">
-                        <p class="text-xs text-gray-500">
-                           ${b.startTime.toLocaleDateString('pt-BR')} 
-                           <span class="text-gray-400 mx-1">|</span> 
-                           ${b.startTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${b.endTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
-                        </p>
-                        <button data-action="delete-blockage" data-id="${b.id}" class="text-red-500 p-1 rounded-full hover:bg-red-100" title="Apagar">&times;</button>
+                    <div class="flex justify-between items-center p-3 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-orange-100 text-orange-600 w-10 h-10 rounded-lg flex flex-col items-center justify-center leading-none">
+                                <span class="font-bold text-sm">${b.startTime.getDate().toString().padStart(2, '0')}</span>
+                                <span class="text-[9px] uppercase font-bold">${b.startTime.toLocaleString('pt-BR', {month:'short'})}</span>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-gray-700">
+                                   ${b.startTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} até ${b.endTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                                </p>
+                                ${b.startTime.getDate() !== b.endTime.getDate() ? `<p class="text-xs text-gray-400">Termina em ${b.endTime.toLocaleDateString('pt-BR')}</p>` : ''}
+                            </div>
+                        </div>
+                        <button data-action="delete-blockage" data-id="${b.id}" class="text-gray-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors" title="Apagar Dia">
+                            <i class="bi bi-trash3"></i>
+                        </button>
                     </div>
                 `).join('')}
+                </div>
             </div>
         `).join('');
     } catch (error) {
-        listDiv.innerHTML = `<p class="text-red-500">${error.message}</p>`;
+        listDiv.innerHTML = `<p class="text-red-500 p-4">${error.message}</p>`;
     }
 }
 
 function setupModalEventListeners(professional) {
     const modal = document.getElementById('genericModal');
     
-    // Limpa listener antigo se existir
     if (modalEventListener) {
         modal.removeEventListener('click', modalEventListener);
     }
 
-    // Define o novo listener
     modalEventListener = async (e) => {
         const button = e.target.closest('button[data-action]');
         
         if (!button) {
             const tab = e.target.closest('.tab-link');
             if (tab) {
-                modal.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
-                tab.classList.add('active');
+                modal.querySelectorAll('.tab-link').forEach(btn => {
+                    btn.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
+                    btn.classList.add('border-transparent', 'text-gray-500');
+                });
+                tab.classList.add('active', 'border-indigo-600', 'text-indigo-600');
+                tab.classList.remove('border-transparent', 'text-gray-500');
                 modal.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
                 document.getElementById(tab.dataset.tab).classList.remove('hidden');
             }
@@ -478,13 +595,14 @@ function setupModalEventListeners(professional) {
             
             case 'delete-professional':
                 const idToDelete = button.dataset.id;
-                const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita.`);
+                const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita e ele será removido da agenda e de todas as lojas.`);
                 if(confirmed) {
                     try {
                         await professionalsApi.deleteProfessional(idToDelete);
-                        showNotification('Sucesso!', 'Profissional excluído.', 'success');
+                        logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Excluiu', `Excluiu profissional: ${professional.name}`);
+                        showNotification('Sucesso!', 'Profissional excluído da rede.', 'success');
                         closeProfessionalModal();
-                        loadProfessionalsPage(); // Recarrega a página principal
+                        loadProfessionalsPage(); 
                     } catch (error) {
                          showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
                     }
@@ -512,10 +630,15 @@ function setupModalEventListeners(professional) {
                     });
                 }
 
+                // 🎯 Captura as checkboxes da Hierarquia/Rede
+                const checkedUnits = Array.from(form.querySelectorAll('input[name="accessibleIn"]:checked')).map(cb => cb.value);
+                const accessibleIn = checkedUnits.length > 0 ? checkedUnits : [state.establishmentId];
+
                 const professionalData = {
                     ...professional,
                     id: form.querySelector('#professionalId').value || undefined, 
-                    name: form.querySelector('#profName').value,
+                    accessibleIn: accessibleIn, // Array Multi-Loja
+                    name: form.querySelector('#profName').value.trim(),
                     specialty: form.querySelector('#profSpecialty').value,
                     photo: form.querySelector('#profPhotoBase64').value,
                     services: selectedServices,
@@ -527,20 +650,23 @@ function setupModalEventListeners(professional) {
                     orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
                     notes: form.querySelector('#profNotes').value,
                     status: form.querySelector('#profStatus').value,
-                    establishmentId: state.establishmentId
+                    establishmentId: state.establishmentId // Mantém como criador original
                 };
 
+                const originalText = saveButton.innerHTML;
                 saveButton.disabled = true;
-                saveButton.textContent = 'A salvar...';
+                saveButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> A gravar...';
 
                 try {
                     if (professionalData.id) {
                         await professionalsApi.updateProfessional(professionalData.id, professionalData);
-                        showNotification('Sucesso!', 'Profissional atualizado.', 'success');
+                        logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Editou', `Editou o profissional: ${professionalData.name}`);
+                        showNotification('Sucesso!', 'Dados atualizados.', 'success');
                     } else {
                         delete professionalData.id; 
                         await professionalsApi.createProfessional(professionalData);
-                        showNotification('Sucesso!', 'Profissional criado.', 'success');
+                        logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Criou', `Cadastrou o profissional: ${professionalData.name}`);
+                        showNotification('Sucesso!', 'Novo membro adicionado à equipe.', 'success');
                     }
                     
                     closeProfessionalModal();
@@ -548,17 +674,16 @@ function setupModalEventListeners(professional) {
                 } catch (error) {
                     showNotification('Erro', error.message, 'error');
                     saveButton.disabled = false;
-                    saveButton.textContent = 'Salvar';
+                    saveButton.innerHTML = originalText;
                 }
                 break;
 
             case 'delete-blockage':
                 const blockageId = button.dataset.id;
-                if (await showConfirmation('Apagar Bloqueio', 'Tem certeza?')) {
+                if (await showConfirmation('Apagar Bloqueio', 'O profissional voltará a ficar disponível na agenda neste dia. Confirma?')) {
                     try {
                         await blockagesApi.deleteBlockage(blockageId);
                         showNotification('Bloqueio removido.', 'success');
-                        // Atualiza usando o filtro atual
                         const currentFilter = document.getElementById('prof-blockages-filter') ? document.getElementById('prof-blockages-filter').value : 'future';
                         fetchAndRenderBlockages(professional.id, currentFilter);
                     } catch (error) {
@@ -569,11 +694,10 @@ function setupModalEventListeners(professional) {
             
             case 'batch-delete-blockage':
                 const ids = JSON.parse(button.dataset.ids);
-                if (await showConfirmation('Apagar em Lote', `Tem certeza que deseja apagar ${ids.length} bloqueios com este motivo?`)) {
+                if (await showConfirmation('Apagar em Lote', `Tem certeza que deseja apagar ${ids.length} dias de bloqueio de uma vez?`)) {
                     try {
                         await blockagesApi.batchDeleteBlockages(ids);
                         showNotification('Bloqueios removidos.', 'success');
-                        // Atualiza usando o filtro atual
                         const currentFilter = document.getElementById('prof-blockages-filter') ? document.getElementById('prof-blockages-filter').value : 'future';
                         fetchAndRenderBlockages(professional.id, currentFilter);
                     } catch (error) {
@@ -587,7 +711,6 @@ function setupModalEventListeners(professional) {
     modal.addEventListener('click', modalEventListener);
 }
 
-
 function updateBatchActionsVisibility() {
     const container = document.getElementById('batch-actions-container');
     const countSpan = document.getElementById('selected-count');
@@ -596,17 +719,20 @@ function updateBatchActionsVisibility() {
     if (selectedProfessionals.size > 0) {
         countSpan.textContent = `${selectedProfessionals.size} selecionado(s)`;
         container.classList.remove('hidden');
+        container.classList.add('flex');
     } else {
         container.classList.add('hidden');
+        container.classList.remove('flex');
     }
 }
 
 function handleBatchDelete() {
-    showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${selectedProfessionals.size} profissionais? Esta ação não pode ser desfeita.`)
+    showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${selectedProfessionals.size} profissionais da rede? Esta ação não pode ser desfeita.`)
         .then(async (confirmed) => {
             if (confirmed) {
                 try {
                     await professionalsApi.batchDeleteProfessionals(Array.from(selectedProfessionals));
+                    logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Excluiu em Lote', `Excluiu ${selectedProfessionals.size} profissionais`);
                     showNotification('Sucesso!', `${selectedProfessionals.size} profissionais foram excluídos.`, 'success');
                     selectedProfessionals.clear();
                     updateBatchActionsVisibility();
@@ -637,43 +763,53 @@ function filterAndRenderProfessionals() {
         return nameMatch && statusMatch;
     });
     
-    listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-20'; 
+    listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 pb-20'; 
     listDiv.innerHTML = renderProfessionalsListHTML(filtered);
 }
+
+// --- 4. FUNÇÃO PRINCIPAL EXPORTADA ---
 
 export async function loadProfessionalsPage() {
     selectedProfessionals.clear();
     contentDiv.innerHTML = `
-        <section id="professional-list-view" class="p-4 sm:p-6">
-            <div class="bg-white rounded-lg shadow-md p-4 sm:p-6">
-                <div class="sticky top-0 z-10 bg-white pt-2 pb-4 mb-6 -mx-4 -mt-4 sm:-mx-6 sm:-mt-6 px-4 sm:px-6 rounded-t-lg border-b border-gray-200">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Sua Equipe</h2>
-                    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-                        <input type="search" id="profSearchInput" placeholder="Pesquisar por nome..." class="w-full md:w-64 p-2 border rounded-md shadow-sm">
-                        
-                        <div class="flex items-center gap-4">
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="checkbox" id="showInactiveProfToggle" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                                <span class="text-sm font-medium text-gray-700">Mostrar Inativos</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="batch-actions-container" class="hidden bg-indigo-600 text-white p-3 rounded-lg shadow-md mb-6 flex justify-between items-center">
-                    <span id="selected-count" class="font-semibold"></span>
+        <section id="professional-list-view" class="p-4 sm:p-6 max-w-7xl mx-auto">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                
+                <div class="mb-8 border-b border-gray-100 pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                        <button data-action="batch-delete" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Excluir Selecionados</button>
+                        <h2 class="text-2xl font-bold text-gray-800">Equipa e Profissionais</h2>
+                        <p class="text-sm text-gray-500 mt-1">Gira os membros da equipa e defina em quais lojas eles atendem.</p>
                     </div>
+                    <button data-action="open-professional-modal" data-professional="{}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
+                        <i class="bi bi-person-plus-fill"></i> Novo Profissional
+                    </button>
                 </div>
 
-                <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-20">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div class="relative w-full md:w-96">
+                        <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        <input type="search" id="profSearchInput" placeholder="Pesquisar por nome..." class="w-full pl-10 p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm">
+                    </div>
+                    
+                    <label class="flex items-center space-x-3 cursor-pointer bg-white px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors w-full md:w-auto shadow-sm">
+                        <div class="relative">
+                            <input type="checkbox" id="showInactiveProfToggle" class="sr-only">
+                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full peer-checked:bg-indigo-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                        </div>
+                        <span class="text-sm font-bold text-gray-700">Mostrar Inativos</span>
+                    </label>
+                </div>
+
+                <div id="batch-actions-container" class="hidden bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl shadow-sm mb-6 justify-between items-center transition-all">
+                    <span id="selected-count" class="font-bold text-lg"><i class="bi bi-check2-square"></i> </span>
+                    <button data-action="batch-delete" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                        <i class="bi bi-trash3"></i> Excluir Todos
+                    </button>
+                </div>
+
+                <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-10">
                     </div>
             </div>
-            
-            <button data-action="open-professional-modal" data-professional="{}" class="fixed z-30 bottom-20 right-4 sm:bottom-6 sm:right-6 w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-transform hover:scale-105">
-                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-            </button>
         </section>`;
 
     if (pageEventListener) {
@@ -681,15 +817,15 @@ export async function loadProfessionalsPage() {
     }
 
     pageEventListener = e => {
-        const cardOrFab = e.target.closest('[data-action="open-professional-modal"]');
+        const cardOrBtn = e.target.closest('[data-action="open-professional-modal"]');
         const batchDeleteButton = e.target.closest('[data-action="batch-delete"]');
 
-        if (cardOrFab) {
+        if (cardOrBtn) {
             e.preventDefault();
             let profData = {};
-            if (cardOrFab.dataset.professional) {
+            if (cardOrBtn.dataset.professional) {
                 try {
-                    profData = JSON.parse(cardOrFab.dataset.professional);
+                    profData = JSON.parse(cardOrBtn.dataset.professional);
                 } catch (error) {
                     console.error("Erro ao fazer parse do professional data:", error);
                     return;
@@ -725,17 +861,19 @@ export async function loadProfessionalsPage() {
     filterAndRenderProfessionals(); 
     
     try {
-        const [professionals, services] = await Promise.all([
+        const [professionals, services, hierarchyData] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
-            servicesApi.getServices(state.establishmentId)
+            servicesApi.getServices(state.establishmentId),
+            getHierarchy() // Busca a estrutura da rede para usar nas checkboxes
         ]);
         
         state.professionals = professionals;
         state.services = services;
+        hierarchyCache = hierarchyData?.matrizes || [];
         
         filterAndRenderProfessionals(); 
         updateBatchActionsVisibility();
     } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500 col-span-full">Erro ao carregar dados da página.</p>';
+        listDiv.innerHTML = '<p class="text-red-500 col-span-full font-bold text-center py-10 bg-red-50 rounded-lg border border-red-100">Erro ao carregar dados do servidor.</p>';
     }
 }

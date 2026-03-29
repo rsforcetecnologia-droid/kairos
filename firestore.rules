@@ -14,10 +14,13 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
-    // Verifica se o usuário pertence ao estabelecimento do documento alvo
-    // Requer que o 'establishmentId' esteja definido nos Custom Claims do Auth
+    // 🔥 CORREÇÃO MULTI-TENANT: 
+    // Verifica se o usuário pertence à loja pelo Token OU se ele é o DONO (ownerId) daquela loja
     function isMemberOf(establishmentId) {
-      return isSignedIn() && request.auth.token.establishmentId == establishmentId;
+      return isSignedIn() && (
+        request.auth.token.establishmentId == establishmentId || 
+        get(/databases/$(database)/documents/establishments/$(establishmentId)).data.ownerId == request.auth.uid
+      );
     }
 
     // Verifica se o usuário é DONO do estabelecimento alvo
@@ -33,18 +36,11 @@ service cloud.firestore {
 
     // --- COLEÇÕES DE SISTEMA ---
 
-    // USUÁRIOS (Correção Tópico 1: Escalada de Privilégios)
+    // USUÁRIOS
     match /users/{userId} {
-      // LEITURA: O próprio usuário OU colegas do mesmo estabelecimento
       allow read: if isSignedIn() && (request.auth.uid == userId || isMemberOf(resource.data.establishmentId));
-      
-      // CRIAÇÃO/EXCLUSÃO: Apenas o DONO do estabelecimento
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner';
       allow delete: if isSignedIn() && isMemberOf(resource.data.establishmentId) && getRole() == 'owner';
-
-      // ATUALIZAÇÃO (BLINDADA):
-      // 1. O próprio usuário pode editar seus dados, MAS NÃO PODE mudar cargo, permissões ou estabelecimento.
-      // 2. O Dono pode editar tudo.
       allow update: if isSignedIn() && (
         (request.auth.uid == userId && isNotChangingSensitiveFields()) 
         || 
@@ -52,21 +48,21 @@ service cloud.firestore {
       );
     }
 
-    // ESTABELECIMENTOS (Proteção contra Fraude de Assinatura)
+    // ESTABELECIMENTOS
     match /establishments/{establishmentId} {
       allow get: if true; // Público para leitura (agendamento)
       
-      // O Dono pode editar dados (nome, endereço), EXCETO a assinatura (subscription)
+      // O Dono pode editar dados, EXCETO a assinatura
       allow update: if isOwner(establishmentId) 
                     && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
-      
+
       match /notifications/{notificationId} {
-        allow read: if isMemberOf(establishmentId);
+        allow read: if isMemberOf(establishmentId); // 🔥 O erro 4865 acontecia aqui e foi resolvido!
         allow write: if false; // Apenas backend cria notificações
       }
     }
 
-    // --- COLEÇÕES DE NEGÓCIO (Multitenancy Obrigatório) ---
+    // --- COLEÇÕES DE NEGÓCIO ---
 
     // FORNECEDORES
     match /suppliers/{supplierId} {
@@ -87,7 +83,6 @@ service cloud.firestore {
       
       match /loyaltyHistory/{historyId} {
         allow read: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
-        // Criação de histórico de fidelidade idealmente via backend, mas se for via front:
         allow create: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
       }
     }
@@ -95,7 +90,6 @@ service cloud.firestore {
     // AGENDAMENTOS
     match /appointments/{appointmentId} {
       allow create: if true; // Permite criação pública (agendamento online)
-      // Leitura/Edição restrita à equipe
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
@@ -146,41 +140,29 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
-    // --- AUDITORIA (Proteção contra Logs Falsos) ---
+    // --- AUDITORIA ---
     match /audit_logs/{logId} {
-      // Permite criar log APENAS se o usuário estiver logado E o log pertencer ao seu estabelecimento
-      // Idealmente, o 'authorId' no documento também deveria ser validado aqui:
-      // && request.resource.data.author.uid == request.auth.uid
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      
-      // Apenas o DONO pode ver os logs
       allow read: if isOwner(resource.data.establishmentId);
-      
-      // NUNCA permite editar ou apagar logs
       allow update, delete: if false;
     }
     
-    // --- FINANCEIRO (CORRIGIDO: NOMES DAS COLEÇÕES) ---
-    
-    // Naturezas Financeiras
+    // --- FINANCEIRO ---
     match /financial_natures/{docId} { 
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
     
-    // Centros de Custo
     match /financial_cost_centers/{docId} { 
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
     
-    // Contas a Pagar (Onde as Compras são lançadas)
     match /financial_payables/{docId} { 
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
     
-    // Contas a Receber (Vendas)
     match /financial_receivables/{docId} { 
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);

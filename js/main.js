@@ -2,7 +2,6 @@
 
 // Adicione logo no início ou dentro de um window.onload
 document.addEventListener('DOMContentLoaded', () => {
-    
     // 1. Bloquear gesto de pinça (Pinch-to-zoom) no iOS
     document.addEventListener('gesturestart', function (e) {
         e.preventDefault();
@@ -25,32 +24,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         lastTouchEnd = now;
     }, false);
-
 });
 
 // --- 1. IMPORTAÇÕES DOS MÓDULOS ---
 import { auth, db, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, getDocs, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"; 
 import { state, setGlobalState } from './state.js';
-import { initializeModalClosers, showNotification, openCancellationHistoryModal } from './components/modal.js';
+import { initializeModalClosers, showNotification } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
-import { getEstablishmentDetails } from './api/establishments.js';
+import { getEstablishmentDetails, getHierarchy } from './api/establishments.js'; // getHierarchy adicionado
 import { getProfessionals } from './api/professionals.js'; 
-
-// --- IMPORTAÇÃO DO ONBOARDING (GAMIFICAÇÃO) ---
 import { checkAndStartOnboarding } from './ui/onboarding.js';
 
-// --- IMPORTAÇÃO DAS NOTIFICAÇÕES NATIVAS (CAPACITOR) ---
+// Notificações
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core'; 
 import { App } from '@capacitor/app'; 
-
-// --- IMPORTAÇÃO DAS NOTIFICAÇÕES WEB (PWA) ---
 import { initPushNotifications as initWebPush, requestWebPermission } from './ui/push-notifications.js';
+import { getSummaryKPIs } from './api/reports.js';
 
-import { getAnalytics, getSalesReport, getMonthlyAnalytics, getDailyTransactions, getProfessionalMonthlyDetails, getCommissionReport, getSummaryKPIs } from './api/reports.js';
-
+// Páginas (Módulos)
 import { loadAgendaPage } from './ui/agenda.js';
 import { loadComandasPage } from './ui/comandas.js';
 import { loadReportsPage } from './ui/reports.js';
@@ -67,11 +61,9 @@ import { loadFinancialPage } from './ui/financial.js';
 import { loadCommissionsPage } from './ui/commissions.js';
 import { loadPackagesPage } from './ui/packages.js'; 
 import { loadMyProfilePage } from './ui/my-profile.js'; 
-
-// [NOVO] IMPORTAÇÃO DA TELA DE HIERARQUIA (MATRIZ/FILIAIS)
 import { renderHierarchyScreen } from './ui/hierarchy.js'; 
 
-// --- 2. REFERÊNCIAS AO DOM E CONSTANTES ---
+// --- 2. REFERÊNCIAS AO DOM ---
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
 const contentDiv = document.getElementById('content');
@@ -99,7 +91,7 @@ const pageLoader = {
     'suppliers-section': loadSuppliersPage,
     'profissionais-section': loadProfessionalsPage,
     'clientes-section': loadClientsPage,
-    'estabelecimento-section': (params) => loadEstablishmentPage(params), // Ajustado para receber parâmetros dinâmicos
+    'estabelecimento-section': (params) => loadEstablishmentPage(params), 
     'ausencias-section': loadAusenciasPage,
     'users-section': loadUsersPage,
     'sales-report-section': loadSalesReportPage,
@@ -107,14 +99,11 @@ const pageLoader = {
     'commissions-section': loadCommissionsPage,
     'packages-section': loadPackagesPage,
     'my-profile-section': loadMyProfilePage,
-    
-    // Rotas para a tela de Hierarquia e Gestão de Lojas
     'hierarquia-section': () => renderHierarchyScreen(contentDiv),
     'establishments-section': () => renderHierarchyScreen(contentDiv),
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
-
 const colorThemes = {
     indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' },
     blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
@@ -145,41 +134,38 @@ function applyTheme(themeKey) {
     document.body.style.setProperty('--theme-main', theme.main);
     
     const styleSheet = document.getElementById('dynamic-theme-styles');
-    styleSheet.innerHTML = `
-        :root {
-            --theme-color-main: ${theme.main};
-            --theme-color-hover: ${theme.hover};
-            --theme-color-light: ${theme.light};
-            --theme-rgb: ${mainRgb};
-        }
-        .sidebar-link.active { 
-            background-color: var(--theme-color-main) !important; 
-            color: ${theme.text} !important; 
-        }
-        .sidebar-link:not(.active):hover { 
-            background-color: rgba(var(--theme-rgb), 0.1) !important;
-            color: var(--theme-color-main) !important;
-        }
-        .bg-indigo-600 { background-color: var(--theme-color-main) !important; }
-        .hover\\:bg-indigo-700:hover { background-color: var(--theme-color-hover) !important; }
-        .hover\\:bg-indigo-50:hover { background-color: rgba(var(--theme-rgb), 0.1) !important; }
-        .text-indigo-600 { color: var(--theme-color-main) !important; }
-        .hover\\:text-indigo-800:hover { color: var(--theme-color-hover) !important; }
-        .hover\\:text-indigo-600:hover { color: var(--theme-color-main) !important; }
-        .border-indigo-600 { border-color: var(--theme-color-main) !important; }
-        .focus\\:ring-indigo-500:focus { --tw-ring-color: rgba(var(--theme-rgb), 0.5) !important; }
-        .loading-bar-fill { background-color: var(--theme-color-main) !important; }
-        .time-slot-card.selected { background-color: var(--theme-color-main) !important; border-color: var(--theme-color-main) !important; }
-        input:checked + .toggle-bg { background-color: var(--theme-color-main) !important; }
-        .bg-indigo-100 { background-color: var(--theme-color-light) !important; }
-        .text-indigo-800 { color: var(--theme-color-hover) !important; }
-    `;
+    if (styleSheet) {
+        styleSheet.innerHTML = `
+            :root {
+                --theme-color-main: ${theme.main};
+                --theme-color-hover: ${theme.hover};
+                --theme-color-light: ${theme.light};
+                --theme-rgb: ${mainRgb};
+            }
+            .sidebar-link.active { background-color: var(--theme-color-main) !important; color: ${theme.text} !important; }
+            .sidebar-link:not(.active):hover { background-color: rgba(var(--theme-rgb), 0.1) !important; color: var(--theme-color-main) !important; }
+            .bg-indigo-600 { background-color: var(--theme-color-main) !important; }
+            .hover\\:bg-indigo-700:hover { background-color: var(--theme-color-hover) !important; }
+            .hover\\:bg-indigo-50:hover { background-color: rgba(var(--theme-rgb), 0.1) !important; }
+            .text-indigo-600 { color: var(--theme-color-main) !important; }
+            .hover\\:text-indigo-800:hover { color: var(--theme-color-hover) !important; }
+            .hover\\:text-indigo-600:hover { color: var(--theme-color-main) !important; }
+            .border-indigo-600 { border-color: var(--theme-color-main) !important; }
+            .focus\\:ring-indigo-500:focus { --tw-ring-color: rgba(var(--theme-rgb), 0.5) !important; }
+            .loading-bar-fill { background-color: var(--theme-color-main) !important; }
+            .time-slot-card.selected { background-color: var(--theme-color-main) !important; border-color: var(--theme-color-main) !important; }
+            input:checked + .toggle-bg { background-color: var(--theme-color-main) !important; }
+            .bg-indigo-100 { background-color: var(--theme-color-light) !important; }
+            .text-indigo-800 { color: var(--theme-color-hover) !important; }
+        `;
+    }
 }
 
 let unsubscribeNotificationsListener = null;
 let notifications = [];
 
 function renderNotificationPanel() {
+    if (!notificationBadge || !notificationList) return;
     const unreadCount = notifications.filter(n => !n.read).length;
     if (unreadCount > 0) {
         notificationBadge.textContent = unreadCount;
@@ -201,9 +187,7 @@ function renderNotificationPanel() {
 }
 
 function setupRealtimeListeners(establishmentId) {
-    if (unsubscribeNotificationsListener) {
-        unsubscribeNotificationsListener();
-    }
+    if (unsubscribeNotificationsListener) unsubscribeNotificationsListener();
     const notificationsRef = collection(db, 'establishments', establishmentId, 'notifications');
     const q = query(notificationsRef, where("timestamp", ">=", new Date()), orderBy("timestamp", "desc"));
 
@@ -221,7 +205,6 @@ function setupRealtimeListeners(establishmentId) {
                 renderNotificationPanel();
                 const activeLink = document.querySelector('.sidebar-link.active');
                 if (activeLink && activeLink.dataset.target === 'agenda-section') {
-                    console.log('Atualizando agenda em tempo real...');
                     loadAgendaPage();
                 }
             }
@@ -231,29 +214,130 @@ function setupRealtimeListeners(establishmentId) {
     });
 }
 
+// ====================================================================
+// 🔥 MOTOR DO SELETOR DE UNIDADES (CONTEXT SWITCHER)
+// ====================================================================
+async function setupContextSwitcher(baseEstablishmentId) {
+    const switcher = document.getElementById('global-context-switcher');
+    const switcherWrapper = switcher?.parentElement;
+    if (!switcher || !switcherWrapper) return;
+
+    try {
+        const payload = await getHierarchy();
+        const matrizes = payload.matrizes || [];
+
+        let optionsHtml = '';
+        let count = 0;
+
+        matrizes.forEach(matriz => {
+            optionsHtml += `<option value="${matriz.id}" class="font-bold">🏢 ${matriz.name}</option>`;
+            count++;
+            if (matriz.branches && matriz.branches.length > 0) {
+                matriz.branches.forEach(branch => {
+                    optionsHtml += `<option value="${branch.id}">&nbsp;&nbsp;&nbsp;📍 ${branch.name}</option>`;
+                    count++;
+                });
+            }
+        });
+
+        if (count > 1) {
+            switcher.innerHTML = optionsHtml;
+            switcherWrapper.classList.remove('hidden');
+            switcherWrapper.classList.add('flex');
+            
+            // Define a seleção atual baseada no estado global
+            switcher.value = state.establishmentId || baseEstablishmentId;
+
+            // Clona o select para evitar acumular eventListeners caso a função rode 2x
+            const newSwitcher = switcher.cloneNode(true);
+            switcher.parentNode.replaceChild(newSwitcher, switcher);
+
+            newSwitcher.addEventListener('change', async (e) => {
+                const selectedId = e.target.value;
+                const selectedName = e.target.options[e.target.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
+                
+                // Mostrar Loading em ecrã total para feedback
+                if (loadingScreen) {
+                    loadingScreen.classList.remove('hidden', 'fade-out');
+                    loadingScreen.style.display = 'flex';
+                }
+
+                try {
+                    // 1. Busca os detalhes da nova loja
+                    const estDetails = await getEstablishmentDetails(selectedId);
+                    
+                    // 2. ATUALIZA A VARIÁVEL ESTADO GLOBAL
+                    // Isto faz com que Agenda, Comandas, Relatórios passem a usar este ID nas queries!
+                    state.establishmentId = selectedId;
+                    state.establishmentName = selectedName;
+                    state.enabledModules = estDetails.modules;
+                    
+                    // Atualiza a variável de contexto visual usada por algumas telas (ex: establishment.js)
+                    state.currentViewContext = { id: selectedId, name: selectedName, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
+
+                    // 3. Troca o Tema se a loja tiver uma cor diferente
+                    if (typeof applyTheme === 'function') {
+                        applyTheme(estDetails.themeColor || 'indigo');
+                    }
+
+                    // 4. Reconecta o Listener de Notificações para a nova loja
+                    setupRealtimeListeners(selectedId);
+                    
+                    // 5. Atualiza os Indicadores do Topo
+                    loadHeaderKPIs(state.userPermissions);
+
+                    // 6. Recarrega a aba atual com os dados da nova loja
+                    const activeLink = document.querySelector('.sidebar-link.active');
+                    const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'agenda-section';
+                    
+                    showNotification('Unidade Alterada', `Agora a gerir: ${selectedName}`, 'info');
+                    
+                    // Dispara a navegação para recriar a página atual
+                    navigateTo(currentSection);
+
+                } catch (err) {
+                    console.error("Erro ao trocar de contexto:", err);
+                    showNotification('Erro', 'Falha ao aceder aos dados desta unidade.', 'error');
+                    newSwitcher.value = state.establishmentId; // Reverte o select visualmente
+                } finally {
+                    if (loadingScreen) {
+                        loadingScreen.classList.add('fade-out');
+                        setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
+                    }
+                }
+            });
+        } else {
+            // Se só tiver uma loja, oculta o dropdown
+            switcherWrapper.classList.add('hidden');
+            switcherWrapper.classList.remove('flex');
+        }
+    } catch (error) {
+        console.error("Erro ao carregar switcher de contexto:", error);
+        switcherWrapper.classList.add('hidden');
+    }
+}
+// ====================================================================
+
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
-    if (sectionId === 'my-profile-section') {
-         // Apenas carrega a página
-    } else {
+    if (sectionId !== 'my-profile-section') {
         const isHierarchyOrConfig = ['hierarquia-section', 'establishments-section', 'estabelecimento-section'].includes(sectionId);
-        
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
         
         if (!isHierarchyOrConfig && (!isModuleEnabled || !hasEmployeePermission)) {
-            contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
+            if (contentDiv) contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
-            if (sidebar.classList.contains('absolute')) { 
+            if (sidebar && sidebar.classList.contains('absolute')) { 
                  sidebar.classList.add('hidden');
-                 mobileOverlay.classList.add('hidden');
+                 if(mobileOverlay) mobileOverlay.classList.add('hidden');
             }
             return;
         }
     }
     
     const loadPage = pageLoader[sectionId];
-    if (loadPage) {
+    if (loadPage && contentDiv) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
@@ -262,18 +346,15 @@ export function navigateTo(sectionId, params = {}) {
         }
         contentDiv.innerHTML = '';
         
-        if (window.innerWidth < 768) { 
+        if (window.innerWidth < 768 && sidebar) { 
             sidebar.classList.add('hidden');
-            mobileOverlay.classList.add('hidden');
+            if(mobileOverlay) mobileOverlay.classList.add('hidden');
         }
 
         loadPage(params);
-    } else {
-        contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold">Página em Construção</h2><p class="text-gray-600">O módulo para "${sectionId}" ainda não foi implementado.</p></div>`;
     }
 }
 
-// Torna o navigateTo global para ser acionado pelos cards HTML gerados em js/ui/hierarchy.js
 window.navigateTo = navigateTo;
 
 async function loadHeaderKPIs(userPermissions) {
@@ -294,18 +375,12 @@ async function loadHeaderKPIs(userPermissions) {
         kpiFinancialWrapper.classList.add('inline-flex'); 
     }
 
-    if (!canViewAgenda && !canViewFinancial) {
-        return;
-    }
+    if (!canViewAgenda && !canViewFinancial) return;
 
     try {
         const kpis = await getSummaryKPIs();
-        if (canViewAgenda && kpiAppointmentsEl) {
-            kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
-        }
-        if (canViewFinancial && kpiRevenueEl) {
-            kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
-        }
+        if (canViewAgenda && kpiAppointmentsEl) kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
+        if (canViewFinancial && kpiRevenueEl) kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
     } catch (error) {
         console.error("Erro ao carregar KPIs do cabeçalho:", error);
     }
@@ -313,96 +388,56 @@ async function loadHeaderKPIs(userPermissions) {
 
 async function initializePushNotifications(userUid) {
     try {
-        console.log('[Nativo] Iniciando configuração de Push...');
-
         if (Capacitor.getPlatform() === 'android') {
             await PushNotifications.createChannel({
-                id: 'default', 
-                name: 'Notificações Gerais',
-                description: 'Alertas de agendamentos e avisos',
-                importance: 5, 
-                visibility: 1, 
-                vibration: true
+                id: 'default', name: 'Notificações Gerais', description: 'Alertas de agendamentos e avisos',
+                importance: 5, visibility: 1, vibration: true
             });
         }
-
         let permStatus = await PushNotifications.checkPermissions();
-
-        if (permStatus.receive === 'prompt') {
-            permStatus = await PushNotifications.requestPermissions();
-        }
-
-        if (permStatus.receive !== 'granted') {
-            return;
-        }
-
+        if (permStatus.receive === 'prompt') permStatus = await PushNotifications.requestPermissions();
+        if (permStatus.receive !== 'granted') return;
+        
         await PushNotifications.register();
-
         PushNotifications.addListener('registration', async (token) => {
             try {
                 const userRef = doc(db, 'users', userUid);
-                await updateDoc(userRef, {
-                    fcmTokens: arrayUnion(token.value),
-                    platform: 'native_mobile'
-                });
-            } catch (error) {
-                console.error("Erro ao salvar token FCM:", error);
-            }
+                await updateDoc(userRef, { fcmTokens: arrayUnion(token.value), platform: 'native_mobile' });
+            } catch (error) {}
         });
-
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            showNotification(notification.title, notification.body, 'info', true);
-        });
-
-        PushNotifications.addListener('pushNotificationActionPerformed', () => {
-            navigateTo('agenda-section');
-        });
-
-    } catch (e) {
-        console.log('Push Notifications não suportado:', e);
-    }
+        PushNotifications.addListener('pushNotificationReceived', (notification) => showNotification(notification.title, notification.body, 'info', true));
+        PushNotifications.addListener('pushNotificationActionPerformed', () => navigateTo('agenda-section'));
+    } catch (e) {}
 }
 
 function setupBackButtonHandling() {
     const exitModal = document.getElementById('exitConfirmationModal');
     const btnCancel = document.getElementById('btn-cancel-exit');
     const btnConfirm = document.getElementById('btn-confirm-exit');
-
-    const showModal = () => exitModal.style.display = 'block';
-    const hideModal = () => exitModal.style.display = 'none';
+    const showModal = () => exitModal && (exitModal.style.display = 'block');
+    const hideModal = () => exitModal && (exitModal.style.display = 'none');
     const isModalVisible = () => exitModal && exitModal.style.display === 'block';
 
     if (!exitModal) return;
 
     btnCancel.addEventListener('click', () => {
         hideModal();
-        if (!Capacitor.isNativePlatform()) {
-            history.pushState(null, document.title, location.href);
-        }
+        if (!Capacitor.isNativePlatform()) history.pushState(null, document.title, location.href);
     });
 
     btnConfirm.addEventListener('click', () => {
         hideModal();
-        if (Capacitor.isNativePlatform()) {
-            App.exitApp(); 
-        } else {
-            history.back(); 
-        }
+        if (Capacitor.isNativePlatform()) App.exitApp(); else history.back(); 
     });
 
     if (Capacitor.isNativePlatform()) {
         App.addListener('backButton', () => {
-            if (isModalVisible()) {
-                hideModal();
-            } else {
+            if (isModalVisible()) { hideModal(); } 
+            else {
                 const openModals = document.querySelectorAll('.modal[style*="display: block"]');
                 const activeModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
+                if (activeModals.length > 0) { activeModals.forEach(m => m.style.display = 'none'); return; }
                 
-                if (activeModals.length > 0) {
-                    activeModals.forEach(m => m.style.display = 'none');
-                    return;
-                }
-
                 if (sidebar && !sidebar.classList.contains('hidden') && window.innerWidth < 768) {
                     sidebar.classList.add('hidden');
                     if (mobileOverlay) mobileOverlay.classList.add('hidden');
@@ -410,54 +445,30 @@ function setupBackButtonHandling() {
                 }
 
                 const activeLink = document.querySelector('.sidebar-link.active');
-                if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
-                    showModal();
-                } else {
-                    navigateTo('agenda-section');
-                }
+                if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') showModal();
+                else navigateTo('agenda-section');
             }
         });
     } else {
         history.pushState(null, document.title, location.href);
-
         window.addEventListener('popstate', () => {
-            if (isModalVisible()) {
-                hideModal();
-                history.pushState(null, document.title, location.href); 
-                return;
-            }
-
+            if (isModalVisible()) { hideModal(); history.pushState(null, document.title, location.href); return; }
+            
             const openModals = document.querySelectorAll('.modal[style*="display: block"], .modal[style*="display: flex"]');
             const otherModals = Array.from(openModals).filter(m => m.id !== 'exitConfirmationModal');
-
-            if (otherModals.length > 0) {
-                otherModals.forEach(m => m.style.display = 'none');
-                history.pushState(null, document.title, location.href);
-                return;
-            }
+            if (otherModals.length > 0) { otherModals.forEach(m => m.style.display = 'none'); history.pushState(null, document.title, location.href); return; }
 
             const activeLink = document.querySelector('.sidebar-link.active');
-            
-            if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') {
-                showModal();
-            } else {
-                navigateTo('agenda-section');
-                history.pushState(null, document.title, location.href);
-            }
+            if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') showModal();
+            else { navigateTo('agenda-section'); history.pushState(null, document.title, location.href); }
         });
     }
 }
 
 async function initialize() {
-    try {
-        await setPersistence(auth, browserLocalPersistence);
-    } catch (e) {
-        console.error("Erro ao definir persistência:", e);
-    }
+    try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
 
-    if (Capacitor.isNativePlatform()) {
-        document.body.classList.add('is-app-native');
-    }
+    if (Capacitor.isNativePlatform()) document.body.classList.add('is-app-native');
     
     initializeModalClosers();
     setupBackButtonHandling(); 
@@ -465,16 +476,14 @@ async function initialize() {
     if (hamburgerMenuBtn) {
         hamburgerMenuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            sidebar.classList.remove('hidden');
-            sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
-            if (mobileOverlay) mobileOverlay.classList.remove('hidden');
+            if(sidebar) { sidebar.classList.remove('hidden'); sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl'); }
+            if(mobileOverlay) mobileOverlay.classList.remove('hidden');
         });
     }
 
     if (mobileOverlay) {
         mobileOverlay.addEventListener('click', () => {
-            sidebar.classList.add('hidden');
-            sidebar.classList.remove('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl');
+            if(sidebar) { sidebar.classList.add('hidden'); sidebar.classList.remove('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl'); }
             mobileOverlay.classList.add('hidden');
         });
     }
@@ -497,11 +506,8 @@ async function initialize() {
             e.stopPropagation();
             if (profileDropdown) {
                 profileDropdown.classList.toggle('active');
-                if (profileDropdown.classList.contains('active')) {
-                    profileDropdown.classList.remove('hidden');
-                } else {
-                    setTimeout(() => profileDropdown.classList.add('hidden'), 200);
-                }
+                if (profileDropdown.classList.contains('active')) profileDropdown.classList.remove('hidden');
+                else setTimeout(() => profileDropdown.classList.add('hidden'), 200);
             }
         });
     }
@@ -510,18 +516,12 @@ async function initialize() {
         myProfileLink.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo('my-profile-section');
-            if (profileDropdown) {
-                profileDropdown.classList.remove('active');
-                profileDropdown.classList.add('hidden');
-            }
+            if (profileDropdown) { profileDropdown.classList.remove('active'); profileDropdown.classList.add('hidden'); }
         });
     }
 
-    // Fecha dropdowns se clicar fora deles (verificações adicionadas)
     document.addEventListener('click', (e) => {
-        if (notificationPanel && !notificationPanel.contains(e.target) && e.target !== notificationBell) {
-            notificationPanel.classList.add('hidden');
-        }
+        if (notificationPanel && !notificationPanel.contains(e.target) && e.target !== notificationBell) notificationPanel.classList.add('hidden');
         if (profileDropdown && !profileDropdown.contains(e.target) && e.target !== profileMenuButton) {
             if (profileDropdown.classList.contains('active')) {
                  profileDropdown.classList.remove('active');
@@ -534,25 +534,14 @@ async function initialize() {
         if (user) {
             if (!Capacitor.isNativePlatform()) {
                 initWebPush(); 
-
                 if ('Notification' in window && Notification.permission === 'default') {
                     const toast = document.getElementById('toast-notification-request');
                     const btnEnable = document.getElementById('btn-enable-toast');
+                    if (toast) setTimeout(() => { toast.style.display = 'block'; }, 3500);
+                    if (btnEnable) btnEnable.addEventListener('click', async () => { const granted = await requestWebPermission(); if (granted && toast) toast.style.display = 'none'; });
+                    const closeAction = () => { if (toast) toast.style.display = 'none'; };
                     const btnDeny = document.getElementById('btn-deny-toast');
                     const btnClose = document.getElementById('btn-close-toast');
-
-                    if (toast) {
-                        setTimeout(() => { toast.style.display = 'block'; }, 3500);
-                    }
-                    
-                    if (btnEnable) {
-                        btnEnable.addEventListener('click', async () => {
-                            const granted = await requestWebPermission();
-                            if (granted && toast) toast.style.display = 'none';
-                        });
-                    }
-                    
-                    const closeAction = () => { if (toast) toast.style.display = 'none'; };
                     if (btnDeny) btnDeny.addEventListener('click', closeAction);
                     if (btnClose) btnClose.addEventListener('click', closeAction);
                 }
@@ -561,7 +550,8 @@ async function initialize() {
             try {
                 const idTokenResult = await user.getIdTokenResult(true);
                 const claims = idTokenResult.claims;
-                if ((claims.role === 'owner' || claims.role === 'employee') && claims.establishmentId) {
+                
+                if ((claims.role === 'owner' || claims.role === 'admin' || claims.role === 'employee') && claims.establishmentId) {
                     
                     const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
                     state.enabledModules = establishmentDetails.modules;
@@ -583,10 +573,7 @@ async function initialize() {
                     }
                     
                     state.userProfessionalId = userProfessionalId; 
-                    
-                    if (Capacitor.isNativePlatform()) {
-                        initializePushNotifications(user.uid);
-                    }
+                    if (Capacitor.isNativePlatform()) initializePushNotifications(user.uid);
                     
                     const finalUserName = userName || user.email;
                     
@@ -596,21 +583,19 @@ async function initialize() {
                     if (profileName) profileName.textContent = finalUserName;
                     if (profileEmail) profileEmail.textContent = user.email;
 
-                    const handleLogout = () => {
-                        if (unsubscribeNotificationsListener) unsubscribeNotificationsListener();
-                        signOut(auth).then(() => window.location.href = '/login.html');
-                    };
-
                     if (logoutButton) {
                         logoutButton.addEventListener('click', (e) => {
                             e.preventDefault();
-                            handleLogout();
+                            if (unsubscribeNotificationsListener) unsubscribeNotificationsListener();
+                            signOut(auth).then(() => window.location.href = '/login.html');
                         });
                     }
 
+                    // 🔥 INICIA O SELECTOR DE UNIDADES NO CABEÇALHO (A MAGIA ACONTECE AQUI!)
+                    await setupContextSwitcher(claims.establishmentId);
+
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     loadHeaderKPIs(userPermissions); 
-
                     setupRealtimeListeners(claims.establishmentId);
                     renderNotificationPanel();
                     
@@ -621,7 +606,7 @@ async function initialize() {
                     if (dashboardContent) dashboardContent.style.display = 'flex';
 
                     setTimeout(() => { checkAndStartOnboarding(); }, 1500); 
-
+                    
                     navigateTo('agenda-section');
                 } else {
                     throw new Error("Permissão ou estabelecimento não configurado.");

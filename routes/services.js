@@ -1,16 +1,25 @@
+// routes/services.js
+
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
 // --- CATEGORIAS DE SERVIÇOS ---
-// (Rotas de categorias que já existiam... - removidas da minha resposta anterior por estarem em /api/products)
-// Assumindo que as rotas de categorias de serviço estão aqui
 router.post('/categories', async (req, res) => {
     try {
-        const { establishmentId, name } = req.body;
+        // Agora recebemos também o accessibleIn (array de IDs)
+        const { establishmentId, name, accessibleIn } = req.body;
         if (!establishmentId || !name) return res.status(400).json({ message: 'ID do estabelecimento e nome da categoria são obrigatórios.' });
+        
         const { db } = req;
-        const newCategory = { establishmentId, name, createdAt: admin.firestore.FieldValue.serverTimestamp() };
+        const newCategory = { 
+            establishmentId, 
+            name, 
+            // Se não enviarem o array, criamos um array com o ID atual (retrocompatibilidade)
+            accessibleIn: Array.isArray(accessibleIn) ? accessibleIn : [establishmentId],
+            createdAt: admin.firestore.FieldValue.serverTimestamp() 
+        };
+        
         const docRef = await db.collection('serviceCategories').add(newCategory);
         res.status(201).json({ message: 'Categoria criada com sucesso!', id: docRef.id, data: newCategory });
     } catch (error) {
@@ -23,9 +32,24 @@ router.get('/categories/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
-        const snapshot = await db.collection('serviceCategories').where('establishmentId', '==', establishmentId).orderBy('name').get();
-        if (snapshot.empty) return res.status(200).json([]);
-        const categoriesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // 🔄 DUPLA QUERY (Retrocompatibilidade)
+        // Busca as categorias antigas (apenas establishmentId) e as novas (no array accessibleIn)
+        const [legacySnap, newSnap] = await Promise.all([
+            db.collection('serviceCategories').where('establishmentId', '==', establishmentId).get(),
+            db.collection('serviceCategories').where('accessibleIn', 'array-contains', establishmentId).get()
+        ]);
+
+        // Usa um Map para juntar e evitar duplicações
+        const categoriesMap = new Map();
+        
+        legacySnap.docs.forEach(doc => categoriesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        newSnap.docs.forEach(doc => categoriesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+        if (categoriesMap.size === 0) return res.status(200).json([]);
+        
+        // Converte para array e ordena por nome
+        const categoriesList = Array.from(categoriesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         res.status(200).json(categoriesList);
     } catch (error) {
         console.error("Erro ao listar categorias de serviço:", error);
@@ -49,13 +73,21 @@ router.delete('/categories/:categoryId', async (req, res) => {
 // --- SERVIÇOS ---
 router.post('/', async (req, res) => {
     try {
-        const { establishmentId, name, price, duration, commissionRate, active, photo, notes, categoryId, bufferTime, commissionType, professionalCommissions } = req.body;
+        const { 
+            establishmentId, name, price, duration, commissionRate, active, 
+            photo, notes, categoryId, bufferTime, commissionType, 
+            professionalCommissions, accessibleIn // Novo campo array
+        } = req.body;
+
         if (!establishmentId || !name || price === undefined || duration === undefined) {
             return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
         }
+        
         const { db } = req;
+        
         const newService = {
-            establishmentId,
+            establishmentId, // Mantemos como criador/dono do registo original
+            accessibleIn: Array.isArray(accessibleIn) ? accessibleIn : [establishmentId], // O segredo da rede!
             name,
             price: Number(price) || 0,
             duration: Number(duration) || 0,
@@ -69,6 +101,7 @@ router.post('/', async (req, res) => {
             professionalCommissions: professionalCommissions || {},
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
+        
         const docRef = await db.collection('services').add(newService);
         res.status(201).json({ message: 'Serviço criado com sucesso!', serviceId: docRef.id, data: newService });
     } catch (error) {
@@ -81,12 +114,27 @@ router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
-        const snapshot = await db.collection('services').where('establishmentId', '==', establishmentId).orderBy('name').get();
-        if (snapshot.empty) {
+
+        // 🔄 DUPLA QUERY (Retrocompatibilidade)
+        // Permite encontrar serviços antigos (criados antes da atualização) e os novos (partilhados na rede)
+        const [legacySnap, newSnap] = await Promise.all([
+            db.collection('services').where('establishmentId', '==', establishmentId).get(),
+            db.collection('services').where('accessibleIn', 'array-contains', establishmentId).get()
+        ]);
+
+        const servicesMap = new Map();
+
+        legacySnap.docs.forEach(doc => servicesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        newSnap.docs.forEach(doc => servicesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+        if (servicesMap.size === 0) {
             return res.status(200).json([]);
         }
-        const servicesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Converte o Map para Array e ordena alfabeticamente
+        const servicesList = Array.from(servicesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         res.status(200).json(servicesList);
+
     } catch (error) {
         console.error("Erro ao listar serviços:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor ao tentar listar os serviços.' });
@@ -94,7 +142,7 @@ router.get('/:establishmentId', async (req, res) => {
 });
 
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// ++ NOVA ROTA: LÓGICA DO CARD "MAIS USADOS" ++
+// ++ LÓGICA DO CARD "MAIS USADOS" ++
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 router.get('/stats/most-popular/:establishmentId', async (req, res) => {
     try {
@@ -104,7 +152,6 @@ router.get('/stats/most-popular/:establishmentId', async (req, res) => {
         // 1. Busca todos os agendamentos (concluídos ou agendados) do estabelecimento
         const appointmentsSnapshot = await db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            // Opcional: filtrar por status, ex: .where('status', 'in', ['completed', 'scheduled'])
             .get();
 
         if (appointmentsSnapshot.empty) {
@@ -116,7 +163,6 @@ router.get('/stats/most-popular/:establishmentId', async (req, res) => {
         // 2. Itera por todos os agendamentos e conta os serviços
         appointmentsSnapshot.docs.forEach(doc => {
             const appointment = doc.data();
-            // Verifica se 'services' existe e é um array
             if (Array.isArray(appointment.services)) {
                 appointment.services.forEach(service => {
                     if (service.id) {
@@ -148,7 +194,6 @@ router.get('/stats/most-popular/:establishmentId', async (req, res) => {
         const serviceDoc = await db.collection('services').doc(mostPopularId).get();
         
         if (!serviceDoc.exists) {
-            // Caso o serviço tenha sido apagado mas ainda exista em agendamentos
             return res.status(200).json({ name: 'Serviço Apagado', count: maxCount });
         }
 
@@ -169,7 +214,6 @@ router.put('/:serviceId', async (req, res) => {
         const { db } = req;
         const serviceRef = db.collection('services').doc(serviceId);
         
-        // Converte os números para garantir
         const updatedData = {
             ...data,
             price: Number(data.price) || 0,
@@ -177,6 +221,11 @@ router.put('/:serviceId', async (req, res) => {
             bufferTime: Number(data.bufferTime) || 0,
             commissionRate: Number(data.commissionRate) || 0,
         };
+
+        // Garante que se vier um array de acessos, ele é gravado corretamente
+        if (data.accessibleIn && Array.isArray(data.accessibleIn)) {
+            updatedData.accessibleIn = data.accessibleIn;
+        }
 
         await serviceRef.update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });

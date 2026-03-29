@@ -3,21 +3,21 @@
 // --- 1. IMPORTAÇÕES ---
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
+import { getHierarchy } from '../api/establishments.js'; // NOVO: Para buscar a hierarquia
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import * as categoriesApi from '../api/categories.js'; 
 import { navigateTo } from '../main.js';
-// --- IMPORTAÇÕES PARA AUDITORIA E SEGURANÇA ---
 import { logAction } from '../api/audit.js';
 import { auth } from '../firebase-config.js';
-// CORREÇÃO: Importamos também resizeAndCompressImage para centralizar a lógica
 import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
 // --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let pageEventListener = null;
-let currentView = 'services'; // Define a aba inicial
-let activeServiceFilter = 'all'; // 'all', 'active', 'inactive'
+let currentView = 'services'; 
+let activeServiceFilter = 'all'; 
+let hierarchyCache = []; // NOVO: Cache da hierarquia da rede
 
 // --- FUNÇÃO AUXILIAR PARA OBTER UTILIZADOR ATUAL (Para o Log) ---
 function getCurrentUserForLog() {
@@ -33,12 +33,27 @@ async function handleCategoryFormSubmit(e) {
     const categoryNameInput = form.querySelector('#categoryName');
     const name = categoryNameInput.value;
     if (!name) return;
+    
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = '...';
+
     try {
-        await categoriesApi.createCategory({ establishmentId: state.establishmentId, name }, 'services');
+        // As categorias são "Globais". Criamos um array com os IDs de toda a rede.
+        const accessibleIn = hierarchyCache.reduce((acc, curr) => {
+            acc.push(curr.id);
+            if(curr.branches) curr.branches.forEach(b => acc.push(b.id));
+            return acc;
+        }, []);
         
-        // --- AUDITORIA ---
+        if(accessibleIn.length === 0) accessibleIn.push(state.establishmentId);
+
+        await categoriesApi.createCategory({ 
+            establishmentId: state.establishmentId, 
+            name,
+            accessibleIn // Envia o array de rede
+        }, 'services');
+        
         logAction(state.establishmentId, getCurrentUserForLog(), 'Categorias (Serviços)', 'Criou', `Criou categoria: ${name}`);
-        // -----------------
 
         categoryNameInput.value = '';
         showNotification('Sucesso', 'Categoria criada!', 'success');
@@ -46,6 +61,8 @@ async function handleCategoryFormSubmit(e) {
         await fetchBaseData(); 
     } catch (error) {
         showNotification('Erro', `Não foi possível criar a categoria: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Adicionar';
     }
 }
 
@@ -54,10 +71,7 @@ async function handleDeleteCategory(categoryId) {
     if (confirmed) {
         try {
             await categoriesApi.deleteCategory(categoryId, 'services');
-            
-            // --- AUDITORIA ---
             logAction(state.establishmentId, getCurrentUserForLog(), 'Categorias (Serviços)', 'Excluiu', `Excluiu uma categoria (ID: ${categoryId})`);
-            // -----------------
 
             showNotification('Sucesso', 'Categoria apagada.', 'success');
             await fetchAndDisplayCategoriesInModal();
@@ -77,7 +91,6 @@ async function fetchAndDisplayCategoriesInModal() {
         state.serviceCategories = categories; 
         listDiv.innerHTML = '';
         if (categories.length > 0) {
-            // BLINDAGEM XSS: escapeHTML no nome da categoria
             listDiv.innerHTML = categories.map(cat => `
                 <div class="flex justify-between items-center bg-gray-100 p-2 rounded">
                     <span>${escapeHTML(cat.name)}</span>
@@ -94,7 +107,8 @@ async function fetchAndDisplayCategoriesInModal() {
 function openCategoryModal() {
     const contentHTML = `
         <div class="space-y-4">
-            <div class="mb-4">
+            <div class="mb-4 bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                <p class="text-xs text-indigo-800 mb-3 font-medium">As categorias criadas aqui ficarão disponíveis para toda a rede.</p>
                 <form id="categoryForm" class="flex flex-col sm:flex-row gap-4 sm:items-end">
                     <div class="flex-1 w-full">
                         <label for="categoryName" class="block text-sm font-medium text-gray-700">Nova Categoria</label>
@@ -131,6 +145,45 @@ function openCategoryModal() {
     fetchAndDisplayCategoriesInModal();
 }
 
+// --- NOVO: GERADOR DE CHECKBOXES PARA MULTI-TENANT ---
+function generateUnitCheckboxesHTML(selectedIds = []) {
+    if (!hierarchyCache || hierarchyCache.length === 0) {
+        return `
+            <input type="hidden" name="accessibleIn" value="${state.establishmentId}">
+            <div class="bg-gray-50 p-3 rounded border text-sm text-gray-500">
+                Disponível apenas nesta unidade. Crie mais lojas para distribuir serviços.
+            </div>`;
+    }
+
+    let html = '<div class="space-y-1 mt-2 max-h-48 overflow-y-auto p-3 border border-indigo-100 rounded-lg bg-indigo-50/30">';
+    
+    hierarchyCache.forEach(matriz => {
+        const isMatrizSelected = selectedIds.includes(matriz.id) || (selectedIds.length === 0 && matriz.id === state.establishmentId);
+        
+        html += `
+            <label class="flex items-center space-x-3 py-1.5 cursor-pointer hover:bg-white rounded px-2 transition-colors">
+                <input type="checkbox" name="accessibleIn" value="${matriz.id}" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isMatrizSelected ? 'checked' : ''}>
+                <span class="text-sm font-bold text-gray-800">🏢 ${escapeHTML(matriz.name)} (Matriz)</span>
+            </label>
+        `;
+        
+        if (matriz.branches && matriz.branches.length > 0) {
+            matriz.branches.forEach(branch => {
+                const isBranchSelected = selectedIds.includes(branch.id) || (selectedIds.length === 0 && branch.id === state.establishmentId);
+                html += `
+                    <label class="flex items-center space-x-3 py-1.5 ml-6 cursor-pointer hover:bg-white rounded px-2 transition-colors border-l-2 border-indigo-100 pl-4">
+                        <input type="checkbox" name="accessibleIn" value="${branch.id}" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isBranchSelected ? 'checked' : ''}>
+                        <span class="text-sm font-medium text-gray-600">📍 ${escapeHTML(branch.name)}</span>
+                    </label>
+                `;
+            });
+        }
+    });
+    
+    html += '</div>';
+    return html;
+}
+
 // --- LÓGICA DE SERVIÇOS (MODAL) ---
 async function handleServiceFormSubmit(e) {
     e.preventDefault();
@@ -150,9 +203,14 @@ async function handleServiceFormSubmit(e) {
         });
     }
 
+    // 🎯 Lógica de Captura das Unidades Selecionadas
+    const checkedUnits = Array.from(form.querySelectorAll('input[name="accessibleIn"]:checked')).map(cb => cb.value);
+    const accessibleIn = checkedUnits.length > 0 ? checkedUnits : [state.establishmentId];
+
     const serviceData = {
-        establishmentId: state.establishmentId,
-        name: form.querySelector('#serviceName').value,
+        establishmentId: state.establishmentId, // Fica guardado como o dono "Raiz" do serviço
+        accessibleIn: accessibleIn, // Array Multi-Loja
+        name: form.querySelector('#serviceName').value.trim(),
         price: parseFloat(form.querySelector('#servicePrice').value),
         duration: parseInt(form.querySelector('#serviceDurationMinutes').value, 10),
         bufferTime: parseInt(form.querySelector('#serviceBufferTimeMinutes').value, 10) || 0,
@@ -168,14 +226,10 @@ async function handleServiceFormSubmit(e) {
     try {
         if (serviceId) {
             await servicesApi.updateService(serviceId, serviceData);
-            // --- AUDITORIA ---
             logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Editou', `Editou o serviço: ${serviceData.name}`);
-            // -----------------
         } else {
             await servicesApi.createService(serviceData);
-            // --- AUDITORIA ---
             logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Criou', `Criou novo serviço: ${serviceData.name}`);
-            // -----------------
         }
         document.getElementById('serviceModal').style.display = 'none';
         showNotification('Sucesso', `Serviço ${serviceId ? 'atualizado' : 'adicionado'} com sucesso!`, 'success');
@@ -185,8 +239,6 @@ async function handleServiceFormSubmit(e) {
     }
 }
 
-// OTIMIZAÇÃO: Função local removida. Agora usamos a importada de '../utils.js'
-
 function openServiceModal(service = null) {
     const modal = document.getElementById('serviceModal');
     const categories = state.serviceCategories || []; 
@@ -194,7 +246,6 @@ function openServiceModal(service = null) {
     const durationInMinutes = service?.duration || 0; 
     const bufferTimeInMinutes = service?.bufferTime || 0; 
     
-    // BLINDAGEM XSS
     const safeName = escapeHTML(service?.name || '');
     const safeNotes = escapeHTML(service?.notes || '');
     const safeTitle = service ? safeName : 'Novo Serviço';
@@ -211,7 +262,7 @@ function openServiceModal(service = null) {
             
             <div class="flex justify-between items-center mb-4">
                 <h2 id="serviceModalTitle" class="text-2xl font-bold text-gray-800">${safeTitle}</h2>
-                <button type="button" data-action="close-modal" data-target="serviceModal" class="text-2xl font-bold">&times;</button>
+                <button type="button" data-action="close-modal" data-target="serviceModal" class="text-2xl font-bold hover:text-red-500">&times;</button>
             </div>
 
             <div class="border-b border-gray-200 mb-6">
@@ -225,20 +276,20 @@ function openServiceModal(service = null) {
                 <div class="space-y-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Foto do Serviço</label>
                     <div class="mt-1 flex flex-col items-center">
-                        <img id="servicePhotoPreview" src="${service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto'}" alt="Foto do Serviço" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
+                        <img id="servicePhotoPreview" src="${service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto'}" alt="Foto" class="w-32 h-32 rounded-lg object-cover mb-3 border-4 border-gray-200 bg-gray-50">
                         <input type="file" id="servicePhotoInput" class="hidden" accept="image/*">
                         <button type="button" id="servicePhotoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">Alterar Imagem</button>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
+                    <div class="md:col-span-2">
                         <label for="serviceName" class="block text-sm font-medium text-gray-700">Nome do serviço</label>
                         <input type="text" id="serviceName" value="${safeName}" class="mt-1 w-full p-2 border rounded-md" required>
                     </div>
                     <div>
                         <label for="servicePrice" class="block text-sm font-medium text-gray-700">Preço (a partir de:)</label>
-                        <input type="number" id="servicePrice" step="0.01" value="${service?.price || ''}" class="mt-1 w-full p-2 border rounded-md" required>
+                        <input type="number" id="servicePrice" step="0.01" value="${service?.price !== undefined ? service.price : ''}" class="mt-1 w-full p-2 border rounded-md" required>
                     </div>
                     <div>
                         <label for="serviceCategory" class="block text-sm font-medium text-gray-700">Categoria</label>
@@ -248,26 +299,33 @@ function openServiceModal(service = null) {
                         </select>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 gap-4 md:col-span-2">
                         <div>
                             <label for="serviceDurationMinutes" class="block text-sm font-medium text-gray-700">Duração (minutos)</label>
                             <input type="number" id="serviceDurationMinutes" min="0" value="${durationInMinutes}" class="mt-1 w-full p-2 border rounded-md" required>
                         </div>
                         <div>
-                            <label for="serviceBufferTimeMinutes" class="block text-sm font-medium text-gray-700">Minutos Extras</label>
+                            <label for="serviceBufferTimeMinutes" class="block text-sm font-medium text-gray-700">Minutos Extras (Pausa)</label>
                             <input type="number" id="serviceBufferTimeMinutes" min="0" value="${bufferTimeInMinutes}" class="mt-1 w-full p-2 border rounded-md">
                         </div>
                     </div>
                 </div>
-                <div>
-                    <label for="serviceNotes" class="block text-sm font-medium text-gray-700">Observações</label>
+
+                <div class="pt-4 border-t border-gray-100 mt-2">
+                    <label class="block text-sm font-bold text-indigo-900 mb-1">Distribuição na Rede</label>
+                    <p class="text-xs text-gray-500 mb-2">Marque as unidades em que este serviço será realizado.</p>
+                    ${generateUnitCheckboxesHTML(service?.accessibleIn || [])}
+                </div>
+
+                <div class="pt-4 border-t border-gray-100 mt-2">
+                    <label for="serviceNotes" class="block text-sm font-medium text-gray-700">Observações Internas</label>
                     <textarea id="serviceNotes" rows="3" class="mt-1 w-full p-2 border rounded-md">${safeNotes}</textarea>
                 </div>
                 <div>
                     <label for="serviceStatus" class="block text-sm font-medium text-gray-700">Status</label>
                     <select id="serviceStatus" class="mt-1 w-full p-2 border rounded-md bg-white">
-                        <option value="true" ${service?.active !== false ? 'selected' : ''}>Ativo</option>
-                        <option value="false" ${service?.active === false ? 'selected' : ''}>Inativo</option>
+                        <option value="true" ${service?.active !== false ? 'selected' : ''}>Ativo (Visível na Agenda)</option>
+                        <option value="false" ${service?.active === false ? 'selected' : ''}>Inativo (Oculto)</option>
                     </select>
                 </div>
             </div>
@@ -277,12 +335,12 @@ function openServiceModal(service = null) {
                     <label class="block text-lg font-medium text-gray-800">Tipo de comissão</label>
                     <p class="text-sm text-gray-500">Qual o tipo de comissão que é paga neste serviço?</p>
                     <div class="mt-2 space-y-2">
-                        <label class="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400 cursor-pointer">
-                            <input type="radio" name="commissionType" value="default" class="h-4 w-4 text-indigo-600 border-gray-300" ${service?.commissionType !== 'custom' ? 'checked' : ''}>
+                        <label class="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 cursor-pointer">
+                            <input type="radio" name="commissionType" value="default" class="h-4 w-4 text-indigo-600" ${service?.commissionType !== 'custom' ? 'checked' : ''}>
                             <span class="ml-3 text-sm text-gray-700 font-medium">Padrão para todos os profissionais</span>
                         </label>
-                        <label class="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-400 cursor-pointer">
-                            <input type="radio" name="commissionType" value="custom" class="h-4 w-4 text-indigo-600 border-gray-300" ${service?.commissionType === 'custom' ? 'checked' : ''}>
+                        <label class="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 cursor-pointer">
+                            <input type="radio" name="commissionType" value="custom" class="h-4 w-4 text-indigo-600" ${service?.commissionType === 'custom' ? 'checked' : ''}>
                             <span class="ml-3 text-sm text-gray-700 font-medium">Diferente para cada profissional</span>
                         </label>
                     </div>
@@ -293,7 +351,7 @@ function openServiceModal(service = null) {
                 </div>
                 <div id="professionalCommissionsContainer" class="hidden">
                      <label class="block text-lg font-medium text-gray-800">Comissão por Profissional</label>
-                     <p class="text-sm text-gray-500 mb-2">Selecione os profissionais que fazem este serviço e informe a comissão de cada um deles.</p>
+                     <p class="text-sm text-gray-500 mb-2">Selecione os profissionais e informe a comissão de cada um.</p>
                      <div class="border rounded-lg overflow-hidden">
                          <div class="grid grid-cols-[1fr_auto] items-center p-2 bg-gray-50 font-semibold text-xs text-gray-600">
                              <span>Profissional</span>
@@ -305,20 +363,10 @@ function openServiceModal(service = null) {
             </div>
 
             <div class="mt-6 pt-6 border-t flex flex-col-reverse sm:flex-row justify-between items-center gap-3">
-                <button 
-                    type="button" 
-                    data-action="delete-service" 
-                    data-id="${service?.id || ''}" 
-                    class="w-full sm:w-auto text-red-600 hover:text-red-800 transition-colors ${!service ? 'hidden' : ''}"
-                    title="Excluir Serviço"
-                >
-                    <svg class="w-6 h-6 mx-auto sm:mx-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                    </svg>
-                </button>
+                <button type="button" data-action="delete-service" data-id="${service?.id || ''}" class="w-full sm:w-auto text-red-600 hover:text-red-800 font-medium ${!service ? 'hidden' : ''}">Excluir Serviço</button>
                 <div class="flex flex-col-reverse sm:flex-row w-full sm:w-auto gap-3">
                     <button type="button" data-action="close-modal" data-target="serviceModal" class="w-full sm:w-auto py-2 px-6 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300">Cancelar</button>
-                    <button type="submit" class="w-full sm:w-auto py-2 px-6 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-700">Salvar</button>
+                    <button type="submit" class="w-full sm:w-auto py-2 px-6 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Salvar</button>
                 </div>
             </div>
         </form>
@@ -333,34 +381,25 @@ function openServiceModal(service = null) {
         const action = button.dataset.action;
         const serviceId = button.dataset.id;
 
-        if (action === 'close-modal') {
-            modal.style.display = 'none';
-        }
+        if (action === 'close-modal') modal.style.display = 'none';
 
         if (action === 'delete-service') {
             if (!serviceId) return;
-            
             modal.style.display = 'none'; 
             
             const confirmed = await showConfirmation('Apagar Serviço', 'Tem a certeza que deseja apagar este serviço?');
             if (confirmed) {
                 try {
-                    // Busca nome para o log antes de apagar
                     const serviceName = state.services.find(s => s.id === serviceId)?.name || 'Desconhecido';
-                    
                     await servicesApi.deleteService(serviceId);
-                    
-                    // --- AUDITORIA ---
                     logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Excluiu', `Excluiu o serviço: ${serviceName}`);
-                    // -----------------
-
                     showNotification('Sucesso', 'Serviço apagado com sucesso!', 'success');
                     await fetchBaseData(); 
                 } catch (error) {
                     showNotification('Erro', `Não foi possível apagar o serviço: ${error.message}`, 'error');
                 }
             } else {
-                 modal.style.display = 'flex'; // Reabre o modal se cancelar
+                 modal.style.display = 'flex'; 
             }
         }
     });
@@ -371,10 +410,10 @@ function openServiceModal(service = null) {
         tab.addEventListener('click', () => {
             tabs.forEach(t => {
                 t.classList.remove('border-indigo-500', 'text-indigo-600');
-                t.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+                t.classList.add('border-transparent', 'text-gray-500');
             });
             tab.classList.add('border-indigo-500', 'text-indigo-600');
-            tab.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+            tab.classList.remove('border-transparent', 'text-gray-500');
             tabContents.forEach(c => c.classList.add('hidden'));
             document.getElementById(`tab-content-${tab.dataset.tab}`).classList.remove('hidden');
         });
@@ -397,11 +436,10 @@ function openServiceModal(service = null) {
         profListContainer.innerHTML = (state.professionals || []).map(prof => {
             const isChecked = service?.professionalCommissions?.[prof.id] !== undefined;
             const rate = service?.professionalCommissions?.[prof.id] || 0;
-            // BLINDAGEM XSS no nome do profissional
             return `
                 <div class="professional-commission-row flex items-center justify-between p-2 rounded-md ${isChecked ? 'bg-blue-50' : ''}" data-prof-id="${prof.id}">
                     <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <input type="checkbox" ${isChecked ? 'checked' : ''} class="h-4 w-4 rounded border-gray-300 text-indigo-600">
                         <img src="${prof.photo || `https://placehold.co/40x40/E2E8F0/4A5568?text=${escapeHTML(prof.name.charAt(0))}`}" class="w-8 h-8 rounded-full object-cover">
                         <span class="text-sm font-medium">${escapeHTML(prof.name)}</span>
                     </label>
@@ -425,41 +463,26 @@ function openServiceModal(service = null) {
     toggleCommissionView(); 
 
     const form = modal.querySelector('#serviceForm');
-    
     const photoInput = modal.querySelector('#servicePhotoInput');
     const photoPreview = modal.querySelector('#servicePhotoPreview');
     const photoBase64Input = modal.querySelector('#servicePhotoBase64');
     
     modal.querySelector('#servicePhotoButton').addEventListener('click', () => photoInput.click());
 
-    // OTIMIZAÇÃO: Usando a função importada de utils.js
     photoInput.onchange = async () => {
         const file = photoInput.files[0];
         if (!file) return;
-        
         photoPreview.src = 'https://placehold.co/128x128/E2E8F0/4A5568?text=...'; 
-        
         try {
-            // Chamada da função otimizada
             const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 0.8);
-            
-            // Verificação de tamanho
-            const stringLength = resizedBase64.length;
-            const sizeInBytes = (stringLength * 3) / 4; 
-            const maxSizeInBytes = 1000 * 1024; // 1MB
-            
-            if (sizeInBytes > maxSizeInBytes) {
-                throw new Error('A imagem é muito grande mesmo após a compressão.');
-            }
-            
+            const sizeInBytes = (resizedBase64.length * 3) / 4; 
+            if (sizeInBytes > 1000 * 1024) throw new Error('Imagem muito grande.');
             photoPreview.src = resizedBase64;
             photoBase64Input.value = resizedBase64;
         } catch (error) {
-            console.error("Erro ao processar imagem:", error);
-            showNotification('Erro de Imagem', error.message || 'Não foi possível processar a imagem.', 'error');
+            showNotification('Erro de Imagem', error.message, 'error');
             photoPreview.src = service?.photo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Foto';
             photoBase64Input.value = service?.photo || '';
-            photoInput.value = '';
         }
     };
     
@@ -496,18 +519,16 @@ function renderServicesList() {
             const card = document.createElement('div');
             const serviceDataString = JSON.stringify(service).replace(/'/g, "&apos;");
             
-            card.className = `service-card bg-white rounded-lg shadow-md flex overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:bg-gray-50 ${service.active !== false ? 'opacity-100' : 'opacity-50 bg-gray-100'} sm:flex-col`;
+            card.className = `service-card bg-white rounded-lg shadow-md flex overflow-hidden transition-all duration-300 cursor-pointer hover:shadow-lg hover:border-indigo-300 border border-transparent ${service.active !== false ? 'opacity-100' : 'opacity-60 bg-gray-100'} sm:flex-col`;
             card.dataset.action = 'edit-service'; 
             card.dataset.service = serviceDataString; 
 
-            // BLINDAGEM XSS
             const safeServiceName = escapeHTML(service.name);
-            const safeCategoryName = escapeHTML(categoryMap.get(service.categoryId) || 'N/A');
+            const safeCategoryName = escapeHTML(categoryMap.get(service.categoryId) || 'Sem Categoria');
             const photoSrc = service.photo || `https://placehold.co/200x200/E2E8F0/4A5568?text=${encodeURIComponent(service.name.charAt(0))}`;
 
             card.innerHTML = `
-                <img src="${photoSrc}" alt="Imagem de ${safeServiceName}" class="w-20 h-20 object-cover flex-shrink-0 sm:w-full sm:h-24">
-                
+                <img src="${photoSrc}" alt="Imagem" class="w-24 h-24 object-cover flex-shrink-0 sm:w-full sm:h-32">
                 <div class="p-3 flex flex-col flex-grow justify-between w-full">
                     <div class="flex justify-between items-start mb-1">
                         <h3 class="text-sm font-bold text-gray-900 flex-1 text-left truncate pr-2">${safeServiceName}</h3>
@@ -518,13 +539,11 @@ function renderServicesList() {
                             </div>
                         </label>
                     </div>
-
-                    <p class="text-xl font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${service.price.toFixed(2)}</p>
-
+                    <p class="text-lg font-bold text-indigo-600 mb-1 text-left hidden sm:block">R$ ${service.price.toFixed(2)}</p>
                     <div>
                         <div class="hidden sm:block">
-                            <p class="text-xs text-gray-500 text-left mb-1 truncate">Categoria: ${safeCategoryName}</p>
-                            <p class="text-xs text-gray-500 text-left">Duração: ${service.duration} min (+${service.bufferTime || 0} min extra)</p>
+                            <p class="text-xs text-gray-500 text-left mb-1 truncate">${safeCategoryName}</p>
+                            <p class="text-xs text-gray-500 text-left">${service.duration} min</p>
                         </div>
                         <div class="flex justify-between items-center sm:hidden mt-2">
                             <p class="text-lg font-bold text-indigo-600 text-left">R$ ${service.price.toFixed(2)}</p>
@@ -541,15 +560,11 @@ function renderServicesList() {
 
 function renderServiceIndicators() {
     const indicators = { active: 0, inactive: 0, total: 0 };
-    
     const validServices = (state.services || []).filter(Boolean);
     
     validServices.forEach(s => {
-        if (s.active === false) {
-            indicators.inactive++;
-        } else {
-            indicators.active++;
-        }
+        if (s.active === false) indicators.inactive++;
+        else indicators.active++;
     });
     indicators.total = validServices.length; 
 
@@ -564,11 +579,10 @@ function renderServiceIndicators() {
     
     if (popularEl) {
         if (state.mostPopularService && state.mostPopularService.name !== 'N/A') {
-            popularEl.textContent = escapeHTML(state.mostPopularService.name); // BLINDAGEM
+            popularEl.textContent = escapeHTML(state.mostPopularService.name);
             popularEl.closest('.indicator-card').title = `${state.mostPopularService.name} (${state.mostPopularService.count} agendamentos)`;
         } else {
-            popularEl.textContent = 'N/A';
-            popularEl.closest('.indicator-card').title = 'Nenhum serviço agendado ainda';
+            popularEl.textContent = 'Nenhum agendado';
         }
     }
 }
@@ -577,44 +591,43 @@ function renderServicesView() {
     const container = document.getElementById('services-content-container');
     container.innerHTML = `
         <div class="flex flex-col sm:flex-row gap-4 mb-6">
-            <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full sm:w-64 p-2 border rounded-md shadow-sm">
-            <select id="serviceCategoryFilter" class="w-full sm:w-auto p-2 border rounded-md bg-white shadow-sm">
+            <input type="search" id="serviceSearchInput" placeholder="Pesquisar por nome..." class="w-full sm:w-64 p-2.5 border border-gray-300 rounded-lg shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            <select id="serviceCategoryFilter" class="w-full sm:w-auto p-2.5 border border-gray-300 rounded-lg bg-white shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                 <option value="all">Todas as categorias</option>
             </select>
         </div>
         
-        <div class="grid grid-cols-2 gap-3 mb-4 lg:grid-cols-4 lg:gap-4">
-            <div data-action="filter-service" data-filter-type="total" class="indicator-card bg-blue-50 border-l-4 border-blue-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
-                <div class="bg-blue-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M5 11v2m14-2v2"></path></svg></div>
-                <div><p class="text-xs text-gray-500">Total de Serviços</p><p id="indicator-total" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
+        <div class="grid grid-cols-2 gap-3 mb-6 lg:grid-cols-4 lg:gap-4">
+            <div data-action="filter-service" data-filter-type="total" class="indicator-card bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all hover:shadow-md ring-2 ring-indigo-500">
+                <div class="bg-blue-100 p-2 rounded-lg"><i class="bi bi-ui-radios-grid text-xl text-blue-600"></i></div>
+                <div><p class="text-xs text-gray-500 uppercase tracking-wider font-bold">Total</p><p id="indicator-total" class="text-2xl font-bold text-gray-800">0</p></div>
             </div>
-            <div data-action="filter-service" data-filter-type="active" class="indicator-card bg-green-50 border-l-4 border-green-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
-                <div class="bg-green-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
-                <div><p class="text-xs text-gray-500">Serviços Ativos</p><p id="indicator-active" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
+            <div data-action="filter-service" data-filter-type="active" class="indicator-card bg-green-50 border border-green-100 p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all hover:shadow-md">
+                <div class="bg-green-100 p-2 rounded-lg"><i class="bi bi-check-circle text-xl text-green-600"></i></div>
+                <div><p class="text-xs text-gray-500 uppercase tracking-wider font-bold">Ativos</p><p id="indicator-active" class="text-2xl font-bold text-gray-800">0</p></div>
             </div>
-            <div data-action="filter-service" data-filter-type="inactive" class="indicator-card bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg flex items-center gap-3 cursor-pointer transition-all lg:p-4 lg:gap-4">
-                <div class="bg-red-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg></div>
-                <div><p class="text-xs text-gray-500">Serviços Inativos</p><p id="indicator-inactive" class="text-lg font-bold text-gray-800 lg:text-2xl">0</p></div>
+            <div data-action="filter-service" data-filter-type="inactive" class="indicator-card bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-4 cursor-pointer transition-all hover:shadow-md">
+                <div class="bg-red-100 p-2 rounded-lg"><i class="bi bi-x-circle text-xl text-red-600"></i></div>
+                <div><p class="text-xs text-gray-500 uppercase tracking-wider font-bold">Inativos</p><p id="indicator-inactive" class="text-2xl font-bold text-gray-800">0</p></div>
             </div>
-            <div id="popular-card" data-action="filter-service" data-filter-type="popular" class="indicator-card bg-gray-50 border-l-4 border-gray-400 p-3 rounded-r-lg flex items-center gap-3 transition-all opacity-70 lg:p-4 lg:gap-4" title="Carregando...">
-                <div class="bg-gray-100 p-1.5 lg:p-2 rounded-full"><svg class="w-5 h-5 lg:w-6 lg:h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118L2.05 10.1c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg></div>
-                <div><p class="text-xs text-gray-500">Mais Usados</p><p id="indicator-popular" class="text-lg font-bold text-gray-800 lg:text-2xl truncate">...</p></div>
+            <div id="popular-card" data-action="filter-service" data-filter-type="popular" class="indicator-card bg-amber-50 border border-amber-100 p-4 rounded-xl flex items-center gap-4 transition-all opacity-80">
+                <div class="bg-amber-100 p-2 rounded-lg"><i class="bi bi-star-fill text-xl text-amber-600"></i></div>
+                <div class="overflow-hidden w-full"><p class="text-xs text-gray-500 uppercase tracking-wider font-bold">Favorito</p><p id="indicator-popular" class="text-lg font-bold text-gray-800 truncate">...</p></div>
             </div>
         </div>
 
-        <div id="servicesList" class="space-y-3 sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 sm:gap-4">
+        <div id="servicesList" class="space-y-3 sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 sm:gap-4">
             <div class="loader col-span-full mx-auto my-10"></div>
         </div>
         
-        <button data-action="new-service" class="fixed z-30 bottom-20 right-6 sm:bottom-8 sm:right-8 bg-blue-600 text-white rounded-full p-3 shadow-lg hover:bg-blue-700 transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
-            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+        <button data-action="new-service" class="fixed z-30 bottom-24 right-6 sm:bottom-8 sm:right-8 bg-indigo-600 text-white rounded-full p-4 shadow-lg hover:bg-indigo-700 transition-transform hover:scale-110">
+            <i class="bi bi-plus-lg text-2xl"></i>
         </button>
     `;
 
     const categoryFilter = document.getElementById('serviceCategoryFilter');
     if (categoryFilter) {
         categoryFilter.innerHTML = '<option value="all">Todas as categorias</option>';
-        // BLINDAGEM XSS
         (state.serviceCategories || []).forEach(cat => categoryFilter.innerHTML += `<option value="${cat.id}">${escapeHTML(cat.name)}</option>`);
     }
 
@@ -625,9 +638,10 @@ function renderServicesView() {
 function renderServiceReportsView() {
     const container = document.getElementById('services-content-container');
     container.innerHTML = `
-        <div class="p-8 text-center">
+        <div class="p-12 text-center bg-gray-50 border border-dashed border-gray-300 rounded-xl max-w-lg mx-auto mt-10">
+            <i class="bi bi-bar-chart-line text-4xl text-indigo-300 mb-4 block"></i>
             <h3 class="text-xl font-bold text-gray-700">Relatórios de Serviços</h3>
-            <p class="text-gray-500 mt-2">Em breve, aqui poderás ver relatórios detalhados sobre os teus serviços mais rentáveis, mais agendados e muito mais.</p>
+            <p class="text-gray-500 mt-2 text-sm">Acompanhe métricas de conversão e lucratividade por serviço e unidade. (Em breve)</p>
         </div>
     `;
 }
@@ -640,17 +654,19 @@ async function fetchBaseData() {
     }
     
     try {
-        const [servicesData, professionalsData, categoriesData, mostPopularData] = await Promise.all([
+        const [servicesData, professionalsData, categoriesData, mostPopularData, hierarchyData] = await Promise.all([
             servicesApi.getServices(state.establishmentId),
             professionalsApi.getProfessionals(state.establishmentId),
             categoriesApi.getCategories(state.establishmentId, 'services'), 
-            servicesApi.getMostPopularService(state.establishmentId) 
+            servicesApi.getMostPopularService(state.establishmentId),
+            getHierarchy() // Busca a estrutura da rede!
         ]);
         
         state.services = (servicesData || []).filter(Boolean);
         state.professionals = (professionalsData || []).filter(Boolean);
         state.serviceCategories = (categoriesData || []).filter(Boolean);
         state.mostPopularService = mostPopularData || { name: 'N/A', count: 0 }; 
+        hierarchyCache = hierarchyData?.matrizes || [];
         
         state.services.forEach(s => {
             if (s.active === undefined) s.active = true;
@@ -660,7 +676,7 @@ async function fetchBaseData() {
 
     } catch (error) {
         if (contentContainer) {
-            contentContainer.innerHTML = '<p class="text-red-500 col-span-full text-center py-10">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
+            contentContainer.innerHTML = '<p class="text-red-500 text-center py-10">Erro ao carregar dados. Verifique a conexão com o servidor.</p>';
         }
         showNotification('Erro', `Não foi possível carregar os dados: ${error.message}`, 'error');
     }
@@ -692,9 +708,6 @@ function switchTab(targetView) {
     else if (targetView === 'reports') renderServiceReportsView();
 }
 
-
-// --- 5. EVENT LISTENERS E INICIALIZAÇÃO DA PÁGINA ---
-
 function setupEventListeners() {
     if (pageEventListener) {
         contentDiv.removeEventListener('click', pageEventListener);
@@ -715,16 +728,13 @@ function setupEventListeners() {
                 const serviceIndex = state.services.findIndex(s => s.id === serviceId);
                 if (serviceIndex > -1) state.services[serviceIndex].active = newStatus;
                 
-                // --- AUDITORIA ---
                 logAction(state.establishmentId, getCurrentUserForLog(), 'Serviços', 'Atualizou Status', `Alterou status do serviço (ID: ${serviceId}) para ${newStatus ? 'Ativo' : 'Inativo'}`);
-                // -----------------
 
                 renderServicesList();
                 renderServiceIndicators();
             } catch (error) {
                 showNotification('Erro', `Não foi possível atualizar o status: ${error.message}`, 'error');
                 toggle.checked = !newStatus;
-                renderServicesList();
             }
             return; 
         }
@@ -772,7 +782,8 @@ function setupEventListeners() {
 
                     card.classList.toggle('ring-2', isSelected);
                     card.classList.toggle('ring-indigo-500', isSelected);
-                    card.classList.toggle('shadow-lg', isSelected);
+                    card.classList.toggle('shadow-md', isSelected);
+                    card.classList.toggle('bg-white', !isSelected);
                 });
                 renderServicesList();
                 break;
@@ -788,39 +799,29 @@ function setupEventListeners() {
 
 export async function loadServicesPage() {
     contentDiv.innerHTML = `
-        <section class="p-4 sm:p-6">
-            <div class="bg-white rounded-lg shadow-md">
-                <div id="services-tabs" class="border-b border-gray-200">
-                    <nav class="-mb-px flex space-x-6 px-4 sm:px-6 overflow-x-auto" aria-label="Tabs">
-                        <button data-view="services" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600">
-                            Serviços
+        <div class="max-w-7xl mx-auto w-full pb-20">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div id="services-tabs" class="border-b border-gray-200 bg-gray-50/50">
+                    <nav class="-mb-px flex space-x-8 px-6 overflow-x-auto" aria-label="Tabs">
+                        <button data-view="services" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm border-indigo-500 text-indigo-600 transition-colors">
+                            <i class="bi bi-scissors mr-2"></i> Meus Serviços
                         </button>
-                        <button data-action="manage-categories" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                            Categorias
+                        <button data-action="manage-categories" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 transition-colors">
+                            <i class="bi bi-tags mr-2"></i> Categorias
                         </button>
-                        <button data-view="reports" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                            Relatórios
+                        <button data-view="reports" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300 transition-colors">
+                            <i class="bi bi-graph-up mr-2"></i> Relatórios
                         </button>
                     </nav>
                 </div>
                 
-                <div id="services-content-container" class="p-4 sm:p-6">
-                    <div class="loader mx-auto"></div>
+                <div id="services-content-container" class="p-6 bg-white min-h-[500px] relative">
+                    <div class="loader mx-auto mt-20"></div>
                 </div>
             </div>
-        </section>`;
+        </div>`;
 
     setupEventListeners();
-    
-    try {
-        if (!state.professionals || state.professionals.length === 0) {
-            state.professionals = await professionalsApi.getProfessionals(state.establishmentId) || [];
-        }
-    } catch (error) {
-        console.error("Falha ao carregar profissionais:", error);
-        showNotification('Erro', 'Não foi possível carregar a lista de profissionais.', 'error');
-        state.professionals = [];
-    }
     
     currentView = 'services';
     activeServiceFilter = 'all';

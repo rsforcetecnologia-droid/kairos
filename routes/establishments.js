@@ -68,7 +68,40 @@ router.get('/hierarchy', verifyToken, async (req, res) => {
     }
 });
 
-// 2. Obter Detalhes de um Estabelecimento Específico 
+// 2. Obter as Filiais Ativas de uma Matriz (Para o Portal de Agendamento do Cliente)
+// 🌍 PÚBLICA: Sem verifyToken
+router.get('/:id/branches', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { db } = req;
+        const snapshot = await db.collection('establishments')
+            .where('parentId', '==', id)
+            .where('status', '==', 'active')
+            .get();
+        
+        if (snapshot.empty) {
+            return res.status(200).json([]); // Não tem filiais (Vai direto para o agendamento)
+        }
+        
+        // Retorna apenas dados públicos essenciais para o cliente clicar
+        const branches = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                name: data.name,
+                address: data.address || null,
+                phone: data.phone || null,
+                logo: data.logo || null
+            };
+        });
+        
+        res.status(200).json(branches);
+    } catch (error) {
+        handleFirestoreError(res, error, 'buscar filiais públicas');
+    }
+});
+
+// 3. Obter Detalhes de um Estabelecimento Específico 
 // 🌍 PÚBLICA: Sem verifyToken, para carregar o Agendamento dos Clientes
 router.get('/:id', async (req, res) => {
     const { id } = req.params;
@@ -98,7 +131,7 @@ router.get('/:id', async (req, res) => {
 // =======================================================================
 router.use(verifyToken);
 
-// 3. Criar Novo Estabelecimento (Matriz ou Filial)
+// 4. Criar Novo Estabelecimento (Matriz ou Filial)
 router.post('/', isOwner, async (req, res) => {
     const { name, cnpj, phone, address, timezone, parentId } = req.body;
     const { uid } = req.user;
@@ -188,7 +221,7 @@ router.post('/', isOwner, async (req, res) => {
     }
 });
 
-// 4. Atualizar Status do Agendamento Público
+// 5. Atualizar Status do Agendamento Público
 router.patch('/:id/booking-status', isOwner, async (req, res) => {
     const { id } = req.params;
     const { publicBookingEnabled } = req.body;
@@ -209,7 +242,7 @@ router.patch('/:id/booking-status', isOwner, async (req, res) => {
     }
 });
 
-// 5. Atualizar Email do Proprietário
+// 6. Atualizar Email do Proprietário
 router.patch('/:id/owner-email', isOwner, async (req, res) => {
     const { id } = req.params;
     const { newEmail } = req.body;
@@ -230,7 +263,7 @@ router.patch('/:id/owner-email', isOwner, async (req, res) => {
     }
 });
 
-// 6. Salvar Configurações de Fidelidade
+// 7. Salvar Configurações de Fidelidade
 router.put('/:id/loyalty', isOwner, async (req, res) => {
     const { id } = req.params;
     const { loyaltyProgram } = req.body;
@@ -251,7 +284,7 @@ router.put('/:id/loyalty', isOwner, async (req, res) => {
     }
 });
 
-// 7. Atualizar Dados Gerais de um Estabelecimento
+// 8. Atualizar Dados Gerais de um Estabelecimento
 router.put('/:id', isOwner, async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
