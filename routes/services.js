@@ -7,7 +7,6 @@ const admin = require('firebase-admin');
 // --- CATEGORIAS DE SERVIÇOS ---
 router.post('/categories', async (req, res) => {
     try {
-        // Agora recebemos também o accessibleIn (array de IDs)
         const { establishmentId, name, accessibleIn } = req.body;
         if (!establishmentId || !name) return res.status(400).json({ message: 'ID do estabelecimento e nome da categoria são obrigatórios.' });
         
@@ -15,7 +14,6 @@ router.post('/categories', async (req, res) => {
         const newCategory = { 
             establishmentId, 
             name, 
-            // Se não enviarem o array, criamos um array com o ID atual (retrocompatibilidade)
             accessibleIn: Array.isArray(accessibleIn) ? accessibleIn : [establishmentId],
             createdAt: admin.firestore.FieldValue.serverTimestamp() 
         };
@@ -33,22 +31,29 @@ router.get('/categories/:establishmentId', async (req, res) => {
         const { establishmentId } = req.params;
         const { db } = req;
         
-        // 🔄 DUPLA QUERY (Retrocompatibilidade)
-        // Busca as categorias antigas (apenas establishmentId) e as novas (no array accessibleIn)
         const [legacySnap, newSnap] = await Promise.all([
             db.collection('serviceCategories').where('establishmentId', '==', establishmentId).get(),
             db.collection('serviceCategories').where('accessibleIn', 'array-contains', establishmentId).get()
         ]);
 
-        // Usa um Map para juntar e evitar duplicações
         const categoriesMap = new Map();
         
-        legacySnap.docs.forEach(doc => categoriesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        // 🔥 FILTRO SEVERO: Descarta a criação se foi explicitamente desmarcado na rede
+        legacySnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (Array.isArray(data.accessibleIn)) {
+                if (data.accessibleIn.includes(establishmentId)) {
+                    categoriesMap.set(doc.id, { id: doc.id, ...data });
+                }
+            } else {
+                categoriesMap.set(doc.id, { id: doc.id, ...data });
+            }
+        });
+        
         newSnap.docs.forEach(doc => categoriesMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
         if (categoriesMap.size === 0) return res.status(200).json([]);
         
-        // Converte para array e ordena por nome
         const categoriesList = Array.from(categoriesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         res.status(200).json(categoriesList);
     } catch (error) {
@@ -76,18 +81,18 @@ router.post('/', async (req, res) => {
         const { 
             establishmentId, name, price, duration, commissionRate, active, 
             photo, notes, categoryId, bufferTime, commissionType, 
-            professionalCommissions, accessibleIn // Novo campo array
+            professionalCommissions, accessibleIn 
         } = req.body;
 
         if (!establishmentId || !name || price === undefined || duration === undefined) {
-            return res.status(400).json({ message: 'Os campos establishmentId, name, price e duration são obrigatórios.' });
+            return res.status(400).json({ message: 'Os campos obrigatórios estão faltando.' });
         }
         
         const { db } = req;
         
         const newService = {
-            establishmentId, // Mantemos como criador/dono do registo original
-            accessibleIn: Array.isArray(accessibleIn) ? accessibleIn : [establishmentId], // O segredo da rede!
+            establishmentId, 
+            accessibleIn: Array.isArray(accessibleIn) ? accessibleIn : [establishmentId],
             name,
             price: Number(price) || 0,
             duration: Number(duration) || 0,
@@ -115,8 +120,6 @@ router.get('/:establishmentId', async (req, res) => {
         const { establishmentId } = req.params;
         const { db } = req;
 
-        // 🔄 DUPLA QUERY (Retrocompatibilidade)
-        // Permite encontrar serviços antigos (criados antes da atualização) e os novos (partilhados na rede)
         const [legacySnap, newSnap] = await Promise.all([
             db.collection('services').where('establishmentId', '==', establishmentId).get(),
             db.collection('services').where('accessibleIn', 'array-contains', establishmentId).get()
@@ -124,61 +127,54 @@ router.get('/:establishmentId', async (req, res) => {
 
         const servicesMap = new Map();
 
-        legacySnap.docs.forEach(doc => servicesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        // 🔥 FILTRO SEVERO: Verifica se o serviço realmente deve aparecer aqui
+        legacySnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (Array.isArray(data.accessibleIn)) {
+                if (data.accessibleIn.includes(establishmentId)) {
+                    servicesMap.set(doc.id, { id: doc.id, ...data });
+                }
+            } else {
+                servicesMap.set(doc.id, { id: doc.id, ...data });
+            }
+        });
+        
         newSnap.docs.forEach(doc => servicesMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
         if (servicesMap.size === 0) {
             return res.status(200).json([]);
         }
         
-        // Converte o Map para Array e ordena alfabeticamente
         const servicesList = Array.from(servicesMap.values()).sort((a, b) => a.name.localeCompare(b.name));
         res.status(200).json(servicesList);
 
     } catch (error) {
         console.error("Erro ao listar serviços:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor ao tentar listar os serviços.' });
+        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
 
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// ++ LÓGICA DO CARD "MAIS USADOS" ++
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 router.get('/stats/most-popular/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
         const { db } = req;
 
-        // 1. Busca todos os agendamentos (concluídos ou agendados) do estabelecimento
-        const appointmentsSnapshot = await db.collection('appointments')
-            .where('establishmentId', '==', establishmentId)
-            .get();
-
-        if (appointmentsSnapshot.empty) {
-            return res.status(200).json({ name: 'N/A', count: 0 });
-        }
+        const appointmentsSnapshot = await db.collection('appointments').where('establishmentId', '==', establishmentId).get();
+        if (appointmentsSnapshot.empty) return res.status(200).json({ name: 'N/A', count: 0 });
 
         const serviceCounts = {};
-
-        // 2. Itera por todos os agendamentos e conta os serviços
         appointmentsSnapshot.docs.forEach(doc => {
             const appointment = doc.data();
             if (Array.isArray(appointment.services)) {
                 appointment.services.forEach(service => {
-                    if (service.id) {
-                        serviceCounts[service.id] = (serviceCounts[service.id] || 0) + 1;
-                    }
+                    if (service.id) serviceCounts[service.id] = (serviceCounts[service.id] || 0) + 1;
                 });
             }
         });
 
-        if (Object.keys(serviceCounts).length === 0) {
-            return res.status(200).json({ name: 'N/A', count: 0 });
-        }
+        if (Object.keys(serviceCounts).length === 0) return res.status(200).json({ name: 'N/A', count: 0 });
 
-        // 3. Encontra o ID do serviço mais popular
-        let mostPopularId = null;
-        let maxCount = 0;
+        let mostPopularId = null, maxCount = 0;
         for (const serviceId in serviceCounts) {
             if (serviceCounts[serviceId] > maxCount) {
                 maxCount = serviceCounts[serviceId];
@@ -186,26 +182,16 @@ router.get('/stats/most-popular/:establishmentId', async (req, res) => {
             }
         }
 
-        if (!mostPopularId) {
-            return res.status(200).json({ name: 'Nenhum', count: 0 });
-        }
+        if (!mostPopularId) return res.status(200).json({ name: 'Nenhum', count: 0 });
 
-        // 4. Busca o nome do serviço mais popular
         const serviceDoc = await db.collection('services').doc(mostPopularId).get();
-        
-        if (!serviceDoc.exists) {
-            return res.status(200).json({ name: 'Serviço Apagado', count: maxCount });
-        }
+        if (!serviceDoc.exists) return res.status(200).json({ name: 'Serviço Apagado', count: maxCount });
 
-        // 5. Retorna o nome e a contagem
         res.status(200).json({ name: serviceDoc.data().name, count: maxCount });
-
     } catch (error) {
-        console.error("Erro ao buscar serviço mais popular:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
-
 
 router.put('/:serviceId', async (req, res) => {
     const { serviceId } = req.params;
@@ -222,7 +208,6 @@ router.put('/:serviceId', async (req, res) => {
             commissionRate: Number(data.commissionRate) || 0,
         };
 
-        // Garante que se vier um array de acessos, ele é gravado corretamente
         if (data.accessibleIn && Array.isArray(data.accessibleIn)) {
             updatedData.accessibleIn = data.accessibleIn;
         }
@@ -230,7 +215,6 @@ router.put('/:serviceId', async (req, res) => {
         await serviceRef.update(updatedData);
         res.status(200).json({ message: 'Serviço atualizado com sucesso.' });
     } catch (error) {
-        console.error("Erro ao atualizar serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
@@ -241,9 +225,8 @@ router.patch('/:serviceId/status', async (req, res) => {
     try {
         const { db } = req;
         await db.collection('services').doc(serviceId).update({ active });
-        res.status(200).json({ message: 'Status do serviço atualizado com sucesso.' });
+        res.status(200).json({ message: 'Status do serviço atualizado.' });
     } catch (error) {
-        console.error("Erro ao atualizar status do serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });
@@ -252,11 +235,10 @@ router.delete('/:serviceId', async (req, res) => {
     const { serviceId } = req.params;
     try {
         const { db } = req;
-        if (!serviceId) return res.status(400).json({ message: 'O ID do serviço é obrigatório.' });
+        if (!serviceId) return res.status(400).json({ message: 'O ID é obrigatório.' });
         await db.collection('services').doc(serviceId).delete();
-        res.status(200).json({ message: 'Serviço removido com sucesso.' });
+        res.status(200).json({ message: 'Serviço removido.' });
     } catch (error) {
-        console.error("Erro ao remover serviço:", error);
         res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
     }
 });

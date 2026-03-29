@@ -33,8 +33,7 @@ import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, orderBy, 
 import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
-import { getEstablishmentDetails, getHierarchy } from './api/establishments.js'; // getHierarchy adicionado
-import { getProfessionals } from './api/professionals.js'; 
+import { getEstablishmentDetails, getHierarchy } from './api/establishments.js'; 
 import { checkAndStartOnboarding } from './ui/onboarding.js';
 
 // Notificações
@@ -210,12 +209,12 @@ function setupRealtimeListeners(establishmentId) {
             }
         });
     }, (error) => {
-        console.error("Erro no listener de notificações em tempo real:", error);
+        console.error("Erro no listener de notificações:", error);
     });
 }
 
 // ====================================================================
-// 🔥 MOTOR DO SELETOR DE UNIDADES (CONTEXT SWITCHER)
+// 🔥 MOTOR DO SELETOR DE UNIDADES (CONTEXT SWITCHER) - CORRIGIDO
 // ====================================================================
 async function setupContextSwitcher(baseEstablishmentId) {
     const switcher = document.getElementById('global-context-switcher');
@@ -240,74 +239,77 @@ async function setupContextSwitcher(baseEstablishmentId) {
             }
         });
 
-        if (count > 1) {
+        if (count > 0) { // Mostra mesmo se houver apenas 1 (A Matriz) para garantir a coerência visual
             switcher.innerHTML = optionsHtml;
             switcherWrapper.classList.remove('hidden');
             switcherWrapper.classList.add('flex');
             
-            // Define a seleção atual baseada no estado global
-            switcher.value = state.establishmentId || baseEstablishmentId;
+            // Lógica de "Auto-Select": Se o ID do token não estiver na lista (ex: token desatualizado), pega a Matriz por defeito
+            let initialIdToSelect = baseEstablishmentId;
+            if (!Array.from(switcher.options).some(opt => opt.value === baseEstablishmentId)) {
+                initialIdToSelect = switcher.options[0].value;
+            }
+            
+            switcher.value = initialIdToSelect;
 
-            // Clona o select para evitar acumular eventListeners caso a função rode 2x
+            // Clona o select para evitar eventos duplicados caso a função rode 2x
             const newSwitcher = switcher.cloneNode(true);
             switcher.parentNode.replaceChild(newSwitcher, switcher);
 
-            newSwitcher.addEventListener('change', async (e) => {
-                const selectedId = e.target.value;
-                const selectedName = e.target.options[e.target.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
-                
-                // Mostrar Loading em ecrã total para feedback
-                if (loadingScreen) {
+            // 🎯 FUNÇÃO CENTRAL PARA APLICAR O CONTEXTO (USADA NO INIT E NO CHANGE)
+            const applyContext = async (selectedId, selectedName, isInitialLoad = false) => {
+                if (loadingScreen && !isInitialLoad) {
                     loadingScreen.classList.remove('hidden', 'fade-out');
                     loadingScreen.style.display = 'flex';
                 }
 
                 try {
-                    // 1. Busca os detalhes da nova loja
                     const estDetails = await getEstablishmentDetails(selectedId);
                     
-                    // 2. ATUALIZA A VARIÁVEL ESTADO GLOBAL
-                    // Isto faz com que Agenda, Comandas, Relatórios passem a usar este ID nas queries!
+                    // ATUALIZAÇÃO GERAL DO STATE PARA O SISTEMA
                     state.establishmentId = selectedId;
                     state.establishmentName = selectedName;
                     state.enabledModules = estDetails.modules;
-                    
-                    // Atualiza a variável de contexto visual usada por algumas telas (ex: establishment.js)
                     state.currentViewContext = { id: selectedId, name: selectedName, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
 
-                    // 3. Troca o Tema se a loja tiver uma cor diferente
                     if (typeof applyTheme === 'function') {
                         applyTheme(estDetails.themeColor || 'indigo');
                     }
 
-                    // 4. Reconecta o Listener de Notificações para a nova loja
                     setupRealtimeListeners(selectedId);
-                    
-                    // 5. Atualiza os Indicadores do Topo
                     loadHeaderKPIs(state.userPermissions);
 
-                    // 6. Recarrega a aba atual com os dados da nova loja
-                    const activeLink = document.querySelector('.sidebar-link.active');
-                    const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'agenda-section';
-                    
-                    showNotification('Unidade Alterada', `Agora a gerir: ${selectedName}`, 'info');
-                    
-                    // Dispara a navegação para recriar a página atual
-                    navigateTo(currentSection);
+                    // Só mostra a notificação visual e força a navegação se NÃO for o carregamento do login
+                    if (!isInitialLoad) {
+                        showNotification('Unidade Alterada', `Agora a gerir: ${selectedName}`, 'info');
+                        const activeLink = document.querySelector('.sidebar-link.active');
+                        const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'agenda-section';
+                        navigateTo(currentSection);
+                    }
 
                 } catch (err) {
                     console.error("Erro ao trocar de contexto:", err);
-                    showNotification('Erro', 'Falha ao aceder aos dados desta unidade.', 'error');
-                    newSwitcher.value = state.establishmentId; // Reverte o select visualmente
+                    if (!isInitialLoad) showNotification('Erro', 'Falha ao aceder aos dados desta unidade.', 'error');
                 } finally {
-                    if (loadingScreen) {
+                    if (loadingScreen && !isInitialLoad) {
                         loadingScreen.classList.add('fade-out');
                         setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
                     }
                 }
+            };
+
+            // 🔥 DISPARA AUTOMATICAMENTE NO PRIMEIRO LOGIN
+            const initialName = newSwitcher.options[newSwitcher.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
+            await applyContext(initialIdToSelect, initialName, true);
+
+            // Evento de mudança manual pelo utilizador
+            newSwitcher.addEventListener('change', async (e) => {
+                const selectedId = e.target.value;
+                const selectedName = e.target.options[e.target.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
+                await applyContext(selectedId, selectedName, false);
             });
+
         } else {
-            // Se só tiver uma loja, oculta o dropdown
             switcherWrapper.classList.add('hidden');
             switcherWrapper.classList.remove('flex');
         }
@@ -554,10 +556,7 @@ async function initialize() {
                 if ((claims.role === 'owner' || claims.role === 'admin' || claims.role === 'employee') && claims.establishmentId) {
                     
                     const establishmentDetails = await getEstablishmentDetails(claims.establishmentId);
-                    state.enabledModules = establishmentDetails.modules;
                     
-                    applyTheme(establishmentDetails.themeColor || 'indigo');
-
                     let userPermissions = null;
                     let userName = user.displayName; 
                     let userProfessionalId = null; 
@@ -577,6 +576,7 @@ async function initialize() {
                     
                     const finalUserName = userName || user.email;
                     
+                    // Inicializa o estado global base (será sobrescrito pelo switcher logo a seguir)
                     setGlobalState(claims.establishmentId, establishmentDetails.name, userPermissions);
 
                     if (profileMenuButton) profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
@@ -591,13 +591,10 @@ async function initialize() {
                         });
                     }
 
-                    // 🔥 INICIA O SELECTOR DE UNIDADES NO CABEÇALHO (A MAGIA ACONTECE AQUI!)
+                    // 🔥 INICIA O SELECTOR DE UNIDADES NO CABEÇALHO COM AUTO-LOAD!
                     await setupContextSwitcher(claims.establishmentId);
 
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
-                    loadHeaderKPIs(userPermissions); 
-                    setupRealtimeListeners(claims.establishmentId);
-                    renderNotificationPanel();
                     
                     if (loadingScreen) {
                         loadingScreen.classList.add('fade-out');
@@ -605,9 +602,12 @@ async function initialize() {
                     }
                     if (dashboardContent) dashboardContent.style.display = 'flex';
 
+                    // Após montar tudo, lança o Tour (se necessário)
                     setTimeout(() => { checkAndStartOnboarding(); }, 1500); 
                     
+                    // Redireciona para a primeira página
                     navigateTo('agenda-section');
+
                 } else {
                     throw new Error("Permissão ou estabelecimento não configurado.");
                 }

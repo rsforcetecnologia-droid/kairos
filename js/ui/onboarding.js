@@ -1,530 +1,289 @@
-// js/ui/onboarding.js (Tamanho Reduzido e Compacto)
+// js/ui/onboarding.js (Motor de Tour Guiado Interativo e Iluminado)
 
 import * as establishmentApi from '../api/establishments.js';
-import * as professionalsApi from '../api/professionals.js';
-import * as servicesApi from '../api/services.js';
-import * as productsApi from '../api/products.js';
 import { state } from '../state.js';
-import { showNotification } from '../components/modal.js';
 
-// --- CONFIGURAÇÕES DE TEMA ---
-const colorThemes = {
-    indigo: { name: 'Padrão (Índigo)', main: '#4f46e5' },
-    blue:   { name: 'Azul', main: '#2563eb' },
-    sky:    { name: 'Céu', main: '#0284c7' },
-    teal:   { name: 'Verde Água', main: '#0d9488' },
-    emerald:{ name: 'Esmeralda', main: '#059669' },
-    green:  { name: 'Verde', main: '#16a34a' },
-    lime:   { name: 'Lima', main: '#65a30d' },
-    amber:  { name: 'Âmbar', main: '#d97706' },
-    orange: { name: 'Laranja', main: '#ea580c' },
-    red:    { name: 'Vermelho', main: '#dc2626' },
-    rose:   { name: 'Rosa', main: '#e11d48' },
-    pink:   { name: 'Pink', main: '#db2777' },
-    fuchsia:{ name: 'Fúcsia', main: '#c026d3' },
-    purple: { name: 'Roxo', main: '#7c3aed' },
-    violet: { name: 'Violeta', main: '#8b5cf6' },
-    gray:   { name: 'Cinza', main: '#4b5563' },
-    black:  { name: 'Preto', main: '#111827' },
-};
+// ============================================================================
+// 🚗 MOTOR DO TOUR GUIADO (Nativo, sem bibliotecas externas)
+// ============================================================================
 
-// --- FUNÇÃO AUXILIAR DE COMPRESSÃO ---
-function compressImage(file, maxWidth, quality) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
+class GuidedTour {
+    constructor(steps, onComplete, onSkip) {
+        this.steps = steps;
+        this.currentStep = 0;
+        this.onComplete = onComplete;
+        this.onSkip = onSkip;
+        this.isActive = false;
 
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
+        // Elementos do DOM
+        this.overlay = null;
+        this.spotlight = null;
+        this.popover = null;
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                const mimeType = file.type === 'image/png' && maxWidth < 500 ? 'image/png' : 'image/jpeg'; 
-                resolve(canvas.toDataURL(mimeType, quality));
-            };
-            img.onerror = error => reject(error);
-        };
-        reader.onerror = error => reject(error);
-    });
-}
+        this.handleResize = this.handleResize.bind(this);
+    }
 
-// Elemento principal que cobrirá a tela
-let onboardingOverlay = null;
+    start() {
+        if (this.isActive) return;
+        this.isActive = true;
+        this.createElements();
+        window.addEventListener('resize', this.handleResize);
+        this.renderStep();
+    }
 
-// Definição das Missões
-const missions = [
-    { id: 'company_data', title: 'Identidade do Negócio', icon: '🏢', description: 'Configure os dados da sua empresa.' },
-    { id: 'branding', title: 'Sua Marca', icon: '🎨', description: 'Logo e cores (Opcional).' },
-    { id: 'time_config', title: 'O Relógio', icon: '⏱️', description: 'Tempo padrão entre agendamentos.' },
-    { id: 'first_service', title: 'O Menu', icon: '✂️', description: 'Seu principal serviço.' },
-    { id: 'first_prof', title: 'Sua Equipe', icon: '💇', description: 'Cadastre o primeiro profissional.' },
-    { id: 'first_product', title: 'O Estoque', icon: '🧴', description: 'Cadastre um produto (opcional).' }
-];
-
-let currentStepIndex = 0;
-let cachedServices = [];
-
-export async function checkAndStartOnboarding() {
-    try {
-        console.log("Iniciando verificação de Onboarding para ID:", state.establishmentId);
-
-        const estData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
-        const profs = await professionalsApi.getProfessionals(state.establishmentId);
-        const services = await servicesApi.getServices(state.establishmentId);
+    stop(isCompleted = false) {
+        this.isActive = false;
+        window.removeEventListener('resize', this.handleResize);
+        if (this.overlay) this.overlay.remove();
+        if (this.spotlight) this.spotlight.remove();
+        if (this.popover) this.popover.remove();
         
-        cachedServices = services || [];
+        if (isCompleted && this.onComplete) this.onComplete();
+        else if (!isCompleted && this.onSkip) this.onSkip();
+    }
 
-        // Validações
-        const hasCompanyData = estData && estData.name && (estData.phone || estData.address);
-        const hasBranding = estData && (estData.logo || (estData.themeColor && estData.themeColor !== 'indigo'));
-        const hasTimeConfig = estData && estData.slotInterval > 0;
-        const hasService = services && services.length > 0;
-        const hasProf = profs && profs.length > 0;
+    createElements() {
+        // 1. Camada escura que bloqueia a tela
+        this.overlay = document.createElement('div');
+        this.overlay.className = 'fixed inset-0 bg-black/60 z-[99990] transition-opacity duration-300';
+        document.body.appendChild(this.overlay);
 
-        console.log("Status Onboarding:", { hasCompanyData, hasBranding, hasTimeConfig, hasService, hasProf });
+        // 2. Foco iluminado (Spotlight) com box-shadow vazado
+        this.spotlight = document.createElement('div');
+        this.spotlight.className = 'absolute rounded-xl z-[99991] transition-all duration-500 ease-in-out pointer-events-none bg-transparent';
+        this.spotlight.style.boxShadow = '0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255,255,255,0.5) inset';
+        document.body.appendChild(this.spotlight);
 
-        if (hasCompanyData && hasTimeConfig && hasProf && hasService) {
-            return; 
-        }
+        // 3. Caixa de diálogo (Popover)
+        this.popover = document.createElement('div');
+        this.popover.className = 'absolute z-[99992] bg-white rounded-2xl shadow-2xl w-[320px] transition-all duration-500 ease-in-out opacity-0 transform scale-95 border border-gray-100 flex flex-col';
+        document.body.appendChild(this.popover);
+    }
 
-        if (!hasCompanyData) currentStepIndex = 0;
-        else if (!hasBranding && !hasTimeConfig) currentStepIndex = 1;
-        else if (!hasTimeConfig) currentStepIndex = 2;
-        else if (!hasService) currentStepIndex = 3;
-        else if (!hasProf) currentStepIndex = 4;
-        else if (currentStepIndex === 0) {
+    async renderStep() {
+        if (this.currentStep >= this.steps.length) {
+            this.stop(true);
             return;
         }
 
-        renderOnboardingOverlay();
-        renderStep(currentStepIndex);
-
-    } catch (error) {
-        console.error("Erro ao verificar onboarding:", error);
-    }
-}
-
-function renderOnboardingOverlay() {
-    if (document.getElementById('onboarding-overlay')) return;
-
-    onboardingOverlay = document.createElement('div');
-    onboardingOverlay.id = 'onboarding-overlay';
-    
-    onboardingOverlay.className = 'fixed inset-0 bg-gray-900 bg-opacity-95 z-[9999] flex items-center justify-center p-4 overflow-y-auto';
-    onboardingOverlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(17, 24, 39, 0.95); z-index: 9999; display: flex; align-items: center; justify-content: center;';
-
-    // --- AJUSTE DE TAMANHO AQUI (max-width: 35rem) ---
-    onboardingOverlay.innerHTML = `
-        <div class="bg-white rounded-xl shadow-2xl w-full overflow-hidden relative animate-fade-in-up" style="background-color: white; border-radius: 0.75rem; max-width: 35rem; width: 95%;">
-            <div class="bg-indigo-600 p-4 text-white text-center" style="background-color: #4f46e5; padding: 1.25rem; color: white;">
-                <h2 class="text-2xl font-bold mb-1">🚀 Vamos Decolar!</h2>
-                <p class="text-indigo-100 text-sm">Complete as missões para configurar seu ambiente.</p>
-                
-                <div class="mt-4 relative pt-1">
-                    <div class="flex mb-1 items-center justify-between">
-                        <div class="text-right">
-                            <span class="text-[10px] font-semibold inline-block py-0.5 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
-                                Progresso
-                            </span>
-                        </div>
-                        <div class="text-right">
-                            <span id="progress-text" class="text-xs font-semibold inline-block text-white">
-                                0%
-                            </span>
-                        </div>
-                    </div>
-                    <div class="overflow-hidden h-1.5 mb-2 text-xs flex rounded bg-indigo-200" style="background-color: #c7d2fe; height: 0.375rem; border-radius: 0.25rem;">
-                        <div id="progress-bar" style="width:0%; background-color: #4ade80;" class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center transition-all duration-500"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div id="onboarding-step-content" class="p-5">
-                </div>
-        </div>
-    `;
-    
-    document.body.appendChild(onboardingOverlay);
-    updateProgress();
-}
-
-function updateProgress() {
-    const percentage = Math.round((currentStepIndex / missions.length) * 100);
-    const bar = document.getElementById('progress-bar');
-    const text = document.getElementById('progress-text');
-    if (bar) bar.style.width = `${percentage}%`;
-    if (text) text.innerText = `${percentage}%`;
-}
-
-function renderStep(index) {
-    const container = document.getElementById('onboarding-step-content');
-    const mission = missions[index];
-    
-    if (!mission) {
-        finishOnboarding(container);
-        return;
-    }
-
-    let formHTML = '';
-
-    // --- FORMULÁRIO 1: DADOS ---
-    if (mission.id === 'company_data') {
-        formHTML = `
-            <form id="step-form" class="space-y-3">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Nome do Estabelecimento</label>
-                        <input type="text" name="name" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="Ex: Barbearia do João">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Seu Nome</label>
-                        <input type="text" name="ownerName" class="mt-1 w-full p-2 border rounded text-sm" required value="${state.userName || ''}">
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">WhatsApp</label>
-                        <input type="tel" name="phone" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="(00) 00000-0000">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">E-mail</label>
-                        <input type="email" name="email" class="mt-1 w-full p-2 border rounded text-sm" required value="${state.userEmail || ''}">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Endereço</label>
-                    <input type="text" name="address" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="Rua, Número, Bairro">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">CEP</label>
-                    <input type="text" name="zipCode" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="00000-000">
-                </div>
-            </form>
-        `;
-    }
-    // --- FORMULÁRIO 2: BRANDING ---
-    else if (mission.id === 'branding') {
-        const themeOptions = Object.entries(colorThemes).map(([key, theme]) => 
-            `<option value="${key}">${theme.name}</option>`
-        ).join('');
-
-        formHTML = `
-            <form id="step-form" class="space-y-4">
-                <p class="text-gray-600 text-xs">Personalize a aparência do seu sistema (Opcional).</p>
-                
-                <div class="flex items-center gap-3">
-                    <div class="shrink-0">
-                        <div id="logo-preview" class="h-14 w-14 rounded bg-gray-100 border flex items-center justify-center text-[10px] text-gray-400">Logo</div>
-                    </div>
-                    <div class="w-full">
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Logotipo</label>
-                        <input type="file" id="logo-input" accept="image/*" class="mt-1 block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                        <input type="hidden" name="logoBase64" id="logo-base64">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Tema do Painel</label>
-                        <select name="themeColor" class="mt-1 w-full p-2 border rounded text-sm bg-white">
-                            ${themeOptions}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Cor do Link</label>
-                        <div class="flex items-center gap-2 mt-1">
-                            <input type="color" name="primaryColor" value="#4f46e5" class="h-8 w-12 p-0.5 border rounded cursor-pointer">
-                        </div>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Imagem de Fundo</label>
-                    <input type="file" id="bg-input" accept="image/*" class="mt-1 block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
-                    <input type="hidden" name="bgBase64" id="bg-base64">
-                </div>
-            </form>
-        `;
-    }
-    // --- FORMULÁRIO 3: TEMPO ---
-    else if (mission.id === 'time_config') {
-        formHTML = `
-            <form id="step-form" class="space-y-4">
-                <p class="text-gray-600 text-sm">Selecione o intervalo padrão da agenda.</p>
-                
-                <div class="grid grid-cols-3 gap-2">
-                    ${[10, 15, 20, 30, 45, 60].map(time => `
-                        <label class="cursor-pointer">
-                            <input type="radio" name="slotInterval" value="${time}" class="peer sr-only" ${time === 30 ? 'checked' : ''}>
-                            <div class="text-center py-2 px-1 border rounded hover:bg-indigo-50 peer-checked:bg-indigo-600 peer-checked:text-white peer-checked:border-indigo-600 transition-all font-bold text-sm text-gray-700">
-                                ${time} min${time === 60 ? '' : ''}
-                            </div>
-                        </label>
-                    `).join('')}
-                </div>
-            </form>
-        `;
-    }
-    // --- FORMULÁRIO 4: SERVIÇO ---
-    else if (mission.id === 'first_service') {
-        formHTML = `
-            <form id="step-form" class="space-y-3">
-                <p class="text-gray-600 text-sm">Qual serviço você mais vende?</p>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Nome do Serviço</label>
-                    <input type="text" name="name" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="Ex: Corte Masculino">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Preço (R$)</label>
-                        <input type="number" name="price" step="0.01" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="0,00">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Duração (min)</label>
-                        <input type="number" name="duration" class="mt-1 w-full p-2 border rounded text-sm" required value="30">
-                    </div>
-                </div>
-            </form>
-        `;
-    }
-    // --- FORMULÁRIO 5: PROFISSIONAL ---
-    else if (mission.id === 'first_prof') {
-        const serviceOptions = cachedServices.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-        const hasServices = cachedServices.length > 0;
-
-        formHTML = `
-            <form id="step-form" class="space-y-3">
-                <p class="text-gray-600 text-sm">Quem realiza os serviços? (Pode ser você!)</p>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Nome</label>
-                    <input type="text" name="name" class="mt-1 w-full p-2 border rounded text-sm" required value="${state.userName || ''}">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Especialidade</label>
-                    <input type="text" name="role" class="mt-1 w-full p-2 border rounded text-sm" placeholder="Ex: Cabeleireiro">
-                </div>
-                ${hasServices ? `
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Serviço Principal</label>
-                    <select name="serviceId" class="mt-1 w-full p-2 border rounded text-sm bg-white">
-                        ${serviceOptions}
-                    </select>
-                </div>
-                ` : ''}
-            </form>
-        `;
-    }
-    // --- FORMULÁRIO 6: PRODUTO ---
-    else if (mission.id === 'first_product') {
-        formHTML = `
-            <form id="step-form" class="space-y-3">
-                <p class="text-gray-600 text-sm">Cadastre um produto para venda.</p>
-                <div>
-                    <label class="block text-xs font-bold text-gray-700 uppercase">Nome do Produto</label>
-                    <input type="text" name="name" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="Ex: Gel Fixador">
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Venda (R$)</label>
-                        <input type="number" name="salePrice" step="0.01" class="mt-1 w-full p-2 border rounded text-sm" required placeholder="0,00">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 uppercase">Estoque</label>
-                        <input type="number" name="stock" class="mt-1 w-full p-2 border rounded text-sm" required value="10">
-                    </div>
-                </div>
-            </form>
-        `;
-    }
-
-    container.innerHTML = `
-        <div class="flex items-center mb-4">
-            <span class="text-3xl mr-3">${mission.icon}</span>
-            <div>
-                <h3 class="text-lg font-bold text-gray-800">${mission.title}</h3>
-                <p class="text-gray-500 text-xs">${mission.description}</p>
-            </div>
-        </div>
+        const step = this.steps[this.currentStep];
         
-        ${formHTML}
+        // Esconde temporariamente o popover durante a transição
+        this.popover.style.opacity = '0';
+        this.popover.style.transform = 'scale(0.95)';
 
-        <div class="mt-6 flex justify-end gap-2">
-            ${(mission.id === 'first_product' || mission.id === 'branding') ? '<button type="button" id="skip-btn" class="text-gray-500 hover:text-gray-700 font-medium text-sm px-3 py-2">Pular</button>' : ''}
-            <button type="button" id="next-step-btn" class="bg-indigo-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-indigo-700 transition flex items-center gap-2 text-sm">
-                ${index === missions.length - 1 ? 'Concluir' : 'Próximo'}
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
-            </button>
-        </div>
-    `;
+        // Se o passo exige navegação prévia (ex: ir para outra aba)
+        if (step.onBefore) {
+            await step.onBefore();
+            await this.sleep(600); // Aguarda a tela renderizar
+        }
 
-    // Listeners
-    document.getElementById('next-step-btn').addEventListener('click', () => handleStepSubmit(mission.id));
-    
-    if (document.getElementById('skip-btn')) {
-        document.getElementById('skip-btn').addEventListener('click', () => {
-            if (index === missions.length - 1) {
-                finishOnboarding(container);
-            } else {
-                currentStepIndex++;
-                updateProgress();
-                renderStep(currentStepIndex);
-            }
-        });
+        // Aguarda o elemento alvo aparecer na tela (SPA dynamic rendering)
+        const targetEl = await this.waitForElement(step.targetSelector, 3000);
+
+        if (targetEl) {
+            // Rola suavemente até ao elemento
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await this.sleep(300);
+
+            const rect = targetEl.getBoundingClientRect();
+            
+            // Move e ajusta o Spotlight (Foco Iluminado)
+            const padding = 8;
+            this.spotlight.style.top = `${rect.top + window.scrollY - padding}px`;
+            this.spotlight.style.left = `${rect.left + window.scrollX - padding}px`;
+            this.spotlight.style.width = `${rect.width + (padding * 2)}px`;
+            this.spotlight.style.height = `${rect.height + (padding * 2)}px`;
+            this.spotlight.style.display = 'block';
+            this.overlay.style.display = 'none'; // Desativa overlay plano, usa o shadow do spotlight
+
+            // Posiciona o Popover (Diálogo) inteligentemente
+            this.positionPopover(rect);
+        } else {
+            // Se não tem alvo, centraliza na tela
+            this.spotlight.style.display = 'none';
+            this.overlay.style.display = 'block'; // Fundo todo escuro
+            
+            this.popover.style.top = `50%`;
+            this.popover.style.left = `50%`;
+            this.popover.style.transform = `translate(-50%, -50%) scale(1)`;
+        }
+
+        // Preenche o conteúdo do Popover
+        const isLastStep = this.currentStep === this.steps.length - 1;
+        
+        this.popover.innerHTML = `
+            <div class="p-5">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-3xl">${step.icon || '✨'}</span>
+                    <h3 class="text-lg font-bold text-gray-800 leading-tight">${step.title}</h3>
+                </div>
+                <p class="text-gray-600 text-sm leading-relaxed mb-6">${step.content}</p>
+                
+                <div class="flex items-center justify-between mt-2 pt-4 border-t border-gray-100">
+                    <button id="tour-skip-btn" class="text-xs font-semibold text-gray-400 hover:text-red-500 transition-colors">Pular Tour</button>
+                    <div class="flex gap-2">
+                        ${this.currentStep > 0 ? `<button id="tour-prev-btn" class="px-4 py-2 text-xs font-bold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Voltar</button>` : ''}
+                        <button id="tour-next-btn" class="px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center gap-1">
+                            ${isLastStep ? 'Concluir <i class="bi bi-check2"></i>' : 'Próximo <i class="bi bi-chevron-right"></i>'}
+                        </button>
+                    </div>
+                </div>
+                <div class="absolute -top-3 -right-3 bg-indigo-100 text-indigo-800 text-[10px] font-black px-2 py-1 rounded-full border-2 border-white shadow-sm">
+                    ${this.currentStep + 1} / ${this.steps.length}
+                </div>
+            </div>
+        `;
+
+        // Revela o popover
+        setTimeout(() => {
+            if (targetEl) this.popover.style.transform = `scale(1)`;
+            this.popover.style.opacity = '1';
+        }, 50);
+
+        // Atribui Eventos aos Botões
+        document.getElementById('tour-next-btn').onclick = () => {
+            this.currentStep++;
+            this.renderStep();
+        };
+        if (document.getElementById('tour-prev-btn')) {
+            document.getElementById('tour-prev-btn').onclick = () => {
+                this.currentStep--;
+                this.renderStep();
+            };
+        }
+        document.getElementById('tour-skip-btn').onclick = () => this.stop(false);
     }
 
-    // Handlers de Imagem (Branding)
-    if (mission.id === 'branding') {
-        const logoInput = document.getElementById('logo-input');
-        const bgInput = document.getElementById('bg-input');
+    positionPopover(targetRect) {
+        const popoverRect = this.popover.getBoundingClientRect();
+        const padding = 20;
+        
+        let top = targetRect.bottom + window.scrollY + padding;
+        let left = targetRect.left + window.scrollX;
 
-        if (logoInput) {
-            logoInput.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const base64 = await compressImage(file, 200, 0.8);
-                        document.getElementById('logo-base64').value = base64;
-                        document.getElementById('logo-preview').innerHTML = `<img src="${base64}" class="w-full h-full object-contain rounded">`;
-                    } catch (err) { console.error("Erro logo", err); }
-                }
-            };
+        // Se sair da tela em baixo, coloca por cima
+        if (top + popoverRect.height > window.scrollY + window.innerHeight) {
+            top = targetRect.top + window.scrollY - popoverRect.height - padding;
         }
 
-        if (bgInput) {
-            bgInput.onchange = async (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    try {
-                        const base64 = await compressImage(file, 1024, 0.7);
-                        document.getElementById('bg-base64').value = base64;
-                    } catch (err) { console.error("Erro bg", err); }
-                }
-            };
+        // Se sair da tela à direita, alinha pela direita do elemento
+        if (left + popoverRect.width > window.innerWidth) {
+            left = targetRect.right + window.scrollX - popoverRect.width;
         }
+        
+        // Garante que não sai pelo lado esquerdo
+        if (left < padding) left = padding;
+
+        this.popover.style.top = `${top}px`;
+        this.popover.style.left = `${left}px`;
+    }
+
+    handleResize() {
+        if (this.isActive) this.renderStep();
+    }
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async waitForElement(selector, timeout) {
+        if (!selector) return null;
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+            await this.sleep(100);
+        }
+        return null;
     }
 }
 
-function finishOnboarding(container) {
-    container.innerHTML = `
-        <div class="text-center py-6">
-            <div class="text-5xl mb-3">🏆</div>
-            <h3 class="text-xl font-bold text-gray-800 mb-2">Tudo Pronto!</h3>
-            <p class="text-gray-600 text-sm mb-6">Seu sistema está configurado. Boas vendas!</p>
-            <button id="finish-onboarding-btn" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-full hover:bg-indigo-700 transition shadow-lg transform hover:scale-105 text-sm">
-                Acessar Painel
-            </button>
-        </div>
-    `;
-    const bar = document.getElementById('progress-bar');
-    const text = document.getElementById('progress-text');
-    if (bar) bar.style.width = `100%`;
-    if (text) text.innerText = `100%`;
 
-    document.getElementById('finish-onboarding-btn').onclick = () => {
-        if (onboardingOverlay) onboardingOverlay.remove();
-        window.location.reload(); 
-    };
-}
+// ============================================================================
+// 🚀 CONFIGURAÇÃO DAS MISSÕES DO KAIROS E INICIALIZAÇÃO
+// ============================================================================
 
-async function handleStepSubmit(stepId) {
-    const form = document.getElementById('step-form');
-    if (!form.reportValidity()) return; 
-
-    const btn = document.getElementById('next-step-btn');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = 'Salvando...';
-
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData.entries());
-
+export async function checkAndStartOnboarding() {
     try {
-        if (stepId === 'company_data') {
-            await establishmentApi.updateEstablishmentDetails(state.establishmentId, {
-                name: data.name,
-                phone: data.phone,
-                email: data.email,
-                address: data.address,
-                zipCode: data.zipCode
-            });
-        }
-        else if (stepId === 'branding') {
-            const updateData = {};
-            if (data.logoBase64) updateData.logo = data.logoBase64;
-            if (data.bgBase64) updateData.backgroundImage = data.bgBase64;
-            if (data.themeColor) updateData.themeColor = data.themeColor;
-            if (data.primaryColor) updateData.primaryColor = data.primaryColor;
+        console.log("A verificar Onboarding interativo...");
 
-            if (Object.keys(updateData).length > 0) {
-                await establishmentApi.updateEstablishmentDetails(state.establishmentId, updateData);
+        const estData = await establishmentApi.getEstablishmentDetails(state.establishmentId);
+        
+        // 🔥 REGRAS DE CANCELAMENTO:
+        // 1. Se for Filial (tem parentId), ignora (o dono já sabe usar e a Matriz já fez).
+        // 2. Se já foi completado no passado, ignora para sempre.
+        if (!estData || estData.parentId || estData.onboardingCompleted) {
+            return;
+        }
+
+        // Configuração dos Passos do Tour
+        const steps = [
+            {
+                title: "Bem-vindo ao Kairos!",
+                icon: "👋",
+                content: "Preparei um tour rápido para lhe mostrar onde deve configurar as 3 coisas mais importantes antes de receber agendamentos. Vamos a isso?",
+                targetSelector: null, // Fica no centro da tela
+            },
+            {
+                title: "Perfil e Dados da Loja",
+                icon: "🏢",
+                content: "É aqui em 'Minha Empresa' que você define o nome do Salão, telefone, endereço e faz o upload da sua Logomarca.",
+                targetSelector: '[data-target="estabelecimento-section"]',
+                onBefore: async () => { window.navigateTo('estabelecimento-section'); }
+            },
+            {
+                title: "Cores e Personalização",
+                icon: "🎨",
+                content: "Nesta área você pode mudar a cor principal do sistema para ficar com a cara da sua marca. O link do seu cliente vai usar esta cor!",
+                targetSelector: '#themeColor',
+                onBefore: async () => { window.navigateTo('estabelecimento-section'); }
+            },
+            {
+                title: "Criação de Serviços",
+                icon: "✂️",
+                content: "Na aba 'Serviços' é onde a mágica acontece. Crie os serviços que os seus clientes vão poder agendar, informando o preço e a duração de cada um.",
+                targetSelector: '[data-target="servicos-section"]',
+                onBefore: async () => { window.navigateTo('servicos-section'); }
+            },
+            {
+                title: "Novo Serviço",
+                icon: "➕",
+                content: "Sempre que precisar adicionar um novo serviço ao menu, basta clicar neste botão verde.",
+                targetSelector: '[data-action="new-service"]',
+                onBefore: async () => { window.navigateTo('servicos-section'); }
+            },
+            {
+                title: "Gestão da Equipe",
+                icon: "👥",
+                content: "E para terminar: a 'Equipa'. Aqui você cadastra os profissionais, define quem faz qual serviço e ajusta a jornada de trabalho semanal de cada um.",
+                targetSelector: '[data-target="profissionais-section"]',
+                onBefore: async () => { window.navigateTo('profissionais-section'); }
+            },
+            {
+                title: "Tudo Pronto!",
+                icon: "🚀",
+                content: "Você já conhece o caminho! Preencha as informações do seu negócio com calma. Quando terminar, volte à Agenda e partilhe o seu Link de Agendamento com os clientes!",
+                targetSelector: null,
+                onBefore: async () => { window.navigateTo('agenda-section'); }
             }
-        }
-        else if (stepId === 'time_config') {
-            const interval = parseInt(data.slotInterval);
-            await establishmentApi.updateEstablishmentDetails(state.establishmentId, {
-                slotInterval: interval
-            });
-        }
-        else if (stepId === 'first_service') {
-            const newService = await servicesApi.createService({
-                establishmentId: state.establishmentId,
-                name: data.name,
-                price: parseFloat(data.price),
-                duration: parseInt(data.duration),
-                active: true
-            });
-            if (newService) cachedServices.push(newService);
-        }
-        else if (stepId === 'first_prof') {
-            const newProf = await professionalsApi.createProfessional({
-                establishmentId: state.establishmentId,
-                name: data.name,
-                specialty: data.role, 
-                active: true,
-                commissionRate: 0
-            });
+        ];
 
-            if (data.serviceId && newProf && newProf.id) {
-                try {
-                    if (professionalsApi.updateProfessionalServices) {
-                        await professionalsApi.updateProfessionalServices(newProf.id, [data.serviceId]);
-                    } else if (professionalsApi.updateProfessional) {
-                         await professionalsApi.updateProfessional(newProf.id, { services: [data.serviceId] });
-                    }
-                } catch (e) {
-                    console.warn("Não foi possível vincular o serviço automaticamente.", e);
-                }
+        // Função de finalização silenciosa
+        const markAsCompleted = async () => {
+            try {
+                await establishmentApi.updateEstablishmentDetails(state.establishmentId, { onboardingCompleted: true });
+                showNotification('Tour Concluído', 'Você já pode configurar o seu sistema livremente!', 'success');
+            } catch (e) {
+                console.error("Erro ao gravar fim do onboarding", e);
             }
-        }
-        else if (stepId === 'first_product') {
-            await productsApi.createProduct({
-                establishmentId: state.establishmentId,
-                name: data.name,
-                price: parseFloat(data.salePrice), 
-                stock: parseInt(data.stock),
-                active: true
-            });
-        }
+        };
 
-        showNotification('Sucesso', 'Passo concluído!', 'success');
-        currentStepIndex++;
-        updateProgress();
-        renderStep(currentStepIndex);
+        // Inicia o Tour
+        const tour = new GuidedTour(steps, markAsCompleted, markAsCompleted);
+        tour.start();
 
     } catch (error) {
-        showNotification('Erro', 'Erro ao salvar: ' + error.message, 'error');
-        btn.disabled = false;
-        btn.innerHTML = originalText;
+        console.error("Erro fatal ao iniciar onboarding:", error);
     }
 }
