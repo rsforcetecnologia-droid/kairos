@@ -1,39 +1,42 @@
 // js/ui/financial.js
 
 import * as financialApi from '../api/financial.js';
+import { getHierarchy } from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 
 const contentDiv = document.getElementById('content');
 
-// Estado Local
+// ============================================================================
+// 📊 ESTADO LOCAL (ERP STATE MANAGEMENT)
+// ============================================================================
 let localState = { 
     payables: [], 
     receivables: [], 
     natures: [], 
     costCenters: [],
+    establishments: [], 
     
-    // Filtros
-    currentTab: 'payables', // 'payables' ou 'receivables'
-    statusFilter: 'pending', // 'pending', 'paid', 'all'
+    currentTab: 'receivables', 
+    statusFilter: 'all', 
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
     filterNaturezaId: 'all',
     filterCostCenterId: 'all',
+    filterEstablishmentIds: new Set(), 
+    searchQuery: '',
     
-    // UI Control
-    isFilterOpen: false,
-    
-    // Seleção em Lote
+    isAdvancedFilterOpen: false,
     selectedIds: new Set(), 
     isSelectionMode: false
 };
 
-// Listeners globais para limpeza
 let financialPageEventListener = null;
 let genericModalEventListener = null;
 
-// --- FUNÇÕES AUXILIARES ---
+// ============================================================================
+// 🛠️ FUNÇÕES AUXILIARES
+// ============================================================================
 
 function buildHierarchy(list) {
     const map = new Map();
@@ -51,18 +54,30 @@ function buildHierarchy(list) {
 }
 
 function formatDateDisplay(dateStr) {
-    if (!dateStr) return { day: '--', month: '---' };
-    const date = new Date(dateStr + 'T00:00:00');
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = date.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
-    return { day, month, full: date.toLocaleDateString('pt-BR') };
+    if (!dateStr) return { day: '--', month: '---', full: '--/--/----' };
+    const [year, month, day] = dateStr.split('-');
+    const date = new Date(year, month - 1, day);
+    const dayStr = String(date.getDate()).padStart(2, '0');
+    const monthStr = date.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
+    return { day: dayStr, month: monthStr, full: date.toLocaleDateString('pt-BR') };
 }
 
 function formatCurrency(value) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-// --- GESTÃO DE NATUREZAS E CENTROS DE CUSTO ---
+function isOverdue(dueDateStr, status) {
+    if (status === 'paid') return false;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const [year, month, day] = dueDateStr.split('-');
+    const dueDate = new Date(year, month - 1, day);
+    return dueDate < today;
+}
+
+// ============================================================================
+// 🏢 CONFIGURAÇÕES DE ERP (NATUREZAS E CENTROS DE CUSTO)
+// ============================================================================
 
 function renderHierarchyList(container, items, type) {
     if (!container) return;
@@ -73,10 +88,10 @@ function renderHierarchyList(container, items, type) {
     const renderNode = (item, level = 0) => {
         const padding = level * 16;
         return `
-            <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100 mb-1" style="margin-left: ${padding}px;">
-                <span class="text-sm font-medium text-gray-700">${item.name}</span>
-                <button data-action="delete-${type}" data-id="${item.id}" class="text-red-400 hover:text-red-600 text-xs font-semibold px-2 py-1 bg-red-50 rounded hover:bg-red-100 transition-colors">
-                    Excluir
+            <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border border-gray-100 mb-1 hover:bg-gray-100 transition-colors" style="margin-left: ${padding}px;">
+                <span class="text-sm font-medium text-gray-700"><i class="bi ${level === 0 ? 'bi-folder2-open text-indigo-500' : 'bi-arrow-return-right text-gray-400'} mr-2"></i>${item.name}</span>
+                <button data-action="delete-${type}" data-id="${item.id}" class="text-red-500 hover:text-white text-xs font-bold px-2.5 py-1.5 rounded-md hover:bg-red-500 transition-colors">
+                    <i class="bi bi-trash3"></i>
                 </button>
             </div>
             ${item.children.map(child => renderNode(child, level + 1)).join('')}
@@ -88,37 +103,39 @@ function renderHierarchyList(container, items, type) {
 async function openHierarchyModal(type) {
     const modal = document.getElementById('genericModal');
     const isNature = type === 'nature';
-    const title = isNature ? 'Naturezas Financeiras' : 'Centros de Custo';
+    const title = isNature ? 'Plano de Contas (Naturezas)' : 'Centros de Custo';
     const api = isNature ? financialApi.getNatures : financialApi.getCostCenters;
     const createApi = isNature ? financialApi.createNature : financialApi.createCostCenter;
     const collectionName = isNature ? 'natures' : 'costCenters';
 
     modal.innerHTML = `
-        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div class="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                <h2 class="text-lg font-bold text-gray-800">Gerir ${title}</h2>
-                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div class="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <i class="bi ${isNature ? 'bi-tags-fill text-indigo-500' : 'bi-diagram-3-fill text-blue-500'}"></i> ${title}
+                </h2>
+                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-red-500 text-2xl font-bold transition-colors">&times;</button>
             </div>
             
             <div class="p-6">
-                <form id="hierarchyForm" class="space-y-4 mb-6">
+                <form id="hierarchyForm" class="space-y-4 mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                     <div>
-                        <label class="block text-xs font-semibold text-gray-500 mb-1">Nome do Item</label>
-                        <input type="text" id="itemName" placeholder="Ex: Manutenção, Vendas..." required class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">Nome da Categoria</label>
+                        <input type="text" id="itemName" placeholder="Ex: Receitas de Vendas, Despesas Fixas..." required class="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-gray-500 mb-1">Sub-categoria de (Opcional)</label>
-                        <select id="itemParent" class="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <option value="">-- Categoria Principal --</option>
+                        <label class="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wide">Sub-categoria de (Opcional)</label>
+                        <select id="itemParent" class="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                            <option value="">-- Nível Principal --</option>
                         </select>
                     </div>
-                    <button type="submit" class="w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-colors shadow-md">
-                        Adicionar Item
+                    <button type="submit" class="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md flex items-center justify-center gap-2">
+                        <i class="bi bi-plus-lg"></i> Adicionar
                     </button>
                 </form>
 
                 <div class="border-t border-gray-100 pt-4">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Itens Cadastrados</h3>
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Estrutura Atual</h3>
                     <div id="hierarchyList" class="space-y-1 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                         <div class="loader mx-auto"></div>
                     </div>
@@ -134,16 +151,15 @@ async function openHierarchyModal(type) {
         const hierarchy = buildHierarchy(items);
         renderHierarchyList(listDiv, hierarchy, type);
         
-        // Atualiza select
         const currentSelection = parentSelect.value;
-        parentSelect.innerHTML = '<option value="">-- Categoria Principal --</option>';
+        parentSelect.innerHTML = '<option value="">-- Nível Principal --</option>';
         const renderOption = (item, level = 0) => {
             const prefix = '\u00A0\u00A0'.repeat(level) + (level > 0 ? '↳ ' : '');
             parentSelect.innerHTML += `<option value="${item.id}">${prefix}${item.name}</option>`;
             item.children.forEach(child => renderOption(child, level + 1));
         };
         hierarchy.forEach(root => renderOption(root));
-        parentSelect.value = currentSelection; // Tenta manter seleção
+        parentSelect.value = currentSelection; 
     };
 
     try {
@@ -163,198 +179,275 @@ async function openHierarchyModal(type) {
             localState[collectionName] = updatedItems;
             renderData(updatedItems);
             form.reset();
-            await fetchAndDisplayData(); // Atualiza tela principal se necessário
-            showNotification('Sucesso', 'Item adicionado.', 'success');
+            await fetchAndDisplayData(); 
+            showNotification('Sucesso', 'Item adicionado ao plano de contas.', 'success');
         } catch (error) {
             showNotification('Erro', error.message, 'error');
         }
     });
 }
 
-// --- FUNÇÃO DE INICIALIZAÇÃO E LAYOUT ---
+// ============================================================================
+// 🎨 RENDERIZAÇÃO DO LAYOUT ERP E FILTROS AVANÇADOS
+// ============================================================================
 
 export async function loadFinancialPage() {
+    try {
+        const payload = await getHierarchy();
+        const matrizes = payload.matrizes || [];
+        localState.establishments = [];
+        matrizes.forEach(m => {
+            localState.establishments.push({ id: m.id, name: m.name, type: 'Matriz' });
+            if (m.branches) {
+                m.branches.forEach(b => localState.establishments.push({ id: b.id, name: b.name, type: 'Filial' }));
+            }
+        });
+        
+        if (localState.filterEstablishmentIds.size === 0) {
+            localState.filterEstablishmentIds.add(state.establishmentId);
+        }
+    } catch (e) { console.warn("Erro ao buscar lojas", e); }
+
     renderBaseLayout();
     setupEventListeners();
     await fetchAndDisplayData();
 }
 
 function renderBaseLayout() {
+    const estCheckboxes = localState.establishments.map(est => `
+        <label class="inline-flex items-center gap-2 px-3 py-2 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-gray-200 text-gray-600'} rounded-xl cursor-pointer hover:bg-gray-50 transition-all shadow-sm est-label select-none">
+            <input type="checkbox" class="est-filter-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
+            <span class="text-xs font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
+        </label>
+    `).join('');
+
     contentDiv.innerHTML = `
-        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 w-full overflow-hidden relative">
+        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-100 w-full overflow-hidden relative font-sans">
             
-            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-white rounded-xl shadow-xl border border-gray-200 p-3 flex items-center justify-between animate-fade-in-down">
-                <div class="flex items-center gap-3">
-                    <button id="cancel-selection-btn" class="p-2 hover:bg-gray-100 rounded-full text-gray-500">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-gray-900 text-white rounded-xl shadow-2xl p-3 items-center justify-between animate-fade-in-down">
+                <div class="flex items-center gap-4">
+                    <button id="cancel-selection-btn" class="p-2 hover:bg-gray-700 rounded-full transition-colors text-gray-300 hover:text-white">
+                        <i class="bi bi-x-lg text-lg"></i>
                     </button>
-                    <span class="font-bold text-gray-700 text-sm"><span id="selected-count">0</span> selecionado(s)</span>
+                    <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
                 </div>
-                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 font-semibold rounded-lg hover:bg-red-100 transition-colors text-xs uppercase tracking-wider">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    Excluir
+                <button id="batch-delete-btn" class="flex items-center gap-2 px-5 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg">
+                    <i class="bi bi-trash3"></i> Excluir
                 </button>
             </div>
 
-            <div class="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-20 w-full">
-                <div class="max-w-5xl mx-auto px-4 py-3">
-                    <div class="flex justify-between items-center mb-3">
-                        <h1 class="text-xl font-bold text-gray-800">Financeiro</h1>
-                        <div class="flex gap-2">
-                            <button id="toggle-filter-btn" class="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors relative">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+            <div class="bg-white shadow-sm border-b border-gray-200 z-20 w-full">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+                    
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                        <div>
+                            <h1 class="text-2xl font-black text-gray-900 tracking-tight">Gestão Financeira</h1>
+                            <p class="text-sm text-gray-500 font-medium">Controle de contas a pagar, receber e fluxo de caixa.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                            <button id="settings-btn" class="p-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-200 shadow-sm" title="Plano de Contas e Centros de Custo">
+                                <i class="bi bi-gear-fill"></i>
                             </button>
-                            <button id="settings-btn" class="p-2 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996.608 2.296.096 2.572-1.065z"></path>
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                </svg>
+                            <button data-action="new-financial" data-type="payable" class="flex-1 md:flex-none px-4 py-2.5 bg-red-50 text-red-700 border border-red-200 font-bold rounded-lg hover:bg-red-100 transition-colors shadow-sm flex items-center justify-center gap-2">
+                                <i class="bi bi-arrow-down-circle"></i> Nova Despesa
+                            </button>
+                            <button data-action="new-financial" data-type="receivable" class="flex-1 md:flex-none px-4 py-2.5 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2">
+                                <i class="bi bi-arrow-up-circle"></i> Nova Receita
                             </button>
                         </div>
                     </div>
 
-                    <div id="filter-panel" class="hidden overflow-hidden transition-all duration-300 mb-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div class="col-span-2 md:col-span-1">
-                                <label class="text-xs font-semibold text-gray-500 ml-1">De</label>
-                                <input type="date" id="filterStartDate" value="${localState.startDate}" class="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                            </div>
-                            <div class="col-span-2 md:col-span-1">
-                                <label class="text-xs font-semibold text-gray-500 ml-1">Até</label>
-                                <input type="date" id="filterEndDate" value="${localState.endDate}" class="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                            </div>
-                            <div class="col-span-2 md:col-span-1">
-                                <label class="text-xs font-semibold text-gray-500 ml-1">Natureza</label>
-                                <select id="filterNaturezaId" class="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white outline-none">
-                                    <option value="all">Todas</option>
-                                </select>
-                            </div>
-                            <div class="col-span-2 md:col-span-1">
-                                <label class="text-xs font-semibold text-gray-500 ml-1">Centro Custo</label>
-                                <select id="filterCostCenterId" class="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white outline-none">
-                                    <option value="all">Todos</option>
-                                </select>
-                            </div>
-                            <div class="col-span-2 md:col-span-4 mt-2">
-                                <div class="flex bg-white p-1 rounded-lg border border-gray-200">
-                                    <button data-status="pending" class="status-filter-btn flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors bg-indigo-100 text-indigo-700">Pendentes</button>
-                                    <button data-status="paid" class="status-filter-btn flex-1 py-1.5 text-xs font-semibold rounded-md text-gray-500 hover:bg-gray-50">Baixados</button>
-                                    <button data-status="all" class="status-filter-btn flex-1 py-1.5 text-xs font-semibold rounded-md text-gray-500 hover:bg-gray-50">Todos</button>
+                    <div class="flex flex-col md:flex-row gap-3 items-center w-full">
+                        <div class="relative w-full md:w-96 flex-shrink-0">
+                            <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                            <input type="text" id="searchInput" value="${localState.searchQuery}" placeholder="Pesquisar descrição ou obs..." class="w-full pl-10 p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                        </div>
+                        
+                        <div class="flex-1 flex overflow-x-auto gap-2 pb-1 md:pb-0 hide-scrollbar w-full">
+                            <button class="date-preset-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg whitespace-nowrap hover:bg-gray-200 transition-colors" data-preset="month">Este Mês</button>
+                            <button class="date-preset-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg whitespace-nowrap hover:bg-gray-200 transition-colors" data-preset="last_month">Mês Passado</button>
+                            <button class="date-preset-btn px-4 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg whitespace-nowrap hover:bg-gray-200 transition-colors" data-preset="year">Este Ano</button>
+                        </div>
+
+                        <button id="toggle-filter-btn" class="w-full md:w-auto px-4 py-2.5 bg-white border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 transition-colors shadow-sm flex items-center justify-center gap-2 flex-shrink-0 ${localState.isAdvancedFilterOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : ''}">
+                            <i class="bi bi-funnel"></i> Filtros Avançados
+                        </button>
+                    </div>
+
+                    <div id="filter-panel" class="${localState.isAdvancedFilterOpen ? 'block' : 'hidden'} mt-4 bg-indigo-50/50 p-5 rounded-xl border border-indigo-100 shadow-inner">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            
+                            ${localState.establishments.length > 1 ? `
+                            <div class="md:col-span-4 mb-2">
+                                <label class="block text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-widest">Filtrar por Unidades (Multi-Seleção)</label>
+                                <div class="flex flex-wrap gap-2" id="establishment-filters-container">
+                                    ${estCheckboxes}
                                 </div>
                             </div>
-                            <button id="apply-filter-btn" class="col-span-2 md:col-span-4 mt-2 w-full py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-transform">
-                                Aplicar Filtros
-                            </button>
+                            ` : ''}
+                            
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Data Inicial</label>
+                                <input type="date" id="filterStartDate" value="${localState.startDate}" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Data Final</label>
+                                <input type="date" id="filterEndDate" value="${localState.endDate}" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Plano de Contas</label>
+                                <select id="filterNaturezaId" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="all">Todas as naturezas</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Centro de Custo</label>
+                                <select id="filterCostCenterId" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="all">Todos os centros</option>
+                                </select>
+                            </div>
+
+                            <div class="md:col-span-4 mt-2 flex flex-col md:flex-row justify-between items-center pt-4 border-t border-indigo-100 gap-4">
+                                <button id="clear-filters-btn" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">Redefinir Filtros</button>
+                                <button id="apply-filter-btn" class="w-full md:w-auto px-8 py-2.5 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 active:scale-95 transition-all">
+                                    Aplicar Consulta
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="flex p-1 bg-gray-100 rounded-xl">
-                        <button id="tab-receivables" class="flex-1 py-2 text-sm font-bold rounded-lg shadow-sm bg-white text-green-700 transition-all">
-                            A Receber
+                    <div class="flex mt-6 bg-gray-100/80 p-1 rounded-xl border border-gray-200">
+                        <button id="tab-receivables" class="flex-1 py-2.5 text-sm font-black rounded-lg shadow-sm transition-all flex justify-center items-center gap-2 ${localState.currentTab === 'receivables' ? 'bg-white text-emerald-700' : 'text-gray-500'}">
+                            A Receber / Entradas
                         </button>
-                        <button id="tab-payables" class="flex-1 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 transition-all">
-                            A Pagar
+                        <button id="tab-payables" class="flex-1 py-2.5 text-sm font-bold rounded-lg transition-all flex justify-center items-center gap-2 ${localState.currentTab === 'payables' ? 'bg-white text-red-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}">
+                            A Pagar / Saídas
                         </button>
-                    </div>
-                    
-                    <div class="mt-3 flex items-center justify-end px-1">
-                        <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-500 hover:text-gray-700">
-                            <input type="checkbox" id="select-all-toggle" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            Selecionar Todos
-                        </label>
                     </div>
                 </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto px-4 py-6 max-w-5xl mx-auto w-full space-y-6">
+            <div class="flex-1 overflow-y-auto px-4 py-6 max-w-7xl mx-auto w-full space-y-6 custom-scrollbar">
                 
-                <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 animate-fade-in">
+                <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in-up"></div>
+
+                <div class="flex flex-wrap gap-2 mb-4 bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <button data-status="all" class="status-filter-btn px-4 py-2 text-xs font-bold rounded-lg transition-colors ${localState.statusFilter === 'all' ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">Todos</button>
+                    <button data-status="pending" class="status-filter-btn px-4 py-2 text-xs font-bold rounded-lg transition-colors ${localState.statusFilter === 'pending' ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">Abertos / Prov.</button>
+                    <button data-status="paid" class="status-filter-btn px-4 py-2 text-xs font-bold rounded-lg transition-colors ${localState.statusFilter === 'paid' ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">Baixados</button>
+                    <button data-status="overdue" class="status-filter-btn px-4 py-2 text-xs font-bold rounded-lg transition-colors ${localState.statusFilter === 'overdue' ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-700'}">Atrasados</button>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="hidden md:grid grid-cols-12 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-[10px] font-black text-gray-500 uppercase tracking-widest items-center">
+                        <div class="col-span-1 flex justify-center">
+                            <input type="checkbox" id="select-all-toggle" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+                        </div>
+                        <div class="col-span-2">Vencimento</div>
+                        <div class="col-span-4">Descrição e Empresa</div>
+                        <div class="col-span-2 text-center">Status</div>
+                        <div class="col-span-2 text-right">Valor (R$)</div>
+                        <div class="col-span-1 text-center">Ações</div>
                     </div>
 
-                <div id="list-container" class="space-y-3 pb-20 w-full px-1">
-                    <div class="text-center py-10"><div class="loader mx-auto"></div></div>
+                    <div id="list-container" class="divide-y divide-gray-100 pb-2 md:pb-0">
+                        <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-4 text-gray-500 font-medium text-sm">Carregando dados financeiros...</p></div>
+                    </div>
                 </div>
             </div>
 
-            <button id="fab-add" class="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-indigo-700 hover:scale-105 transition-all z-40">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <button id="fab-add" class="md:hidden fixed bottom-6 right-6 w-14 h-14 ${localState.currentTab === 'receivables' ? 'bg-emerald-600 hover:scale-105' : 'bg-red-600 hover:scale-105'} text-white rounded-full shadow-xl flex items-center justify-center transition-all z-40">
+                <i class="bi bi-plus-lg text-2xl"></i>
             </button>
 
         </div>
     `;
+
+    document.querySelector('.date-preset-btn[data-preset="month"]').classList.add('bg-indigo-100', 'text-indigo-700');
+    populateFilterSelects();
 }
 
 function setupEventListeners() {
-    // --- Lógica de Seleção e Exclusão em Lote ---
     
-    // Toggle Select All
-    document.getElementById('select-all-toggle').addEventListener('change', (e) => {
-        const isChecked = e.target.checked;
-        const allCheckboxes = document.querySelectorAll('.item-checkbox');
-        
-        localState.selectedIds.clear();
-        
-        allCheckboxes.forEach(cb => {
-            cb.checked = isChecked;
-            if(isChecked) localState.selectedIds.add(cb.dataset.id);
+    const selectAllToggle = document.getElementById('select-all-toggle');
+    if (selectAllToggle) {
+        selectAllToggle.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const allCheckboxes = document.querySelectorAll('.item-checkbox');
+            localState.selectedIds.clear();
+            allCheckboxes.forEach(cb => {
+                cb.checked = isChecked;
+                if(isChecked) localState.selectedIds.add(cb.dataset.id);
+            });
+            updateBatchActionBar();
         });
-        
-        updateBatchActionBar();
-    });
+    }
 
-    // Botão Cancelar Seleção
     document.getElementById('cancel-selection-btn').addEventListener('click', () => {
         localState.selectedIds.clear();
-        document.getElementById('select-all-toggle').checked = false;
+        if(document.getElementById('select-all-toggle')) document.getElementById('select-all-toggle').checked = false;
         document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = false);
         updateBatchActionBar();
     });
 
-    // Botão Excluir em Lote
     document.getElementById('batch-delete-btn').addEventListener('click', async () => {
         const count = localState.selectedIds.size;
         if(count === 0) return;
 
-        const confirmed = await showConfirmation(
-            'Excluir Selecionados', 
-            `Tem certeza que deseja excluir ${count} itens? Esta ação não pode ser desfeita.`
-        );
-
+        const confirmed = await showConfirmation('Excluir Lançamentos', `Deseja realmente apagar ${count} registros financeiros?`);
         if(confirmed) {
             try {
                 const type = localState.currentTab === 'payables' ? 'payables' : 'receivables';
                 await financialApi.deleteBatch(type, Array.from(localState.selectedIds));
-                
                 showNotification('Sucesso', `${count} itens excluídos.`, 'success');
                 localState.selectedIds.clear();
                 updateBatchActionBar();
                 fetchAndDisplayData();
             } catch (error) {
                 showNotification('Erro', 'Falha ao excluir itens.', 'error');
-                console.error(error);
             }
         }
     });
 
-    // --- Listeners Padrão (Filtros, Tabs, etc) ---
+    document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const label = e.target.closest('label');
+            if (e.target.checked) {
+                localState.filterEstablishmentIds.add(e.target.value);
+                label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                label.classList.remove('border-gray-200', 'text-gray-600');
+            } else {
+                localState.filterEstablishmentIds.delete(e.target.value);
+                label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                label.classList.add('border-gray-200', 'text-gray-600');
+            }
+        });
+    });
+
     document.getElementById('toggle-filter-btn').addEventListener('click', () => {
         const panel = document.getElementById('filter-panel');
         const btn = document.getElementById('toggle-filter-btn');
-        localState.isFilterOpen = !localState.isFilterOpen;
+        localState.isAdvancedFilterOpen = !localState.isAdvancedFilterOpen;
         
-        if (localState.isFilterOpen) {
+        if (localState.isAdvancedFilterOpen) {
             panel.classList.remove('hidden');
-            btn.classList.add('bg-indigo-100', 'text-indigo-600');
+            btn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-300');
         } else {
             panel.classList.add('hidden');
-            btn.classList.remove('bg-indigo-100', 'text-indigo-600');
+            btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-300');
         }
     });
 
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
 
+    document.querySelectorAll('[data-action="new-financial"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            openFinancialModal(e.target.closest('button').dataset.type);
+        });
+    });
+
     document.getElementById('fab-add').addEventListener('click', () => {
-        // Abre modal baseado na aba atual
         const type = localState.currentTab === 'payables' ? 'payable' : 'receivable';
         openFinancialModal(type);
     });
@@ -365,43 +458,88 @@ function setupEventListeners() {
     tabRec.addEventListener('click', () => switchTab('receivables'));
     tabPay.addEventListener('click', () => switchTab('payables'));
 
-    // Filtros de Status
     document.querySelectorAll('.status-filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            // UI Update
             document.querySelectorAll('.status-filter-btn').forEach(b => {
-                b.classList.remove('bg-indigo-100', 'text-indigo-700');
-                b.classList.add('text-gray-500');
+                b.classList.remove('bg-gray-800', 'text-white', 'shadow-sm');
+                b.classList.add('bg-gray-100', 'text-gray-600');
             });
-            e.target.classList.add('bg-indigo-100', 'text-indigo-700');
-            e.target.classList.remove('text-gray-500');
+            e.target.classList.add('bg-gray-800', 'text-white', 'shadow-sm');
+            e.target.classList.remove('bg-gray-100', 'text-gray-600', 'hover:bg-gray-200', 'hover:bg-red-100');
             
             localState.statusFilter = e.target.dataset.status;
+            renderLists(); 
+            renderSummary(); 
         });
     });
 
-    // Botão Aplicar Filtros
+    document.querySelectorAll('.date-preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('bg-indigo-100', 'text-indigo-700'));
+            e.target.classList.add('bg-indigo-100', 'text-indigo-700');
+
+            const preset = e.target.dataset.preset;
+            const now = new Date();
+            let start, end;
+
+            if (preset === 'month') {
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            } else if (preset === 'last_month') {
+                start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                end = new Date(now.getFullYear(), now.getMonth(), 0);
+            } else if (preset === 'year') {
+                start = new Date(now.getFullYear(), 0, 1);
+                end = new Date(now.getFullYear(), 11, 31);
+            }
+
+            document.getElementById('filterStartDate').value = start.toISOString().split('T')[0];
+            document.getElementById('filterEndDate').value = end.toISOString().split('T')[0];
+            
+            document.getElementById('apply-filter-btn').click();
+        });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        localState.searchQuery = e.target.value.toLowerCase();
+        renderLists(); 
+    });
+
+    document.getElementById('clear-filters-btn').addEventListener('click', () => {
+        const now = new Date();
+        document.getElementById('filterStartDate').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        document.getElementById('filterEndDate').value = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        document.getElementById('filterNaturezaId').value = 'all';
+        document.getElementById('filterCostCenterId').value = 'all';
+        
+        localState.filterEstablishmentIds.clear();
+        localState.filterEstablishmentIds.add(state.establishmentId);
+        
+        renderBaseLayout();
+        setupEventListeners();
+    });
+
     document.getElementById('apply-filter-btn').addEventListener('click', () => {
         localState.startDate = document.getElementById('filterStartDate').value;
         localState.endDate = document.getElementById('filterEndDate').value;
         localState.filterNaturezaId = document.getElementById('filterNaturezaId').value;
         localState.filterCostCenterId = document.getElementById('filterCostCenterId').value;
         
-        // Fecha painel
-        document.getElementById('toggle-filter-btn').click();
+        if (localState.filterEstablishmentIds.size === 0) {
+            localState.filterEstablishmentIds.add(state.establishmentId);
+        }
         
+        document.getElementById('toggle-filter-btn').click(); 
         fetchAndDisplayData();
     });
 
-    // Listener Global de Cliques (Deletar, Editar, Baixar e CLIQUE NO CARD)
     if (financialPageEventListener) document.body.removeEventListener('click', financialPageEventListener);
     
     financialPageEventListener = (e) => {
         const target = e.target;
         
-        // 1. Checkbox Individual
-        if (target.classList.contains('item-checkbox')) {
-            const id = target.dataset.id;
+        if (target.classList.contains('item-checkbox') || target.classList.contains('modal-item-checkbox')) {
+            const id = target.value || target.dataset.id;
             if(target.checked) localState.selectedIds.add(id);
             else localState.selectedIds.delete(id);
             updateBatchActionBar();
@@ -409,65 +547,40 @@ function setupEventListeners() {
             return;
         }
 
-        // 2. Botões de Ação
         const actionButton = target.closest('button[data-action]');
         if (actionButton) {
             const { action, type, id } = actionButton.dataset;
-            
-            // Impede a propagação para não abrir o card de edição se clicar no botão excluir/baixar
             e.stopPropagation();
 
             if (action === 'delete') {
-                // Recupera o objeto completo para verificar recorrência
-                const itemStr = actionButton.closest('.financial-card-item').dataset.item.replace(/&apos;/g, "'");
-                const item = JSON.parse(itemStr);
-                handleSmartDelete(type, item);
+                const itemStr = actionButton.closest('.financial-row').dataset.item.replace(/&apos;/g, "'");
+                handleSmartDelete(type, JSON.parse(itemStr));
                 return;
             }
             if (action === 'mark-as-paid') {
                 handleMarkAsPaid(type, id);
                 return;
             }
-            if (action === 'manage-natures') {
-                openHierarchyModal('nature');
-                return;
-            }
-            if (action === 'manage-cost-centers') {
-                openHierarchyModal('cost-center');
-                return;
-            }
-            // "Edit" via botão (caso exista em desktop)
-            if (action === 'edit') {
-                const itemData = JSON.parse(actionButton.dataset.item.replace(/&apos;/g, "'"));
-                openFinancialModal(type, itemData);
-                return;
-            }
+            if (action === 'manage-natures') { openHierarchyModal('nature'); return; }
+            if (action === 'manage-cost-centers') { openHierarchyModal('cost-center'); return; }
         }
 
-        // 3. Se não foi botão, verifica se foi no CARD (para Editar)
-        const cardItem = target.closest('.financial-card-item');
-        if (cardItem && document.getElementById('list-container').contains(cardItem)) {
-            // Verifica se o clique não foi no container do checkbox
-            if (!target.closest('.checkbox-wrapper')) {
-                const { type } = cardItem.dataset;
-                const itemData = JSON.parse(cardItem.dataset.item.replace(/&apos;/g, "'"));
+        const rowItem = target.closest('.financial-row');
+        if (rowItem && document.getElementById('list-container').contains(rowItem)) {
+            if (!target.closest('button') && !target.closest('.item-checkbox')) {
+                const { type } = rowItem.dataset;
+                const itemData = JSON.parse(rowItem.dataset.item.replace(/&apos;/g, "'"));
                 openFinancialModal(type, itemData);
             }
         }
     };
     document.body.addEventListener('click', financialPageEventListener);
 
-    // Listener de Modais Genéricos
     if (genericModalEventListener) document.getElementById('genericModal').removeEventListener('click', genericModalEventListener);
-    
     genericModalEventListener = (e) => {
         const closeBtn = e.target.closest('[data-action="close-modal"]');
-        if (closeBtn) {
-            document.getElementById('genericModal').style.display = 'none';
-            return;
-        }
+        if (closeBtn) { document.getElementById('genericModal').style.display = 'none'; return; }
 
-        // Lógica existente para Delete em Hierarquia
         const deleteBtn = e.target.closest('button[data-action^="delete-"]');
         if (deleteBtn) {
             const type = deleteBtn.dataset.action.split('-')[1];
@@ -487,52 +600,51 @@ function updateBatchActionBar() {
 
     if (count > 0) {
         bar.classList.remove('hidden');
-        fab.classList.add('hidden'); // Esconde o FAB para não sobrepor
+        bar.classList.add('flex');
+        if(fab) fab.classList.add('hidden'); 
     } else {
         bar.classList.add('hidden');
-        fab.classList.remove('hidden');
+        bar.classList.remove('flex');
+        if(fab) fab.classList.remove('hidden');
     }
 }
 
 function switchTab(tab) {
     localState.currentTab = tab;
-    // Limpa seleção ao trocar aba
     localState.selectedIds.clear();
     updateBatchActionBar();
+    if(document.getElementById('select-all-toggle')) document.getElementById('select-all-toggle').checked = false;
     
     const tabRec = document.getElementById('tab-receivables');
     const tabPay = document.getElementById('tab-payables');
     const fab = document.getElementById('fab-add');
 
     if (tab === 'receivables') {
-        tabRec.classList.add('bg-white', 'text-green-700', 'shadow-sm');
+        tabRec.classList.add('bg-white', 'text-emerald-700', 'shadow-sm');
         tabRec.classList.remove('text-gray-500');
-        
         tabPay.classList.remove('bg-white', 'text-red-700', 'shadow-sm');
         tabPay.classList.add('text-gray-500');
-        
-        fab.className = "fixed bottom-6 right-6 w-14 h-14 bg-green-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-green-700 hover:scale-105 transition-all z-40";
+        if(fab) fab.className = "md:hidden fixed bottom-6 right-6 w-14 h-14 bg-emerald-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all z-40";
     } else {
         tabPay.classList.add('bg-white', 'text-red-700', 'shadow-sm');
         tabPay.classList.remove('text-gray-500');
-        
-        tabRec.classList.remove('bg-white', 'text-green-700', 'shadow-sm');
+        tabRec.classList.remove('bg-white', 'text-emerald-700', 'shadow-sm');
         tabRec.classList.add('text-gray-500');
-
-        fab.className = "fixed bottom-6 right-6 w-14 h-14 bg-red-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-red-700 hover:scale-105 transition-all z-40";
+        if(fab) fab.className = "md:hidden fixed bottom-6 right-6 w-14 h-14 bg-red-600 text-white rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-all z-40";
     }
 
     renderLists();
 }
 
-// --- BUSCA E RENDERIZAÇÃO DE DADOS ---
+// ============================================================================
+// 📡 COMUNICAÇÃO DE DADOS
+// ============================================================================
 
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('list-container');
-    listContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
+    listContainer.innerHTML = '<div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-4 text-gray-500 font-medium text-sm">A processar transações...</p></div>';
 
     try {
-        // Carrega Natures/CostCenters se ainda não tiver
         if (localState.natures.length === 0) {
             const [natures, costCenters] = await Promise.all([
                 financialApi.getNatures(state.establishmentId),
@@ -543,10 +655,12 @@ async function fetchAndDisplayData() {
             populateFilterSelects();
         }
 
+        const selectedEstsString = Array.from(localState.filterEstablishmentIds).join(',');
+
         const filters = { 
             startDate: localState.startDate, 
             endDate: localState.endDate, 
-            establishmentId: state.establishmentId 
+            establishmentId: selectedEstsString 
         };
         
         if (localState.filterNaturezaId !== 'all') filters.natureId = localState.filterNaturezaId;
@@ -564,13 +678,17 @@ async function fetchAndDisplayData() {
         renderLists();
 
     } catch (error) {
-        listContainer.innerHTML = `<p class="text-center text-red-500 mt-10">Erro ao carregar: ${error.message}</p>`;
+        listContainer.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-16">
+                <i class="bi bi-exclamation-octagon text-4xl text-red-400 mb-3"></i>
+                <p class="text-gray-600 font-medium">Erro ao carregar dados: ${error.message}</p>
+            </div>`;
     }
 }
 
 function populateFilterSelects() {
     const buildOptions = (items) => {
-        let optionsHTML = '<option value="all">Todas</option>';
+        let optionsHTML = '<option value="all">-- Todas as opções --</option>';
         const hierarchy = buildHierarchy(items);
         const renderOption = (item, level = 0) => {
             const prefix = '\u00A0\u00A0'.repeat(level) + (level > 0 ? '↳ ' : '');
@@ -583,44 +701,58 @@ function populateFilterSelects() {
 
     const natSelect = document.getElementById('filterNaturezaId');
     const ccSelect = document.getElementById('filterCostCenterId');
-    
     if (natSelect) natSelect.innerHTML = buildOptions(localState.natures);
     if (ccSelect) ccSelect.innerHTML = buildOptions(localState.costCenters);
-    
-    // Restaura seleção se houver
-    if(natSelect) natSelect.value = localState.filterNaturezaId;
-    if(ccSelect) ccSelect.value = localState.filterCostCenterId;
 }
+
+// ============================================================================
+// 📈 RENDERIZAÇÃO DA TABELA / LISTA E KPIS
+// ============================================================================
 
 function renderSummary() {
     const section = document.getElementById('summary-section');
     if (!section) return;
 
-    // Totais Receitas
-    const totalRec = localState.receivables.reduce((acc, i) => acc + i.amount, 0);
-    const paidRec = localState.receivables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
-    const pendingRec = totalRec - paidRec;
+    const isRec = localState.currentTab === 'receivables';
+    const activeList = isRec ? localState.receivables : localState.payables;
+    
+    let filteredList = activeList;
+    if (localState.searchQuery) {
+        filteredList = filteredList.filter(i => 
+            (i.description && i.description.toLowerCase().includes(localState.searchQuery)) ||
+            (i.entity && i.entity.toLowerCase().includes(localState.searchQuery)) ||
+            (i.notes && i.notes.toLowerCase().includes(localState.searchQuery))
+        );
+    }
 
-    // Totais Despesas
-    const totalPay = localState.payables.reduce((acc, i) => acc + i.amount, 0);
-    const paidPay = localState.payables.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
-    const pendingPay = totalPay - paidPay;
+    const total = filteredList.reduce((acc, i) => acc + i.amount, 0);
+    const paid = filteredList.filter(i => i.status === 'paid').reduce((acc, i) => acc + i.amount, 0);
+    const pending = filteredList.filter(i => i.status === 'pending' && !isOverdue(i.dueDate, i.status)).reduce((acc, i) => acc + i.amount, 0);
+    const overdue = filteredList.filter(i => isOverdue(i.dueDate, i.status)).reduce((acc, i) => acc + i.amount, 0);
 
-    // Saldo
-    const balance = paidRec - paidPay;
+    const themeColor = isRec ? 'emerald' : 'red';
+    const titleBase = isRec ? 'Receitas' : 'Despesas';
 
     section.innerHTML = `
-        <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
-            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">A Receber</p>
-            <p class="text-xl font-bold text-green-600">${formatCurrency(pendingRec)}</p>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center relative overflow-hidden">
+            <div class="absolute right-0 top-0 h-full w-1 bg-gray-800"></div>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Total do Período</p>
+            <p class="text-2xl font-black text-gray-900">${formatCurrency(total)}</p>
         </div>
-        <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
-            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">A Pagar</p>
-            <p class="text-xl font-bold text-red-500">${formatCurrency(pendingPay)}</p>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center relative overflow-hidden">
+            <div class="absolute right-0 top-0 h-full w-1 bg-blue-500"></div>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">A Vencer / Prov.</p>
+            <p class="text-xl font-bold text-blue-600">${formatCurrency(pending)}</p>
         </div>
-        <div class="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1">
-            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Realizado</p>
-            <p class="text-xl font-bold ${balance >= 0 ? 'text-indigo-600' : 'text-orange-500'}">${formatCurrency(balance)}</p>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center relative overflow-hidden">
+            <div class="absolute right-0 top-0 h-full w-1 bg-${themeColor}-500"></div>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">${titleBase} Baixadas</p>
+            <p class="text-xl font-bold text-${themeColor}-600">${formatCurrency(paid)}</p>
+        </div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center relative overflow-hidden">
+            <div class="absolute right-0 top-0 h-full w-1 bg-red-600"></div>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Atrasadas</p>
+            <p class="text-xl font-bold ${overdue > 0 ? 'text-red-600' : 'text-gray-400'}">${formatCurrency(overdue)}</p>
         </div>
     `;
 }
@@ -632,182 +764,222 @@ function renderLists() {
     const isReceivable = localState.currentTab === 'receivables';
     const rawList = isReceivable ? localState.receivables : localState.payables;
     
-    // Filtro de Status
     let filteredList = rawList;
     if (localState.statusFilter !== 'all') {
-        filteredList = rawList.filter(item => item.status === localState.statusFilter);
+        filteredList = rawList.filter(item => {
+            const isItemOverdue = isOverdue(item.dueDate, item.status);
+            if (localState.statusFilter === 'overdue') return isItemOverdue;
+            if (localState.statusFilter === 'pending') return item.status === 'pending' && !isItemOverdue;
+            return item.status === localState.statusFilter;
+        });
     }
 
-    // Ordenação por data
+    if (localState.searchQuery) {
+        filteredList = filteredList.filter(i => 
+            (i.description && i.description.toLowerCase().includes(localState.searchQuery)) ||
+            (i.entity && i.entity.toLowerCase().includes(localState.searchQuery)) ||
+            (i.notes && i.notes.toLowerCase().includes(localState.searchQuery))
+        );
+    }
+
     filteredList.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
     if (filteredList.length === 0) {
         container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-12 text-gray-400 opacity-60">
-                <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                <p>Nenhum lançamento encontrado.</p>
+            <div class="flex flex-col items-center justify-center py-16 bg-white border border-dashed border-gray-300 rounded-xl mt-2">
+                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                    <i class="bi bi-inbox text-2xl text-gray-400"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-1">Nenhum registo encontrado</h3>
+                <p class="text-sm text-gray-500">Tente limpar os filtros ou faça um novo lançamento.</p>
             </div>
         `;
         return;
     }
 
     const natureMap = new Map(localState.natures.map(n => [n.id, n.name]));
+    const estMap = new Map(localState.establishments.map(e => [e.id, e]));
+
     const typeStr = isReceivable ? 'receivable' : 'payable';
+    const amountColor = isReceivable ? 'text-emerald-600' : 'text-red-600';
 
     container.innerHTML = filteredList.map(item => {
         const dateObj = formatDateDisplay(item.dueDate);
         const isPaid = item.status === 'paid';
-        const amountClass = isPaid ? 'text-gray-400' : (isReceivable ? 'text-green-600' : 'text-red-500');
-        const natureName = item.naturezaId ? natureMap.get(item.naturezaId) || 'Geral' : 'Geral';
+        const itemOverdue = isOverdue(item.dueDate, item.status);
+        
+        let statusBadge = '';
+        if (isPaid) statusBadge = '<span class="bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide"><i class="bi bi-check2-circle mr-1"></i>Baixado</span>';
+        else if (itemOverdue) statusBadge = '<span class="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide"><i class="bi bi-exclamation-circle mr-1"></i>Atrasado</span>';
+        else statusBadge = '<span class="bg-blue-50 text-blue-600 border border-blue-200 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide"><i class="bi bi-clock-history mr-1"></i>A Vencer</span>';
+
+        const natureName = item.naturezaId ? natureMap.get(item.naturezaId) || 'Não Categorizado' : 'Geral';
+        
+        const estObj = estMap.get(item.establishmentId);
+        let estBadge = '';
+        if (estObj) {
+            const estIcon = estObj.type === 'Matriz' ? 'bi-building' : 'bi-shop';
+            estBadge = `<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold border border-slate-200 flex items-center whitespace-nowrap w-max" title="Unidade: ${estObj.name}"><i class="bi ${estIcon} mr-1 opacity-60"></i> ${estObj.name}</span>`;
+        } else {
+            estBadge = `<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold border border-gray-200 flex items-center whitespace-nowrap w-max"><i class="bi bi-geo-alt mr-1 opacity-60"></i> Atual</span>`;
+        }
+
         const itemDataStr = JSON.stringify(item).replace(/'/g, "&apos;");
         const isSelected = localState.selectedIds.has(item.id);
-        
-        // Indicador de Recorrência (Agora verificamos diretamente recurrenceId)
         const isRecurring = !!item.recurrenceId;
-        const recurringIcon = isRecurring ? `<span class="ml-1 text-gray-400"><svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></span>` : '';
+        const recurringIcon = isRecurring ? `<i class="bi bi-arrow-repeat text-indigo-400 ml-1.5 text-xs" title="Lançamento Recorrente"></i>` : '';
 
-        // Checkbox SEM stopPropagation para permitir clicar e desmarcar
+        // Exibe o Favorecido/Pagador se existir
+        const entityLabel = item.entity ? `<span class="text-xs text-gray-500 font-medium truncate block"><i class="bi bi-person mr-1 opacity-50"></i>${item.entity}</span>` : '';
+
         return `
-        <div class="financial-card-item w-full max-w-full bg-white p-3 rounded-xl shadow-sm border ${isSelected ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100'} flex items-start gap-3 relative overflow-hidden cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
+        <div class="financial-row md:grid md:grid-cols-12 md:gap-4 md:items-center bg-white p-4 md:p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer relative group flex flex-col gap-3 ${isSelected ? 'bg-indigo-50/30' : ''}"
              data-type="${typeStr}"
              data-item='${itemDataStr}'>
             
-            <div class="absolute left-0 top-0 bottom-0 w-1 ${isPaid ? 'bg-gray-300' : (isReceivable ? 'bg-green-500' : 'bg-red-500')}"></div>
+            <div class="absolute left-0 top-0 bottom-0 w-1 ${isPaid ? 'bg-gray-300' : (isReceivable ? 'bg-emerald-500' : 'bg-red-500')}"></div>
 
-            <div class="checkbox-wrapper pt-3 pl-1">
-                <input type="checkbox" class="item-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" data-id="${item.id}" ${isSelected ? 'checked' : ''}>
+            <div class="absolute right-4 top-4 md:relative md:right-auto md:top-auto md:col-span-1 md:flex md:justify-center z-10">
+                <input type="checkbox" value="${item.id}" class="item-checkbox w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
             </div>
 
-            <div class="flex-shrink-0 flex flex-col items-center justify-center bg-gray-50 rounded-lg w-12 h-12 border border-gray-100 mt-0.5">
-                <span class="text-base font-bold text-gray-800 leading-none">${dateObj.day}</span>
-                <span class="text-[9px] font-bold text-gray-400 uppercase leading-none mt-0.5">${dateObj.month}</span>
-            </div>
-
-            <div class="flex-1 min-w-0 flex flex-col justify-start">
-                <h3 class="font-bold text-gray-800 text-sm break-words whitespace-normal pr-1 leading-snug ${isPaid ? 'line-through text-gray-400' : ''}">
-                    ${item.description}
-                </h3>
-                <div class="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-medium break-all flex items-center">
-                        ${natureName} ${recurringIcon}
-                    </span>
-                    ${isPaid ? '<span class="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 font-medium whitespace-nowrap">Baixado</span>' : ''}
+            <div class="flex items-center gap-3 md:col-span-2">
+                <div class="flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg w-12 h-12 flex-shrink-0 shadow-sm">
+                    <span class="text-base font-black text-gray-800 leading-none">${dateObj.day}</span>
+                    <span class="text-[9px] font-bold text-gray-500 uppercase leading-none mt-1">${dateObj.month}</span>
+                </div>
+                <div class="md:hidden flex-1 pr-8">
+                    <p class="font-bold text-sm text-gray-900 leading-tight ${isPaid ? 'line-through text-gray-400' : ''}">${item.description}</p>
+                    ${entityLabel}
                 </div>
             </div>
 
-            <div class="flex-shrink-0 text-right pl-1 flex flex-col items-end">
-                <p class="font-bold text-sm ${amountClass} whitespace-nowrap">${formatCurrency(item.amount)}</p>
-                
-                <div class="flex justify-end gap-3 mt-2">
-                    ${!isPaid ? `
-                        <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="p-1.5 rounded-full text-gray-400 hover:text-green-500 hover:bg-green-50 transition-colors z-10" title="Baixar">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        </button>
-                    ` : ''}
-                    
-                    <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors z-10" title="Excluir">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <div class="md:col-span-4 hidden md:flex flex-col justify-center">
+                <p class="font-bold text-sm text-gray-900 truncate ${isPaid ? 'line-through text-gray-400' : ''}" title="${item.description}">${item.description}</p>
+                ${entityLabel}
+                <div class="flex items-center gap-2 mt-1">
+                    ${estBadge}
+                    <p class="text-[10px] text-gray-500 flex items-center font-medium">
+                        <i class="bi bi-tag mr-1 opacity-50"></i> ${natureName} ${recurringIcon}
+                    </p>
+                </div>
+            </div>
+
+            <div class="md:hidden flex flex-wrap items-center gap-2 mt-1">
+                ${estBadge}
+                <span class="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-600 font-bold border border-gray-200 flex items-center">
+                    <i class="bi bi-tag mr-1.5 opacity-50"></i> ${natureName} ${recurringIcon}
+                </span>
+            </div>
+
+            <div class="md:col-span-2 md:text-center flex justify-start md:justify-center">
+                ${statusBadge}
+            </div>
+
+            <div class="md:col-span-2 md:text-right flex items-center justify-between md:justify-end border-t border-gray-100 md:border-t-0 pt-3 md:pt-0 mt-1 md:mt-0">
+                <span class="md:hidden text-xs font-bold text-gray-500 uppercase tracking-wide">Valor:</span>
+                <p class="font-black text-base ${isPaid ? 'text-gray-400' : amountColor}">${formatCurrency(item.amount)}</p>
+            </div>
+
+            <div class="absolute right-4 bottom-4 md:relative md:right-auto md:bottom-auto md:col-span-1 md:flex md:justify-center z-10 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity bg-white/90 md:bg-transparent rounded-lg p-1 md:p-0">
+                ${!isPaid ? `
+                    <button data-action="mark-as-paid" data-type="${typeStr}" data-id="${item.id}" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-green-50 border border-transparent hover:border-green-200 transition-all shadow-sm" title="Dar Baixa">
+                        <i class="bi bi-check2-all text-lg"></i>
                     </button>
-                </div>
+                ` : ''}
+                <button data-action="delete" data-type="${typeStr}" data-id="${item.id}" class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all shadow-sm" title="Excluir">
+                    <i class="bi bi-trash3 text-sm"></i>
+                </button>
             </div>
         </div>
         `;
     }).join('');
 }
 
-// --- AÇÕES CRUD ---
+// ============================================================================
+// ⚙️ AÇÕES CRUD E MODAIS
+// ============================================================================
 
 async function handleMarkAsPaid(type, id) {
     const today = new Date().toISOString().split('T')[0];
     try {
         await (type === 'payable' ? financialApi.markAsPaidPayable(id, today) : financialApi.markAsPaidReceivable(id, today));
-        showNotification('Sucesso', 'Lançamento baixado!', 'success');
+        showNotification('Baixa Realizada', 'O lançamento foi registado como pago.', 'success');
         await fetchAndDisplayData();
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
 }
 
-// --- DELETE INTELIGENTE E EM LOTE ---
-
 async function handleSmartDelete(type, item) {
-    // Agora verifica estritamente o ID de recorrência
     const isRecurring = !!item.recurrenceId;
 
     if (!isRecurring) {
-        // Exclusão Simples (item avulso)
-        const confirmed = await showConfirmation('Excluir Lançamento', 'Tem certeza? Essa ação não pode ser desfeita.');
-        if (confirmed) {
-            await executeDelete(type, [item.id]);
-        }
+        const confirmed = await showConfirmation('Excluir Lançamento', 'Tem certeza? Essa ação apagará o registo do seu fluxo de caixa.');
+        if (confirmed) await executeDelete(type, [item.id]);
         return;
     }
 
-    // Se tiver ID de recorrência, abre o modal para selecionar parcelas
     openRecurrenceDeleteModal(type, item);
 }
 
 function openRecurrenceDeleteModal(type, currentItem) {
     const modal = document.getElementById('genericModal');
-    
-    // Filtra itens carregados que possuem o MESMO recurrenceId
     const list = type === 'payable' ? localState.payables : localState.receivables;
     
-    const relatedItems = list.filter(i => 
-        i.recurrenceId === currentItem.recurrenceId
-    );
-
-    // Ordena por data
-    relatedItems.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    const relatedItems = list.filter(i => i.recurrenceId === currentItem.recurrenceId).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
 
     modal.innerHTML = `
-        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="modal-content max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
             <div class="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <div class="p-1.5 bg-white rounded-lg text-red-600 shadow-sm">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-white rounded-lg text-red-600 shadow-sm border border-red-100">
+                        <i class="bi bi-trash3 text-lg"></i>
                     </div>
-                    <h2 class="text-lg font-bold text-gray-800">Gerenciar Parcelas</h2>
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800 leading-tight">Exclusão em Lote</h2>
+                        <p class="text-xs text-red-600 font-medium">Este lançamento possui parcelas conectadas.</p>
+                    </div>
                 </div>
                 <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
             </div>
             
-            <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                <span class="text-xs text-gray-500 font-semibold uppercase">Selecione os itens para excluir</span>
-                <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-800">
+            <div class="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <span class="text-xs text-gray-600 font-bold uppercase tracking-wider">Selecione as parcelas:</span>
+                <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-sm">
                     <input type="checkbox" id="modal-select-all" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                     Marcar Todos
                 </label>
             </div>
 
-            <div class="overflow-y-auto p-2 space-y-1 custom-scrollbar flex-1">
+            <div class="overflow-y-auto p-3 space-y-2 custom-scrollbar flex-1 bg-white">
                 ${relatedItems.map(item => {
                     const isCurrent = item.id === currentItem.id;
                     const isPaid = item.status === 'paid';
                     const dateObj = formatDateDisplay(item.dueDate);
                     
                     return `
-                    <label class="flex items-center gap-3 p-3 bg-white rounded-xl border ${isCurrent ? 'border-red-300 ring-1 ring-red-100' : 'border-gray-200'} hover:border-red-300 cursor-pointer transition-all group">
+                    <label class="flex items-center gap-4 p-3 bg-white rounded-xl border ${isCurrent ? 'border-red-400 ring-1 ring-red-100 shadow-sm bg-red-50/30' : 'border-gray-200 hover:bg-gray-50'} cursor-pointer transition-all">
                         <input type="checkbox" class="modal-item-checkbox w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500" value="${item.id}" ${isCurrent ? 'checked' : ''}>
                         
-                        <div class="flex-shrink-0 w-10 h-10 bg-gray-50 rounded-lg flex flex-col items-center justify-center border border-gray-100">
-                            <span class="text-xs font-bold text-gray-700">${dateObj.day}</span>
-                            <span class="text-[8px] font-bold text-gray-400 uppercase">${dateObj.month}</span>
+                        <div class="flex-shrink-0 w-11 h-11 bg-white rounded-lg flex flex-col items-center justify-center border border-gray-200 shadow-sm">
+                            <span class="text-sm font-black text-gray-800 leading-none">${dateObj.day}</span>
+                            <span class="text-[8px] font-bold text-gray-500 uppercase leading-none mt-1">${dateObj.month}</span>
                         </div>
 
                         <div class="flex-1 min-w-0">
-                            <p class="text-sm font-semibold text-gray-800 truncate">${item.description}</p>
-                            <p class="text-xs text-gray-500">${formatCurrency(item.amount)} ${isPaid ? '<span class="text-green-600 font-bold ml-1">(Pago)</span>' : '<span class="text-orange-500 ml-1">(Pendente)</span>'}</p>
+                            <p class="text-sm font-bold text-gray-800 truncate">${item.description}</p>
+                            <p class="text-xs font-medium text-gray-500 mt-0.5">${formatCurrency(item.amount)} ${isPaid ? '<span class="text-emerald-600 font-bold ml-1">(Baixado)</span>' : ''}</p>
                         </div>
                         
-                        ${isCurrent ? '<span class="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">Este</span>' : ''}
+                        ${isCurrent ? '<span class="text-[10px] bg-red-600 text-white px-2 py-1 rounded-md font-bold uppercase tracking-wider shadow-sm">Alvo</span>' : ''}
                     </label>
                     `;
                 }).join('')}
             </div>
 
-            <div class="p-4 border-t border-gray-100 bg-white">
-                <button id="confirm-batch-delete" class="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-md active:scale-[0.98] transition-all">
+            <div class="p-4 border-t border-gray-200 bg-gray-50">
+                <button id="confirm-batch-delete" class="w-full py-3 bg-red-600 text-white font-black uppercase tracking-wider rounded-xl hover:bg-red-700 shadow-lg active:scale-[0.98] transition-all flex justify-center items-center gap-2">
                     Excluir Selecionados
                 </button>
             </div>
@@ -815,68 +987,46 @@ function openRecurrenceDeleteModal(type, currentItem) {
     `;
     modal.style.display = 'flex';
 
-    // Lógica do Modal
     const selectAll = modal.querySelector('#modal-select-all');
     const checkboxes = modal.querySelectorAll('.modal-item-checkbox');
     const confirmBtn = modal.querySelector('#confirm-batch-delete');
 
-    // Toggle Select All
     selectAll.addEventListener('change', (e) => {
         checkboxes.forEach(cb => cb.checked = e.target.checked);
         updateButtonText();
     });
 
-    // Atualiza botão ao clicar em checkboxes
-    checkboxes.forEach(cb => {
-        cb.addEventListener('change', updateButtonText);
-    });
+    checkboxes.forEach(cb => cb.addEventListener('change', updateButtonText));
 
     function updateButtonText() {
         const count = Array.from(checkboxes).filter(cb => cb.checked).length;
-        confirmBtn.textContent = count > 0 ? `Excluir ${count} Item(ns)` : 'Selecione itens para excluir';
+        confirmBtn.innerHTML = count > 0 ? `<i class="bi bi-trash3"></i> Excluir ${count} Parcela(s)` : 'Selecione para excluir';
         confirmBtn.disabled = count === 0;
-        if(count === 0) confirmBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        else confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        if(count === 0) confirmBtn.classList.add('opacity-50', 'cursor-not-allowed', 'bg-gray-400');
+        else confirmBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-gray-400');
     }
 
-    // Ação de Excluir
     confirmBtn.addEventListener('click', async () => {
-        const idsToDelete = Array.from(checkboxes)
-            .filter(cb => cb.checked)
-            .map(cb => cb.value);
-
+        const idsToDelete = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
         if (idsToDelete.length === 0) return;
-
-        modal.style.display = 'none'; // Fecha o modal de seleção
+        modal.style.display = 'none'; 
         
-        // Pergunta de confirmação final
-        const confirmed = await showConfirmation(
-            'Confirmar Exclusão', 
-            `Tem certeza que deseja apagar ${idsToDelete.length} itens definitivamente?`
-        );
-
-        if (confirmed) {
-            await executeDelete(type, idsToDelete);
-        }
+        const confirmed = await showConfirmation('Confirmar Ação', `Tem certeza que deseja apagar estas ${idsToDelete.length} parcelas permanentemente?`);
+        if (confirmed) await executeDelete(type, idsToDelete);
     });
 
-    updateButtonText(); // Inicializa estado do botão
+    updateButtonText(); 
 }
 
 async function executeDelete(type, ids) {
     try {
         if(ids.length === 1) {
-            // Delete Único (API Original)
-            type === 'payable' 
-                ? await financialApi.deletePayable(ids[0]) 
-                : await financialApi.deleteReceivable(ids[0]);
+            type === 'payable' ? await financialApi.deletePayable(ids[0]) : await financialApi.deleteReceivable(ids[0]);
         } else {
-            // Delete em Lote (Nova API)
             const apiType = type === 'payable' ? 'payables' : 'receivables';
             await financialApi.deleteBatch(apiType, ids);
         }
-        
-        showNotification('Sucesso', `${ids.length} item(ns) excluído(s).`, 'success');
+        showNotification('Sucesso', `${ids.length} registo(s) limpo(s) do sistema.`, 'success');
         localState.selectedIds.clear();
         updateBatchActionBar();
         await fetchAndDisplayData();
@@ -889,11 +1039,10 @@ async function handleDeleteHierarchyItem(type, id) {
     const isNature = type === 'nature';
     const deleteApi = isNature ? financialApi.deleteNature : financialApi.deleteCostCenter;
     
-    const confirmed = await showConfirmation('Apagar Item', 'Tem a certeza? Apagar um item principal também apagará os seus sub-itens.');
+    const confirmed = await showConfirmation('Apagar Categoria', 'Tem certeza? Apagar um item pai também apagará as suas subcategorias.');
     if(confirmed) {
         try {
             await deleteApi(id);
-            // Reabre modal para atualizar lista
             openHierarchyModal(type === 'nature' ? 'nature' : 'cost-center');
         } catch(error) {
             showNotification('Erro', error.message, 'error');
@@ -901,25 +1050,26 @@ async function handleDeleteHierarchyItem(type, id) {
     }
 }
 
-// --- MODAIS (Formulário Principal e Settings) ---
-
 function openSettingsModal() {
     const modal = document.getElementById('genericModal');
     modal.innerHTML = `
-        <div class="modal-content max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div class="p-6 text-center">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">Configurações</h2>
+        <div class="modal-content max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div class="p-8 text-center relative">
+                <button type="button" data-action="close-modal" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-sm">
+                    <i class="bi bi-gear-fill text-2xl text-gray-600"></i>
+                </div>
+                <h2 class="text-xl font-black text-gray-900 mb-6">Configurações de ERP</h2>
                 <div class="space-y-3">
-                    <button data-action="manage-natures" class="w-full py-3 px-4 bg-indigo-50 text-indigo-700 font-semibold rounded-xl hover:bg-indigo-100 flex items-center justify-between group">
-                        <span>Naturezas Financeiras</span>
-                        <svg class="w-5 h-5 text-indigo-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    <button data-action="manage-natures" class="w-full py-4 px-5 bg-indigo-50 text-indigo-700 font-bold rounded-xl hover:bg-indigo-100 flex items-center justify-between group border border-indigo-100 transition-colors shadow-sm">
+                        <span class="flex items-center gap-3"><i class="bi bi-tags-fill"></i> Plano de Contas</span>
+                        <i class="bi bi-chevron-right text-indigo-400 group-hover:translate-x-1 transition-transform"></i>
                     </button>
-                    <button data-action="manage-cost-centers" class="w-full py-3 px-4 bg-blue-50 text-blue-700 font-semibold rounded-xl hover:bg-blue-100 flex items-center justify-between group">
-                        <span>Centros de Custo</span>
-                        <svg class="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    <button data-action="manage-cost-centers" class="w-full py-4 px-5 bg-blue-50 text-blue-700 font-bold rounded-xl hover:bg-blue-100 flex items-center justify-between group border border-blue-100 transition-colors shadow-sm">
+                        <span class="flex items-center gap-3"><i class="bi bi-diagram-3-fill"></i> Centros de Custo</span>
+                        <i class="bi bi-chevron-right text-blue-400 group-hover:translate-x-1 transition-transform"></i>
                     </button>
                 </div>
-                <button type="button" data-action="close-modal" class="mt-6 text-gray-400 hover:text-gray-600 font-medium text-sm">Fechar</button>
             </div>
         </div>
     `;
@@ -929,12 +1079,17 @@ function openSettingsModal() {
 function openFinancialModal(type, item = null) {
     const modal = document.getElementById('genericModal');
     const isPayable = type === 'payable';
-    const colorClass = isPayable ? 'red' : 'green';
-    const title = item 
-        ? `Editar ${isPayable ? 'Despesa' : 'Receita'}` 
-        : `Nova ${isPayable ? 'Despesa' : 'Receita'}`;
+    const themeColor = isPayable ? 'red' : 'emerald';
+    const title = item ? `Editar Lançamento` : `Novo Lançamento`;
 
-    // Helpers para opções do select
+    // Opções Dinâmicas das Empresas (O ID Default é a loja selecionada no contexto ou a Matriz)
+    const estOptions = localState.establishments.map(est => {
+        const isSelected = item 
+            ? item.establishmentId === est.id 
+            : est.id === state.establishmentId;
+        return `<option value="${est.id}" ${isSelected ? 'selected' : ''}>${est.type === 'Matriz' ? '🏢' : '📍'} ${est.name}</option>`;
+    }).join('');
+
     const buildOptions = (items, selectedId) => {
         let html = '<option value="">-- Selecione --</option>';
         const hierarchy = buildHierarchy(items);
@@ -948,129 +1103,178 @@ function openFinancialModal(type, item = null) {
         return html;
     };
 
-    // Estrutura HTML Moderna
+    const paymentMethods = [
+        { value: 'dinheiro', label: 'Dinheiro' },
+        { value: 'pix', label: 'PIX' },
+        { value: 'cartao_credito', label: 'Cartão de Crédito' },
+        { value: 'cartao_debito', label: 'Cartão de Débito' },
+        { value: 'transferencia', label: 'Transferência Bancária' },
+        { value: 'boleto', label: 'Boleto' },
+        { value: 'outros', label: 'Outros' }
+    ];
+    const paymentMethodOptions = paymentMethods.map(pm => 
+        `<option value="${pm.value}" ${item?.paymentMethod === pm.value ? 'selected' : ''}>${pm.label}</option>`
+    ).join('');
+
     modal.innerHTML = `
-        <div class="modal-content max-w-xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden m-4 flex flex-col max-h-[90vh]">
+        <div class="modal-content max-w-3xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden m-4 flex flex-col max-h-[90vh]">
             
-            <div class="bg-${colorClass}-50 px-6 py-4 border-b border-${colorClass}-100 flex justify-between items-center flex-shrink-0">
-                <div class="flex items-center gap-3">
-                    <div class="p-2 bg-white rounded-lg text-${colorClass}-600 shadow-sm">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${isPayable ? 'M19 14l-7 7m0 0l-7-7m7 7V3' : 'M5 10l7-7m0 0l7 7m-7-7v18'}"/></svg>
+            <div class="bg-${themeColor}-600 px-6 py-5 flex justify-between items-center flex-shrink-0 relative overflow-hidden">
+                <div class="absolute right-0 top-0 opacity-10 pointer-events-none">
+                    <svg width="120" height="120" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="40" stroke="white" stroke-width="20"/></svg>
+                </div>
+                
+                <div class="flex items-center gap-4 relative z-10">
+                    <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center text-white backdrop-blur-sm border border-white/30 shadow-inner">
+                        <i class="bi ${isPayable ? 'bi-arrow-down-right' : 'bi-arrow-up-right'} text-2xl"></i>
                     </div>
                     <div>
-                        <h2 class="text-xl font-bold text-gray-800">${title}</h2>
-                        <p class="text-xs text-gray-500">${isPayable ? 'Registre suas saídas' : 'Registre suas entradas'}</p>
+                        <h2 class="text-xl font-black text-white tracking-wide">${title}</h2>
+                        <p class="text-xs text-${themeColor}-100 font-medium uppercase tracking-widest mt-0.5">${isPayable ? 'Contas a Pagar / Despesa' : 'Contas a Receber / Receita'}</p>
                     </div>
                 </div>
-                <button type="button" data-action="close-modal" class="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <button type="button" data-action="close-modal" class="relative z-10 text-white/70 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10">
+                    <i class="bi bi-x-lg text-xl font-bold"></i>
                 </button>
             </div>
             
-            <form id="financial-form" class="flex-1 overflow-y-auto custom-scrollbar">
+            <form id="financial-form" class="flex-1 overflow-y-auto custom-scrollbar bg-gray-50">
                 <div class="p-6 space-y-6">
 
                     ${!item ? `
-                    <div class="bg-gray-50 p-1.5 rounded-xl flex border border-gray-200">
-                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-semibold rounded-lg shadow-sm bg-white text-gray-800 transition-all" data-mode="single">
-                            Único
-                        </button>
-                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 transition-all" data-mode="installment">
-                            Parcelado
-                        </button>
-                        <button type="button" class="mode-btn flex-1 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 transition-all" data-mode="repeat">
-                            Repetir (Fixo)
-                        </button>
+                    <div class="bg-white p-1.5 rounded-xl flex border border-gray-200 shadow-sm">
+                        <button type="button" class="mode-btn flex-1 py-2 text-xs uppercase tracking-wider font-bold rounded-lg shadow-sm bg-gray-900 text-white transition-all" data-mode="single">Único</button>
+                        <button type="button" class="mode-btn flex-1 py-2 text-xs uppercase tracking-wider font-bold rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all" data-mode="installment">Parcelado</button>
+                        <button type="button" class="mode-btn flex-1 py-2 text-xs uppercase tracking-wider font-bold rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all" data-mode="repeat">Recorrente</button>
                     </div>
                     ` : ''}
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-5">
+                        
+                        <div class="md:col-span-3">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Unidade / Filial</label>
+                            <select name="establishmentId" required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm font-bold text-gray-800 transition-shadow">
+                                ${estOptions}
+                            </select>
+                        </div>
+
                         <div class="md:col-span-1">
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Valor Total</label>
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Valor Total (R$)</label>
                             <div class="relative">
-                                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold">R$</span>
                                 <input type="number" step="0.01" name="amount" required 
-                                    class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none font-bold text-lg text-gray-800" 
-                                    value="${item?.amount || ''}" placeholder="0,00">
+                                    class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none font-black text-xl text-gray-900 transition-shadow" 
+                                    value="${item?.amount || ''}" placeholder="0.00">
                             </div>
                         </div>
+                        
                         <div class="md:col-span-2">
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Descrição</label>
-                            <input type="text" name="description" required 
-                                class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none font-medium" 
-                                value="${item?.description || ''}" placeholder="Ex: Conta de Luz, Venda...">
-                        </div>
-                    </div>
-
-                    <div id="recurrence-options" class="hidden animate-fade-in bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                        <div class="flex flex-col md:flex-row gap-4 items-end">
-                            <div class="w-full md:w-1/2">
-                                <label class="block text-xs font-bold text-indigo-700 uppercase mb-1.5">Quantidade de Meses</label>
-                                <div class="flex items-center">
-                                    <button type="button" id="btn-minus" class="w-10 h-10 bg-white border border-indigo-200 rounded-l-lg text-indigo-600 hover:bg-indigo-50 font-bold">-</button>
-                                    <input type="number" id="installments-input" name="installments" min="2" max="60" value="2" 
-                                        class="w-full h-10 border-y border-indigo-200 text-center font-bold text-indigo-700 outline-none appearance-none">
-                                    <button type="button" id="btn-plus" class="w-10 h-10 bg-white border border-indigo-200 rounded-r-lg text-indigo-600 hover:bg-indigo-50 font-bold">+</button>
-                                </div>
-                            </div>
-                            <div class="w-full md:w-1/2">
-                                <div class="text-sm text-indigo-800 font-medium bg-white/60 p-3 rounded-lg border border-indigo-100 h-full flex items-center">
-                                    <span id="recurrence-summary">Selecione o modo...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Vencimento</label>
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Data de Vencimento</label>
                             <input type="date" name="dueDate" required 
-                                class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-gray-700 font-medium" 
+                                class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none font-bold text-gray-800 text-lg transition-shadow" 
                                 value="${item?.dueDate || new Date().toISOString().split('T')[0]}">
                         </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Descrição / Título</label>
+                            <input type="text" name="description" required 
+                                class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none font-bold text-gray-800 text-base transition-shadow" 
+                                value="${item?.description || ''}" placeholder="Ex: Compra de Estoque, Energia, Salário...">
+                        </div>
+                        
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">${isPayable ? 'Fornecedor / Favorecido' : 'Cliente / Pagador'}</label>
+                            <div class="relative">
+                                <i class="bi bi-person absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                                <input type="text" name="entity" 
+                                    class="w-full pl-10 pr-3 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm text-gray-800 transition-shadow" 
+                                    value="${item?.entity || ''}" placeholder="Nome de quem paga ou recebe...">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="recurrence-options" class="hidden animate-fade-in bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-inner">
+                        <div class="flex flex-col md:flex-row gap-5 items-center">
+                            <div class="w-full md:w-1/2">
+                                <label class="block text-[10px] font-black text-indigo-800 uppercase tracking-widest mb-2">Quantidade de Meses</label>
+                                <div class="flex items-center shadow-sm rounded-xl overflow-hidden border border-indigo-200">
+                                    <button type="button" id="btn-minus" class="w-12 h-12 bg-white text-indigo-600 hover:bg-indigo-100 font-black text-xl transition-colors">-</button>
+                                    <input type="number" id="installments-input" name="installments" min="2" max="60" value="2" 
+                                        class="w-full h-12 border-x border-indigo-100 text-center font-black text-lg text-indigo-900 outline-none bg-indigo-50/50 appearance-none">
+                                    <button type="button" id="btn-plus" class="w-12 h-12 bg-white text-indigo-600 hover:bg-indigo-100 font-black text-xl transition-colors">+</button>
+                                </div>
+                            </div>
+                            <div class="w-full md:w-1/2 flex items-center justify-center">
+                                <div class="text-sm text-indigo-900 bg-white px-4 py-3 rounded-xl border border-indigo-100 w-full shadow-sm">
+                                    <span id="recurrence-summary">Calculando...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-5">
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Natureza</label>
-                            <select name="naturezaId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm appearance-none">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Plano de Contas</label>
+                            <select name="naturezaId" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm font-medium text-gray-700 transition-shadow">
                                 ${buildOptions(localState.natures, item?.naturezaId)}
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Centro de Custo</label>
-                            <select name="centroDeCustoId" class="w-full p-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm appearance-none">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Centro de Custo</label>
+                            <select name="centroDeCustoId" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm font-medium text-gray-700 transition-shadow">
                                 ${buildOptions(localState.costCenters, item?.centroDeCustoId)}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Forma de Pagamento</label>
+                            <select name="paymentMethod" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm font-medium text-gray-700 transition-shadow">
+                                <option value="">-- Selecione --</option>
+                                ${paymentMethodOptions}
                             </select>
                         </div>
                     </div>
 
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1.5">Observações (Opcional)</label>
-                        <textarea name="notes" rows="2" class="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${colorClass}-500 outline-none text-sm resize-none">${item?.notes || ''}</textarea>
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="md:col-span-1">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Nº do Documento / Recibo</label>
+                            <input type="text" name="documentNumber" 
+                                class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm text-gray-800 transition-shadow" 
+                                value="${item?.documentNumber || ''}" placeholder="Ex: NF-12345">
+                        </div>
+                        <div class="md:col-span-1">
+                            <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Observações Adicionais</label>
+                            <textarea name="notes" rows="1" class="w-full p-3 bg-gray-50 border border-gray-300 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm text-gray-700 font-medium resize-none transition-shadow">${item?.notes || ''}</textarea>
+                        </div>
                     </div>
 
-                    <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <label class="flex items-center gap-3 cursor-pointer group">
+                    <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5">
+                        <label class="flex items-center gap-4 cursor-pointer group">
                             <div class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" name="status" id="status-toggle" class="sr-only peer" ${item?.status === 'paid' ? 'checked' : ''}>
-                                <div class="w-12 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-${colorClass}-500 shadow-inner"></div>
+                                <div class="w-14 h-8 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-7 after:w-7 after:transition-all peer-checked:bg-${themeColor}-500 shadow-inner"></div>
                             </div>
-                            <span class="text-sm font-bold text-gray-600 group-hover:text-gray-800 transition-colors">Marcar como ${isPayable ? 'Pago' : 'Recebido'}</span>
+                            <div>
+                                <span class="block text-sm font-black text-gray-800 group-hover:text-${themeColor}-700 transition-colors uppercase tracking-wide">Marcar como ${isPayable ? 'Pago' : 'Recebido'}</span>
+                                <span class="block text-[10px] text-gray-400 font-medium mt-0.5">Retira a transação do status de pendente.</span>
+                            </div>
                         </label>
                         
-                        <div id="payment-date-wrapper" class="${item?.status === 'paid' ? '' : 'hidden'} flex-1 md:max-w-xs animate-fade-in">
+                        <div id="payment-date-wrapper" class="${item?.status === 'paid' ? '' : 'hidden'} flex-1 md:max-w-[250px] animate-fade-in border-l md:border-l-2 border-gray-100 pl-0 md:pl-5 pt-4 md:pt-0 mt-4 md:mt-0">
+                            <label class="block text-[10px] font-bold text-${themeColor}-600 uppercase tracking-widest mb-1.5">Data da Baixa Bancária</label>
                             <input type="date" name="paymentDate" 
-                                class="w-full p-2.5 border border-${colorClass}-200 rounded-lg text-sm bg-white focus:ring-1 focus:ring-${colorClass}-500 outline-none shadow-sm" 
+                                class="w-full p-2.5 bg-${themeColor}-50 border border-${themeColor}-200 text-${themeColor}-800 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-${themeColor}-500 shadow-sm transition-shadow" 
                                 value="${item?.paymentDate || new Date().toISOString().split('T')[0]}">
                         </div>
                     </div>
                 </div>
 
-                <div class="p-4 border-t border-gray-100 bg-gray-50 flex gap-3 flex-shrink-0">
-                    <button type="button" data-action="close-modal" class="flex-1 py-3.5 bg-white border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-colors">
+                <div class="p-6 border-t border-gray-200 bg-white flex flex-col-reverse md:flex-row gap-3 flex-shrink-0 z-10 relative shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
+                    <button type="button" data-action="close-modal" class="w-full md:w-auto py-3.5 px-6 bg-gray-100 text-gray-700 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-gray-200 transition-colors">
                         Cancelar
                     </button>
-                    <button type="submit" class="flex-[2] py-3.5 bg-${colorClass}-600 text-white font-bold rounded-xl hover:bg-${colorClass}-700 shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2">
-                        <span>${item ? 'Salvar Alterações' : 'Confirmar Lançamento'}</span>
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    <button type="submit" class="w-full flex-1 py-3.5 px-6 bg-${themeColor}-600 text-white font-black uppercase tracking-wider text-sm rounded-xl hover:bg-${themeColor}-700 shadow-lg shadow-${themeColor}-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                        <i class="bi bi-save2"></i> <span>${item ? 'Salvar Alterações' : 'Confirmar Lançamento'}</span>
                     </button>
                 </div>
             </form>
@@ -1080,12 +1284,9 @@ function openFinancialModal(type, item = null) {
 
     // --- LÓGICA DO FORMULÁRIO ---
     const form = modal.querySelector('#financial-form');
-    
-    // Variáveis de Estado Local do Modal
-    let currentMode = 'single'; // 'single', 'installment', 'repeat'
+    let currentMode = 'single'; 
     let installmentsCount = 2;
 
-    // Referências DOM
     const amountInput = form.querySelector('[name="amount"]');
     const recurrenceOptions = form.querySelector('#recurrence-options');
     const summaryText = form.querySelector('#recurrence-summary');
@@ -1094,7 +1295,6 @@ function openFinancialModal(type, item = null) {
     const paymentWrapper = form.querySelector('#payment-date-wrapper');
     const paymentInput = form.querySelector('[name="paymentDate"]');
 
-    // Funções de Cálculo e Atualização
     const updateSummary = () => {
         if (currentMode === 'single') return;
 
@@ -1102,59 +1302,55 @@ function openFinancialModal(type, item = null) {
         installmentsCount = parseInt(installmentsInput.value) || 2;
         
         if (totalVal === 0) {
-            summaryText.innerHTML = 'Digite um valor para ver a simulação.';
+            summaryText.innerHTML = '<span class="text-xs text-indigo-400 font-medium">Digite o valor total...</span>';
             return;
         }
 
         if (currentMode === 'installment') {
             const installmentVal = totalVal / installmentsCount;
             summaryText.innerHTML = `
-                <span class="block text-xs text-gray-500 uppercase">Resumo do Parcelamento</span>
-                <span class="font-bold block">${installmentsCount}x de ${formatCurrency(installmentVal)}</span>
-                <span class="text-xs text-gray-400">Total: ${formatCurrency(totalVal)}</span>
+                <div>
+                    <span class="block text-[10px] text-indigo-400 uppercase tracking-widest font-bold mb-1">Simulação do Parcelamento</span>
+                    <span class="font-black text-lg text-indigo-700 block leading-tight">${installmentsCount}x de ${formatCurrency(installmentVal)}</span>
+                    <span class="text-xs text-indigo-500 font-medium">Total: ${formatCurrency(totalVal)}</span>
+                </div>
             `;
         } else if (currentMode === 'repeat') {
             const totalFinal = totalVal * installmentsCount;
             summaryText.innerHTML = `
-                <span class="block text-xs text-gray-500 uppercase">Resumo da Recorrência</span>
-                <span class="font-bold block">${installmentsCount}x de ${formatCurrency(totalVal)}</span>
-                <span class="text-xs text-gray-400">Total Gerado: ${formatCurrency(totalFinal)}</span>
+                <div>
+                    <span class="block text-[10px] text-indigo-400 uppercase tracking-widest font-bold mb-1">Geração Recorrente Fixa</span>
+                    <span class="font-black text-lg text-indigo-700 block leading-tight">${installmentsCount}x de ${formatCurrency(totalVal)}</span>
+                    <span class="text-xs text-indigo-500 font-medium">Lançamento Total: ${formatCurrency(totalFinal)}</span>
+                </div>
             `;
         }
     };
 
-    // Listeners de Modo (Tabs)
     if (!item) {
         modal.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                // Atualiza visual dos botões
                 modal.querySelectorAll('.mode-btn').forEach(b => {
-                    b.classList.remove('bg-white', 'text-gray-800', 'shadow-sm', 'font-semibold');
-                    b.classList.add('text-gray-500', 'font-medium');
+                    b.classList.remove('bg-gray-900', 'text-white', 'shadow-sm');
+                    b.classList.add('text-gray-500', 'hover:bg-gray-100');
                 });
-                e.target.classList.add('bg-white', 'text-gray-800', 'shadow-sm', 'font-semibold');
-                e.target.classList.remove('text-gray-500', 'font-medium');
+                e.target.classList.add('bg-gray-900', 'text-white', 'shadow-sm');
+                e.target.classList.remove('text-gray-500', 'hover:bg-gray-100');
 
-                // Atualiza Lógica
                 currentMode = e.target.dataset.mode;
                 
                 if (currentMode === 'single') {
                     recurrenceOptions.classList.add('hidden');
                 } else {
                     recurrenceOptions.classList.remove('hidden');
-                    // Label dinâmico
                     const label = recurrenceOptions.querySelector('label');
                     label.textContent = currentMode === 'installment' ? 'Número de Parcelas' : 'Repetir por quantos meses?';
                     updateSummary();
                 }
             });
         });
-        
-        // Ativa o primeiro modo por padrão
-        modal.querySelector('[data-mode="single"]').click();
     }
 
-    // Listeners de Input para Recálculo
     amountInput.addEventListener('input', updateSummary);
     if(installmentsInput) {
         installmentsInput.addEventListener('input', updateSummary);
@@ -1168,7 +1364,6 @@ function openFinancialModal(type, item = null) {
         });
     }
 
-    // Toggle Status Pagamento
     statusToggle.addEventListener('change', () => {
         if (statusToggle.checked) {
             paymentWrapper.classList.remove('hidden');
@@ -1179,47 +1374,46 @@ function openFinancialModal(type, item = null) {
         }
     });
 
-    // --- SUBMIT ---
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const btnSubmit = form.querySelector('button[type="submit"]');
+        const originalText = btnSubmit.innerHTML;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<div class="loader-small border-white"></div> A gravar...';
+
         const formData = new FormData(form);
         const isPaid = statusToggle.checked;
         const rawAmount = parseFloat(formData.get('amount'));
         
-        // Definição do valor e parcelas baseado no modo
         let finalAmount = rawAmount;
         let finalInstallments = 1;
 
         if (!item && currentMode !== 'single') {
             finalInstallments = parseInt(formData.get('installments'));
-            
             if (currentMode === 'repeat') {
-                // TRUQUE: Se é "Repetir" (ex: 100 reais por mes, 3 vezes), 
-                // e o backend divide o total pelas parcelas, enviamos 300.
-                // Assim o backend faz 300 / 3 = 100 por mês.
                 finalAmount = rawAmount * finalInstallments;
             }
-            // Se for 'installment', enviamos o rawAmount normal (ex: 1000 em 2x),
-            // o backend vai dividir e gerar 500 por mês.
-        } else {
-            // Se for single ou edição, garante que parcelas é 1
-            finalInstallments = 1; 
         }
 
         const payload = {
+            establishmentId: formData.get('establishmentId'), // 🔥 Pega a loja correta selecionada!
             description: formData.get('description'),
             amount: finalAmount,
             dueDate: formData.get('dueDate'),
             naturezaId: formData.get('naturezaId') || null,
             centroDeCustoId: formData.get('centroDeCustoId') || null,
+            
+            // Novos campos ERP
+            entity: formData.get('entity') || null,
+            paymentMethod: formData.get('paymentMethod') || null,
+            documentNumber: formData.get('documentNumber') || null,
+            
             notes: formData.get('notes'),
             status: isPaid ? 'paid' : 'pending',
             paymentDate: isPaid ? formData.get('paymentDate') : null,
-            establishmentId: state.establishmentId,
             installments: finalInstallments 
         };
 
-        // GERA UM ID ÚNICO PARA RECORRÊNCIA SE FOR PARCELADO/REPETIDO
         if (finalInstallments > 1 && !item) {
             payload.recurrenceId = self.crypto.randomUUID();
         }
@@ -1235,8 +1429,9 @@ function openFinancialModal(type, item = null) {
             document.getElementById('genericModal').style.display = 'none';
             fetchAndDisplayData();
         } catch (error) {
-            console.error(error);
             showNotification('Erro', error.message || 'Erro ao salvar', 'error');
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = originalText;
         }
     });
 }

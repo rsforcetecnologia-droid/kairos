@@ -1456,3 +1456,43 @@ input, select, textarea {
     width: 1.5rem; /* 24px */
     height: 1.5rem;
 }
+/* ==========================================================================
+   ESTADO RECOLHIDO DA SIDEBAR (MODO ÍCONES)
+   ========================================================================== */
+#sidebar {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 256px; /* w-64 do Tailwind */
+}
+
+#sidebar.collapsed {
+    width: 72px !important; /* Apenas espaço para o ícone */
+}
+
+/* Esconde textos, setas, barra de busca e títulos de categoria quando recolhido */
+#sidebar.collapsed .menu-text,
+#sidebar.collapsed .submenu-arrow,
+#sidebar.collapsed .sidebar-category,
+#sidebar.collapsed .sidebar-search-container,
+#sidebar.collapsed .logo-text {
+    display: none !important;
+    opacity: 0;
+}
+
+/* Centraliza os ícones quando recolhido */
+#sidebar.collapsed .sidebar-link,
+#sidebar.collapsed .submenu-toggle {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* Remove a margem do ícone para ele ficar perfeitamente no centro */
+#sidebar.collapsed .bi {
+    margin: 0 !important;
+    font-size: 1.25rem; /* Ícone ligeiramente maior no modo recolhido */
+}
+
+/* Esconde as opções filhas (submenus) se o menu estiver recolhido */
+#sidebar.collapsed ul[id$="-submenu"] {
+    display: none !important;
+}

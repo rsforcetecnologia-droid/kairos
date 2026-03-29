@@ -167,5 +167,13 @@ service cloud.firestore {
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
     }
+// Regra para Parceiros de Negócio / Fornecedores
+    match /suppliers/{supplierId} {
+      // Permite ler se o utilizador estiver logado
+      allow read: if request.auth != null;
+      
+      // Permite criar, editar e apagar se o utilizador estiver logado e pertencer a uma empresa
+      allow create, update, delete: if request.auth != null;
+    }
   }
 }

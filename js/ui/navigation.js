@@ -1,30 +1,49 @@
 // js/ui/navigation.js
 
 /**
- * Módulo responsável pela interatividade da navegação (incluindo submenus Enterprise)
+ * Módulo responsável pela interatividade da navegação (Arquitetura ERP)
+ * Inclui: Busca no menu, Submenus Dinâmicos e Colapso da Sidebar
  */
 
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const mainContent = document.getElementById('mainContent');
 const sidebarLinks = document.querySelectorAll('.sidebar-link');
+const menuSearchInput = document.getElementById('menu-search');
 
 const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const mobileOverlay = document.getElementById('mobile-overlay');
 
-// Novos Elementos do Submenu Cadastros
-const cadastrosBtn = document.getElementById('cadastros-menu-btn');
-const cadastrosSubmenu = document.getElementById('cadastros-submenu');
-const cadastrosArrow = document.getElementById('cadastros-arrow');
+// --- CONTROLO DA SIDEBAR ---
 
 function setSidebarState(shouldCollapse) {
     if (!sidebar || !mainContent) return;
+    
     sidebar.classList.toggle('collapsed', shouldCollapse);
     mainContent.classList.toggle('sidebar-collapsed-shift', shouldCollapse);
     
-    // Se colapsar a sidebar, fecha o submenu de cadastros para não bugar o visual
-    if (shouldCollapse && cadastrosSubmenu && !cadastrosSubmenu.classList.contains('hidden')) {
-        toggleCadastrosSubmenu(true);
+    const searchContainer = sidebar.querySelector('.sidebar-search-container');
+    const categoryLabels = sidebar.querySelectorAll('.sidebar-category');
+    
+    if (shouldCollapse) {
+        // Quando colapsado, esconde a barra de busca, os titulos e fecha os submenus
+        if (searchContainer) searchContainer.style.display = 'none';
+        categoryLabels.forEach(lbl => lbl.style.display = 'none');
+        
+        document.querySelectorAll('.submenu-toggle').forEach(btn => {
+            const submenuId = btn.getAttribute('data-target-submenu');
+            const submenu = document.getElementById(submenuId);
+            const arrow = btn.querySelector('.submenu-arrow');
+            if (submenu) {
+                submenu.classList.add('hidden');
+                submenu.classList.remove('flex');
+            }
+            if (arrow) arrow.classList.remove('rotate-180');
+        });
+    } else {
+        // Restaura ao expandir
+        if (searchContainer) searchContainer.style.display = 'block';
+        categoryLabels.forEach(lbl => lbl.style.display = 'block');
     }
 }
 
@@ -44,32 +63,111 @@ function toggleSidebar() {
     setSidebarState(!sidebar.classList.contains('collapsed'));
 }
 
-// Função para abrir/fechar o acordeão de Cadastros
-function toggleCadastrosSubmenu(forceClose = false) {
-    if (!cadastrosSubmenu || !cadastrosArrow) return;
+// --- SUBMENUS DINÂMICOS (ACORDEÃO) ---
+
+function toggleSubmenu(submenuId, arrowEl) {
+    const submenu = document.getElementById(submenuId);
+    if (!submenu) return;
     
-    const isHidden = cadastrosSubmenu.classList.contains('hidden');
+    const isHidden = submenu.classList.contains('hidden');
     
-    if (forceClose || !isHidden) {
-        cadastrosSubmenu.classList.add('hidden');
-        cadastrosSubmenu.classList.remove('flex');
-        cadastrosArrow.classList.remove('rotate-180');
+    // Força a abertura da sidebar caso esteja minimizada e o utilizador clique no icone do submenu
+    if (isHidden && window.innerWidth >= 1024 && sidebar.classList.contains('collapsed')) {
+        setSidebarState(false);
+    }
+
+    if (isHidden) {
+        submenu.classList.remove('hidden');
+        submenu.classList.add('flex');
+        if (arrowEl) arrowEl.classList.add('rotate-180');
     } else {
-        // Se for abrir, garante que a sidebar está expandida (desktop)
-        if (window.innerWidth >= 1024 && sidebar.classList.contains('collapsed')) {
-            setSidebarState(false);
-        }
-        cadastrosSubmenu.classList.remove('hidden');
-        cadastrosSubmenu.classList.add('flex');
-        cadastrosArrow.classList.add('rotate-180');
+        submenu.classList.add('hidden');
+        submenu.classList.remove('flex');
+        if (arrowEl) arrowEl.classList.remove('rotate-180');
     }
 }
+
+// --- MOTOR DE PESQUISA DO MENU ---
+
+function setupMenuSearch() {
+    if (!menuSearchInput) return;
+
+    menuSearchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase().trim();
+        const navList = document.getElementById('sidebar-nav');
+        if (!navList) return;
+
+        const allListItems = navList.querySelectorAll('li');
+        const categoryLabels = navList.querySelectorAll('.sidebar-category');
+
+        if (searchTerm === '') {
+            // Restaura o menu original
+            allListItems.forEach(li => li.style.display = '');
+            categoryLabels.forEach(lbl => lbl.style.display = 'block');
+            return;
+        }
+
+        // Esconde as categorias durante a pesquisa para ficar mais limpo
+        categoryLabels.forEach(lbl => lbl.style.display = 'none');
+
+        allListItems.forEach(li => {
+            // Ignora categorias pois já as ocultámos
+            if (li.classList.contains('sidebar-category')) return;
+
+            const link = li.querySelector('.sidebar-link') || li.querySelector('.submenu-toggle');
+            if (!link) return;
+
+            const text = link.textContent.toLowerCase();
+            const isMatch = text.includes(searchTerm);
+
+            if (isMatch) {
+                li.style.display = '';
+                
+                // Se encontrou um item que está DENTRO de um submenu, força a abertura do submenu pai
+                const parentSubmenu = li.closest('ul[id$="-submenu"]');
+                if (parentSubmenu) {
+                    parentSubmenu.classList.remove('hidden');
+                    parentSubmenu.classList.add('flex');
+                    parentSubmenu.parentElement.style.display = ''; // Garante que o <li> do Toggle pai apareça
+                    
+                    // Roda a setinha do pai
+                    const toggleBtn = parentSubmenu.parentElement.querySelector('.submenu-toggle');
+                    if (toggleBtn) {
+                        const arrow = toggleBtn.querySelector('.submenu-arrow');
+                        if (arrow) arrow.classList.add('rotate-180');
+                    }
+                }
+            } else {
+                // Se for um Submenu Toggle (ex: Cadastros) e NENHUM filho der match, oculta.
+                const submenuTarget = link.getAttribute('data-target-submenu');
+                if (submenuTarget) {
+                    const submenu = document.getElementById(submenuTarget);
+                    if (submenu) {
+                        const childLinks = Array.from(submenu.querySelectorAll('.sidebar-link'));
+                        const hasMatchingChild = childLinks.some(child => child.textContent.toLowerCase().includes(searchTerm));
+                        
+                        if (hasMatchingChild) {
+                            li.style.display = '';
+                        } else {
+                            li.style.display = 'none';
+                        }
+                    }
+                } else {
+                    li.style.display = 'none';
+                }
+            }
+        });
+    });
+}
+
+// --- INICIALIZAÇÃO PRINCIPAL ---
 
 export function initializeNavigation(navigateCallback, userPermissions, enabledModules) {
     if (!sidebar || !mainContent) return;
 
     mainContent.classList.add('main-content-shift'); 
     
+    // Configura o estado inicial responsivo
     if (window.innerWidth >= 768) {
         setSidebarState(sidebar.classList.contains('collapsed')); 
     } else {
@@ -77,6 +175,7 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
         closeMobileMenu();
     }
 
+    // Botão de Minimizar (Desktop)
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -84,6 +183,7 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
         });
     }
 
+    // Hover inteligente na sidebar
     sidebar.addEventListener('mouseenter', () => {
         if (window.innerWidth >= 1024 && sidebar.classList.contains('collapsed')) {
             setSidebarState(false);
@@ -93,12 +193,16 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
     sidebar.addEventListener('mouseleave', () => {
        if (window.innerWidth >= 1024) {
            const isHoveringToggleButton = !!document.querySelector("#sidebarToggle:hover");
-           if (!isHoveringToggleButton) {
+           // Só volta a fechar se o input de pesquisa não estiver focado
+           const isSearchFocused = document.activeElement === menuSearchInput;
+           
+           if (!isHoveringToggleButton && !isSearchFocused) {
                setSidebarState(true);
            }
        }
     });
     
+    // Mobile Overlays
     if (hamburgerMenuBtn) {
         hamburgerMenuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -113,6 +217,7 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
         });
     }
 
+    // Gestos Mobile
     let touchStartX = 0;
     sidebar.addEventListener('touchstart', (e) => {
         touchStartX = e.changedTouches[0].screenX;
@@ -125,32 +230,47 @@ export function initializeNavigation(navigateCallback, userPermissions, enabledM
         }
     }, { passive: true });
 
-    // NOVO: Clique no botão principal de Cadastros
-    if (cadastrosBtn) {
-        cadastrosBtn.addEventListener('click', (e) => {
+    // Delegação de Submenus Dinâmicos
+    document.querySelectorAll('.submenu-toggle').forEach(btn => {
+        btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            toggleCadastrosSubmenu();
+            const submenuId = btn.getAttribute('data-target-submenu');
+            const arrow = btn.querySelector('.submenu-arrow');
+            toggleSubmenu(submenuId, arrow);
         });
-    }
+    });
 
+    // Inicia o motor de busca
+    setupMenuSearch();
+
+    // Aplicação de Permissões e Clique nos Links Finais
     sidebarLinks.forEach(link => {
         const targetId = link.getAttribute('data-target');
-        if (!targetId) return; // Ignora links que não têm data-target (ex: o próprio botão de Cadastro)
+        if (!targetId) return; 
         
         const moduleKey = targetId.replace('-section', '');
         const isModuleEnabled = enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = userPermissions === null || userPermissions[targetId]?.view === true;
 
         if (!isModuleEnabled || !hasEmployeePermission) {
-            link.style.display = 'none';
+            // Em vez de 'display: none', escondemos o pai (LI) para não quebrar a lógica de pesquisa
+            if (link.parentElement && link.parentElement.tagName === 'LI') {
+                link.parentElement.style.display = 'none';
+            } else {
+                link.style.display = 'none';
+            }
             return;
         }
 
-        link.style.display = 'flex';
-
         link.addEventListener('click', (e) => {
             e.preventDefault();
+            
+            // Remove active de todos
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            // Adiciona ativo ao clicado
+            link.classList.add('active');
+
             if (targetId && typeof navigateCallback === 'function') {
                 navigateCallback(targetId);
             }

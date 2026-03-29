@@ -1,4 +1,4 @@
-// routes/financial.js (Otimizado para Arquitetura Enterprise 3-Tier)
+// routes/financial.js (Otimizado para Arquitetura Enterprise 3-Tier e Multi-Tenant)
 
 const express = require('express');
 const router = express.Router();
@@ -22,9 +22,29 @@ function handleFirestoreError(res, error, context) {
     res.status(500).json({ message: `Ocorreu um erro no servidor ao processar ${context}.` });
 }
 
-// --- ROTAS GENÉRICAS HIERÁRQUICAS ---
+/**
+ * 🔥 MOTOR DE SEGURANÇA MULTI-TENANT
+ * Converte a string de IDs vinda do frontend num array seguro, 
+ * garantindo que o usuário só consulta lojas que lhe pertencem.
+ */
+function getAccessibleEstablishmentIds(req, requestedIdsStr) {
+    const userEstId = req.user.establishmentId;
+    const accessibleEsts = req.user.accessibleEstablishments || [];
+    const allowedIds = new Set([userEstId, ...accessibleEsts.map(e => e.id)]);
+
+    if (!requestedIdsStr || requestedIdsStr === 'current' || requestedIdsStr === 'all') {
+        return [userEstId];
+    }
+
+    const requestedIds = requestedIdsStr.split(',').map(id => id.trim()).filter(id => id);
+    const validIds = requestedIds.filter(id => allowedIds.has(id));
+
+    return validIds.length > 0 ? validIds : [userEstId];
+}
+
+// --- ROTAS GENÉRICAS HIERÁRQUICAS (PLANOS DE CONTA E CENTROS DE CUSTO) ---
+
 const createHierarchicalEntry = (collectionName) => async (req, res) => {
-    // Agora aceitamos que o frontend envie o establishmentId para onde a despesa/natureza vai ser criada
     const estId = req.body.establishmentId || req.user.establishmentId; 
     const { name, parentId } = req.body;
     
@@ -52,14 +72,17 @@ const createHierarchicalEntry = (collectionName) => async (req, res) => {
 
 const getHierarchicalEntries = (collectionName) => async (req, res) => {
     const { contextId } = req.params;
-    const { contextType = 'BRANCH' } = req.query;
-
     try {
-        let query = req.db.collection(collectionName);
+        // Usa o motor seguro para ler as naturezas das lojas selecionadas
+        const validEstIds = getAccessibleEstablishmentIds(req, contextId);
         
-        if (contextType === 'GROUP') query = query.where('groupId', '==', contextId);
-        else if (contextType === 'COMPANY') query = query.where('companyId', '==', contextId);
-        else query = query.where('establishmentId', '==', contextId);
+        let query = req.db.collection(collectionName);
+
+        if (validEstIds.length === 1) {
+            query = query.where('establishmentId', '==', validEstIds[0]);
+        } else {
+            query = query.where('establishmentId', 'in', validEstIds.slice(0, 10));
+        }
 
         const snapshot = await query.orderBy('name').get();
         const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -72,9 +95,7 @@ const getHierarchicalEntries = (collectionName) => async (req, res) => {
 const deleteHierarchicalEntry = (collectionName) => async (req, res) => {
     const { id } = req.params;
     try {
-        const docRef = req.db.collection(collectionName).doc(id);
-        // Na nova estrutura, o middleware garante o acesso, poderíamos adicionar validação extra se necessário
-        await docRef.delete();
+        await req.db.collection(collectionName).doc(id).delete();
         res.status(200).json({ message: 'Item excluído com sucesso.' });
     } catch (error) {
         handleFirestoreError(res, error, collectionName);
@@ -94,7 +115,7 @@ router.delete('/cost-centers/:id', deleteHierarchicalEntry('financial_cost_cente
 
 const createEntry = (collectionName) => async (req, res) => {
     const estId = req.body.establishmentId || req.user.establishmentId;
-    const { description, amount, dueDate, naturezaId, centroDeCustoId, notes, status, paymentDate, installments } = req.body;
+    const { description, amount, dueDate, naturezaId, centroDeCustoId, notes, status, paymentDate, installments, recurrenceId } = req.body;
     
     if (!description || amount === undefined || !dueDate) {
         return res.status(400).json({ message: 'Descrição, valor e data de vencimento são obrigatórios.' });
@@ -125,6 +146,7 @@ const createEntry = (collectionName) => async (req, res) => {
                     amount: currentInstallmentValue, dueDate: dueDateString,
                     naturezaId: naturezaId || null, centroDeCustoId: centroDeCustoId || null,
                     notes: notes || null, status: 'pending', paymentDate: null,
+                    recurrenceId: recurrenceId || null, // Garante gravação da recorrência
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             }
@@ -135,6 +157,7 @@ const createEntry = (collectionName) => async (req, res) => {
                 naturezaId: naturezaId || null, centroDeCustoId: centroDeCustoId || null,
                 notes: notes || null, status: status || 'pending',
                 paymentDate: status === 'paid' ? paymentDate : null,
+                recurrenceId: recurrenceId || null,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
             const docRef = req.db.collection(collectionName).doc();
@@ -149,24 +172,29 @@ const createEntry = (collectionName) => async (req, res) => {
 };
 
 const getEntries = (collectionName) => async (req, res) => {
-    const { startDate, endDate, natureId, costCenterId } = req.query; 
-    const contextId = req.query.contextId || req.user.establishmentId;
-    const contextType = req.query.contextType || 'BRANCH';
+    // Agora aceita a string de IDs do filtro da nova interface
+    const { startDate, endDate, natureId, costCenterId, establishmentId } = req.query; 
+    const fallbackId = req.query.contextId || req.user.establishmentId;
     const db = req.db;
     
     let entries = [];
     let previousBalance = 0; 
 
     try {
+        // Converte IDs solicitados num array seguro
+        const validEstIds = getAccessibleEstablishmentIds(req, establishmentId || fallbackId);
+
         // --- 1. Calcular Saldo Anterior com Aggregation Otimizada ---
         if (startDate) {
             let paidQuery = db.collection(collectionName)
                 .where('status', '==', 'paid')
                 .where('paymentDate', '<', startDate); 
 
-            if (contextType === 'GROUP') paidQuery = paidQuery.where('groupId', '==', contextId);
-            else if (contextType === 'COMPANY') paidQuery = paidQuery.where('companyId', '==', contextId);
-            else paidQuery = paidQuery.where('establishmentId', '==', contextId);
+            if (validEstIds.length === 1) {
+                paidQuery = paidQuery.where('establishmentId', '==', validEstIds[0]);
+            } else {
+                paidQuery = paidQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
+            }
 
             const aggregateSnapshot = await paidQuery.aggregate({ totalAmount: AggregateField.sum('amount') }).get();
             previousBalance = aggregateSnapshot.data().totalAmount || 0;
@@ -175,9 +203,11 @@ const getEntries = (collectionName) => async (req, res) => {
         // --- 2. Buscar Lançamentos ---
         let query = db.collection(collectionName).orderBy('dueDate', 'asc'); 
 
-        if (contextType === 'GROUP') query = query.where('groupId', '==', contextId);
-        else if (contextType === 'COMPANY') query = query.where('companyId', '==', contextId);
-        else query = query.where('establishmentId', '==', contextId);
+        if (validEstIds.length === 1) {
+            query = query.where('establishmentId', '==', validEstIds[0]);
+        } else {
+            query = query.where('establishmentId', 'in', validEstIds.slice(0, 10));
+        }
 
         if (startDate && endDate) {
             query = query.where('dueDate', '>=', startDate).where('dueDate', '<=', endDate);
@@ -186,7 +216,7 @@ const getEntries = (collectionName) => async (req, res) => {
         const snapshot = await query.get();
         let fetchedEntries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // --- 3. Filtrar em Memória ---
+        // --- 3. Filtrar em Memória (Natureza e CC) ---
         entries = fetchedEntries.filter(entry => {
             let passNature = true;
             let passCostCenter = true;
@@ -241,11 +271,13 @@ router.put('/payables/:id', updateEntry('financial_payables'));
 router.delete('/payables/:id', deleteEntry('financial_payables'));
 router.patch('/payables/:id/status', markAsPaid('financial_payables'));
 
-// --- Rota para Fluxo de Caixa (Dashboard) ---
+// =======================================================================
+// 📈 FLUXO DE CAIXA E DASHBOARD (PRESERVADO COM MULTI-TENANT)
+// =======================================================================
+
 router.get('/cash-flow', async (req, res) => {
     const { startDate, endDate, contextId, contextType = 'BRANCH' } = req.query;
-    const resolvedContextId = contextId || req.user.establishmentId;
-
+    
     if (!startDate || !endDate) return res.status(400).json({ message: 'Datas são obrigatórias.' });
 
     try {
@@ -253,18 +285,18 @@ router.get('/cash-flow', async (req, res) => {
         const start = new Date(startDate);
         const end = new Date(endDate + 'T23:59:59.999Z');
 
+        // 🔥 Aplica o filtro de múltiplas lojas no Dashboard Principal
+        const validEstIds = getAccessibleEstablishmentIds(req, contextId);
+
         let payQuery = db.collection('financial_payables').where('dueDate', '>=', startDate).where('dueDate', '<=', endDate);
         let recQuery = db.collection('financial_receivables').where('dueDate', '>=', startDate).where('dueDate', '<=', endDate);
 
-        if (contextType === 'GROUP') {
-            payQuery = payQuery.where('groupId', '==', resolvedContextId);
-            recQuery = recQuery.where('groupId', '==', resolvedContextId);
-        } else if (contextType === 'COMPANY') {
-            payQuery = payQuery.where('companyId', '==', resolvedContextId);
-            recQuery = recQuery.where('companyId', '==', resolvedContextId);
+        if (validEstIds.length === 1) {
+            payQuery = payQuery.where('establishmentId', '==', validEstIds[0]);
+            recQuery = recQuery.where('establishmentId', '==', validEstIds[0]);
         } else {
-            payQuery = payQuery.where('establishmentId', '==', resolvedContextId);
-            recQuery = recQuery.where('establishmentId', '==', resolvedContextId);
+            payQuery = payQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
+            recQuery = recQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
         }
 
         const [payablesSnapshot, receivablesSnapshot] = await Promise.all([
@@ -284,20 +316,17 @@ router.get('/cash-flow', async (req, res) => {
 
         financialData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // --- CALCULAR SALDO INICIAL ---
+        // --- CALCULAR SALDO INICIAL PARA O GRÁFICO ---
         let initialBalance = 0;
         let pastPayQuery = db.collection('financial_payables').where('status', '==', 'paid').where('paymentDate', '<', startDate);
         let pastRecQuery = db.collection('financial_receivables').where('status', '==', 'paid').where('paymentDate', '<', startDate);
 
-        if (contextType === 'GROUP') {
-            pastPayQuery = pastPayQuery.where('groupId', '==', resolvedContextId);
-            pastRecQuery = pastRecQuery.where('groupId', '==', resolvedContextId);
-        } else if (contextType === 'COMPANY') {
-            pastPayQuery = pastPayQuery.where('companyId', '==', resolvedContextId);
-            pastRecQuery = pastRecQuery.where('companyId', '==', resolvedContextId);
+        if (validEstIds.length === 1) {
+            pastPayQuery = pastPayQuery.where('establishmentId', '==', validEstIds[0]);
+            pastRecQuery = pastRecQuery.where('establishmentId', '==', validEstIds[0]);
         } else {
-            pastPayQuery = pastPayQuery.where('establishmentId', '==', resolvedContextId);
-            pastRecQuery = pastRecQuery.where('establishmentId', '==', resolvedContextId);
+            pastPayQuery = pastPayQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
+            pastRecQuery = pastRecQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
         }
 
         const [payablesAgg, receivablesAgg] = await Promise.all([
@@ -346,26 +375,24 @@ router.get('/cash-flow', async (req, res) => {
     }
 });
 
-// ROTA PARA O RESUMO DO DIA
+// ROTA PARA O RESUMO DO DIA NO CABEÇALHO (KPIs)
 router.get('/today-summary/:contextId', async (req, res) => {
     const { contextId } = req.params;
-    const { contextType = 'BRANCH' } = req.query;
     const { db } = req;
     const today = new Date().toISOString().split('T')[0];
 
     try {
+        const validEstIds = getAccessibleEstablishmentIds(req, contextId);
+
         let payQuery = db.collection('financial_payables').where('dueDate', '==', today);
         let recQuery = db.collection('financial_receivables').where('dueDate', '==', today);
 
-        if (contextType === 'GROUP') {
-            payQuery = payQuery.where('groupId', '==', contextId);
-            recQuery = recQuery.where('groupId', '==', contextId);
-        } else if (contextType === 'COMPANY') {
-            payQuery = payQuery.where('companyId', '==', contextId);
-            recQuery = recQuery.where('companyId', '==', contextId);
+        if (validEstIds.length === 1) {
+            payQuery = payQuery.where('establishmentId', '==', validEstIds[0]);
+            recQuery = recQuery.where('establishmentId', '==', validEstIds[0]);
         } else {
-            payQuery = payQuery.where('establishmentId', '==', contextId);
-            recQuery = recQuery.where('establishmentId', '==', contextId);
+            payQuery = payQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
+            recQuery = recQuery.where('establishmentId', 'in', validEstIds.slice(0, 10));
         }
 
         const [payablesSnapshot, receivablesSnapshot] = await Promise.all([payQuery.get(), recQuery.get()]);
