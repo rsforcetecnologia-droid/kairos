@@ -1,98 +1,70 @@
 /**
  * functions/index.js
- * Backend V4: Notificações
- * VERSÃO FINAL E LIMPA (Sem lógica de fidelidade duplicada)
+ * Backend Kairós: Versão Completa com Evolution API via Ngrok
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
+const express = require('express');
+const axios = require('axios');
 
 admin.initializeApp();
-
 const db = admin.firestore();
 
 // ============================================================================
-// SEÇÃO 1: AJUDANTES (Helpers)
+// CONFIGURAÇÕES DO SERVIDOR DE WHATSAPP (Evolution API)
+// ============================================================================
+const EVOLUTION_API_URL = "https://resupinate-dismally-lilyanna.ngrok-free.dev"; 
+const EVOLUTION_API_KEY = "kairos_senha_segura";
+const INSTANCE_NAME = "kairos_teste"; 
+
+// ============================================================================
+// SEÇÃO 1: AJUDANTES (Helpers Robustos)
 // ============================================================================
 
-// --- Formatação de Data e Hora ---
 function formatDate(dateValue) {
     if (!dateValue) return 'Data indefinida';
-    
-    // Converte Timestamp do Firestore para Date nativo JS, se necessário
     const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
-    
     if (isNaN(date.getTime())) return 'Data inválida';
 
     return date.toLocaleString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'America/Sao_Paulo'
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo'
     });
 }
 
-// --- Buscar Nome do Profissional ---
+// Busca o nome do profissional em 'professionals' ou 'users'
 async function getProfessionalName(professionalId) {
     if (!professionalId) return 'Profissional';
     try {
-        const docRef = db.collection('professionals').doc(professionalId);
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            return docSnap.data().name || 'Profissional';
-        } 
+        const docSnap = await db.collection('professionals').doc(professionalId).get();
+        if (docSnap.exists) return docSnap.data().name || 'Profissional';
         
-        const userRef = db.collection('users').doc(professionalId);
-        const userSnap = await userRef.get();
+        const userSnap = await db.collection('users').doc(professionalId).get();
         if(userSnap.exists) return userSnap.data().name || 'Profissional';
         
         return 'Profissional';
     } catch (e) {
-        console.error("Erro ao buscar nome do profissional:", e);
         return 'Profissional';
     }
 }
 
-// --- Busca tokens de notificação FILTRADOS ---
+// Lógica complexa de tokens e permissões que você tinha no código maior
 async function getTargetTokens(establishmentId, appointmentProfessionalId) {
     if (!establishmentId) return [];
-
-    const usersRef = db.collection("users");
-    const snapshotUsers = await usersRef
-        .where("establishmentId", "==", establishmentId)
-        .get();
-
-    if (snapshotUsers.empty) {
-        return [];
-    }
+    const snapshotUsers = await db.collection("users").where("establishmentId", "==", establishmentId).get();
+    if (snapshotUsers.empty) return [];
 
     const tokens = [];
-    
     snapshotUsers.forEach((doc) => {
         const userData = doc.data();
-        const userProfId = userData.professionalId;
-        const permissions = userData.permissions;
-
-        // Verifica a permissão dentro da estrutura correta 'agenda-section'
-        const canViewAll = 
-            (permissions && permissions['agenda-section'] && permissions['agenda-section'].view_all_prof === true) || 
-            (permissions === null || permissions === undefined) || 
-            (userData.view_all_prof === true || userData.view_all_prof === "true"); 
-
-        let shouldReceive = false;
-
-        // Regra 1: Dono/Gerente (vê tudo)
-        if (canViewAll) {
-            shouldReceive = true;
-        } 
-        // Regra 2: Profissional específico do agendamento
-        else if (userProfId && userProfId === appointmentProfessionalId) {
-            shouldReceive = true;
-        }
-
-        if (shouldReceive) {
+        // Verifica se o usuário tem permissão para ver todos ou se é o próprio profissional do agendamento
+        const canViewAll = (userData.permissions?.['agenda-section']?.view_all_prof === true) || 
+                          !userData.permissions || 
+                          userData.view_all_prof === true; 
+        
+        if (canViewAll || userData.professionalId === appointmentProfessionalId) {
             if (userData.fcmTokens && Array.isArray(userData.fcmTokens)) {
                 tokens.push(...userData.fcmTokens);
             } else if (userData.fcmToken) {
@@ -100,125 +72,137 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
             }
         }
     });
-
-    const uniqueTokens = [...new Set(tokens)];
-    return uniqueTokens;
+    return [...new Set(tokens)];
 }
 
-const webpushConfig = {
-    headers: { "Urgency": "high" },
-    fcmOptions: { link: "/app.html" }
-};
-
 // ============================================================================
-// SEÇÃO 2: NOTIFICAÇÕES (Gatilhos)
+// SEÇÃO 2: MOTOR DE ENVIO (Evolution API)
 // ============================================================================
 
-/**
- * Notificação de Novo Agendamento
- */
+async function sendWhatsAppMessage(toPhone, messageText) {
+    if (!toPhone) return;
+    
+    // Limpa o número: deixa só dígitos
+    let cleanPhone = toPhone.replace(/\D/g, '');
+    
+    // Garante o DDI 55 (Brasil) se o número for curto
+    if (cleanPhone.length <= 11) cleanPhone = '55' + cleanPhone;
+
+    try {
+        await axios.post(
+            `${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`,
+            {
+                "number": cleanPhone,
+                "text": messageText
+            },
+            {
+                headers: { 
+                    'apikey': EVOLUTION_API_KEY, 
+                    'Content-Type': 'application/json' 
+                }
+            }
+        );
+        console.log(`✅ Tentativa de envio para ${cleanPhone} processada.`);
+    } catch (error) {
+        // Isso vai mostrar no console do Firebase o motivo real se falhar
+        console.error(`❌ Erro detalhado na Evolution API:`, error.response?.data || error.message);
+    }
+}
+
+// ============================================================================
+// SEÇÃO 3: GATILHOS DO FIRESTORE (Notificações)
+// ============================================================================
+
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
-        const appointmentId = event.params.appointmentId;
-        const snapshot = event.data;
-        
-        if (!snapshot) return;
-
-        const appointment = snapshot.data();
-        
-        if (!appointment.establishmentId) {
-            console.error(">>> [ERRO] Agendamento sem establishmentId: ", appointmentId);
-            return;
-        }
-
-        const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
-        
-        if (tokens.length === 0) return;
+        const appointment = event.data?.data();
+        if (!appointment || !appointment.establishmentId) return;
 
         const clientName = appointment.clientName || "Cliente";
+        const clientPhone = appointment.clientPhone;
         const serviceName = appointment.serviceName || (appointment.services && appointment.services[0]?.name) || "Serviço";
         const professionalName = await getProfessionalName(appointment.professionalId);
         const dateString = formatDate(appointment.startTime || appointment.time);
 
-        const title = "📅 Novo Agendamento!";
-        const body = `${clientName} agendou "${serviceName}" para ${dateString} com ${professionalName}.`;
+        // 1. Enviar WhatsApp para o Cliente
+        if (clientPhone) {
+            const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento no Kairós foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por si!`;
+            await sendWhatsAppMessage(clientPhone, zapMessage);
+        }
 
-        const message = {
-            notification: { title, body },
-            data: {
-                type: "new_appointment",
-                title,
-                body,
-                url: "/app.html",
-                appointmentId: appointmentId
-            },
-            android: {
-                priority: "high",
-                ttl: 3600 * 24, // 24 horas
-                notification: {
-                    channelId: 'default',
-                    icon: 'ic_stat_notification', 
-                    color: '#4f46e5',
-                    defaultSound: true,
-                    visibility: 'public',
-                    priority: 'high'
-                }
-            },
-            webpush: webpushConfig,
-            tokens: tokens,
-        };
-
-        try {
-            await admin.messaging().sendEachForMulticast(message);
-        } catch (error) {
-            console.error(">>> [ERRO CRÍTICO] Falha no envio:", error);
+        // 2. Enviar Push Notification para a Equipe (Layout Completo)
+        const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
+        if (tokens.length > 0) {
+            const title = "📅 Novo Agendamento!";
+            const body = `${clientName} agendou "${serviceName}" para ${dateString} com ${professionalName}.`;
+            const message = {
+                notification: { title, body },
+                data: { 
+                    type: "new_appointment", 
+                    appointmentId: event.params.appointmentId,
+                    url: "/app.html" 
+                },
+                android: { 
+                    priority: "high", 
+                    notification: { 
+                        channelId: 'default', 
+                        icon: 'ic_stat_notification', 
+                        color: '#4f46e5' 
+                    } 
+                },
+                tokens: tokens,
+            };
+            try { await admin.messaging().sendEachForMulticast(message); } catch (e) { console.error(e); }
         }
     }
 );
 
-/**
- * Notificação de Cancelamento (APENAS)
- */
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
     async (event) => {
         const before = event.data.before.data();
         const after = event.data.after.data();
-        const appointmentId = event.params.appointmentId;
 
-        // --- A. Lógica de Cancelamento ---
         const isCancelled = (after.status === "cancelled" || after.status === "cancelado") &&
                             (before.status !== "cancelled" && before.status !== "cancelado");
 
         if (isCancelled) {
-            const tokens = await getTargetTokens(after.establishmentId, after.professionalId);
-            if (tokens.length > 0) {
-                const clientName = after.clientName || "Cliente";
-                const serviceName = after.serviceName || (after.services && after.services[0]?.name) || "Serviço";
-                const professionalName = await getProfessionalName(after.professionalId);
-                const dateString = formatDate(after.startTime || after.time);
+            const clientName = after.clientName || "Cliente";
+            const dateString = formatDate(after.startTime || after.time);
 
-                const title = "❌ Agendamento Cancelado";
-                const body = `${clientName} cancelou "${serviceName}" de ${dateString} com ${professionalName}.`;
-
-                const message = {
-                    notification: { title, body },
-                    data: { type: "cancellation", title, body, url: "/app.html" },
-                    android: {
-                        priority: "high",
-                        notification: {
-                            channelId: 'default',
-                            icon: 'ic_stat_notification',
-                            color: '#dc2626',
-                            defaultSound: true
-                        }
-                    },
-                    webpush: webpushConfig,
-                    tokens: tokens,
-                };
-                await admin.messaging().sendEachForMulticast(message).catch(e => console.error(e));
+            if (after.clientPhone) {
+                const msg = `Olá ${clientName}. ❌ O seu agendamento para o dia ${dateString} foi CANCELADO.\n\nPara remarcar, envie-nos uma mensagem!`;
+                await sendWhatsAppMessage(after.clientPhone, msg);
             }
         }
     }
 );
+
+// ============================================================================
+// SEÇÃO 4: RECEBENDO MENSAGENS (Webhook)
+// ============================================================================
+
+const whatsappApp = express();
+whatsappApp.use(express.json());
+
+whatsappApp.post('/webhook', async (req, res) => {
+    const body = req.body;
+
+    if (body.event === "messages.upsert") {
+        const msgData = body.data;
+        if (msgData.key.fromMe) return res.sendStatus(200);
+
+        const phoneNumber = msgData.key.remoteJid.split('@')[0];
+        const textBody = msgData.message?.conversation || msgData.message?.extendedTextMessage?.text;
+        
+        console.log(`📩 Nova mensagem de ${phoneNumber}: ${textBody}`);
+
+        if (textBody?.toLowerCase() === 'oi' || textBody?.toLowerCase() === 'olá') {
+            await sendWhatsAppMessage(phoneNumber, "Olá! O sistema Kairós está online. Como posso ajudar? 😎");
+        }
+    }
+    res.sendStatus(200);
+});
+
+exports.whatsapp = onRequest(whatsappApp);
