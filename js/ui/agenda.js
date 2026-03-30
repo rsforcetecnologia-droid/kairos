@@ -1,6 +1,5 @@
-// js/ui/agenda.js (Layout Definitivo: 3 Colunas Travadas, Header Compacto e Filtros Ocultos)
+// js/ui/agenda.js
 
-// --- 1. IMPORTAÇÕES ---
 import * as appointmentsApi from '../api/appointments.js';
 import * as servicesApi from '../api/services.js';
 import * as professionalsApi from '../api/professionals.js';
@@ -12,21 +11,19 @@ import { showNotification, showConfirmation, showGenericModal } from '../compone
 import { navigateTo } from '../main.js';
 import { escapeHTML } from '../utils.js';
 
-// --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
 const contentDiv = document.getElementById('content');
 let currentTimeInterval = null;
 let hasContentDelegationInitialized = false; 
 
-// PALETA DE CORES
 const colorPalette = [
-    { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5' }, // Indigo
-    { bg: '#d1fae5', border: '#059669', main: '#059669' }, // Emerald
-    { bg: '#ffe4e6', border: '#e11d48', main: '#e11d48' }, // Rose
-    { bg: '#fef3c7', border: '#d97706', main: '#d97706' }, // Amber
-    { bg: '#cffafe', border: '#0e7490', main: '#0e7490' }, // Cyan
-    { bg: '#e0f2fe', border: '#0284c7', main: '#0284c7' }, // Sky
-    { bg: '#ede9fe', border: '#7c3aed', main: '#7c3aed' }, // Violet
-    { bg: '#fce7f3', border: '#db2777', main: '#db2777' }, // Fuchsia
+    { bg: '#e0e7ff', border: '#4f46e5', main: '#4f46e5', light: '#c7d2fe' }, 
+    { bg: '#d1fae5', border: '#059669', main: '#059669', light: '#a7f3d0' }, 
+    { bg: '#ffe4e6', border: '#e11d48', main: '#e11d48', light: '#fecdd3' }, 
+    { bg: '#fef3c7', border: '#d97706', main: '#d97706', light: '#fde68a' }, 
+    { bg: '#cffafe', border: '#0e7490', main: '#0e7490', light: '#a5f3fc' }, 
+    { bg: '#e0f2fe', border: '#0284c7', main: '#0284c7', light: '#bae6fd' }, 
+    { bg: '#ede9fe', border: '#7c3aed', main: '#7c3aed', light: '#ddd6fe' }, 
+    { bg: '#fce7f3', border: '#db2777', main: '#db2777', light: '#fbcfe8' }, 
 ];
 
 let availableServicesForModal = [];
@@ -34,10 +31,9 @@ let availableProfessionalsForModal = [];
 let loyaltySettingsForModal = {};
 let allClientsData = []; 
 
-// Estado local
 let localState = {
-    currentView: 'list', 
-    weekViewDays: 7, 
+    currentView: window.innerWidth < 768 ? 'list' : 'week', 
+    weekViewDays: window.innerWidth < 768 ? 3 : 7, 
     currentDate: new Date(),
     selectedProfessionalId: 'all', 
     profSearchTerm: '', 
@@ -47,26 +43,18 @@ let localState = {
     selectedItems: new Set() 
 };
 
-// ESTADO DO NOVO AGENDAMENTO
 let newAppointmentState = {
     step: 1, 
     data: {
-        id: null, 
-        clientName: '',
-        clientPhone: '',
-        selectedServiceIds: [],
-        professionalId: null,
-        professionalName: '',
-        date: null,
-        time: null,
-        redeemedReward: null,
-        clientHasRewards: false,
-        clientLoyaltyPoints: 0
+        id: null, clientName: '', clientPhone: '', selectedServiceIds: [],
+        professionalId: null, professionalName: '', date: null, time: null,
+        redeemedReward: null, clientHasRewards: false, clientLoyaltyPoints: 0
     }
 };
 
-function formatDateReduced(date) {
-    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(date);
+// 🔥 CORREÇÃO: Função que estava a faltar adicionada aqui
+function getActiveWeekDays() {
+    return localState.weekViewDays || 7;
 }
 
 function getWeekStart(date) {
@@ -80,54 +68,38 @@ function getWeekStart(date) {
     return d;
 }
 
+// ============================================================================
+// 🎨 RENDERIZAÇÃO DA UI DA AGENDA
+// ============================================================================
+
 function renderProfessionalSelector() {
     const container = document.getElementById('profSelectorContainer');
-    const searchTerm = localState.profSearchTerm.toLowerCase();
-    
     if (!container || !state.professionals) return;
 
-    let availableProfs = state.professionals.filter(p => 
-        localState.showInactiveProfs || p.status !== 'inactive'
-    );
+    let availableProfs = state.professionals.filter(p => localState.showInactiveProfs || p.status !== 'inactive');
 
-    if (searchTerm) {
-        availableProfs = availableProfs.filter(p => 
-            p.name.toLowerCase().includes(searchTerm)
-        );
-    }
-    
     const allOption = [{ id: 'all', name: 'Todos', photo: null, status: 'active' }];
     const professionalsToRender = [...allOption, ...availableProfs];
 
-    container.innerHTML = professionalsToRender.map(prof => {
+    container.innerHTML = professionalsToRender.map((prof) => {
         const isSelected = localState.selectedProfessionalId === prof.id;
         const profName = prof.name === 'Todos' ? 'Todos' : prof.name.split(' ')[0];
         const initials = prof.name === 'Todos' ? 'T' : prof.name.charAt(0).toUpperCase();
         const isActive = prof.status !== 'inactive';
         
-        const safeName = escapeHTML(profName);
-        
         const defaultColor = colorPalette[0];
-        const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : defaultColor;
+        const profColor = prof.id !== 'all' ? state.professionalColors.get(prof.id) || defaultColor : { main: '#6b7280', light: '#f3f4f6' };
         
-        const photoSrc = prof.photo || `https://placehold.co/64x64/${profColor.main?.replace('#', '') || 'E0E7FF'}/${profColor.light?.replace('#', '') || '4F46E5'}?text=${initials}`;
-        const placeholderBg = prof.id === 'all' ? '#e0e7ff' : profColor.light;
-        const placeholderText = prof.id === 'all' ? '#4f46e5' : profColor.main;
-        
-        const borderColor = isSelected ? profColor.border : 'transparent'; 
-        const borderStyle = `border: 3px solid ${borderColor}; box-shadow: ${isSelected ? '0 0 0 2px ' + profColor.border : 'none'};`;
+        const ringStyle = isSelected ? `ring-2 ring-offset-2 ring-[${profColor.main}]` : 'ring-1 ring-gray-200 hover:ring-gray-300';
+        const opacityStyle = !isActive ? 'opacity-50 grayscale' : '';
+        const bgStyle = prof.photo ? `background-image: url('${prof.photo}'); background-size: cover; background-position: center;` : `background-color: ${profColor.light}; color: ${profColor.main};`;
 
         return `
-            <div class="prof-card flex-shrink-0 ${isSelected ? 'selected' : ''} ${!isActive ? 'opacity-50' : ''}" 
-                 data-action="select-professional" 
-                 data-prof-id="${prof.id}">
-                ${prof.id === 'all' 
-                    ? `<div class="prof-card-all-placeholder" style="background-color: ${placeholderBg}; color: ${placeholderText}; ${borderStyle}">
-                           ${initials}
-                          </div>`
-                    : `<img src="${photoSrc}" alt="${safeName}" class="prof-card-photo" style="${borderStyle}" />`
-                }
-                <span class="prof-card-name">${safeName}</span>
+            <div class="flex flex-col items-center gap-1 cursor-pointer group flex-shrink-0 ${opacityStyle}" data-action="select-professional" data-prof-id="${prof.id}">
+                <div class="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all shadow-sm ${ringStyle}" style="${bgStyle}">
+                    ${!prof.photo ? initials : ''}
+                </div>
+                <span class="text-xs font-medium ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-500'} truncate w-14 text-center">${escapeHTML(profName)}</span>
             </div>
         `;
     }).join('');
@@ -138,8 +110,7 @@ function createWhatsAppLink(phone, clientName, serviceName, professionalName, st
     const date = new Date(startTime).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
     const time = new Date(startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const message = `Olá, ${clientName}! Você tem um agendamento de ${serviceName} com o(a) profissional ${professionalName} para o dia ${date} às ${time}. Podemos confirmar? Agradecemos a preferência!`;
-    const encodedMessage = encodeURIComponent(message);
-    return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`;
+    return `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}`;
 }
 
 function renderListView(allEvents) {
@@ -149,7 +120,15 @@ function renderListView(allEvents) {
     allEvents.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
 
     if (allEvents.length === 0) {
-        agendaView.innerHTML = `<div class="text-center p-10 text-gray-500"><svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><h3 class="mt-2 text-sm font-medium text-gray-900">Nenhum agendamento ou bloqueio</h3><p class="mt-1 text-sm text-gray-500">Não há eventos para o dia e filtros selecionados.</p></div>`;
+        agendaView.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-20 bg-white border border-dashed border-gray-300 rounded-xl mx-4 mt-4 w-full max-w-4xl">
+                <div class="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mb-3 border border-gray-100">
+                    <i class="bi bi-calendar-x text-xl text-gray-400"></i>
+                </div>
+                <h3 class="text-base font-semibold text-gray-800 mb-1">Agenda Livre</h3>
+                <p class="text-sm text-gray-500">Nenhum evento programado para este dia.</p>
+            </div>
+        `;
         return;
     }
 
@@ -158,87 +137,76 @@ function renderListView(allEvents) {
         const endTime = new Date(event.endTime);
         const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const endTimeStr = endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        const profColor = state.professionalColors.get(event.professionalId) || { bg: '#d1d5db' };
+        const profColor = state.professionalColors.get(event.professionalId) || { border: '#cbd5e1' };
         
-        const safeReason = escapeHTML(event.reason);
-        const safeProfName = escapeHTML(event.professionalName || 'Indefinido');
-        const safeClientName = escapeHTML(event.clientName);
-        const safeServiceName = escapeHTML(event.serviceName);
-
         const isSelected = localState.selectedItems.has(event.id);
-        const checkboxHTML = localState.isSelectionMode 
-            ? `<div class="flex items-center justify-center pr-3 border-r border-gray-200 mr-3">
-                 <input type="checkbox" class="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer" 
-                        data-action="toggle-select-item" 
-                        data-id="${event.id}" 
-                        ${isSelected ? 'checked' : ''}>
-               </div>` 
-            : '';
+        const checkboxHTML = localState.isSelectionMode ? `
+            <div class="flex items-center justify-center pr-4 border-r border-gray-100 mr-4">
+                 <input type="checkbox" class="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" data-action="toggle-select-item" data-id="${event.id}" ${isSelected ? 'checked' : ''}>
+            </div>` : '';
 
         if (event.type === 'blockage') {
             return `
-                <div class="appointment-list-card bg-red-50" style="border-left-color: ${profColor.border};">
+                <div class="bg-red-50/30 hover:bg-red-50 transition-colors border border-red-100 rounded-lg p-4 flex items-center shadow-sm relative overflow-hidden group">
+                    <div class="absolute left-0 top-0 bottom-0 w-1" style="background-color: ${profColor.border};"></div>
                     ${checkboxHTML}
-                    <div class="time-info">
-                        <p class="font-bold text-md">${startTimeStr}</p>
-                        <p class="text-xs text-gray-500">${endTimeStr}</p>
+                    <div class="w-20 text-left border-r border-red-100 pr-4 mr-4">
+                        <p class="font-bold text-lg text-red-900">${startTimeStr}</p>
+                        <p class="text-xs text-red-400 mt-0.5">${endTimeStr}</p>
                     </div>
-                    <div class="details-info min-w-0">
-                        <p class="font-bold text-red-800 truncate">${safeReason}</p>
-                        <p class="text-sm text-gray-600 truncate">com ${safeProfName}</p>
+                    <div class="flex-1 min-w-0 text-left">
+                        <p class="font-semibold text-red-800 truncate text-base">${escapeHTML(event.reason)}</p>
+                        <p class="text-sm text-red-500 truncate flex items-center gap-1 mt-0.5"><i class="bi bi-person-slash"></i> ${escapeHTML(event.professionalName)}</p>
                     </div>
-                    <div class="status-info">
-                        <span class="status-badge bg-red-100 text-red-800">Bloqueio</span>
-                    </div>
+                    <span class="bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-1 rounded hidden md:block">Bloqueio</span>
                 </div>`;
         }
 
         const isCompleted = event.status === 'completed';
-        const statusClass = isCompleted ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800';
-        const statusText = isCompleted ? 'Finalizado' : 'Aberto';
-        const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
-        
         const isRedeemed = event.redeemedReward?.points > 0;
         const hasRewards = event.hasRewards && !isRedeemed;
+        const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
-
         const cardAction = localState.isSelectionMode ? '' : 'data-action="open-comanda"';
 
         return `
-            <div class="appointment-list-card" data-appointment='${apptDataString}' style="border-left-color: ${profColor.border};">
+            <div class="bg-white hover:bg-gray-50 transition-colors border ${isCompleted ? 'border-emerald-100' : 'border-gray-200'} rounded-lg p-4 flex items-center shadow-sm relative overflow-hidden group cursor-pointer" data-appointment='${apptDataString}'>
+                <div class="absolute left-0 top-0 bottom-0 w-1" style="background-color: ${profColor.border};"></div>
                 ${checkboxHTML}
-                <div class="time-info" ${cardAction}>
-                    <p class="font-bold text-md">${startTimeStr}</p>
-                    <p class="text-xs text-gray-500">${endTimeStr}</p>
+                
+                <div class="w-20 text-left border-r border-gray-100 pr-4 mr-4" ${cardAction}>
+                    <p class="font-bold text-lg text-gray-900 ${isCompleted ? 'opacity-50 line-through' : ''}">${startTimeStr}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">${endTimeStr}</p>
                 </div>
-                <div class="details-info min-w-0" ${cardAction}>
-                    <p class="font-bold text-gray-800 truncate">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
-                    <p class="text-sm text-gray-600 truncate">${safeServiceName}</p>
-                    <p class="text-xs text-gray-500 truncate">com ${safeProfName}</p>
-                    ${isRedeemed ? '<p class="text-xs font-semibold text-purple-600">Resgate de Prémio</p>' : ''}
-                </div>
-                <div class="status-info">
-                    <span class="status-badge ${statusClass} mb-1">${statusText}</span>
-                    <div class="card-actions flex gap-1 items-center">
-                        ${!isCompleted ? `
-                            <a href="${whatsappLink}" target="_blank" class="action-btn text-green-500 hover:text-green-700 p-1" title="Enviar Confirmação WhatsApp">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12.036 2a10 10 0 100 20 10 10 0 000-20zM17.5 14.8c-.24.125-1.465.716-1.696.804-.23.09-.49.135-.75.045-.26-.09-.982-.322-1.87-.965-.888-.643-1.474-1.442-1.64-1.748-.166-.307-.015-.467.106-.615.116-.149.23-.388.344-.582.113-.193.15-.327.1-.462-.05-.136-.264-.322-.544-.654-.28-.332-.572-.782-.828-.958-.255-.176-.438-.158-.61-.158-.173 0-.374-.022-.574-.022-.2 0-.54.075-.826.375-.285.3-.99.965-.99 2.355 0 1.43 1.018 2.872 1.16 3.072.14.2 2 3.047 4.86 4.218 2.86 1.17 2.86.786 3.376 1.054.516.268 1.49.462 1.696.406.206-.057 1.463-.615 1.67-.887.2-.27.2-.504.14-.615-.058-.11-.23-.166-.48-.306z"/></svg>
-                            </a>
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn" title="Editar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        ` : `
-                            <button data-action="edit-appointment" data-appointment='${apptDataString}' class="action-btn opacity-40 cursor-not-allowed" title="Finalizado - Não editável" disabled><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                        `}
-                        <button data-action="delete-appointment" data-id="${event.id}" class="action-btn" title="Apagar Agendamento"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                
+                <div class="flex-1 min-w-0 text-left" ${cardAction}>
+                    <div class="flex items-center gap-2 mb-1">
+                        <p class="font-semibold text-gray-800 truncate text-base ${isCompleted ? 'opacity-50' : ''}">${hasRewards ? '🎁 ' : ''}${escapeHTML(event.clientName)}</p>
+                        ${isRedeemed ? '<span class="bg-purple-100 text-purple-700 text-xs font-medium px-2 py-0.5 rounded">Resgate</span>' : ''}
+                        ${isCompleted ? '<span class="bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs font-medium px-2 py-0.5 rounded"><i class="bi bi-check2"></i> Finalizado</span>' : ''}
                     </div>
+                    <p class="text-sm text-gray-600 truncate mb-1">${escapeHTML(event.serviceName)}</p>
+                    <p class="text-sm text-gray-400 truncate flex items-center gap-1"><i class="bi bi-person text-gray-300"></i> ${escapeHTML(event.professionalName)}</p>
+                </div>
+
+                <div class="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity pl-4">
+                    ${!isCompleted ? `
+                        <a href="${whatsappLink}" target="_blank" class="w-9 h-9 rounded-full bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100 transition-colors shadow-sm" title="Confirmar WhatsApp" onclick="event.stopPropagation()">
+                            <i class="bi bi-whatsapp"></i>
+                        </a>
+                        <button data-action="edit-appointment" data-appointment='${apptDataString}' class="w-9 h-9 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors shadow-sm" title="Editar">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    ` : ''}
+                    <button data-action="delete-appointment" data-id="${event.id}" class="w-9 h-9 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 transition-colors shadow-sm" title="Excluir">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
             </div>`;
     }).join('');
     
-    agendaView.innerHTML = `<div class="list-view-container space-y-2 pb-24">${cardsHTML}</div>`;
-}
-
-function getActiveWeekDays() {
-    return localState.weekViewDays; 
+    // Layout em largura total com leve margem (w-full px-4) em vez de ficar centralizado e espremido.
+    agendaView.innerHTML = `<div class="w-full px-4 pt-4 pb-24 space-y-3 bg-white min-h-[50vh]">${cardsHTML}</div>`;
 }
 
 function renderWeekView(allEvents) {
@@ -248,19 +216,19 @@ function renderWeekView(allEvents) {
     const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekStart = getWeekStart(localState.currentDate);
     const numDays = getActiveWeekDays();
-    
     const isMobile = window.innerWidth < 768;
     const daysToShow = isMobile ? 3 : numDays; 
     
     const percentWidth = 100 / daysToShow;
-    const colStyle = `flex: 0 0 ${percentWidth}%; width: ${percentWidth}%; max-width: ${percentWidth}%; box-sizing: border-box; overflow: hidden;`;
+    const colStyle = `flex: 0 0 ${percentWidth}%; width: ${percentWidth}%; max-width: ${percentWidth}%;`;
 
     let weekHTML = `
         <style>
-            .agenda-scroll-container::-webkit-scrollbar { display: none; }
-            .agenda-scroll-container { -ms-overflow-style: none; scrollbar-width: none; }
+            .agenda-scroll-container::-webkit-scrollbar { height: 6px; }
+            .agenda-scroll-container::-webkit-scrollbar-track { background: #f9fafb; }
+            .agenda-scroll-container::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
         </style>
-        <div class="flex divide-x divide-gray-100 min-h-[65vh] overflow-x-auto overflow-y-hidden snap-x snap-mandatory agenda-scroll-container w-full" style="scroll-behavior: smooth;">
+        <div class="flex h-full min-h-[70vh] overflow-x-auto overflow-y-hidden snap-x snap-mandatory agenda-scroll-container divide-x divide-gray-100 bg-white w-full">
     `;
 
     for (let i = 0; i < numDays; i++) {
@@ -273,74 +241,53 @@ function renderWeekView(allEvents) {
             .filter(event => new Date(event.startTime).toDateString() === day.toDateString())
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
-        let eventsHTML = '<div class="flex-grow overflow-y-auto overflow-x-hidden px-1 py-1.5 space-y-2 pb-24 min-w-0">'; 
+        let eventsHTML = '<div class="flex-grow overflow-y-auto px-2 py-3 space-y-2 pb-24 custom-scrollbar bg-white">'; 
         if (dayEvents.length > 0) {
             eventsHTML += dayEvents.map(event => {
-                const startTime = new Date(event.startTime);
-                const startTimeStr = startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                const profColor = state.professionalColors.get(event.professionalId) || { bg: '#e5e7eb', main: '#9ca3af', border: '#9ca3af' };
-                
-                const safeReason = escapeHTML(event.reason);
+                const startTime = new Date(event.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const profColor = state.professionalColors.get(event.professionalId) || { main: '#9ca3af' };
                 const safeProfName = escapeHTML(event.professionalName || 'Indefinido');
-                const safeClientName = escapeHTML(event.clientName);
-                const safeServiceName = escapeHTML(event.serviceName);
 
                 if (event.type === 'blockage') {
                     return `
-                        <div class="relative p-1.5 rounded-md bg-red-50 border border-red-100 shadow-sm overflow-hidden min-w-0 w-full">
-                            <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-500"></div>
-                            <div class="pl-1 min-w-0 flex flex-col">
-                                <span class="font-bold text-[10px] text-red-900 tracking-tight block truncate">${startTimeStr}</span>
-                                <p class="font-bold text-[10px] text-red-800 truncate leading-tight mt-0.5 w-full">${safeReason}</p>
-                                <p class="text-[9px] text-red-600 truncate mt-1 w-full">${safeProfName.split(' ')[0]}</p>
-                            </div>
+                        <div class="relative p-2.5 rounded-lg bg-red-50/50 border border-red-100 overflow-hidden flex flex-col text-left">
+                            <div class="absolute left-0 top-0 bottom-0 w-1 bg-red-400"></div>
+                            <span class="font-semibold text-xs text-red-800 mb-0.5">${startTime}</span>
+                            <p class="font-medium text-xs text-red-600 leading-tight truncate">${escapeHTML(event.reason)}</p>
                         </div>
                     `;
                 }
 
                 const apptDataString = JSON.stringify(event).replace(/'/g, "&apos;");
-                const isRedeemed = event.redeemedReward?.points > 0;
-                const hasRewards = event.hasRewards && !isRedeemed;
                 const isCompleted = event.status === 'completed';
 
                 return `
-                    <div class="relative p-1.5 rounded-md bg-white border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all duration-200 overflow-hidden min-w-0 w-full flex flex-col" 
+                    <div class="relative p-2.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 shadow-sm cursor-pointer transition-all flex flex-col group text-left ${isCompleted ? 'opacity-60 bg-gray-50' : ''}" 
                          data-action="open-comanda" data-appointment='${apptDataString}'>
-                        
                         <div class="absolute left-0 top-0 bottom-0 w-1" style="background-color: ${profColor.main};"></div>
-
-                        <div class="pl-1 min-w-0 w-full flex flex-col h-full justify-center">
-                            <div class="flex justify-between items-center mb-0.5 min-w-0 gap-1">
-                                <span class="font-bold text-[10px] text-gray-800 truncate flex-grow">${startTimeStr}</span>
-                                ${isCompleted ? '<span class="text-[7px] font-bold bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded-sm leading-none flex-shrink-0">OK</span>' : ''}
-                            </div>
-
-                            <p class="font-bold text-[10px] text-gray-800 truncate leading-tight w-full">${hasRewards ? '🎁 ' : ''}${safeClientName}</p>
-                            <p class="text-[9px] text-gray-500 truncate mt-0.5 leading-tight w-full">${safeServiceName}</p>
-                            <p class="text-[8px] text-gray-400 truncate leading-none mt-1.5 w-full">${safeProfName.split(' ')[0]}</p>
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="font-semibold text-xs text-gray-900">${startTime}</span>
+                            ${isCompleted ? '<i class="bi bi-check2 text-emerald-500"></i>' : ''}
                         </div>
+                        <p class="font-semibold text-sm text-gray-800 leading-tight truncate mb-1">${escapeHTML(event.clientName)}</p>
+                        <p class="text-xs text-gray-500 truncate">${safeProfName.split(' ')[0]}</p>
                     </div>
                 `;
             }).join('');
         } else {
-            eventsHTML += `
-                <div class="flex flex-col items-center justify-center pt-8 opacity-40 min-w-0 w-full">
-                    <span class="text-[10px] font-medium text-gray-400 truncate">Livre</span>
-                </div>`;
+            eventsHTML += `<div class="flex flex-col items-center justify-center pt-10 opacity-40"><span class="text-xs font-medium text-gray-400">Livre</span></div>`;
         }
         eventsHTML += '</div>';
 
-        const headerClass = isCurrentDay 
-            ? 'bg-indigo-600 text-white shadow-md' 
-            : 'bg-gray-50/95 backdrop-blur-sm text-gray-700 border-b border-gray-200';
+        const headerClass = isCurrentDay ? 'bg-indigo-50 border-b-2 border-indigo-500' : 'bg-gray-50 border-b border-gray-200';
+        const dayColor = isCurrentDay ? 'text-indigo-600' : 'text-gray-500';
+        const numColor = isCurrentDay ? 'text-indigo-900' : 'text-gray-800';
 
         weekHTML += `
             <div class="flex flex-col snap-start shrink-0 relative" style="${colStyle}">
-                <div class="sticky top-0 z-10 text-center py-2 ${headerClass}">
-                    <p class="text-[9px] uppercase tracking-widest font-bold opacity-80 mb-0.5 leading-none">${weekDays[day.getDay()]}</p>
-                    <div class="flex items-baseline justify-center gap-0.5 mt-1">
-                        <span class="text-[16px] font-extrabold leading-none">${day.getDate()}</span>
-                    </div>
+                <div class="sticky top-0 z-10 text-center py-3 ${headerClass}">
+                    <p class="text-xs font-semibold ${dayColor} mb-0.5">${weekDays[day.getDay()]}</p>
+                    <span class="text-xl font-bold ${numColor} leading-none">${day.getDate()}</span>
                 </div>
                 ${eventsHTML}
             </div>
@@ -349,15 +296,6 @@ function renderWeekView(allEvents) {
 
     weekHTML += '</div>';
     agendaView.innerHTML = weekHTML;
-    
-    setTimeout(() => {
-        const container = agendaView.querySelector('.agenda-scroll-container');
-        const todayCol = container?.querySelector('.bg-indigo-600');
-        if (container && todayCol) {
-            const colParent = todayCol.parentElement;
-            container.scrollTo({ left: colParent.offsetLeft, behavior: 'smooth' });
-        }
-    }, 150);
 }
 
 function renderAgenda() {
@@ -366,11 +304,8 @@ function renderAgenda() {
         return profMatch;
     });
 
-    if (localState.currentView === 'list') {
-        renderListView(filteredEvents);
-    } else {
-        renderWeekView(filteredEvents);
-    }
+    if (localState.currentView === 'list') renderListView(filteredEvents);
+    else renderWeekView(filteredEvents);
     
     updateBatchDeleteUI();
 }
@@ -378,16 +313,14 @@ function renderAgenda() {
 function updateBatchDeleteUI() {
     const container = document.getElementById('batch-delete-container');
     const fabButton = document.querySelector('[data-action="new-appointment"]');
-    
     if (!container) return;
 
     if (localState.isSelectionMode && localState.selectedItems.size > 0) {
         container.innerHTML = `
-            <div class="bg-white p-4 rounded-xl shadow-2xl border border-red-100 flex items-center justify-between gap-4">
-                <span class="font-bold text-gray-800">${localState.selectedItems.size} selecionado(s)</span>
-                <button data-action="batch-delete" class="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 shadow-md flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    Excluir
+            <div class="bg-gray-900 text-white p-3 rounded-xl shadow-xl flex items-center justify-between gap-4 animate-fade-in-up">
+                <span class="font-semibold text-sm ml-2"><span class="text-indigo-400">${localState.selectedItems.size}</span> itens selecionados</span>
+                <button data-action="batch-delete" class="bg-red-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-red-700 shadow-md text-sm flex items-center gap-2 transition-colors">
+                    <i class="bi bi-trash"></i> Excluir
                 </button>
             </div>
         `;
@@ -399,6 +332,10 @@ function updateBatchDeleteUI() {
     }
 }
 
+// ============================================================================
+// 📡 COMUNICAÇÃO DE DADOS
+// ============================================================================
+
 async function fetchAndDisplayAgenda() {
     const agendaView = document.getElementById('agenda-view');
     if (!agendaView) return;
@@ -406,124 +343,70 @@ async function fetchAndDisplayAgenda() {
     localState.selectedItems.clear();
     updateBatchDeleteUI();
     
-    agendaView.innerHTML = '<div class="loader mx-auto my-10"></div>';
+    agendaView.innerHTML = '<div class="loader mx-auto my-16 border-gray-400"></div>';
 
     let start, end;
-    const weekRangeSpan = document.getElementById('weekRange');
-
-    if (!weekRangeSpan) return;
+    const dateDisplay = document.getElementById('current-date-display');
 
     if (localState.currentView === 'list') {
         start = new Date(localState.currentDate);
         start.setHours(0, 0, 0, 0);
         end = new Date(localState.currentDate);
         end.setHours(23, 59, 59, 999);
-        weekRangeSpan.textContent = formatDateReduced(start);
+        if(dateDisplay) dateDisplay.textContent = start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).replace(' de ', ' de ');
     } else {
         const numDays = getActiveWeekDays(); 
-        
         start = getWeekStart(new Date(localState.currentDate)); 
         end = new Date(start);
         end.setDate(start.getDate() + (numDays - 1)); 
         end.setHours(23, 59, 59, 999);
-        
-        const startStr = start.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
-        const endStr = end.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
-        weekRangeSpan.textContent = `${startStr} a ${endStr}`;
-    }
-
-    const dateInput = document.getElementById('dateFilterInput');
-    if (dateInput) {
-        const d = localState.currentDate;
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        dateInput.value = `${year}-${month}-${day}`;
+        if(dateDisplay) {
+            const startStr = start.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short'});
+            const endStr = end.toLocaleDateString('pt-BR', {day: '2-digit', month: 'short', year: 'numeric'});
+            dateDisplay.textContent = `${startStr} — ${endStr}`;
+        }
     }
 
     try {
-        const appointmentsData = await appointmentsApi.getAppointmentsByDateRange(
-            state.establishmentId, 
-            start.toISOString(), 
-            end.toISOString(), 
-            localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId
-        );
-        
-        const blockagesData = await blockagesApi.getBlockagesByDateRange(
-            state.establishmentId, 
-            start.toISOString(), 
-            end.toISOString(), 
-            localState.selectedProfessionalId
-        );
+        const [appointmentsData, blockagesData] = await Promise.all([
+            appointmentsApi.getAppointmentsByDateRange(state.establishmentId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId),
+            blockagesApi.getBlockagesByDateRange(state.establishmentId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId)
+        ]);
         
         if (!document.getElementById('agenda-view')) return;
 
-        // 🔥 CORREÇÃO: Injetar o Nome do Profissional nos Agendamentos!
         const enrichedAppointments = appointmentsData.map(a => {
             let profName = a.professionalName;
             if (!profName && a.professionalId) {
                 const prof = state.professionals ? state.professionals.find(p => p.id === a.professionalId) : null;
-                if (prof) {
-                    profName = prof.name;
-                }
+                if (prof) profName = prof.name;
             }
-            return { 
-                ...a, 
-                type: 'appointment',
-                professionalName: profName || 'Indefinido' 
-            };
+            return { ...a, type: 'appointment', professionalName: profName || 'Indefinido' };
         });
 
-        // 🔥 CORREÇÃO: Injetar o Nome do Profissional nos Bloqueios!
         const enrichedBlockages = blockagesData.map(b => {
             let profName = b.professionalName;
             if (!profName && b.professionalId) {
                 const prof = state.professionals ? state.professionals.find(p => p.id === b.professionalId) : null;
-                if (prof) {
-                    profName = prof.name;
-                }
+                if (prof) profName = prof.name;
             }
-            return { 
-                ...b, 
-                type: 'blockage',
-                professionalName: profName || 'Indefinido' 
-            };
+            return { ...b, type: 'blockage', professionalName: profName || 'Indefinido' };
         });
         
-        const allEvents = [
-            ...enrichedAppointments,
-            ...enrichedBlockages 
-        ];
-        
-        state.allEvents = allEvents; 
+        state.allEvents = [...enrichedAppointments, ...enrichedBlockages]; 
         
         renderProfessionalSelector();
         renderAgenda(); 
 
-        if (localState.scrollToAppointmentId) {
-            const targetCard = document.querySelector(`[data-appointment*='"id":"${localState.scrollToAppointmentId}"']`);
-            if (targetCard) {
-                targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                targetCard.style.transition = 'background-color 0.5s ease-in-out';
-                targetCard.style.backgroundColor = '#e0e7ff'; 
-                setTimeout(() => {
-                    targetCard.style.backgroundColor = ''; 
-                }, 2500); 
-            }
-            localState.scrollToAppointmentId = null; 
-        }
-
     } catch (error) {
         if (document.getElementById('agenda-view')) {
-            document.getElementById('agenda-view').innerHTML = `<div class="p-6 text-center text-red-600">Falha ao carregar dados.</div>`;
-            showNotification('Erro na Agenda', `Não foi possível carregar a agenda: ${error.message}`, 'error');
+            document.getElementById('agenda-view').innerHTML = `<div class="p-6 text-center text-red-500 font-medium">Falha ao carregar dados da agenda.</div>`;
         }
     }
 }
 
 async function populateFilters() {
     try {
-        // 🔥 CORREÇÃO: Força sempre a busca na API. Resolve o bug do "cache fantasma" ao trocar de Lojas/Filiais.
         const [profs, services, establishmentDetails] = await Promise.all([
             professionalsApi.getProfessionals(state.establishmentId),
             servicesApi.getServices(state.establishmentId),
@@ -532,7 +415,6 @@ async function populateFilters() {
 
         state.professionals = profs || [];
         state.services = services || [];
-        
         allClientsData = []; 
 
         if (establishmentDetails) { 
@@ -544,12 +426,296 @@ async function populateFilters() {
         });
         
         renderProfessionalSelector();
-
     } catch (error) {
-        console.error("Erro ao popular filtros e dependências do modal:", error);
-        showNotification('Atenção', 'Não foi possível pré-carregar os dados para agendamento.', 'error');
+        showNotification('Atenção', 'Não foi possível pré-carregar os dados da equipa.', 'error');
     }
 }
+
+// ============================================================================
+// 🏗️ INICIALIZAÇÃO DA PÁGINA (ESTRUTURA HTML)
+// ============================================================================
+
+export async function loadAgendaPage(params = {}) { 
+    if (currentTimeInterval) clearInterval(currentTimeInterval);
+    
+    localState.currentDate = params.targetDate ? new Date(params.targetDate) : (localState.currentDate || new Date());
+    localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
+    localState.isSelectionMode = false;
+    localState.selectedItems.clear();
+
+    // Novo Layout Base (Sóbrio, fontes normais, fundos brancos)
+    contentDiv.innerHTML = `
+        <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 relative font-sans w-full overflow-x-hidden">
+            
+            <div class="bg-white border-b border-gray-200 z-30 w-full shadow-sm sticky top-0">
+                <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between gap-4 md:items-center">
+                    
+                    <div class="flex items-center justify-between md:justify-start gap-4">
+                        <div class="flex items-center bg-white rounded-lg border border-gray-300 p-1 shadow-sm">
+                            <button id="btn-prev-date" class="w-9 h-9 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-md transition-all"><i class="bi bi-chevron-left"></i></button>
+                            <button id="btn-today" class="px-4 py-1.5 text-sm font-semibold text-gray-700 hover:text-indigo-600 hover:bg-gray-50 rounded-md transition-all">Hoje</button>
+                            <button id="btn-next-date" class="w-9 h-9 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-gray-50 rounded-md transition-all"><i class="bi bi-chevron-right"></i></button>
+                        </div>
+                        <div class="relative flex-1 text-right md:text-left">
+                            <h2 id="current-date-display" class="font-semibold text-lg text-gray-800 cursor-pointer hover:text-indigo-600 transition-colors">Carregando...</h2>
+                            <input type="date" id="dateFilterInput" class="absolute inset-0 opacity-0 cursor-pointer w-full">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <div class="flex bg-gray-100 p-1 rounded-lg border border-gray-200 w-full md:w-auto shadow-inner">
+                            <button data-view="list" class="view-btn flex-1 md:flex-none px-5 py-2 text-sm font-semibold rounded-md transition-all ${localState.currentView === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}">Lista</button>
+                            <button data-view="week" class="view-btn flex-1 md:flex-none px-5 py-2 text-sm font-semibold rounded-md transition-all ${localState.currentView === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}">Semana</button>
+                        </div>
+                        
+                        <div class="relative">
+                            <button id="btn-agenda-options" class="w-10 h-10 flex items-center justify-center text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg shadow-sm transition-all"><i class="bi bi-three-dots-vertical"></i></button>
+                            
+                            <div id="agenda-options-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-200 z-50 py-2 animate-fade-in-down origin-top-right">
+                                <button id="btn-toggle-select" class="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-colors flex items-center gap-3">
+                                    <i class="bi bi-check2-square text-lg"></i> Modo Seleção
+                                </button>
+                                
+                                <div class="px-4 py-2.5 border-t border-gray-100 mt-1">
+                                    <label class="flex items-center gap-3 text-sm font-medium text-gray-700 cursor-pointer">
+                                        <input type="checkbox" id="showInactiveProfsToggle" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"> 
+                                        Exibir Equipa Inativa
+                                    </label>
+                                </div>
+
+                                <div id="week-days-menu" class="px-4 py-3 border-t border-gray-100 ${localState.currentView === 'week' ? 'block' : 'hidden'}">
+                                    <span class="text-xs font-semibold text-gray-500 mb-2 block">Dias (Visão Semanal)</span>
+                                    <div class="flex gap-2">
+                                        <button data-days="3" class="week-days-btn flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${localState.weekViewDays === 3 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">3</button>
+                                        <button data-days="5" class="week-days-btn hidden md:block flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${localState.weekViewDays === 5 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">5</button>
+                                        <button data-days="7" class="week-days-btn hidden md:block flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${localState.weekViewDays === 7 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">7</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white border-b border-gray-200">
+                    <div id="profSelectorContainer" class="max-w-7xl mx-auto px-4 py-3 flex overflow-x-auto hide-scrollbar gap-4 items-start">
+                        <div class="loader-small mx-auto my-2 border-gray-400"></div>
+                    </div>
+                </div>
+            </div> 
+            
+            <div id="agenda-view" class="flex-1 w-full bg-white"></div>
+            
+            <button data-action="new-appointment" class="fixed bottom-6 right-6 md:bottom-10 md:right-10 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-indigo-700 hover:-translate-y-1 transition-all z-40">
+                <i class="bi bi-plus text-3xl"></i>
+            </button>
+
+            <div id="batch-delete-container" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
+        </div>`;
+
+    // --- EVENT LISTENERS DA TOOLBAR ---
+
+    document.getElementById('btn-prev-date').addEventListener('click', () => {
+        if (localState.currentView === 'list') {
+            localState.currentDate.setDate(localState.currentDate.getDate() - 1);
+        } else {
+            localState.currentDate.setDate(localState.currentDate.getDate() - localState.weekViewDays);
+        }
+        fetchAndDisplayAgenda();
+    });
+
+    document.getElementById('btn-next-date').addEventListener('click', () => {
+        if (localState.currentView === 'list') {
+            localState.currentDate.setDate(localState.currentDate.getDate() + 1);
+        } else {
+            localState.currentDate.setDate(localState.currentDate.getDate() + localState.weekViewDays);
+        }
+        fetchAndDisplayAgenda();
+    });
+
+    document.getElementById('btn-today').addEventListener('click', () => {
+        localState.currentDate = new Date();
+        fetchAndDisplayAgenda();
+    });
+    
+    document.getElementById('dateFilterInput').addEventListener('change', (e) => {
+        if (e.target.value) {
+            const [year, month, day] = e.target.value.split('-');
+            localState.currentDate = new Date(year, month - 1, day);
+            fetchAndDisplayAgenda();
+        }
+    });
+
+    // --- EVENT LISTENERS DE VIEW ---
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const view = e.target.dataset.view;
+            if (localState.currentView === view) return;
+            
+            document.querySelectorAll('.view-btn').forEach(b => {
+                b.classList.remove('bg-white', 'text-gray-900', 'shadow-sm');
+                b.classList.add('text-gray-500');
+            });
+            e.target.classList.add('bg-white', 'text-gray-900', 'shadow-sm');
+            e.target.classList.remove('text-gray-500');
+            
+            localState.currentView = view;
+            
+            const weekMenu = document.getElementById('week-days-menu');
+            if (view === 'week') weekMenu.classList.remove('hidden');
+            else weekMenu.classList.add('hidden');
+
+            fetchAndDisplayAgenda();
+        });
+    });
+
+    // --- EVENT LISTENERS DO MENU KEBAB ---
+    const btnOptions = document.getElementById('btn-agenda-options');
+    const menuOptions = document.getElementById('agenda-options-menu');
+    
+    btnOptions.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuOptions.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!menuOptions.contains(e.target) && e.target !== btnOptions) {
+            menuOptions.classList.add('hidden');
+        }
+    });
+
+    document.getElementById('btn-toggle-select').addEventListener('click', () => {
+        localState.isSelectionMode = !localState.isSelectionMode;
+        if (!localState.isSelectionMode) localState.selectedItems.clear();
+        menuOptions.classList.add('hidden');
+        renderAgenda(); 
+    });
+
+    document.getElementById('showInactiveProfsToggle').addEventListener('change', (e) => {
+        localState.showInactiveProfs = e.target.checked;
+        renderProfessionalSelector(); 
+    });
+
+    document.querySelectorAll('.week-days-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const days = parseInt(e.target.dataset.days, 10);
+            document.querySelectorAll('.week-days-btn').forEach(b => {
+                b.classList.remove('bg-gray-800', 'text-white');
+                b.classList.add('bg-gray-100', 'text-gray-600');
+            });
+            e.target.classList.add('bg-gray-800', 'text-white');
+            e.target.classList.remove('bg-gray-100', 'text-gray-600');
+            
+            localState.weekViewDays = days;
+            menuOptions.classList.add('hidden');
+            fetchAndDisplayAgenda();
+        });
+    });
+
+    // --- DELEGAÇÃO DE EVENTOS GERAIS DA TELA ---
+    if (!hasContentDelegationInitialized) {
+        contentDiv.addEventListener('click', async (e) => {
+            const targetElement = e.target.closest('[data-action]');
+            
+            if (e.target.dataset.action === 'toggle-select-item') {
+                const id = e.target.dataset.id;
+                if (e.target.checked) localState.selectedItems.add(id);
+                else localState.selectedItems.delete(id);
+                updateBatchDeleteUI();
+                return;
+            }
+
+            if (targetElement && targetElement.dataset.action === 'batch-delete') {
+                const count = localState.selectedItems.size;
+                const confirmed = await showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
+                if (confirmed) {
+                    const ids = Array.from(localState.selectedItems);
+                    let successCount = 0;
+                    try {
+                        await Promise.all(ids.map(async (id) => {
+                            try { await appointmentsApi.deleteAppointment(id); successCount++; } catch (err) { }
+                        }));
+                        showNotification(`${successCount} agendamento(s) excluído(s).`, 'success');
+                        localState.selectedItems.clear();
+                        localState.isSelectionMode = false;
+                        fetchAndDisplayAgenda();
+                    } catch (error) {
+                        showNotification('Erro ao processar exclusão.', 'error');
+                    }
+                }
+                return;
+            }
+            
+            if (e.target.closest('[data-action="select-professional"]')) {
+                const selectedProfCard = e.target.closest('[data-action="select-professional"]');
+                const profId = selectedProfCard.dataset.profId;
+                const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
+                localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
+                await fetchAndDisplayAgenda(); 
+                return;
+            }
+
+            if (!targetElement) return;
+
+            const action = targetElement.dataset.action;
+            let apptData = null;
+            const card = e.target.closest('[data-appointment]');
+            if (card) apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
+            
+            switch (action) {
+                case 'new-appointment':
+                    openAppointmentModal();
+                    break;
+                case 'edit-appointment':
+                    if (localState.isSelectionMode || !apptData) return;
+                    if (apptData.status === 'completed') {
+                        showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'warning');
+                        return;
+                    }
+                    openAppointmentModal(apptData);
+                    break;
+                case 'delete-appointment': {
+                    if (localState.isSelectionMode) return;
+                    e.stopPropagation();
+                    const id = targetElement.dataset.id;
+                    const confirmed = await showConfirmation('Confirmar Exclusão', 'Apagar este agendamento do sistema?');
+                    if (confirmed) {
+                        try {
+                            await appointmentsApi.deleteAppointment(id);
+                            showNotification('Agendamento apagado.', 'success');
+                            fetchAndDisplayAgenda();
+                        } catch (error) {
+                            showNotification(`Não foi possível apagar: ${error.message}`, 'error');
+                        }
+                    }
+                    break;
+                }
+                case 'open-comanda':
+                    if (localState.isSelectionMode) return; 
+                    if (apptData) {
+                        const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
+                        const params = { selectedAppointmentId: apptData.id, initialFilter: initialFilter };
+                        if (initialFilter === 'finalizadas') {
+                            let dateToUse = apptData.startTime;
+                            if (apptData.transaction && apptData.transaction.paidAt) {
+                                dateToUse = typeof apptData.transaction.paidAt === 'object' ? new Date(apptData.transaction.paidAt._seconds * 1000) : apptData.transaction.paidAt;
+                            }
+                            params.filterDate = dateToUse;
+                        }
+                        navigateTo('comandas-section', params);
+                    }
+                    break;
+            }
+        });
+        hasContentDelegationInitialized = true; 
+    }
+
+    await populateFilters();
+    await fetchAndDisplayAgenda();
+}
+
+// ============================================================================
+// LÓGICA MANTIDA DOS MODAIS DE CADASTRO / EDIÇÃO
+// ============================================================================
 
 function navigateModalStep(step) {
     if (step < 1 || step > 4) return;
@@ -560,24 +726,21 @@ function navigateModalStep(step) {
 function handleServiceCardClick(serviceId, element) {
     const multiToggle = document.getElementById('multiServiceToggle');
     const isMultiSelect = multiToggle && multiToggle.checked;
-
     const isSelected = element.classList.contains('selected');
     const index = newAppointmentState.data.selectedServiceIds.indexOf(serviceId);
 
     if (isSelected) {
-        element.classList.remove('selected', 'border-blue-500');
+        element.classList.remove('selected', 'border-indigo-500');
         if (index > -1) newAppointmentState.data.selectedServiceIds.splice(index, 1);
     } else {
         if (!isMultiSelect) {
             newAppointmentState.data.selectedServiceIds = []; 
             const container = document.getElementById('apptServicesContainer');
             if (container) {
-                container.querySelectorAll('.service-card.selected').forEach(card => {
-                    card.classList.remove('selected', 'border-blue-500');
-                });
+                container.querySelectorAll('.service-card.selected').forEach(card => card.classList.remove('selected', 'border-indigo-500'));
             }
         }
-        element.classList.add('selected', 'border-blue-500');
+        element.classList.add('selected', 'border-indigo-500');
         newAppointmentState.data.selectedServiceIds.push(serviceId);
     }
 }
@@ -585,13 +748,9 @@ function handleServiceCardClick(serviceId, element) {
 function handleProfessionalCardClick(professionalId, element) {
     const professionalContainer = document.querySelector('.professional-step-cards');
     if (!professionalContainer) return;
-    
-    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-blue-500'));
-    
-    element.classList.add('selected', 'border-blue-500');
-    
+    professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => card.classList.remove('selected', 'border-indigo-500'));
+    element.classList.add('selected', 'border-indigo-500');
     const professional = availableProfessionalsForModal.find(p => p.id === professionalId);
-    
     newAppointmentState.data.professionalId = professionalId;
     newAppointmentState.data.professionalName = professional ? professional.name : 'Indefinido';
 }
@@ -599,7 +758,6 @@ function handleProfessionalCardClick(professionalId, element) {
 function handleTimeSlotClick(slot, element) {
     const timeContainer = document.getElementById('availableTimesContainer');
     if (!timeContainer) return;
-    
     timeContainer.querySelectorAll('.time-slot-card').forEach(c => c.classList.remove('selected'));
     element.classList.add('selected');
     newAppointmentState.data.time = slot;
@@ -608,13 +766,11 @@ function handleTimeSlotClick(slot, element) {
 async function updateTimesAndDuration() {
     const totalDurationSpan = document.getElementById('apptTotalDuration');
     const timeContainer = document.getElementById('availableTimesContainer');
-    
     if (!totalDurationSpan || !timeContainer) return;
 
     const professionalId = newAppointmentState.data.professionalId;
     const selectedServiceIds = newAppointmentState.data.selectedServiceIds;
     const date = document.getElementById('apptDate').value;
-    
     newAppointmentState.data.date = date; 
 
     const totalDuration = selectedServiceIds.reduce((acc, id) => {
@@ -624,28 +780,21 @@ async function updateTimesAndDuration() {
     totalDurationSpan.textContent = `${totalDuration} min`;
 
     if (totalDuration === 0 || !professionalId || !date) {
-        timeContainer.innerHTML = '<p class="col-span-full text-center text-gray-500">Selecione serviço, profissional e data.</p>';
+        timeContainer.innerHTML = '<p class="col-span-full text-center text-sm text-gray-500">Selecione o serviço e o profissional primeiro.</p>';
         return;
     }
 
-    timeContainer.innerHTML = '<div class="loader mx-auto col-span-full"></div>';
+    timeContainer.innerHTML = '<div class="loader-small mx-auto col-span-full border-gray-400"></div>';
     
     try {
-        let slots = await appointmentsApi.getAvailability({
-            establishmentId: state.establishmentId,
-            professionalId: professionalId,
-            serviceIds: selectedServiceIds,
-            date: date
-        });
-        
+        let slots = await appointmentsApi.getAvailability({ establishmentId: state.establishmentId, professionalId: professionalId, serviceIds: selectedServiceIds, date: date });
         const now = new Date();
         const selectedDateObj = new Date(date + 'T00:00:00');
         if (selectedDateObj.toDateString() === now.toDateString()) {
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
             slots = slots.filter(slot => {
                 const [slotHours, slotMinutes] = slot.split(':').map(Number);
-                const slotTotalMinutes = slotHours * 60 + slotMinutes;
-                return slotTotalMinutes >= currentMinutes;
+                return (slotHours * 60 + slotMinutes) >= currentMinutes;
             });
         }
 
@@ -654,21 +803,24 @@ async function updateTimesAndDuration() {
             slots.forEach(slot => {
                 const card = document.createElement('button');
                 card.type = 'button';
-                card.className = `time-slot-card p-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200 transition ${newAppointmentState.data.time === slot ? 'selected' : ''}`;
+                card.className = `time-slot-card p-2 text-sm bg-gray-100 font-semibold text-gray-700 rounded-lg hover:bg-indigo-50 transition-colors ${newAppointmentState.data.time === slot ? 'selected bg-indigo-600 text-white' : ''}`;
                 card.textContent = slot;
-                card.addEventListener('click', () => handleTimeSlotClick(slot, card));
+                card.addEventListener('click', () => {
+                    timeContainer.querySelectorAll('.time-slot-card').forEach(c => {
+                        c.classList.remove('selected', 'bg-indigo-600', 'text-white');
+                        c.classList.add('bg-gray-100', 'text-gray-700');
+                    });
+                    card.classList.remove('bg-gray-100', 'text-gray-700');
+                    card.classList.add('selected', 'bg-indigo-600', 'text-white');
+                    newAppointmentState.data.time = slot;
+                });
                 timeContainer.appendChild(card);
             });
-            if (newAppointmentState.data.time) {
-                const selectedSlot = timeContainer.querySelector(`[data-action="time-slot"][data-time="${newAppointmentState.data.time}"]`);
-                if (selectedSlot) selectedSlot.classList.add('selected');
-            }
         } else {
-            timeContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">Nenhum horário disponível.</p>`;
+            timeContainer.innerHTML = `<p class="col-span-full text-center text-sm text-gray-500">Nenhum horário livre encontrado.</p>`;
         }
     } catch (e) {
-        console.error("Erro ao buscar horários:", e);
-        timeContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Erro ao buscar horários.</p>';
+        timeContainer.innerHTML = '<p class="col-span-full text-center text-sm text-red-500">Erro ao buscar horários.</p>';
     }
 }
 
@@ -686,62 +838,41 @@ function renderLoyaltyRewards() {
     }
 
     container.classList.remove('hidden');
-    
     const availableRewards = rewards.filter(r => clientLoyaltyPoints >= r.points);
 
-    let rewardsHTML = `
-        <h4 class="text-md font-semibold text-gray-700 mb-2">🎁 Prêmios Disponíveis (${clientLoyaltyPoints} pontos)</h4>
-    `;
+    let rewardsHTML = `<h4 class="text-sm font-semibold text-gray-700 mb-3"><i class="bi bi-gift mr-1"></i> Resgate de Fidelidade (${clientLoyaltyPoints} pts)</h4>`;
 
     if (availableRewards.length > 0) {
         rewardsHTML += '<div class="space-y-2">';
         rewardsHTML += availableRewards.map(reward => {
             const isChecked = redeemedReward?.reward === reward.reward;
-            const safeReward = escapeHTML(reward.reward);
-
             return `
-                <label class="flex items-center p-3 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
-                    <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600" 
-                           value="${safeReward}" 
-                           data-points="${reward.points}"
-                           ${isChecked ? 'checked' : ''}>
-                    <span class="ml-3">
-                        <span class="font-semibold text-gray-800">${safeReward}</span>
-                        <span class="text-sm text-gray-600"> (-${reward.points} pontos)</span>
-                    </span>
+                <label class="flex items-center p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+                    <input type="radio" name="loyaltyReward" class="form-radio text-indigo-600 focus:ring-indigo-500" value="${escapeHTML(reward.reward)}" data-points="${reward.points}" ${isChecked ? 'checked' : ''}>
+                    <span class="ml-3"><span class="font-semibold text-gray-800 text-sm">${escapeHTML(reward.reward)}</span><span class="text-xs text-gray-500 ml-2"> (-${reward.points} pts)</span></span>
                 </label>
             `;
         }).join('');
         rewardsHTML += '</div>';
     } else {
-        rewardsHTML += `<p class="text-sm text-gray-600">Pontos insuficientes para resgatar os prêmios disponíveis.</p>`;
+        rewardsHTML += `<p class="text-xs text-gray-500">Pontos insuficientes para as recompensas atuais.</p>`;
     }
 
     container.innerHTML = rewardsHTML;
-
     container.querySelectorAll('input[name="loyaltyReward"]').forEach(radio => {
         radio.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                newAppointmentState.data.redeemedReward = {
-                    reward: e.target.value,
-                    points: parseInt(e.target.dataset.points, 10)
-                };
-            }
+            if (e.target.checked) newAppointmentState.data.redeemedReward = { reward: e.target.value, points: parseInt(e.target.dataset.points, 10) };
         });
     });
     
     container.insertAdjacentHTML('beforeend', `
-        <label class="flex items-center p-3 mt-2 bg-white rounded-lg border border-gray-300 cursor-pointer hover:bg-gray-50">
-            <input type="radio" name="loyaltyReward" class="form-radio text-gray-400" 
-                   value="none" 
-                   ${!redeemedReward ? 'checked' : ''}>
-            <span class="ml-3 text-gray-600">Não resgatar prêmio agora</span>
+        <label class="flex items-center p-3 mt-2 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+            <input type="radio" name="loyaltyReward" class="form-radio text-gray-400" value="none" ${!redeemedReward ? 'checked' : ''}>
+            <span class="ml-3 text-sm text-gray-500 font-medium">Não utilizar pontos agora</span>
         </label>
     `);
     container.querySelector('input[value="none"]').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            newAppointmentState.data.redeemedReward = null;
-        }
+        if (e.target.checked) newAppointmentState.data.redeemedReward = null;
     });
 }
 
@@ -751,72 +882,56 @@ async function handleAppointmentFormSubmit(e) {
     const submitButton = form.querySelector('button[type="submit"]');
 
     if (!newAppointmentState.data.time || newAppointmentState.data.selectedServiceIds.length === 0 || !newAppointmentState.data.professionalId) {
-        return showNotification('Erro de Validação', 'Por favor, selecione o horário, serviço(s) e profissional antes de confirmar.', 'error');
+        return showNotification('Atenção', 'Por favor, selecione horário, serviço e profissional.', 'warning');
     }
 
     submitButton.disabled = true;
-    submitButton.textContent = 'A confirmar...';
+    submitButton.innerHTML = '<div class="loader-small border-white"></div>';
 
     const servicesData = newAppointmentState.data.selectedServiceIds.map(id => {
-        const service = availableServicesForModal.find(s => s.id === id);
-        return { id: service.id, name: service.name, price: service.price, duration: service.duration, bufferTime: service.bufferTime || 0, photo: service.photo || null };
+        const s = availableServicesForModal.find(s => s.id === id);
+        return { id: s.id, name: s.name, price: s.price, duration: s.duration, bufferTime: s.bufferTime || 0, photo: s.photo || null };
     });
 
     const [hours, minutes] = newAppointmentState.data.time.split(':');
     const startTimeAsDate = new Date(`${newAppointmentState.data.date}T${hours}:${minutes}:00`);
 
-    // 🔥 CORREÇÃO: Incluído explicitamente o Nome do Profissional no pacote que vai para a base de dados
     const appointmentData = {
         establishmentId: state.establishmentId,
         clientName: newAppointmentState.data.clientName,
         clientPhone: newAppointmentState.data.clientPhone,
         services: servicesData,
         professionalId: newAppointmentState.data.professionalId,
-        professionalName: newAppointmentState.data.professionalName, // ADICIONADO AQUI!
+        professionalName: newAppointmentState.data.professionalName,
         startTime: startTimeAsDate.toISOString(),
         redeemedReward: newAppointmentState.data.redeemedReward
     };
     
     const appointmentId = form.querySelector('#appointmentId').value;
-    if (appointmentId) {
-        appointmentData.id = appointmentId;
-    }
+    if (appointmentId) appointmentData.id = appointmentId;
 
     try {
-        if (appointmentId) {
-            await appointmentsApi.updateAppointment(appointmentId, appointmentData);
-        } else {
-            await appointmentsApi.createAppointment(appointmentData);
-        }
-        showNotification(`Agendamento ${appointmentId ? 'atualizado' : 'criado'} com sucesso!`, 'success');
+        if (appointmentId) await appointmentsApi.updateAppointment(appointmentId, appointmentData);
+        else await appointmentsApi.createAppointment(appointmentData);
+        
+        showNotification('Sucesso', `Agendamento registado com sucesso!`, 'success');
         document.getElementById('appointmentModal').style.display = 'none';
         fetchAndDisplayAgenda();
     } catch (error) {
-        showNotification(error.message, 'error');
-    } finally {
+        showNotification('Erro', error.message, 'error');
         submitButton.disabled = false;
-        submitButton.textContent = 'Confirmar Agendamento';
+        submitButton.innerHTML = 'Confirmar Agendamento';
     }
 }
 
 function renderClientCard(client) {
     const isSelected = newAppointmentState.data.clientName === client.name && newAppointmentState.data.clientPhone === client.phone;
-    const safeName = escapeHTML(client.name);
-    const safePhone = escapeHTML(client.phone);
-
     return `
-        <div class="client-search-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-blue-50 ${isSelected ? 'selected border-blue-500' : ''}" 
-             data-action="select-client" 
-             data-client-name="${safeName}" 
-             data-client-phone="${safePhone}"
-             data-client-id="${client.id}"
-             data-loyalty-points="${client.loyaltyPoints || 0}">
+        <div class="client-search-card p-3 bg-white rounded-lg border border-gray-200 cursor-pointer transition-colors hover:bg-gray-50 ${isSelected ? 'selected border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/30' : ''}" 
+             data-action="select-client" data-client-name="${escapeHTML(client.name)}" data-client-phone="${escapeHTML(client.phone)}" data-loyalty-points="${client.loyaltyPoints || 0}">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">${safeName.charAt(0).toUpperCase()}</div>
-                <div>
-                    <p class="font-semibold text-gray-800">${safeName}</p>
-                    <p class="text-sm text-gray-500">${safePhone}</p>
-                </div>
+                <div class="w-10 h-10 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-500 font-bold text-sm">${escapeHTML(client.name).charAt(0).toUpperCase()}</div>
+                <div><p class="font-semibold text-sm text-gray-800 leading-tight">${escapeHTML(client.name)}</p><p class="text-xs text-gray-500 mt-0.5">${escapeHTML(client.phone)}</p></div>
             </div>
         </div>
     `;
@@ -824,852 +939,241 @@ function renderClientCard(client) {
 
 async function handleClientSearch(searchTerm) {
     const resultsContainer = document.getElementById('clientSearchResults');
-    if (!resultsContainer) return;
-    
-    const term = searchTerm.trim();
-
-    if (term.length < 3) {
-        resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Digite pelo menos 3 caracteres para buscar clientes existentes.</p>';
+    if (!resultsContainer || searchTerm.trim().length < 3) {
+        if (resultsContainer) resultsContainer.innerHTML = '<p class="text-xs font-medium text-gray-400">Digite pelo menos 3 letras do nome...</p>';
         return;
     }
     
-    resultsContainer.innerHTML = '<div class="loader-small mx-auto my-2"></div>';
-
+    resultsContainer.innerHTML = '<div class="loader-small mx-auto my-4 border-gray-400"></div>';
     try {
-        const foundClients = await clientsApi.getClients(state.establishmentId, term);
+        const foundClients = await clientsApi.getClients(state.establishmentId, searchTerm.trim());
         allClientsData = foundClients;
-
         if (foundClients.length === 0) {
-            resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente encontrado com este termo.</p>';
+            resultsContainer.innerHTML = '<p class="text-sm text-gray-500">Nenhum cliente na base de dados.</p>';
             return;
         }
-
         resultsContainer.innerHTML = foundClients.map(renderClientCard).join('');
-        
         resultsContainer.querySelectorAll('[data-action="select-client"]').forEach(card => {
-            card.addEventListener('click', (e) => {
-                const clientName = card.dataset.clientName;
-                const clientPhone = card.dataset.clientPhone;
-                const loyaltyPoints = parseInt(card.dataset.loyaltyPoints || '0', 10);
+            card.addEventListener('click', () => {
+                newAppointmentState.data.clientName = card.dataset.clientName;
+                newAppointmentState.data.clientPhone = card.dataset.clientPhone;
+                newAppointmentState.data.clientLoyaltyPoints = parseInt(card.dataset.loyaltyPoints || '0', 10);
+                const minPoints = Math.min(...(loyaltySettingsForModal?.rewards || []).map(r => r.points));
+                newAppointmentState.data.clientHasRewards = (loyaltySettingsForModal.enabled && minPoints !== Infinity && newAppointmentState.data.clientLoyaltyPoints >= minPoints);
                 
-                newAppointmentState.data.clientName = clientName;
-                newAppointmentState.data.clientPhone = clientPhone;
-                newAppointmentState.data.clientLoyaltyPoints = loyaltyPoints;
-                
-                const loyaltyProgram = loyaltySettingsForModal; 
-                const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
-                
-                newAppointmentState.data.clientHasRewards = (
-                    loyaltyProgram.enabled && 
-                    minPointsToRedeem !== Infinity && 
-                    newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
-                );
-                
-                document.getElementById('apptClientName').value = clientName;
-                document.getElementById('apptClientPhone').value = clientPhone;
-                
-                document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-blue-500'));
-                card.classList.add('selected', 'border-blue-500');
+                document.getElementById('apptClientName').value = card.dataset.clientName;
+                document.getElementById('apptClientPhone').value = card.dataset.clientPhone;
+                document.querySelectorAll('.client-search-card').forEach(c => c.classList.remove('selected', 'border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/30'));
+                card.classList.add('selected', 'border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/30');
             });
         });
-
     } catch (error) {
-        console.error("Erro na busca de clientes:", error);
-        resultsContainer.innerHTML = '<p class="text-sm text-red-500">Erro ao buscar clientes.</p>';
+        resultsContainer.innerHTML = '<p class="text-sm text-red-500">Erro na procura.</p>';
     }
-}
-
-async function handleClientRegistration(e) {
-    e.preventDefault();
-    const form = document.getElementById('clientRegistrationForm');
-    const registerButton = form.querySelector('button[type="submit"]');
-
-    const clientData = {
-        establishmentId: state.establishmentId,
-        name: form.querySelector('#regClientName').value.trim(),
-        email: form.querySelector('#regClientEmail').value.trim(),
-        phone: form.querySelector('#regClientPhone').value.trim(),
-        dobDay: form.querySelector('#regClientDobDay').value.trim(),
-        dobMonth: form.querySelector('#regClientDobMonth').value.trim(),
-        notes: form.querySelector('#regClientNotes').value.trim(),
-    };
-
-    if (!clientData.name || !clientData.phone) {
-         return showNotification('Erro de Validação', 'Nome e Telefone são obrigatórios.', 'error');
-    }
-    
-    registerButton.disabled = true;
-    registerButton.textContent = 'A salvar...';
-
-    try {
-        await clientsApi.createClient(clientData);
-        allClientsData.push({ name: clientData.name, phone: clientData.phone, loyaltyPoints: 0 });
-        
-        newAppointmentState.data.clientName = clientData.name;
-        newAppointmentState.data.clientPhone = clientData.phone;
-        newAppointmentState.data.clientHasRewards = false; 
-        newAppointmentState.data.clientLoyaltyPoints = 0; 
-        
-        showNotification('Cliente cadastrado com sucesso!', 'success');
-        document.getElementById('genericModal').style.display = 'none';
-        navigateModalStep(1); 
-        
-    } catch (error) {
-        showNotification(`Erro ao cadastrar cliente: ${error.message}`, 'error');
-    } finally {
-        registerButton.disabled = false;
-        registerButton.textContent = 'Salvar';
-    }
-}
-
-function renderClientRegistrationModal() {
-    const modalContent = `
-        <form id="clientRegistrationForm" class="flex flex-col h-full">
-            <div class="flex-1 overflow-y-auto p-5 space-y-6" style="max-height: 80vh;">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label for="regClientName" class="block text-sm font-medium text-gray-700">Nome</label><input type="text" id="regClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientEmail" class="block text-sm font-medium text-gray-700">E-mail</label><input type="email" id="regClientEmail" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientPhone" class="block text-sm font-medium text-gray-700">Telefone</label><input type="tel" id="regClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientDobDay" class="block text-sm font-medium text-gray-700">Aniversário (Dia)</label><input type="number" id="regClientDobDay" min="1" max="31" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                    <div><label for="regClientDobMonth" class="block text-sm font-medium text-gray-700">Aniversário (Mês)</label><input type="number" id="regClientDobMonth" min="1" max="12" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></div>
-                </div>
-                <div><label for="regClientNotes" class="block text-sm font-medium text-gray-700">Observações</label><textarea id="regClientNotes" rows="3" class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm"></textarea></div>
-            </div>
-            
-            <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-                <button type="button" data-action="close-modal" data-target="genericModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-                <button type="submit" class="py-3 px-6 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-md">Salvar</button>
-            </footer>
-        </form>
-    `;
-
-    showGenericModal({
-        title: 'Cadastrar Novo Cliente',
-        contentHTML: modalContent,
-        maxWidth: 'max-w-2xl'
-    });
-    
-    const form = document.getElementById('clientRegistrationForm');
-    if (form) {
-         form.addEventListener('submit', handleClientRegistration);
-    }
-}
-
-function openClientRegistrationModal() {
-    renderClientRegistrationModal();
 }
 
 function renderStep1_Client(appointment, isNavigating) {
-    const title = appointment ? 'Editar Agendamento' : 'Selecionar Cliente';
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">1. Dados do Cliente</h3>
+    return { title: appointment ? 'Editar Reserva' : 'Identificar Cliente', content: `
+        <div class="p-6 space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label for="apptClientName" class="block text-sm font-medium text-gray-700">Nome Completo</label>
-                    <input type="text" id="apptClientName" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="Nome Completo" value="${escapeHTML(newAppointmentState.data.clientName)}">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Nome do Cliente *</label>
+                    <input type="text" id="apptClientName" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium text-gray-800" value="${escapeHTML(newAppointmentState.data.clientName)}">
                 </div>
                 <div>
-                    <label for="apptClientPhone" class="block text-sm font-medium text-gray-700">Telemóvel</label>
-                    <input type="tel" id="apptClientPhone" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm" placeholder="(XX) XXXXX-XXXX" value="${escapeHTML(newAppointmentState.data.clientPhone)}">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Telefone / WhatsApp *</label>
+                    <input type="tel" id="apptClientPhone" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium text-gray-800" value="${escapeHTML(newAppointmentState.data.clientPhone)}">
                 </div>
-            </div>
-             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                <div class="relative w-full sm:flex-grow">
-                    <input type="text" id="clientSearchInput" placeholder="Buscar cliente existente..." class="w-full p-3 pl-10 border rounded-lg">
-                    <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </div>
-                <button type="button" data-action="open-client-registration" class="bg-green-500 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-green-600 flex items-center justify-center gap-2 w-full sm:w-auto flex-shrink-0">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                    Cadastrar
-                </button>
             </div>
             
-            <div id="clientSearchResults" class="space-y-3 max-h-40 overflow-y-auto p-1">
-                <p class="text-sm text-gray-500">Digite para buscar clientes existentes.</p>
+            <div class="border-t border-gray-100 pt-6">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Já é cliente? Busque pelo nome:</label>
+                <div class="relative w-full">
+                    <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="clientSearchInput" placeholder="Procurar na base de dados..." class="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm">
+                </div>
+                <div id="clientSearchResults" class="mt-3 space-y-2 max-h-40 overflow-y-auto p-1 custom-scrollbar"></div>
             </div>
         </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-end gap-3 flex-shrink-0">
-            <button type="button" data-action="close-modal" data-target="appointmentModal" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Cancelar</button>
-            <button type="button" data-action="next-step" data-current-step="1" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        <footer class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+            <button type="button" data-action="close-modal" data-target="appointmentModal" class="py-2.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-lg hover:bg-gray-50">Cancelar</button>
+            <button type="button" data-action="next-step" data-current-step="1" class="py-2.5 px-6 bg-gray-900 text-white font-bold text-sm rounded-lg hover:bg-gray-800">Avançar</button>
         </footer>
-    `;
-    return { title: title, content: formContent };
+    `};
 }
 
 function renderStep2_Service() {
-    const title = 'Selecionar Serviço';
-    const isMultiSelectedInitial = newAppointmentState.data.selectedServiceIds.length > 1;
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">2. Serviços</h3>
-             
-             <div class="flex flex-col sm:flex-row items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" id="serviceSearchModalInput" placeholder="Buscar Serviço..." class="w-full sm:flex-grow p-3 pl-10 border rounded-lg">
-                 
-                 <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0">
-                     <div class="relative">
-                         <input type="checkbox" id="multiServiceToggle" class="sr-only" ${isMultiSelectedInitial ? 'checked' : ''}>
-                         <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full transition-colors"></div>
-                         <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform" style="transition: all 0.3s;"></div>
-                     </div>
-                     <span class="text-sm font-medium text-gray-700">Selecionar Vários</span>
+    return { title: 'Quais serviços deseja?', content: `
+        <div class="p-6 space-y-6">
+             <div class="flex flex-col sm:flex-row items-center gap-4">
+                 <div class="relative w-full sm:flex-grow">
+                     <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                     <input type="search" id="serviceSearchModalInput" placeholder="Filtrar menu..." class="w-full p-3 pl-10 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                 </div>
+                 <label class="flex items-center space-x-2 cursor-pointer flex-shrink-0 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                     <input type="checkbox" id="multiServiceToggle" class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" ${newAppointmentState.data.selectedServiceIds.length > 1 ? 'checked' : ''}>
+                     <span class="text-xs font-bold text-gray-600 uppercase tracking-widest">Múltiplos</span>
                  </label>
             </div>
             
-            <div id="apptServicesContainer" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-1">
+            <div id="apptServicesContainer" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto p-1 custom-scrollbar">
                  ${availableServicesForModal.map(service => {
                      const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
-                     const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-                     const safeName = escapeHTML(service.name);
-
                      return `
-                         <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
-                             <div class="flex items-center">
-                                 <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
-                                 <div class="flex-1">
-                                     <p class="font-semibold text-sm text-gray-800">${safeName}</p>
-                                     <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
+                         <div class="service-card p-3 bg-white rounded-xl border border-gray-200 cursor-pointer transition-colors hover:bg-gray-50 ${isChecked ? 'selected border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/30' : ''}" data-service-id="${service.id}">
+                             <div class="flex items-center gap-3">
+                                 <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-gray-400 border border-gray-200"><i class="bi bi-scissors"></i></div>
+                                 <div class="flex-1 min-w-0">
+                                     <p class="font-bold text-sm text-gray-800 leading-tight truncate">${escapeHTML(service.name)}</p>
+                                     <p class="text-xs font-medium text-gray-500 mt-0.5">R$ ${service.price.toFixed(2)} • ${service.duration}m</p>
                                  </div>
                              </div>
                          </div>`;
                  }).join('')}
             </div>
         </div>
-        
-        <style>
-            #multiServiceToggle:checked + .toggle-bg { background-color: #4f46e5; }
-            #multiServiceToggle:checked + .toggle-bg + .dot { transform: translateX(100%); }
-        </style>
-
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="2" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="2" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        <footer class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between gap-3">
+            <button type="button" data-action="prev-step" data-current-step="2" class="py-2.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-lg hover:bg-gray-50">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="2" class="py-2.5 px-6 bg-gray-900 text-white font-bold text-sm rounded-lg hover:bg-gray-800">Avançar</button>
         </footer>
-    `;
-    return { title: title, content: formContent };
+    `};
 }
 
 function renderStep3_Professional() {
-    const title = 'Selecionar Profissional';
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-             <h3 class="text-xl font-bold text-gray-800">3. Profissional</h3>
-             <div id="apptProfessionalContainer" class="mt-4 flex flex-wrap gap-3 max-h-48 overflow-y-auto p-1 professional-step-cards">
+    return { title: 'Quem fará o atendimento?', content: `
+        <div class="p-6 space-y-6">
+             <div class="relative w-full">
+                 <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                 <input type="search" id="professionalSearchModalInput" placeholder="Procurar na equipa..." class="w-full p-3 pl-10 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+             </div>
+             
+             <div id="apptProfessionalContainer" class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-1 custom-scrollbar professional-step-cards">
                  ${availableProfessionalsForModal.map(prof => {
                      const isChecked = newAppointmentState.data.professionalId === prof.id;
-                     const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
-                     const safeName = escapeHTML(prof.name);
+                     const bgStyle = prof.photo ? `background-image: url('${prof.photo}'); background-size: cover; background-position: center;` : '';
                      
                      return `
-                         <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
-                             <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                             <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
-                             <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
+                         <div class="professional-modal-card p-3 bg-white rounded-xl border border-gray-200 text-center cursor-pointer transition-colors hover:bg-gray-50 flex flex-col items-center gap-2 ${isChecked ? 'selected border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/30' : ''}" data-professional-id="${prof.id}">
+                             <div class="w-12 h-12 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center font-bold text-gray-500 shadow-sm" style="${bgStyle}">
+                                 ${!prof.photo ? escapeHTML(prof.name).charAt(0).toUpperCase() : ''}
+                             </div>
+                             <div class="w-full">
+                                <p class="text-sm font-bold text-gray-800 truncate leading-tight">${escapeHTML(prof.name).split(' ')[0]}</p>
+                                <p class="text-[10px] text-gray-500 uppercase tracking-widest truncate mt-0.5">${escapeHTML(prof.specialty || 'Staff')}</p>
+                             </div>
                          </div>`;
                  }).join('')}
              </div>
-             <div class="flex items-center gap-4 bg-gray-100 p-4 rounded-lg border border-gray-200">
-                 <input type="search" id="professionalSearchModalInput" placeholder="Buscar profissional por nome..." class="flex-grow p-3 pl-10 border rounded-lg">
-             </div>
         </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="3" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="3" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Avançar</button>
+        <footer class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between gap-3">
+            <button type="button" data-action="prev-step" data-current-step="3" class="py-2.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-lg hover:bg-gray-50">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="3" class="py-2.5 px-6 bg-gray-900 text-white font-bold text-sm rounded-lg hover:bg-gray-800">Avançar</button>
         </footer>
-    `;
-    return { title: title, content: formContent };
+    `};
 }
 
 function renderStep4_Schedule(appointment) {
-    const title = appointment ? 'Confirmar Edição' : 'Data e Horário';
+    const title = appointment ? 'Revisão e Data' : 'Agendar Data e Horário';
+    const initialDate = newAppointmentState.data.date || new Date().toISOString().split('T')[0];
     
-    const today = new Date();
-    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const initialDate = newAppointmentState.data.date || todayString;
-    
-    const safeClientName = escapeHTML(newAppointmentState.data.clientName);
-    const safeProfName = escapeHTML(newAppointmentState.data.professionalName);
-
-    const formContent = `
-        <div class="p-5 space-y-6">
-            <h3 class="text-xl font-bold text-gray-800">4. ${title}</h3>
-
-            <div class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 space-y-1">
-                <p class="font-bold text-gray-800">${safeClientName}</p>
-                <p class="text-sm text-gray-700">Serviços: ${newAppointmentState.data.selectedServiceIds.length} selecionado(s)</p>
-                <p class="text-sm text-gray-700">Profissional: ${safeProfName}</p>
+    return { title: title, content: `
+        <div class="p-6 space-y-6">
+            
+            <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold flex-shrink-0"><i class="bi bi-person"></i></div>
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold text-gray-900 truncate leading-tight">${escapeHTML(newAppointmentState.data.clientName)}</p>
+                    <p class="text-xs text-gray-500 font-medium truncate mt-0.5">Com: ${escapeHTML(newAppointmentState.data.professionalName)}</p>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                    <label for="apptDate" class="block text-sm font-medium text-gray-700">Data</label>
-                    <input type="date" id="apptDate" required class="mt-1 block w-full p-3 rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500" value="${initialDate}">
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Escolha o Dia</label>
+                    <input type="date" id="apptDate" required class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-700 transition-all shadow-inner" value="${initialDate}">
                 </div>
-                <div class="bg-gray-100 p-3 rounded-lg shadow-sm flex flex-col justify-center">
-                    <label class="block text-xs font-medium text-gray-600">Duração Total Estimada</label>
-                    <span id="apptTotalDuration" class="mt-1 text-xl font-bold text-gray-800">0 min</span>
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Horários Disponíveis</label>
-                <div id="availableTimesContainer" class="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto p-3 bg-gray-50 rounded-lg border">
-                    <p class="col-span-full text-center text-gray-500">Selecione serviço(s), profissional e data.</p>
-                </div>
-            </div>
-
-             <div id="loyaltyRewardsContainer" class="hidden bg-indigo-50 p-4 rounded-lg"></div>
-        </div>
-        
-        <footer class="p-5 border-t bg-gray-100 flex justify-between gap-3 flex-shrink-0">
-            <button type="button" data-action="prev-step" data-current-step="4" class="py-3 px-6 bg-gray-300 text-gray-800 font-semibold rounded-lg hover:bg-gray-400 transition shadow-sm">Voltar</button>
-            <button type="submit" class="py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-md">Confirmar Agendamento</button>
-        </footer>
-    `;
-    return { title: title, content: formContent };
-}
-
-function handleServiceSearchInModal(searchTerm) {
-    const container = document.getElementById('apptServicesContainer');
-    if (!container) return;
-    const term = searchTerm.toLowerCase();
-    const filtered = availableServicesForModal.filter(s => s.name.toLowerCase().includes(term));
-
-    container.innerHTML = filtered.map(service => {
-        const isChecked = newAppointmentState.data.selectedServiceIds.includes(service.id);
-        const photoSrc = service.photo || 'https://placehold.co/40x40/E0E7FF/4F46E5?text=S';
-        
-        return `
-            <div class="service-card p-3 bg-white rounded-lg border-2 border-gray-200 cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-service-id="${service.id}">
-                <div class="flex items-center">
-                    <img src="${photoSrc}" class="w-8 h-8 rounded-full object-cover mr-3 flex-shrink-0">
-                    <div class="flex-1">
-                        <p class="font-semibold text-sm text-gray-800">${escapeHTML(service.name)}</p>
-                        <p class="text-xs text-gray-500">R$ ${service.price.toFixed(2)} (${service.duration} min)</p>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Tempo Necessário</label>
+                    <div class="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2 shadow-inner">
+                        <i class="bi bi-clock-history text-gray-400"></i> <span id="apptTotalDuration">Calculando...</span>
                     </div>
                 </div>
-            </div>`;
-    }).join('');
+            </div>
 
-    container.querySelectorAll('.service-card').forEach(card => {
-        card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
-    });
-}
+            <div class="border-t border-gray-100 pt-5">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Horários Livres Encontrados</label>
+                <div id="availableTimesContainer" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar"></div>
+            </div>
 
-function handleProfessionalSearchInModal(searchTerm) {
-    const container = document.getElementById('apptProfessionalContainer');
-    if (!container) return;
-    const term = searchTerm.toLowerCase();
-    const filtered = availableProfessionalsForModal.filter(p => p.name.toLowerCase().includes(term));
-
-    container.innerHTML = filtered.map(prof => {
-        const isChecked = newAppointmentState.data.professionalId === prof.id;
-        const photoSrc = prof.photo || 'https://placehold.co/60x60/E0E7FF/4F46E5?text=P';
-        const safeName = escapeHTML(prof.name);
-        
-        return `
-             <div class="professional-modal-card p-3 bg-white rounded-lg border-2 border-gray-200 text-center cursor-pointer transition-all hover:bg-gray-50 ${isChecked ? 'selected border-blue-500' : ''}" data-professional-id="${prof.id}">
-                 <img src="${photoSrc}" class="w-12 h-12 rounded-full object-cover mx-auto mb-1">
-                 <p class="text-xs font-semibold text-gray-800">${safeName.split(' ')[0]}</p>
-                 <p class="text-[10px] text-gray-500">${escapeHTML(prof.specialty || 'Profissional')}</p>
-             </div>`;
-    }).join('');
-
-    container.querySelectorAll('.professional-modal-card').forEach(card => {
-        card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
-    });
+            <div id="loyaltyRewardsContainer" class="hidden bg-gray-50 p-4 rounded-xl border border-gray-200"></div>
+        </div>
+        <footer class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between gap-3">
+            <button type="button" data-action="prev-step" data-current-step="4" class="py-2.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-lg hover:bg-gray-50">Voltar</button>
+            <button type="submit" class="py-2.5 px-8 bg-indigo-600 text-white font-bold text-sm rounded-lg hover:bg-indigo-700 shadow-md active:scale-95 transition-transform flex items-center gap-2">
+                <i class="bi bi-calendar-check"></i> ${appointment ? 'Salvar' : 'Agendar'}
+            </button>
+        </footer>
+    `};
 }
 
 async function openAppointmentModal(appointment = null, isNavigating = false) {
     const modal = document.getElementById('appointmentModal');
-    
     if (!isNavigating) {
-        const initialDateString = appointment?.startTime 
-            ? new Date(appointment.startTime).toISOString().split('T')[0] 
-            : new Date().toISOString().split('T')[0];
-
-        const initialTimeString = appointment?.startTime
-            ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
-            : null;
-
         newAppointmentState = {
             step: 1,
             data: {
-                id: appointment?.id || null, 
-                clientName: appointment?.clientName || '',
-                clientPhone: appointment?.clientPhone || '',
-                selectedServiceIds: appointment?.services?.map(s => s.id) || [], 
-                professionalId: appointment?.professionalId || null,
-                professionalName: appointment?.professionalName || '',
-                date: initialDateString,
-                time: initialTimeString,
-                redeemedReward: appointment?.redeemedReward || null,
-                clientHasRewards: appointment?.hasRewards || false,
-                clientLoyaltyPoints: 0 
+                id: appointment?.id || null, clientName: appointment?.clientName || '', clientPhone: appointment?.clientPhone || '',
+                selectedServiceIds: appointment?.services?.map(s => s.id) || [], professionalId: appointment?.professionalId || null,
+                professionalName: appointment?.professionalName || '', date: appointment?.startTime ? new Date(appointment.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                time: appointment?.startTime ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
+                redeemedReward: appointment?.redeemedReward || null, clientHasRewards: appointment?.hasRewards || false, clientLoyaltyPoints: 0 
             }
         };
-        
-        if (appointment && appointment.clientName) {
-             try {
-                 const foundClients = await clientsApi.getClients(state.establishmentId, appointment.clientName);
-                 const matchedClient = foundClients.find(c => c.phone === appointment.clientPhone);
-                 if (matchedClient) {
-                     newAppointmentState.data.clientLoyaltyPoints = matchedClient.loyaltyPoints || 0;
-                     allClientsData = foundClients;
-                 }
-             } catch (e) {
-                 console.warn("Não foi possível carregar pontos do cliente para edição:", e);
-             }
-        }
     }
-    
-    if (!state.services || !state.professionals || loyaltySettingsForModal.enabled === undefined) {
-         showNotification('Erro', 'Os dados da agenda ainda não foram carregados. Tente novamente em alguns segundos.', 'error');
-         return;
-    }
-    
     availableServicesForModal = state.services;
     availableProfessionalsForModal = state.professionals.filter(p => p.status === 'active');
-
-    if (newAppointmentState.data.clientLoyaltyPoints > 0) {
-        const loyaltyProgram = loyaltySettingsForModal;
-        const minPointsToRedeem = Math.min(...(loyaltyProgram?.rewards || []).map(r => r.points));
-        
-        newAppointmentState.data.clientHasRewards = (
-            loyaltyProgram.enabled && 
-            minPointsToRedeem !== Infinity && 
-            newAppointmentState.data.clientLoyaltyPoints >= minPointsToRedeem
-        );
-    }
     
-    let renderResult = { title: 'Erro', content: '<p>Etapa não encontrada.</p>' };
-    
+    let renderResult = { title: 'Erro', content: '' };
     switch (newAppointmentState.step) {
         case 1: renderResult = renderStep1_Client(appointment, isNavigating); break;
         case 2: renderResult = renderStep2_Service(); break;
         case 3: renderResult = renderStep3_Professional(); break;
         case 4: renderResult = renderStep4_Schedule(appointment); break;
-        default: break;
     }
     
     modal.innerHTML = `
-        <div class="modal-content max-w-4xl p-0 rounded-xl overflow-hidden shadow-2xl">
-            <header class="p-5 border-b flex justify-between items-center bg-gray-50">
-                <h2 class="text-xl font-bold text-gray-800">${renderResult.title}</h2>
-                <button type="button" data-action="close-modal" data-target="appointmentModal" class="text-2xl font-bold text-gray-500 hover:text-gray-900">&times;</button>
-            </header>
-            
-            <form id="appointmentForm" class="flex flex-col h-full">
-                <input type="hidden" id="appointmentId" value="${newAppointmentState.data.id || ''}">
-                <input type="hidden" id="selectedTime" value="${newAppointmentState.data.time || ''}">
-                
-                <div class="flex-1 overflow-y-auto" style="max-height: 80vh;">
-                    ${renderResult.content}
+        <div class="modal-content max-w-3xl w-full bg-white rounded-3xl shadow-2xl overflow-hidden m-4 flex flex-col max-h-[90vh]">
+            <header class="p-6 border-b border-gray-100 flex justify-between items-center bg-white z-10 shadow-sm relative">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs shadow-inner border border-indigo-200">
+                        ${newAppointmentState.step}/4
+                    </span>
+                    <h2 class="text-xl font-black text-gray-900 tracking-tight">${renderResult.title}</h2>
                 </div>
-                
+                <button type="button" data-action="close-modal" data-target="appointmentModal" class="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                    <i class="bi bi-x-lg text-lg"></i>
+                </button>
+            </header>
+            <form id="appointmentForm" class="flex flex-col h-full bg-white relative">
+                <input type="hidden" id="appointmentId" value="${newAppointmentState.data.id || ''}">
+                <div class="flex-1 overflow-y-auto custom-scrollbar">${renderResult.content}</div>
             </form>
         </div>`;
 
-    modal.querySelectorAll('[data-action="next-step"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const currentStep = parseInt(btn.dataset.currentStep, 10);
-            
-            if (currentStep === 1) {
-                const clientNameInput = modal.querySelector('#apptClientName');
-                const clientPhoneInput = modal.querySelector('#apptClientPhone');
+    modal.querySelectorAll('[data-action="next-step"]').forEach(btn => btn.addEventListener('click', () => {
+        const cs = parseInt(btn.dataset.currentStep, 10);
+        if (cs === 1) { newAppointmentState.data.clientName = modal.querySelector('#apptClientName').value.trim(); newAppointmentState.data.clientPhone = modal.querySelector('#apptClientPhone').value.trim(); if (!newAppointmentState.data.clientName) return showNotification('Atenção', 'O nome do cliente é obrigatório.', 'warning'); }
+        if (cs === 2 && newAppointmentState.data.selectedServiceIds.length === 0) return showNotification('Atenção', 'Selecione pelo menos um serviço do menu.', 'warning');
+        if (cs === 3 && !newAppointmentState.data.professionalId) return showNotification('Atenção', 'Escolha o membro da equipa para este atendimento.', 'warning');
+        navigateModalStep(cs + 1);
+    }));
+    modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1)));
 
-                newAppointmentState.data.clientName = clientNameInput.value.trim();
-                newAppointmentState.data.clientPhone = clientPhoneInput.value.trim();
-                
-                if (!newAppointmentState.data.clientName || !newAppointmentState.data.clientPhone) {
-                    return showNotification('Atenção', 'Nome e telefone do cliente são obrigatórios.', 'error');
-                }
-            } else if (currentStep === 2) {
-                if (newAppointmentState.data.selectedServiceIds.length === 0) {
-                     return showNotification('Atenção', 'Selecione pelo menos um serviço.', 'error');
-                }
-            } else if (currentStep === 3) {
-                 if (!newAppointmentState.data.professionalId) {
-                     return showNotification('Atenção', 'Selecione um profissional.', 'error');
-                 }
-            }
-            
-            navigateModalStep(currentStep + 1);
-        });
-    });
-
-    modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => {
-        btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1));
-    });
-
-    const appointmentForm = modal.querySelector('#appointmentForm');
-    
-    if (newAppointmentState.step === 4 && appointmentForm) {
-         appointmentForm.addEventListener('submit', handleAppointmentFormSubmit);
-    }
-
+    if (newAppointmentState.step === 4) modal.querySelector('#appointmentForm').addEventListener('submit', handleAppointmentFormSubmit);
     modal.style.display = 'flex';
     
-    if (newAppointmentState.step === 2) {
-        const servicesContainer = modal.querySelector('#apptServicesContainer');
-        servicesContainer.querySelectorAll('.service-card').forEach(card => {
-            card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card));
-        });
-        const serviceSearchInput = modal.querySelector('#serviceSearchModalInput');
-        if (serviceSearchInput) {
-            serviceSearchInput.addEventListener('input', (e) => handleServiceSearchInModal(e.target.value));
-        }
-    }
-
-    if (newAppointmentState.step === 3) {
-        const professionalContainer = modal.querySelector('#apptProfessionalContainer');
-        professionalContainer.querySelectorAll('.professional-modal-card').forEach(card => {
-            card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card));
-        });
-        const professionalSearchInput = modal.querySelector('#professionalSearchModalInput');
-        if (professionalSearchInput) {
-            professionalSearchInput.addEventListener('input', (e) => handleProfessionalSearchInModal(e.target.value));
-        }
-    }
-    
-    if (newAppointmentState.step === 1) {
-        const clientSearchInput = modal.querySelector('#clientSearchInput');
-        
-        if (clientSearchInput) {
-            clientSearchInput.addEventListener('input', (e) => handleClientSearch(e.target.value));
-            
-             if (newAppointmentState.data.clientName && newAppointmentState.data.clientPhone && allClientsData.length > 0) {
-                 const resultsContainer = document.getElementById('clientSearchResults');
-                 if(resultsContainer) resultsContainer.innerHTML = allClientsData.map(renderClientCard).join('');
-             }
-        }
-
-        const registerButton = modal.querySelector('[data-action="open-client-registration"]');
-        if (registerButton) {
-            registerButton.addEventListener('click', openClientRegistrationModal);
-        }
-    }
-    
-    if (newAppointmentState.step === 4) {
-        const dateInput = modal.querySelector('#apptDate');
-        
-        if (dateInput) dateInput.addEventListener('change', updateTimesAndDuration);
-        
-        updateTimesAndDuration();
-        renderLoyaltyRewards();
-    }
-}
-
-// --- 5. FUNÇÃO PRINCIPAL EXPORTADA ---
-
-export async function loadAgendaPage(params = {}) { 
-    if (currentTimeInterval) clearInterval(currentTimeInterval);
-    
-    localState.currentDate = params.targetDate ? new Date(params.targetDate) : (localState.currentDate || new Date());
-    localState.scrollToAppointmentId = params.scrollToAppointmentId || null; 
-    
-    localState.profSearchTerm = ''; 
-    localState.isSelectionMode = false;
-    localState.selectedItems.clear();
-
-    if (window.innerWidth < 768) {
-        localState.currentView = 'list';
-    }
-
-    contentDiv.innerHTML = `
-        <style>
-            .agenda-scroll-container::-webkit-scrollbar { display: none; }
-            .agenda-scroll-container { -ms-overflow-style: none; scrollbar-width: none; }
-            .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
-            .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
-            
-            .toggle-bg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.3s; }
-            #showInactiveProfsToggle:checked + .toggle-bg { background-color: #4f46e5; }
-            #showInactiveProfsToggle:checked + .toggle-bg::after { transform: translateX(100%); }
-        </style>
-        
-        <section class="w-full flex flex-col gap-3 pb-20 overflow-hidden">
-            
-            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 w-full flex-shrink-0 z-10 transition-all duration-300">
-                
-                <div class="flex items-center justify-between gap-2 w-full">
-                    
-                    <div class="flex items-center gap-2 min-w-0">
-                        <span id="weekRange" class="font-bold text-gray-800 text-sm sm:text-base flex-shrink-0"></span>
-                        <input type="date" id="dateFilterInput" class="p-1 text-xs border border-gray-300 rounded-md shadow-sm text-gray-700 bg-white w-[110px] cursor-pointer flex-shrink-0" title="Ir para a data">
-                    </div>
-                    
-                    <button id="btn-toggle-filters" class="p-1.5 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center gap-1 flex-shrink-0" title="Filtros e Opções">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
-                        <span class="text-xs font-semibold hidden sm:inline">Opções</span>
-                    </button>
-                </div>
-
-                <div id="filters-panel" class="hidden flex-col gap-3 pt-3 mt-3 border-t border-gray-100">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button id="todayBtn" class="p-1.5 px-3 border rounded-md shadow-sm text-xs font-semibold bg-white text-gray-700 hover:bg-gray-50">Hoje</button>
-                        
-                        <div class="flex items-center gap-1 rounded-md bg-gray-200 p-1">
-                            <button data-view="list" class="view-btn text-xs px-3 py-1 rounded-sm ${localState.currentView === 'list' ? 'bg-white shadow-sm' : 'text-gray-600'}">Lista</button>
-                            <button data-view="week" class="view-btn text-xs px-3 py-1 rounded-sm ${localState.currentView === 'week' ? 'bg-white shadow-sm' : 'text-gray-600'}">Semana</button>
-                        </div>
-                        
-                        <div id="week-days-toggle" class="${localState.currentView === 'week' ? 'flex' : 'hidden'} items-center gap-1 rounded-md bg-gray-200 p-1">
-                            <button data-days="3" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm">3 dias</button>
-                            <button data-days="5" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm hidden sm:block">5 dias</button>
-                            <button data-days="7" class="week-days-btn view-btn text-xs px-2 py-1 rounded-sm hidden sm:block">7 dias</button>
-                        </div>
-
-                        <button id="btn-toggle-select" class="p-1.5 px-3 border rounded-md shadow-sm bg-gray-50 text-gray-700 hover:bg-gray-100 flex items-center gap-1 text-xs font-semibold transition-colors">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                            Excluir Múltiplos
-                        </button>
-                    </div>
-
-                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <input type="search" id="profSearchInput" placeholder="Pesquisar profissional pelo nome..." class="w-full sm:flex-grow p-2 border rounded-md shadow-sm text-xs focus:ring-indigo-500 focus:border-indigo-500">
-                        <label class="flex items-center gap-2 cursor-pointer flex-shrink-0">
-                            <div class="relative">
-                                <input type="checkbox" id="showInactiveProfsToggle" class="sr-only">
-                                <div class="toggle-bg block bg-gray-300 w-10 h-5 rounded-full"></div>
-                            </div>
-                            <span class="text-xs font-medium text-gray-700">Exibir Inativos</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="border-t border-gray-100 mt-3 pt-2">
-                    <div id="profSelectorContainer" class="flex overflow-x-auto custom-scrollbar pb-2 items-start gap-2">
-                        <div class="loader mx-auto"></div>
-                    </div>
-                </div>
-
-            </div> 
-            
-            <div id="agenda-view" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden relative w-full"></div>
-            
-            <button data-action="new-appointment" class="fixed bottom-6 right-6 sm:bottom-10 sm:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition z-50 transform hover:scale-105">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-            </button>
-
-            <div id="batch-delete-container" class="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 hidden w-[90%] max-w-md"></div>
-        </section>`;
-
-    const btnToggleFilters = document.getElementById('btn-toggle-filters');
-    const filtersPanel = document.getElementById('filters-panel');
-    if (btnToggleFilters && filtersPanel) {
-        btnToggleFilters.addEventListener('click', () => {
-            filtersPanel.classList.toggle('hidden');
-            filtersPanel.classList.toggle('flex');
-            
-            btnToggleFilters.classList.toggle('bg-blue-50');
-            btnToggleFilters.classList.toggle('text-blue-600');
-            btnToggleFilters.classList.toggle('border-blue-300');
-        });
-    }
-
-    const toggleSelectBtn = document.getElementById('btn-toggle-select');
-    toggleSelectBtn.addEventListener('click', () => {
-        localState.isSelectionMode = !localState.isSelectionMode;
-        if (!localState.isSelectionMode) {
-            localState.selectedItems.clear();
-        }
-        toggleSelectBtn.classList.toggle('bg-blue-100', localState.isSelectionMode);
-        toggleSelectBtn.classList.toggle('text-blue-700', localState.isSelectionMode);
-        toggleSelectBtn.classList.toggle('border-blue-300', localState.isSelectionMode);
-        renderAgenda(); 
-    });
-
-    document.querySelectorAll('.view-btn[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.view-btn[data-view]').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
-            btn.classList.add('bg-white', 'shadow-sm');
-            localState.currentView = btn.dataset.view;
-
-            const weekDaysToggle = document.getElementById('week-days-toggle');
-            if (localState.currentView === 'week') {
-                weekDaysToggle.classList.remove('hidden');
-                weekDaysToggle.classList.add('flex');
-                if (window.innerWidth < 768) {
-                    localState.weekViewDays = 7;
-                    document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
-                    const btn7dias = document.querySelector('.week-days-btn[data-days="7"]');
-                    if (btn7dias) btn7dias.classList.add('bg-white', 'shadow-sm');
-                }
-            } else {
-                weekDaysToggle.classList.remove('flex');
-                weekDaysToggle.classList.add('hidden');
-            }
-            fetchAndDisplayAgenda();
-        });
-    });
-
-    document.querySelectorAll('.week-days-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.week-days-btn').forEach(b => b.classList.remove('bg-white', 'shadow-sm'));
-            btn.classList.add('bg-white', 'shadow-sm');
-            localState.weekViewDays = parseInt(btn.dataset.days, 10);
-            fetchAndDisplayAgenda();
-        });
-    });
-
-    document.getElementById('todayBtn').addEventListener('click', () => {
-        localState.currentDate = new Date();
-        fetchAndDisplayAgenda();
-    });
-    
-    document.getElementById('dateFilterInput').addEventListener('change', (e) => {
-        if (e.target.value) {
-            const [year, month, day] = e.target.value.split('-');
-            localState.currentDate = new Date(year, month - 1, day);
-            fetchAndDisplayAgenda();
-        }
-    });
-    
-    document.getElementById('profSearchInput').addEventListener('input', (e) => {
-        localState.profSearchTerm = e.target.value;
-        renderProfessionalSelector();
-    });
-
-    document.getElementById('showInactiveProfsToggle').addEventListener('change', (e) => {
-        localState.showInactiveProfs = e.target.checked;
-        renderProfessionalSelector(); 
-        fetchAndDisplayAgenda(); 
-    });
-    
-    if (!hasContentDelegationInitialized) {
-        contentDiv.addEventListener('click', async (e) => {
-            const targetElement = e.target.closest('[data-action]');
-            
-            if (e.target.dataset.action === 'toggle-select-item') {
-                const id = e.target.dataset.id;
-                if (e.target.checked) {
-                    localState.selectedItems.add(id);
-                } else {
-                    localState.selectedItems.delete(id);
-                }
-                updateBatchDeleteUI();
-                return;
-            }
-
-            if (targetElement && targetElement.dataset.action === 'batch-delete') {
-                const count = localState.selectedItems.size;
-                const confirmed = await showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
-                if (confirmed) {
-                    const ids = Array.from(localState.selectedItems);
-                    let successCount = 0;
-                    try {
-                        await Promise.all(ids.map(async (id) => {
-                            try {
-                                await appointmentsApi.deleteAppointment(id);
-                                successCount++;
-                            } catch (err) {
-                                console.error(`Falha ao excluir ${id}`, err);
-                            }
-                        }));
-                        showNotification(`${successCount} agendamento(s) excluído(s).`, 'success');
-                        localState.selectedItems.clear();
-                        localState.isSelectionMode = false;
-                        const btnToggleSelect = document.getElementById('btn-toggle-select');
-                        if (btnToggleSelect) {
-                            btnToggleSelect.classList.remove('bg-blue-100', 'text-blue-700', 'border-blue-300');
-                        }
-                        fetchAndDisplayAgenda();
-                    } catch (error) {
-                        showNotification('Erro ao processar exclusão em lote.', 'error');
-                    }
-                }
-                return;
-            }
-            
-            if (e.target.closest('[data-action="select-professional"]')) {
-                const selectedProfCard = e.target.closest('[data-action="select-professional"]');
-                const profId = selectedProfCard.dataset.profId;
-                const isDeselecting = localState.selectedProfessionalId === profId && profId !== 'all';
-                localState.selectedProfessionalId = isDeselecting ? 'all' : profId;
-                if (profId !== 'all') {
-                    const searchInput = document.getElementById('profSearchInput');
-                    if(searchInput) searchInput.value = '';
-                    localState.profSearchTerm = '';
-                }
-                await fetchAndDisplayAgenda(); 
-                return;
-            }
-
-            if (!targetElement) return;
-
-            const action = targetElement.dataset.action;
-            let apptData = null;
-            const card = e.target.closest('[data-appointment]');
-            if (card) apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-            
-            switch (action) {
-                case 'new-appointment':
-                    openAppointmentModal();
-                    break;
-                case 'edit-appointment':
-                    if (localState.isSelectionMode) return;
-                    if (!apptData) return;
-                    if (apptData.status === 'completed') {
-                        showNotification('Atenção', 'Agendamentos finalizados não podem ser editados.', 'error');
-                        return;
-                    }
-                    if (apptData.hasRewards && !apptData.redeemedReward) {
-                        showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos para resgatar. Verifique a Etapa 4 do agendamento.', 'info');
-                    }
-                    openAppointmentModal(apptData);
-                    break;
-                case 'delete-appointment': {
-                    if (localState.isSelectionMode) return;
-                    const id = targetElement.dataset.id;
-                    const confirmed = await showConfirmation('Confirmar Exclusão', 'Tem a certeza que deseja apagar este agendamento?');
-                    if (confirmed) {
-                        try {
-                            await appointmentsApi.deleteAppointment(id);
-                            showNotification('Agendamento apagado!', 'success');
-                            fetchAndDisplayAgenda();
-                        } catch (error) {
-                            showNotification(`Não foi possível apagar: ${error.message}`, 'error');
-                        }
-                    }
-                    break;
-                }
-                case 'open-comanda':
-                    if (localState.isSelectionMode) return; 
-                    if (apptData) {
-                        if (apptData.hasRewards && !apptData.redeemedReward && apptData.status !== 'completed') {
-                             showNotification('🎁 Cliente com Prêmios!', 'Este cliente tem pontos de fidelidade para resgatar.', 'info');
-                        }
-                        const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
-                        const params = { selectedAppointmentId: apptData.id, initialFilter: initialFilter };
-                        
-                        if (initialFilter === 'finalizadas') {
-                            let dateToUse = apptData.startTime;
-                            if (apptData.transaction && apptData.transaction.paidAt) {
-                                const paidAt = apptData.transaction.paidAt;
-                                if (typeof paidAt === 'object' && paidAt._seconds) {
-                                    dateToUse = new Date(paidAt._seconds * 1000);
-                                } else {
-                                    dateToUse = paidAt;
-                                }
-                            }
-                            params.filterDate = dateToUse;
-                        }
-                        navigateTo('comandas-section', params);
-                    }
-                    break;
-            }
-        });
-        hasContentDelegationInitialized = true; 
-    }
-
-    await populateFilters();
-    await fetchAndDisplayAgenda();
+    if (newAppointmentState.step === 2) modal.querySelectorAll('.service-card').forEach(card => card.addEventListener('click', () => handleServiceCardClick(card.dataset.serviceId, card)));
+    if (newAppointmentState.step === 3) modal.querySelectorAll('.professional-modal-card').forEach(card => card.addEventListener('click', () => handleProfessionalCardClick(card.dataset.professionalId, card)));
+    if (newAppointmentState.step === 1) modal.querySelector('#clientSearchInput')?.addEventListener('input', (e) => handleClientSearch(e.target.value));
+    if (newAppointmentState.step === 4) { modal.querySelector('#apptDate')?.addEventListener('change', updateTimesAndDuration); updateTimesAndDuration(); renderLoyaltyRewards(); }
 }
