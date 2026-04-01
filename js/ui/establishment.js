@@ -45,6 +45,9 @@ function getMenuItems() {
         { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
         { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
         { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
+        // --- NOVO MENU PARA WHATSAPP ---
+        { id: 'whatsapp-bot', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', label: 'Atendente Virtual (WhatsApp)' },
+        // -------------------------------
         { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
         { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
         { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
@@ -602,13 +605,124 @@ function renderWorkingHoursSection(data, container) {
     });
 }
 
+// --- NOVO: ABA DE INTEGRAÇÃO DO WHATSAPP (BOT) ---
+function renderWhatsAppSection(data, container) {
+    const isConnected = !!data.whatsappInstance;
+
+    container.innerHTML = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md border border-gray-100">
+            <div class="mb-6">
+                <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <i class="bi bi-robot text-green-500"></i> Atendente Virtual Inteligente
+                </h3>
+                <p class="text-sm text-gray-600 mt-2">Conecte o WhatsApp desta unidade para que a nossa Inteligência Artificial atenda os clientes, responda dúvidas e faça os agendamentos de forma automática, 24 horas por dia.</p>
+            </div>
+
+            <div class="bg-green-50 p-6 rounded-xl border border-green-200 text-center">
+                
+                <div id="whatsappStatusArea" class="${isConnected ? 'hidden' : 'block'}">
+                    <div class="bg-white inline-block p-4 rounded-full shadow-sm mb-4">
+                        <i class="bi bi-qr-code-scan text-4xl text-gray-700"></i>
+                    </div>
+                    <h4 class="text-lg font-bold text-gray-800 mb-2">Ligar o Bot a esta Unidade</h4>
+                    <p class="text-sm text-gray-600 mb-6 max-w-md mx-auto">Clique no botão abaixo para gerar um QR Code. Escaneie-o com o celular da sua barbearia (em Aparelhos Conectados).</p>
+                    
+                    <button type="button" id="btnGenerateQr" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 flex items-center gap-2 mx-auto">
+                        <i class="bi bi-phone-vibrate"></i> Gerar QR Code
+                    </button>
+                </div>
+
+                <div id="qrCodeDisplayArea" class="hidden">
+                    <h4 class="text-lg font-bold text-indigo-800 mb-4 animate-pulse">Aguardando Conexão...</h4>
+                    <div class="bg-white p-4 inline-block rounded-xl shadow-lg border-2 border-green-400">
+                        <img id="qrCodeImage" src="" alt="QR Code WhatsApp" class="w-64 h-64 object-contain">
+                    </div>
+                    <ul class="text-sm text-left text-gray-700 max-w-sm mx-auto mt-6 space-y-2 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                        <li><span class="font-bold text-green-600">1.</span> Abra o WhatsApp no telemóvel da loja.</li>
+                        <li><span class="font-bold text-green-600">2.</span> Vá a <b>Configurações</b> (ou Mais Opções).</li>
+                        <li><span class="font-bold text-green-600">3.</span> Toque em <b>Aparelhos Conectados</b>.</li>
+                        <li><span class="font-bold text-green-600">4.</span> Aponte a câmera para o quadrado acima.</li>
+                    </ul>
+                </div>
+
+                <div id="connectedStatusArea" class="${isConnected ? 'block' : 'hidden'} mt-4">
+                    <div class="bg-white inline-block p-4 rounded-full shadow-sm mb-4 border-4 border-green-500">
+                        <i class="bi bi-check-circle-fill text-4xl text-green-500"></i>
+                    </div>
+                    <h4 class="text-xl font-bold text-green-700 mb-2">WhatsApp Conectado!</h4>
+                    <p class="text-sm text-gray-600 max-w-md mx-auto mb-6">O bot da Inteligência Artificial já está ativo no número desta unidade. Experimente enviar um "Oi" para ele!</p>
+                    
+                    <div class="flex justify-center gap-4">
+                        <button type="button" id="btnDisconnectWhatsapp" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
+                            <i class="bi bi-power"></i> Desconectar
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    `;
+
+    // Lógica do Clique
+    const btnGenerate = container.querySelector('#btnGenerateQr');
+    if (btnGenerate) {
+        btnGenerate.addEventListener('click', async () => {
+            btnGenerate.disabled = true;
+            btnGenerate.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
+
+            // Substitua esta URL pela URL REAL do seu Firebase após o deploy da sua Cloud Function
+            const FUNCTION_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/connect"; 
+
+            try {
+                const response = await fetch(FUNCTION_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ establishmentId: currentEditingId })
+                });
+
+                const apiData = await response.json();
+
+                if (apiData.qrcode) {
+                    // Esconde a tela de botão, mostra o QR Code
+                    container.querySelector('#whatsappStatusArea').classList.add('hidden');
+                    container.querySelector('#qrCodeDisplayArea').classList.remove('hidden');
+                    container.querySelector('#qrCodeImage').src = apiData.qrcode;
+                } else if (apiData.message && apiData.message.includes("já está conectado")) {
+                    // Se a API disse que já tem conexão
+                    container.querySelector('#whatsappStatusArea').classList.add('hidden');
+                    container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
+                    container.querySelector('#connectedStatusArea').classList.remove('hidden');
+                    showNotification('Aviso', 'O WhatsApp já estava conectado nesta unidade.', 'success');
+                } else {
+                    showNotification('Erro na API', apiData.error || "Desconhecido", 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showNotification('Erro de Conexão', 'Não foi possível acessar o servidor Kairós.', 'error');
+            } finally {
+                btnGenerate.disabled = false;
+                btnGenerate.innerHTML = '<i class="bi bi-phone-vibrate"></i> Gerar QR Code';
+            }
+        });
+    }
+
+    const btnDisconnect = container.querySelector('#btnDisconnectWhatsapp');
+    if (btnDisconnect) {
+        btnDisconnect.addEventListener('click', () => {
+            if(confirm("Tem certeza que deseja DESCONECTAR o bot desta unidade? O sistema não responderá mais os clientes via WhatsApp automaticamente.")) {
+                showNotification('Aviso', 'Para desconectar, por favor vá ao aplicativo do seu celular (Aparelhos Conectados) e clique em "Desconectar".', 'info');
+            }
+        });
+    }
+}
+// ---------------------------------------------
+
 async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
     const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
 
     let services = [], products = [], packages = [];
     try {
-        // Busca os dados APENAS da unidade que está a ser editada
         [services, products, packages] = await Promise.all([
              servicesApi.getServices(currentEditingId),
              productsApi.getProducts(currentEditingId),
@@ -761,7 +875,6 @@ async function renderLoyaltySection(data, container) {
     if (loyaltyProgram.tiers && loyaltyProgram.tiers.length > 0) {
         loyaltyProgram.tiers.forEach(tier => tiersContainer.appendChild(createTierRow(tier)));
     } else {
-        // Mostra uma linha em branco por padrão se estiver vazio
         tiersContainer.appendChild(createTierRow());
     }
     
@@ -1023,7 +1136,6 @@ async function showSettingsDetailView(sectionId) {
     
     if (!menuItem) return;
 
-    // Remove botões de voltar se já estiver numa aba específica (redesenha)
     contentDiv.innerHTML = `
         <div class="bg-white p-4 shadow-sm border-b mb-6 flex items-center justify-between sticky top-0 z-10">
             <div class="flex items-center gap-3">
@@ -1056,6 +1168,7 @@ async function showSettingsDetailView(sectionId) {
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
+        case 'whatsapp-bot': renderWhatsAppSection(establishmentData, detailContainer); break; // <--- NOVA ABA AQUI
         case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; 
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
@@ -1075,13 +1188,10 @@ export async function loadEstablishmentPage(params = {}) {
     `;
 
     try {
-        // Lógica Dinâmica: Se clicou num card da hierarquia, o params.id traz o ID certo.
-        // Caso contrário, usamos o id logado.
         currentEditingId = params.id || state.establishmentId;
         
         establishmentData = await establishmentApi.getEstablishmentDetails(currentEditingId);
         
-        // Determinar se mostrar o botão "Voltar à Rede" (Mostra se acedemos via card)
         const backToNetworkBtn = params.id 
             ? `<button onclick="window.navigateTo('establishments-section')" class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-2 px-4 rounded-lg shadow-sm transition-colors flex items-center gap-2">
                    <i class="bi bi-diagram-3"></i> Voltar à Rede
@@ -1142,14 +1252,12 @@ export async function loadEstablishmentPage(params = {}) {
             </div>
         `;
 
-        // Listener dos botões do menu
         contentDiv.querySelectorAll('div[data-section]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 showSettingsDetailView(btn.dataset.section);
             });
         });
 
-        // Listener dos módulos ativos
         contentDiv.querySelectorAll('.module-toggle').forEach(sw => {
             sw.addEventListener('change', async () => {
                 const moduleKey = sw.dataset.module;
@@ -1159,7 +1267,7 @@ export async function loadEstablishmentPage(params = {}) {
                     await establishmentApi.updateEstablishmentDetails(currentEditingId, { modules: updatedModules });
                     showNotification('Módulos', 'Módulos atualizados com sucesso.', 'success');
                 } catch (err) {
-                    sw.checked = !sw.checked; // reverte em caso de erro
+                    sw.checked = !sw.checked;
                     showNotification('Erro', err.message, 'error');
                 }
             });
@@ -1177,7 +1285,6 @@ export async function loadEstablishmentPage(params = {}) {
     }
 }
 
-// Auxiliar apenas para renderizar os botões (toggles) dos módulos na aba principal
 function renderModuleToggles(modules) {
     const list = [
         { key: 'agenda-section', label: 'Agenda Diária', icon: 'bi-calendar' },
