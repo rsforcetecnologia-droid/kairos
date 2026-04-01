@@ -1,6 +1,6 @@
 /**
  * functions/index.js
- * Backend Kairós SaaS: Notificações + Bot de Menus + QR Code Generator 🚀
+ * Backend Kairós SaaS: Notificações + Bot de Menus + QR Code + Anti-Spam 🚀
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -14,10 +14,13 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ============================================================================
-// CONFIGURAÇÕES GERAIS DO SERVIDOR (Apenas o endereço e a chave mestre)
+// CONFIGURAÇÕES GERAIS DO SERVIDOR E WEBHOOK
 // ============================================================================
 const EVOLUTION_API_URL = "http://177.153.38.218:8080"; 
 const GLOBAL_API_KEY = "kairos_senha_segura";
+
+// 🚨 ATENÇÃO: Esta é a URL oficial do seu Webhook no Google Cloud
+const WEBHOOK_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/webhook";
 
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers) E MULTITENANT
@@ -57,14 +60,12 @@ async function getTargetTokens(establishmentId) {
     return [...new Set(tokens)];
 }
 
-// Vai buscar os dados da loja pelo ID
 async function getEstablishmentData(establishmentId) {
     if (!establishmentId) return null;
     const docSnap = await db.collection('establishments').doc(establishmentId).get();
     return docSnap.exists ? { id: docSnap.id, ...docSnap.data() } : null;
 }
 
-// Vai buscar os dados da loja pelo nome da Instância de WhatsApp
 async function getEstablishmentByInstance(instanceName) {
     if (!instanceName) return null;
     const snapshot = await db.collection('establishments').where('whatsappInstance', '==', instanceName).limit(1).get();
@@ -72,7 +73,6 @@ async function getEstablishmentByInstance(instanceName) {
     return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
 }
 
-// Função auxiliar: Busca agendamentos futuros do cliente pelo telefone
 async function getClientAppointments(customerPhone, establishmentId) {
     const now = new Date();
     const snapshot = await db.collection('appointments')
@@ -99,17 +99,19 @@ async function getClientAppointments(customerPhone, establishmentId) {
 }
 
 // ============================================================================
-// SEÇÃO 2: MOTOR DE ENVIO DINÂMICO
+// SEÇÃO 2: MOTOR DE ENVIO DINÂMICO (LIMPEZA DE NÚMEROS)
 // ============================================================================
 
 async function sendWhatsAppMessage(toPhone, messageText, instanceName) {
     if (!toPhone || !instanceName) {
-        console.log(`[WHATSAPP] ❌ Falha: Telefone ou Instância ausente. (Phone: ${toPhone}, Instância: ${instanceName})`);
+        console.log(`[WHATSAPP] ❌ Falha: Telefone (${toPhone}) ou Instância (${instanceName}) ausente.`);
         return;
     }
     
     let cleanPhone = toPhone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
     if (!cleanPhone.startsWith('55')) cleanPhone = '55' + cleanPhone;
+    if (cleanPhone.startsWith('550')) cleanPhone = '55' + cleanPhone.substring(3);
 
     const payload = {
         "number": cleanPhone,
@@ -118,15 +120,15 @@ async function sendWhatsAppMessage(toPhone, messageText, instanceName) {
     };
 
     try {
-        console.log(`[WHATSAPP] A enviar mensagem da loja [${instanceName}] para o cliente [${cleanPhone}]...`);
-        await axios.post(
+        console.log(`[WHATSAPP] 🚀 Enviando para [${cleanPhone}] via instância [${instanceName}]...`);
+        const response = await axios.post(
             `${EVOLUTION_API_URL}/message/sendText/${instanceName}`,
             payload,
             { headers: { 'apikey': GLOBAL_API_KEY, 'Content-Type': 'application/json' } }
         );
-        console.log(`[WHATSAPP] ✅ SUCESSO!`);
+        console.log(`[WHATSAPP] ✅ SUCESSO! Status: ${response.status}`);
     } catch (error) {
-        console.error(`[WHATSAPP] ❌ ERRO:`, JSON.stringify(error.response?.data || error.message));
+        console.error(`[WHATSAPP] ❌ ERRO AO ENVIAR PARA ${cleanPhone}:`, JSON.stringify(error.response?.data || error.message));
     }
 }
 
@@ -137,32 +139,42 @@ async function sendWhatsAppMessage(toPhone, messageText, instanceName) {
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
+        console.log(`[GATILHO-CRIAR] ⚡ Novo agendamento disparado! ID: ${event.params.appointmentId}`);
+        
         const appointment = event.data?.data();
-        if (!appointment || !appointment.establishmentId) return;
+        if (!appointment) {
+            console.log("[GATILHO-CRIAR] ❌ Dados do agendamento vazios.");
+            return;
+        }
+
+        if (!appointment.establishmentId) {
+            console.log("[GATILHO-CRIAR] ❌ Faltou establishmentId no agendamento.");
+            return;
+        }
 
         const shop = await getEstablishmentData(appointment.establishmentId);
         if (!shop || !shop.whatsappInstance) {
-            console.log(`[GATILHO] ⚠️ Barbearia (${appointment.establishmentId}) não tem WhatsApp configurado.`);
+            console.log(`[GATILHO-CRIAR] ⚠️ Loja (${appointment.establishmentId}) não tem whatsappInstance cadastrada.`);
             return;
         }
 
         const clientName = appointment.clientName || "Cliente";
         const clientPhone = appointment.clientPhone;
-        const serviceName = appointment.serviceName || "Serviço";
+        const serviceName = appointment.serviceName || (appointment.services && appointment.services[0]?.name) || "Serviço";
         const professionalName = await getProfessionalName(appointment.professionalId);
         const dateString = formatDate(appointment.startTime || appointment.time);
 
         if (clientPhone) {
-            const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento na *${shop.name || 'Barbearia'}* foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por si!`;
+            console.log(`[GATILHO-CRIAR] Preparando mensagem para ${clientPhone}...`);
+            const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento na *${shop.name || 'Barbearia'}* foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por você!`;
             await sendWhatsAppMessage(clientPhone, zapMessage, shop.whatsappInstance);
+        } else {
+            console.log("[GATILHO-CRIAR] ⚠️ Agendamento sem telefone de cliente. Ignorando WhatsApp.");
         }
 
         const tokens = await getTargetTokens(appointment.establishmentId);
         if (tokens.length > 0) {
-            const message = {
-                notification: { title: "📅 Novo Agendamento!", body: `${clientName} agendou para ${dateString}.` },
-                tokens: tokens,
-            };
+            const message = { notification: { title: "📅 Novo Agendamento!", body: `${clientName} agendou para ${dateString}.` }, tokens: tokens };
             try { await admin.messaging().sendEachForMulticast(message); } catch (e) { console.error("Erro Push:", e); }
         }
     }
@@ -171,6 +183,8 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
     async (event) => {
+        console.log(`[GATILHO-ATUALIZAR] ⚡ Atualização disparada! ID: ${event.params.appointmentId}`);
+        
         const before = event.data.before.data();
         const after = event.data.after.data();
 
@@ -178,12 +192,13 @@ exports.sendCancellationNotification = onDocumentUpdated(
                             (before.status !== "cancelled" && before.status !== "cancelado");
 
         if (isCancelled && after.establishmentId) {
+            console.log(`[GATILHO-ATUALIZAR] 🚫 Cancelamento detectado para ${after.clientName}`);
             const shop = await getEstablishmentData(after.establishmentId);
             if (!shop || !shop.whatsappInstance) return;
 
             const dateString = formatDate(after.startTime || after.time);
             if (after.clientPhone) {
-                const msg = `Olá ${after.clientName || 'Cliente'}. ❌ O seu agendamento na *${shop.name || 'Barbearia'}* para o dia ${dateString} foi CANCELADO.\n\nPara remarcar, aceda à nossa app!`;
+                const msg = `Olá ${after.clientName || 'Cliente'}. ❌ O seu agendamento na *${shop.name || 'Barbearia'}* para o dia ${dateString} foi CANCELADO.\n\nPara remarcar, acesse o nosso link!`;
                 await sendWhatsAppMessage(after.clientPhone, msg, shop.whatsappInstance);
             }
         }
@@ -199,118 +214,138 @@ whatsappApp.use(express.json());
 whatsappApp.use(cors); 
 
 whatsappApp.post('/webhook', async (req, res) => {
+    // 🚨 O RADAR: Imprime TUDO que bate na URL do Webhook
+    console.log("[RADAR WEBHOOK] Bateu na porta:", JSON.stringify(req.body));
+
     const { event, instance, data } = req.body;
     
     if (event !== "messages.upsert") return res.sendStatus(200);
-    if (data.key.fromMe) return res.sendStatus(200);
+    if (!data || !data.key) return res.sendStatus(200);
+    
+    if (data.key.fromMe) {
+        console.log("[BOT] Mensagem enviada por nós mesmos. Ignorando.");
+        return res.sendStatus(200);
+    }
+
+    if (!data.key.remoteJid || !data.key.remoteJid.endsWith('@s.whatsapp.net')) {
+        console.log("[BOT] Mensagem de grupo/canal. Ignorando.");
+        return res.sendStatus(200);
+    }
 
     const customerPhone = data.key.remoteJid.split('@')[0];
+
+    // MATA-FANTASMAS
+    if (customerPhone.length > 14) {
+        console.log(`[BOT] 👻 Ignorando LID da Meta: ${customerPhone}`);
+        return res.sendStatus(200);
+    }
+
     const textBody = data.message?.conversation || data.message?.extendedTextMessage?.text;
     if (!textBody) return res.sendStatus(200);
 
-    console.log(`[BOT] Mensagem de ${customerPhone} na loja [${instance}]: ${textBody}`);
+    console.log(`[BOT] 📩 LENDO: ${customerPhone} na loja [${instance}]: ${textBody}`);
 
-    const shop = await getEstablishmentByInstance(instance);
-    if (!shop) return res.sendStatus(200);
+    try {
+        const shop = await getEstablishmentByInstance(instance);
+        if (!shop) {
+            console.log(`[BOT] ⚠️ Loja não encontrada para a instância: ${instance}`);
+            return res.sendStatus(200);
+        }
 
-    let baseUrl = "https://www.kairosagenda.com.br";
-    const linkId = shop.urlId || shop.id;
-    const bookingLink = `${baseUrl}/agendar?id=${linkId}`;
+        let baseUrl = "https://www.kairosagenda.com.br";
+        const linkId = shop.urlId || shop.id;
+        const bookingLink = `${baseUrl}/agendar?id=${linkId}`;
 
-    // Documento da Sessão Único por loja + telefone
-    const sessionRef = db.collection('sessions').doc(`${shop.id}_${customerPhone}`);
-    const sessionSnap = await sessionRef.get();
-    let session = sessionSnap.exists ? sessionSnap.data() : { status: 'IDLE' };
+        const sessionRef = db.collection('sessions').doc(`${shop.id}_${customerPhone}`);
+        const sessionSnap = await sessionRef.get();
+        let session = sessionSnap.exists ? sessionSnap.data() : { status: 'IDLE' };
 
-    if (textBody === '0') {
-        session.status = 'IDLE';
-    }
-
-    // ESTADO: EM ATENDIMENTO HUMANO
-    if (session.status === 'HUMAN') {
         if (textBody === '0') {
             session.status = 'IDLE';
-            await sendWhatsAppMessage(customerPhone, "Você encerrou o atendimento humano e voltou ao assistente virtual. 🤖\n\nComo posso ajudar?\n1️⃣ Agendar\n2️⃣ Cancelar\n3️⃣ Remarcar\n4️⃣ Falar com Atendente", instance);
+        }
+
+        if (session.status === 'HUMAN') {
+            if (textBody === '0') {
+                session.status = 'IDLE';
+                await sendWhatsAppMessage(customerPhone, "Você encerrou o atendimento humano e voltou ao assistente virtual. 🤖\n\nComo posso ajudar?\n1️⃣ Agendar\n2️⃣ Cancelar\n3️⃣ Remarcar\n4️⃣ Falar com Atendente", instance);
+                await sessionRef.set(session);
+            }
+            return res.sendStatus(200);
+        }
+
+        if (session.status === 'IDLE') {
+            const menu = `Olá! Sou o assistente virtual da *${shop.name}*. 💈\nComo posso te ajudar hoje?\n\n1️⃣ Fazer um Agendamento\n2️⃣ Cancelar um Agendamento\n3️⃣ Remarcar um Agendamento\n4️⃣ Falar com um Atendente`;
+            await sendWhatsAppMessage(customerPhone, menu, instance);
+            
+            session.status = 'WAITING_MENU';
+            await sessionRef.set(session);
+            return res.sendStatus(200);
+        }
+
+        if (session.status === 'WAITING_MENU') {
+            if (textBody === '1') {
+                await sendWhatsAppMessage(customerPhone, `Ótima escolha! Para escolher o seu serviço, profissional e horário com facilidade, acesse a nossa agenda online pelo link abaixo:\n\n🔗 ${bookingLink}\n\n(Se precisar voltar ao menu inicial, digite 0).`, instance);
+                session.status = 'IDLE';
+            } 
+            else if (textBody === '2' || textBody === '3') {
+                const action = textBody === '2' ? 'cancelar' : 'remarcar';
+                const apps = await getClientAppointments(customerPhone, shop.id);
+                
+                if (apps.length === 0) {
+                    await sendWhatsAppMessage(customerPhone, `Não encontrei nenhum agendamento futuro no sistema para o seu número.\n\nPara fazer um novo agendamento, acesse:\n🔗 ${bookingLink}\n\n(Digite 0 para voltar ao menu).`, instance);
+                    session.status = 'IDLE';
+                } else {
+                    let msg = `Encontrei os seguintes agendamentos no sistema. Qual deles você deseja ${action}?\n\n`;
+                    session.tempApps = {}; 
+                    
+                    apps.forEach((app, index) => {
+                        const num = index + 1;
+                        const dateStr = formatDate(app.date);
+                        const profName = app.professionalName || "Profissional";
+                        msg += `${num}️⃣ *${dateStr}* com ${profName}\n`;
+                        session.tempApps[num] = app.id;
+                    });
+                    
+                    msg += `\n👉 Digite apenas o *número* correspondente (ou 0 para cancelar a operação).`;
+                    await sendWhatsAppMessage(customerPhone, msg, instance);
+                    session.status = textBody === '2' ? 'WAITING_CANCEL' : 'WAITING_RESCHEDULE';
+                }
+            }
+            else if (textBody === '4') {
+                await sendWhatsAppMessage(customerPhone, `Certo! Desliguei o robô e chamei um atendente. Por favor, aguarde um momento.\n\n(Para voltar a falar com o robô a qualquer momento, digite 0).`, instance);
+                session.status = 'HUMAN';
+            }
+            else {
+                await sendWhatsAppMessage(customerPhone, `Opção inválida. ❌\nPor favor, digite 1, 2, 3 ou 4.`, instance);
+            }
+            
+            await sessionRef.set(session);
+            return res.sendStatus(200);
+        }
+
+        if (session.status === 'WAITING_CANCEL' || session.status === 'WAITING_RESCHEDULE') {
+            const isReschedule = session.status === 'WAITING_RESCHEDULE';
+            const appId = session.tempApps ? session.tempApps[textBody] : null;
+
+            if (appId) {
+                await sendWhatsAppMessage(customerPhone, `Processando a sua solicitação... Aguarde um instante ⏳`, instance);
+                
+                await db.collection('appointments').doc(appId).update({ status: 'cancelled' });
+                
+                if (isReschedule) {
+                    await sendWhatsAppMessage(customerPhone, `Pronto! O horário anterior foi desmarcado. ✅\n\nAgora, clique no link abaixo para escolher o seu *novo* horário:\n\n🔗 ${bookingLink}\n\nAté logo! (Digite 0 para ver o menu novamente).`, instance);
+                }
+                
+                session.status = 'IDLE';
+                session.tempApps = null;
+            } else {
+                await sendWhatsAppMessage(customerPhone, `Número inválido. Digite o número correspondente ao agendamento ou 0 para voltar ao menu.`, instance);
+            }
+            
             await sessionRef.set(session);
         }
-        return res.sendStatus(200);
-    }
-
-    // ESTADO: MENU PRINCIPAL
-    if (session.status === 'IDLE') {
-        const menu = `Olá! Sou o assistente virtual da *${shop.name}*. 💈\nComo posso te ajudar hoje?\n\n1️⃣ Fazer um Agendamento\n2️⃣ Cancelar um Agendamento\n3️⃣ Remarcar um Agendamento\n4️⃣ Falar com um Atendente`;
-        await sendWhatsAppMessage(customerPhone, menu, instance);
-        
-        session.status = 'WAITING_MENU';
-        await sessionRef.set(session);
-        return res.sendStatus(200);
-    }
-
-    // ESTADO: AGUARDANDO OPÇÃO DO MENU
-    if (session.status === 'WAITING_MENU') {
-        if (textBody === '1') {
-            await sendWhatsAppMessage(customerPhone, `Ótima escolha! Para escolher o seu serviço, profissional e horário com facilidade, acesse a nossa agenda online pelo link abaixo:\n\n🔗 ${bookingLink}\n\n(Se precisar voltar ao menu inicial, digite 0).`, instance);
-            session.status = 'IDLE';
-        } 
-        else if (textBody === '2' || textBody === '3') {
-            const action = textBody === '2' ? 'cancelar' : 'remarcar';
-            const apps = await getClientAppointments(customerPhone, shop.id);
-            
-            if (apps.length === 0) {
-                await sendWhatsAppMessage(customerPhone, `Não encontrei nenhum agendamento futuro no sistema para o seu número.\n\nPara fazer um novo agendamento, acesse:\n🔗 ${bookingLink}\n\n(Digite 0 para voltar ao menu).`, instance);
-                session.status = 'IDLE';
-            } else {
-                let msg = `Encontrei os seguintes agendamentos no sistema. Qual deles você deseja ${action}?\n\n`;
-                session.tempApps = {}; 
-                
-                apps.forEach((app, index) => {
-                    const num = index + 1;
-                    const dateStr = formatDate(app.date);
-                    const profName = app.professionalName || "Profissional";
-                    msg += `${num}️⃣ *${dateStr}* com ${profName}\n`;
-                    session.tempApps[num] = app.id;
-                });
-                
-                msg += `\n👉 Digite apenas o *número* correspondente (ou 0 para cancelar a operação).`;
-                await sendWhatsAppMessage(customerPhone, msg, instance);
-                session.status = textBody === '2' ? 'WAITING_CANCEL' : 'WAITING_RESCHEDULE';
-            }
-        }
-        else if (textBody === '4') {
-            await sendWhatsAppMessage(customerPhone, `Certo! Desliguei o robô e chamei um atendente. Por favor, aguarde um momento.\n\n(Para voltar a falar com o robô a qualquer momento, digite 0).`, instance);
-            session.status = 'HUMAN';
-        }
-        else {
-            await sendWhatsAppMessage(customerPhone, `Opção inválida. ❌\nPor favor, digite 1, 2, 3 ou 4.`, instance);
-        }
-        
-        await sessionRef.set(session);
-        return res.sendStatus(200);
-    }
-
-    // ESTADO: CANCELANDO OU REMARCANDO
-    if (session.status === 'WAITING_CANCEL' || session.status === 'WAITING_RESCHEDULE') {
-        const isReschedule = session.status === 'WAITING_RESCHEDULE';
-        const appId = session.tempApps ? session.tempApps[textBody] : null;
-
-        if (appId) {
-            await sendWhatsAppMessage(customerPhone, `Processando a sua solicitação... Aguarde um instante ⏳`, instance);
-            
-            // Cancela no Firestore (Dispara a function de sendCancellationNotification automaticamente)
-            await db.collection('appointments').doc(appId).update({ status: 'cancelled' });
-            
-            if (isReschedule) {
-                await sendWhatsAppMessage(customerPhone, `Pronto! O horário anterior foi desmarcado. ✅\n\nAgora, clique no link abaixo para escolher o seu *novo* horário:\n\n🔗 ${bookingLink}\n\nAté logo! (Digite 0 para ver o menu novamente).`, instance);
-            }
-            
-            session.status = 'IDLE';
-            session.tempApps = null;
-        } else {
-            await sendWhatsAppMessage(customerPhone, `Número inválido. Digite o número correspondente ao agendamento ou 0 para voltar ao menu.`, instance);
-        }
-        
-        await sessionRef.set(session);
-        return res.sendStatus(200);
+    } catch (err) {
+        console.error("[BOT] Erro geral no Webhook:", err);
     }
 
     res.sendStatus(200);
@@ -322,10 +357,7 @@ whatsappApp.post('/webhook', async (req, res) => {
 
 whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
     const { establishmentId } = req.body;
-    
-    if (!establishmentId) {
-        return res.status(400).json({ error: "Falta o ID do estabelecimento." });
-    }
+    if (!establishmentId) return res.status(400).json({ error: "Falta o ID do estabelecimento." });
 
     const instanceName = `loja_${establishmentId}`;
     const instanceToken = `token_${establishmentId}`;
@@ -338,14 +370,25 @@ whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
                 instanceName: instanceName,
                 token: instanceToken,
                 qrcode: true
-            }, { 
-                headers: { 'apikey': GLOBAL_API_KEY } 
-            });
+            }, { headers: { 'apikey': GLOBAL_API_KEY } });
         } catch (createError) {
             const msg = createError.response?.data?.message || "";
-            if (!msg.includes("already exists")) {
-                throw createError;
-            }
+            if (!msg.includes("already exists")) throw createError;
+        }
+
+        // 🚨 CONFIGURA O WEBHOOK AUTOMATICAMENTE NA EVOLUTION API
+        try {
+            console.log(`[PAINEL] Configurando webhook para: ${instanceName}`);
+            await axios.post(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
+                enabled: true,
+                url: WEBHOOK_URL,
+                webhookByEvents: false,
+                webhookBase64: false,
+                events: ["MESSAGES_UPSERT"]
+            }, { headers: { 'apikey': GLOBAL_API_KEY } });
+            console.log(`[PAINEL] ✅ Webhook configurado com sucesso!`);
+        } catch (webhookError) {
+            console.error(`[PAINEL] ❌ Erro ao setar webhook na VPS:`, webhookError.response?.data || webhookError.message);
         }
 
         await db.collection('establishments').doc(establishmentId).update({
@@ -358,10 +401,7 @@ whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
         });
 
         const qrCodeBase64 = qrResponse.data?.base64 || qrResponse.data?.qrcode;
-        
-        if (!qrCodeBase64) {
-            return res.json({ success: true, message: "O WhatsApp já está conectado!" });
-        }
+        if (!qrCodeBase64) return res.json({ success: true, message: "O WhatsApp já está conectado!" });
 
         res.json({ success: true, qrcode: qrCodeBase64 });
 

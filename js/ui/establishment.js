@@ -606,6 +606,9 @@ function renderWorkingHoursSection(data, container) {
 }
 
 // --- NOVO: ABA DE INTEGRAÇÃO DO WHATSAPP (BOT) ---
+// js/ui/establishment.js
+
+// --- NOVO: ABA DE INTEGRAÇÃO DO WHATSAPP (BOT) ---
 function renderWhatsAppSection(data, container) {
     const isConnected = !!data.whatsappInstance;
 
@@ -643,6 +646,7 @@ function renderWhatsAppSection(data, container) {
                         <li><span class="font-bold text-green-600">3.</span> Toque em <b>Aparelhos Conectados</b>.</li>
                         <li><span class="font-bold text-green-600">4.</span> Aponte a câmera para o quadrado acima.</li>
                     </ul>
+                    <button type="button" id="btnCancelQr" class="mt-4 text-red-500 hover:text-red-700 font-semibold text-sm underline">Cancelar</button>
                 </div>
 
                 <div id="connectedStatusArea" class="${isConnected ? 'block' : 'hidden'} mt-4">
@@ -663,14 +667,18 @@ function renderWhatsAppSection(data, container) {
         </div>
     `;
 
-    // Lógica do Clique
+    let pollingInterval = null; // Variável para guardar o nosso verificador
+
+    // Lógica do Clique para Gerar QR
     const btnGenerate = container.querySelector('#btnGenerateQr');
+    const btnCancel = container.querySelector('#btnCancelQr');
+
     if (btnGenerate) {
         btnGenerate.addEventListener('click', async () => {
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
 
-            // Substitua esta URL pela URL REAL do seu Firebase após o deploy da sua Cloud Function
+            // URL da sua Cloud Function
             const FUNCTION_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/connect"; 
 
             try {
@@ -683,12 +691,33 @@ function renderWhatsAppSection(data, container) {
                 const apiData = await response.json();
 
                 if (apiData.qrcode) {
-                    // Esconde a tela de botão, mostra o QR Code
+                    // 1. Mostra o QR Code
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
                     container.querySelector('#qrCodeDisplayArea').classList.remove('hidden');
                     container.querySelector('#qrCodeImage').src = apiData.qrcode;
+
+                    // 2. Inicia o Polling (Verifica a cada 5 segundos se a loja conectou)
+                    pollingInterval = setInterval(async () => {
+                        try {
+                            // Consultamos os dados mais recentes da loja
+                            const latestData = await establishmentApi.getEstablishmentDetails(currentEditingId);
+                            
+                            // Se o backend atualizou a flag whatsappInstance para true/string, está conectado!
+                            if (latestData.whatsappInstance) {
+                                clearInterval(pollingInterval); // Pára de perguntar
+                                establishmentData.whatsappInstance = latestData.whatsappInstance; // Atualiza cache local
+                                
+                                // Atualiza a Tela para Conectado
+                                container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
+                                container.querySelector('#connectedStatusArea').classList.remove('hidden');
+                                showNotification('Sucesso', 'WhatsApp conectado com sucesso!', 'success');
+                            }
+                        } catch (err) {
+                            console.error("Erro ao verificar status do WhatsApp", err);
+                        }
+                    }, 5000); // 5000ms = 5 segundos
+
                 } else if (apiData.message && apiData.message.includes("já está conectado")) {
-                    // Se a API disse que já tem conexão
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
                     container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
                     container.querySelector('#connectedStatusArea').classList.remove('hidden');
@@ -706,15 +735,57 @@ function renderWhatsAppSection(data, container) {
         });
     }
 
+    // Botão para cancelar a leitura do QR Code e parar o Polling
+    if (btnCancel) {
+        btnCancel.addEventListener('click', () => {
+            if (pollingInterval) clearInterval(pollingInterval);
+            container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
+            container.querySelector('#whatsappStatusArea').classList.remove('hidden');
+        });
+    }
+
+    // Lógica do Clique para Desconectar
     const btnDisconnect = container.querySelector('#btnDisconnectWhatsapp');
     if (btnDisconnect) {
-        btnDisconnect.addEventListener('click', () => {
+        btnDisconnect.addEventListener('click', async () => {
             if(confirm("Tem certeza que deseja DESCONECTAR o bot desta unidade? O sistema não responderá mais os clientes via WhatsApp automaticamente.")) {
-                showNotification('Aviso', 'Para desconectar, por favor vá ao aplicativo do seu celular (Aparelhos Conectados) e clique em "Desconectar".', 'info');
+                
+                btnDisconnect.disabled = true;
+                btnDisconnect.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Desconectando...';
+
+                // URL da sua Cloud Function para Desconectar (Verifique se é esta mesma rota no seu backend)
+                const DISCONNECT_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/disconnect";
+
+                try {
+                    const response = await fetch(DISCONNECT_URL, {
+                        method: "POST", // Pode ser DELETE dependendo de como fez no backend
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ establishmentId: currentEditingId })
+                    });
+
+                    if (response.ok) {
+                        establishmentData.whatsappInstance = null; // Limpa do cache local
+                        
+                        // Volta a tela para o estado inicial
+                        container.querySelector('#connectedStatusArea').classList.add('hidden');
+                        container.querySelector('#whatsappStatusArea').classList.remove('hidden');
+                        showNotification('Sucesso', 'WhatsApp desconectado da unidade.', 'success');
+                    } else {
+                        const errData = await response.json();
+                        showNotification('Erro', errData.error || 'Não foi possível desconectar.', 'error');
+                    }
+                } catch (error) {
+                    console.error(error);
+                    showNotification('Erro de Conexão', 'Falha ao comunicar com o servidor.', 'error');
+                } finally {
+                    btnDisconnect.disabled = false;
+                    btnDisconnect.innerHTML = '<i class="bi bi-power"></i> Desconectar';
+                }
             }
         });
     }
 }
+// ---------------------------------------------
 // ---------------------------------------------
 
 async function renderLoyaltySection(data, container) {
