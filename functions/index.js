@@ -1,6 +1,6 @@
 /**
  * functions/index.js
- * Backend Kairós: Versão Completa (Push + WhatsApp) com Formato Evolution API v1.8.2 🚀
+ * Backend Kairós: Versão VPS KingHost (Evolution API v1.8.3) 🚀
  */
 
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
@@ -13,11 +13,11 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ============================================================================
-// CONFIGURAÇÕES DO SERVIDOR DE WHATSAPP (Evolution API)
+// CONFIGURAÇÕES DO SERVIDOR VPS (KingHost)
 // ============================================================================
-const EVOLUTION_API_URL = "https://resupinate-dismally-lilyanna.ngrok-free.dev"; 
+const EVOLUTION_API_URL = "http://177.153.38.218:8080"; 
 const EVOLUTION_API_KEY = "kairos_senha_segura";
-const INSTANCE_NAME = "kairos_teste"; 
+const INSTANCE_NAME = "Kairos"; // <--- Ajustado conforme seu último print
 
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers)
@@ -44,7 +44,7 @@ async function getProfessionalName(professionalId) {
     }
 }
 
-async function getTargetTokens(establishmentId, appointmentProfessionalId) {
+async function getTargetTokens(establishmentId) {
     if (!establishmentId) return [];
     const snapshotUsers = await db.collection("users").where("establishmentId", "==", establishmentId).get();
     const tokens = [];
@@ -60,7 +60,7 @@ async function getTargetTokens(establishmentId, appointmentProfessionalId) {
 }
 
 // ============================================================================
-// SEÇÃO 2: MOTOR DE ENVIO (Evolution API v1.8.2)
+// SEÇÃO 2: MOTOR DE ENVIO (Evolution API v1.8.3)
 // ============================================================================
 
 async function sendWhatsAppMessage(toPhone, messageText) {
@@ -70,15 +70,12 @@ async function sendWhatsAppMessage(toPhone, messageText) {
         return;
     }
     
-    // Remove parênteses, traços e espaços (+55 16 99176-2287 vira 5516991762287)
+    // Limpeza do número
     let cleanPhone = toPhone.replace(/\D/g, '');
-    
-    // Validação Inteligente do DDI: Se não começar com 55, nós colocamos.
     if (!cleanPhone.startsWith('55')) {
         cleanPhone = '55' + cleanPhone;
     }
 
-    // Formato ESTRITO exigido pela Evolution API v1.8.2 para evitar Erro 400
     const payload = {
         "number": cleanPhone,
         "options": {
@@ -91,7 +88,7 @@ async function sendWhatsAppMessage(toPhone, messageText) {
     };
 
     try {
-        console.log(`[WHATSAPP] Disparando requisição para Evolution API (${cleanPhone})...`);
+        console.log(`[WHATSAPP] Disparando requisição para VPS (${cleanPhone})...`);
         const response = await axios.post(
             `${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`,
             payload,
@@ -102,10 +99,9 @@ async function sendWhatsAppMessage(toPhone, messageText) {
                 }
             }
         );
-        console.log(`[WHATSAPP] ✅ SUCESSO! Mensagem enviada para ${cleanPhone}. Resposta:`, response.status);
+        console.log(`[WHATSAPP] ✅ SUCESSO! Resposta:`, response.status);
     } catch (error) {
-        // JSON.stringify usado aqui para revelar o erro dentro do array caso falhe novamente
-        console.error(`[WHATSAPP] ❌ ERRO NA EVOLUTION API:`, JSON.stringify(error.response?.data || error.message));
+        console.error(`[WHATSAPP] ❌ ERRO NA VPS:`, JSON.stringify(error.response?.data || error.message));
     }
 }
 
@@ -116,52 +112,29 @@ async function sendWhatsAppMessage(toPhone, messageText) {
 exports.sendNewAppointmentNotification = onDocumentCreated(
     "appointments/{appointmentId}",
     async (event) => {
-        console.log(`[GATILHO CRIADO] 🚀 NOVO AGENDAMENTO DETECTADO! ID: ${event.params.appointmentId}`);
-        
         const appointment = event.data?.data();
-        if (!appointment) {
-            console.log("[GATILHO CRIADO] ❌ Dados do agendamento estão vazios. Abortando.");
-            return;
-        }
-
-        console.log(`[GATILHO CRIADO] 📋 Dados capturados:`, JSON.stringify(appointment));
-
-        if (!appointment.establishmentId) {
-            console.log("[GATILHO CRIADO] ⚠️ Falta establishmentId no documento. Abortando notificação.");
-            return;
-        }
+        if (!appointment) return;
 
         const clientName = appointment.clientName || "Cliente";
         const clientPhone = appointment.clientPhone;
-        const serviceName = appointment.serviceName || (appointment.services && appointment.services[0]?.name) || "Serviço";
+        const serviceName = appointment.serviceName || "Serviço";
         const professionalName = await getProfessionalName(appointment.professionalId);
         const dateString = formatDate(appointment.startTime || appointment.time);
 
-        console.log(`[GATILHO CRIADO] 🎯 Processando cliente: ${clientName}, Telefone: ${clientPhone}`);
-
         // 1. Enviar WhatsApp para o Cliente
         if (clientPhone) {
-            const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento no Kairós foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por si!`;
-            console.log("[GATILHO CRIADO] Chamando função sendWhatsAppMessage...");
+            const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento no Kairós foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por você!`;
             await sendWhatsAppMessage(clientPhone, zapMessage);
-        } else {
-            console.log("[GATILHO CRIADO] ⚠️ Cliente não tem telefone registado. Não enviaremos WhatsApp.");
         }
 
-        // 2. Notificação Push para a Equipa
-        const tokens = await getTargetTokens(appointment.establishmentId, appointment.professionalId);
+        // 2. Push para Equipe
+        const tokens = await getTargetTokens(appointment.establishmentId);
         if (tokens.length > 0) {
-            console.log(`[GATILHO CRIADO] Enviando Push Notification para ${tokens.length} dispositivo(s).`);
             const message = {
                 notification: { title: "📅 Novo Agendamento!", body: `${clientName} agendou para ${dateString}.` },
                 tokens: tokens,
             };
-            try { 
-                await admin.messaging().sendEachForMulticast(message); 
-                console.log("[GATILHO CRIADO] ✅ Push enviado com sucesso.");
-            } catch (e) { 
-                console.error("[GATILHO CRIADO] ❌ Erro ao enviar Push:", e); 
-            }
+            try { await admin.messaging().sendEachForMulticast(message); } catch (e) { console.error("Erro Push:", e); }
         }
     }
 );
@@ -169,7 +142,6 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
     async (event) => {
-        console.log(`[GATILHO UPDATE] 🔄 AGENDAMENTO ATUALIZADO: ${event.params.appointmentId}`);
         const before = event.data.before.data();
         const after = event.data.after.data();
 
@@ -177,9 +149,7 @@ exports.sendCancellationNotification = onDocumentUpdated(
                             (before.status !== "cancelled" && before.status !== "cancelado");
 
         if (isCancelled) {
-            console.log(`[GATILHO UPDATE] 🚫 Cancelamento detectado para o cliente: ${after.clientName}`);
             const dateString = formatDate(after.startTime || after.time);
-
             if (after.clientPhone) {
                 const msg = `Olá ${after.clientName || 'Cliente'}. ❌ O seu agendamento para o dia ${dateString} foi CANCELADO.\n\nPara remarcar, acesse o nosso link!`;
                 await sendWhatsAppMessage(after.clientPhone, msg);
@@ -204,10 +174,8 @@ whatsappApp.post('/webhook', async (req, res) => {
         const phoneNumber = msgData.key.remoteJid.split('@')[0];
         const textBody = msgData.message?.conversation || msgData.message?.extendedTextMessage?.text;
         
-        console.log(`[WEBHOOK] 📩 Nova mensagem de ${phoneNumber}: ${textBody}`);
-
         if (textBody?.toLowerCase() === 'oi' || textBody?.toLowerCase() === 'olá') {
-            await sendWhatsAppMessage(phoneNumber, "Olá! O sistema Kairós está online. Como posso ajudar? 😎");
+            await sendWhatsAppMessage(phoneNumber, "Olá! O sistema Kairós está online na VPS. Como posso ajudar? 😎");
         }
     }
     res.sendStatus(200);
