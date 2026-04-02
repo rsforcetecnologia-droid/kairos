@@ -45,9 +45,7 @@ function getMenuItems() {
         { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
         { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
         { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
-        // --- NOVO MENU PARA WHATSAPP ---
         { id: 'whatsapp-bot', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', label: 'Atendente Virtual (WhatsApp)' },
-        // -------------------------------
         { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
         { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
         { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
@@ -134,7 +132,6 @@ async function handleSave(formData, event) {
         
         const updatedData = { ...establishmentData, ...firestoreData };
         
-        // Salva as alterações usando o ID da loja que estamos a editar no momento
         updatePromises.push(establishmentApi.updateEstablishmentDetails(currentEditingId, updatedData));
 
         await Promise.all(updatePromises);
@@ -144,7 +141,6 @@ async function handleSave(formData, event) {
         showNotification('Sucesso', 'Definições salvas com sucesso!', 'success');
         
         if (firestoreData.themeColor && currentEditingId === state.establishmentId) {
-            // Só recarrega a página inteira se mudou a cor e é a loja logada
             setTimeout(() => window.location.reload(), 1500);
         }
         
@@ -213,7 +209,7 @@ function renderPersonalDataSection(data, container) {
             ownerName: container.querySelector('#ownerName').value,
             name: container.querySelector('#establishmentName').value,
             phone: container.querySelector('#establishmentPhone').value,
-            cnpj: container.querySelector('#establishmentCnpjCpf').value, // Usando cnpj para bater com a refatoração
+            cnpj: container.querySelector('#establishmentCnpjCpf').value,
             email: container.querySelector('#establishmentEmail').value,
             address: container.querySelector('#establishmentAddress').value,
             website: container.querySelector('#establishmentWebsite').value,
@@ -304,7 +300,6 @@ function renderChangeEmailSection(data, container) {
             const credential = EmailAuthProvider.credential(user.email, currentPassword);
             await reauthenticateWithCredential(user, credential);
             await verifyBeforeUpdateEmail(user, newEmail); 
-            // Atualiza na base de dados (utilizando o currentEditingId)
             await establishmentApi.updateOwnerEmail(currentEditingId, newEmail);
             showNotification('Sucesso', 'Link de verificação enviado! Verifique o seu novo e-mail.', 'success');
             e.target.reset();
@@ -605,10 +600,6 @@ function renderWorkingHoursSection(data, container) {
     });
 }
 
-// --- NOVO: ABA DE INTEGRAÇÃO DO WHATSAPP (BOT) ---
-// js/ui/establishment.js
-
-// --- NOVO: ABA DE INTEGRAÇÃO DO WHATSAPP (BOT) ---
 function renderWhatsAppSection(data, container) {
     const isConnected = !!data.whatsappInstance;
 
@@ -654,7 +645,7 @@ function renderWhatsAppSection(data, container) {
                         <i class="bi bi-check-circle-fill text-4xl text-green-500"></i>
                     </div>
                     <h4 class="text-xl font-bold text-green-700 mb-2">WhatsApp Conectado!</h4>
-                    <p class="text-sm text-gray-600 max-w-md mx-auto mb-6">O bot da Inteligência Artificial já está ativo no número desta unidade. Experimente enviar um "Oi" para ele!</p>
+                    <p class="text-sm text-gray-600 max-w-md mx-auto mb-6">O bot da Inteligência Artificial já está ativo no número desta unidade.</p>
                     
                     <div class="flex justify-center gap-4">
                         <button type="button" id="btnDisconnectWhatsapp" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
@@ -667,9 +658,8 @@ function renderWhatsAppSection(data, container) {
         </div>
     `;
 
-    let pollingInterval = null; // Variável para guardar o nosso verificador
+    let pollingInterval = null; 
 
-    // Lógica do Clique para Gerar QR
     const btnGenerate = container.querySelector('#btnGenerateQr');
     const btnCancel = container.querySelector('#btnCancelQr');
 
@@ -678,7 +668,6 @@ function renderWhatsAppSection(data, container) {
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
 
-            // URL da sua Cloud Function
             const FUNCTION_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/connect"; 
 
             try {
@@ -691,23 +680,18 @@ function renderWhatsAppSection(data, container) {
                 const apiData = await response.json();
 
                 if (apiData.qrcode) {
-                    // 1. Mostra o QR Code
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
                     container.querySelector('#qrCodeDisplayArea').classList.remove('hidden');
                     container.querySelector('#qrCodeImage').src = apiData.qrcode;
 
-                    // 2. Inicia o Polling (Verifica a cada 5 segundos se a loja conectou)
                     pollingInterval = setInterval(async () => {
                         try {
-                            // Consultamos os dados mais recentes da loja
                             const latestData = await establishmentApi.getEstablishmentDetails(currentEditingId);
                             
-                            // Se o backend atualizou a flag whatsappInstance para true/string, está conectado!
                             if (latestData.whatsappInstance) {
-                                clearInterval(pollingInterval); // Pára de perguntar
-                                establishmentData.whatsappInstance = latestData.whatsappInstance; // Atualiza cache local
+                                clearInterval(pollingInterval); 
+                                establishmentData.whatsappInstance = latestData.whatsappInstance; 
                                 
-                                // Atualiza a Tela para Conectado
                                 container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
                                 container.querySelector('#connectedStatusArea').classList.remove('hidden');
                                 showNotification('Sucesso', 'WhatsApp conectado com sucesso!', 'success');
@@ -715,7 +699,7 @@ function renderWhatsAppSection(data, container) {
                         } catch (err) {
                             console.error("Erro ao verificar status do WhatsApp", err);
                         }
-                    }, 5000); // 5000ms = 5 segundos
+                    }, 5000); 
 
                 } else if (apiData.message && apiData.message.includes("já está conectado")) {
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
@@ -735,7 +719,6 @@ function renderWhatsAppSection(data, container) {
         });
     }
 
-    // Botão para cancelar a leitura do QR Code e parar o Polling
     if (btnCancel) {
         btnCancel.addEventListener('click', () => {
             if (pollingInterval) clearInterval(pollingInterval);
@@ -744,40 +727,36 @@ function renderWhatsAppSection(data, container) {
         });
     }
 
-    // Lógica do Clique para Desconectar
     const btnDisconnect = container.querySelector('#btnDisconnectWhatsapp');
     if (btnDisconnect) {
         btnDisconnect.addEventListener('click', async () => {
-            if(confirm("Tem certeza que deseja DESCONECTAR o bot desta unidade? O sistema não responderá mais os clientes via WhatsApp automaticamente.")) {
-                
-                btnDisconnect.disabled = true;
-                btnDisconnect.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Desconectando...';
+            if (!confirm("Tem certeza que deseja DESCONECTAR? O bot parará de responder imediatamente.")) return;
 
-                // URL da sua Cloud Function para Desconectar (Verifique se é esta mesma rota no seu backend)
-                const DISCONNECT_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/disconnect";
+            btnDisconnect.disabled = true;
+            btnDisconnect.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Desconectando...';
 
-                try {
-                    const response = await fetch(DISCONNECT_URL, {
-                        method: "POST", // Pode ser DELETE dependendo de como fez no backend
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ establishmentId: currentEditingId })
-                    });
+            const DISCONNECT_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/disconnect";
 
-                    if (response.ok) {
-                        establishmentData.whatsappInstance = null; // Limpa do cache local
-                        
-                        // Volta a tela para o estado inicial
-                        container.querySelector('#connectedStatusArea').classList.add('hidden');
-                        container.querySelector('#whatsappStatusArea').classList.remove('hidden');
-                        showNotification('Sucesso', 'WhatsApp desconectado da unidade.', 'success');
-                    } else {
-                        const errData = await response.json();
-                        showNotification('Erro', errData.error || 'Não foi possível desconectar.', 'error');
-                    }
-                } catch (error) {
-                    console.error(error);
-                    showNotification('Erro de Conexão', 'Falha ao comunicar com o servidor.', 'error');
-                } finally {
+            try {
+                const response = await fetch(DISCONNECT_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ establishmentId: currentEditingId })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Sucesso', 'WhatsApp desconectado!', 'success');
+                    establishmentData.whatsappInstance = null;
+                    renderWhatsAppSection(establishmentData, container);
+                } else {
+                    alert("Erro ao desconectar: " + result.error);
+                }
+            } catch (error) {
+                console.error(error);
+                showNotification('Erro', 'Falha ao comunicar com o servidor.', 'error');
+            } finally {
+                if (btnDisconnect) {
                     btnDisconnect.disabled = false;
                     btnDisconnect.innerHTML = '<i class="bi bi-power"></i> Desconectar';
                 }
@@ -785,8 +764,6 @@ function renderWhatsAppSection(data, container) {
         });
     }
 }
-// ---------------------------------------------
-// ---------------------------------------------
 
 async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
@@ -1239,7 +1216,7 @@ async function showSettingsDetailView(sectionId) {
         case 'branding': renderBrandingSection(establishmentData, detailContainer); break;
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
-        case 'whatsapp-bot': renderWhatsAppSection(establishmentData, detailContainer); break; // <--- NOVA ABA AQUI
+        case 'whatsapp-bot': renderWhatsAppSection(establishmentData, detailContainer); break;
         case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; 
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
