@@ -351,68 +351,79 @@ whatsappApp.post('/webhook', async (req, res) => {
 });
 
 // ============================================================================
-// ============================================================================
-// SEÇÃO 5: API PARA O PAINEL DO CLIENTE (Conectar e Desconectar)
+// SEÇÃO 5: API PARA O PAINEL DO CLIENTE (Conectar e Desconectar) - V2 + n8n
 // ============================================================================
 
-// Rota para Gerar QR Code e Configurar Webhook
+// URL do n8n para onde a Evolution vai mandar as mensagens do robô
+const N8N_WEBHOOK_URL = "http://177.153.38.218:5678/webhook/whatsapp";
+
+// Rota para Gerar QR Code e Configurar Webhook no n8n
 whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
     const { establishmentId } = req.body;
     if (!establishmentId) return res.status(400).json({ error: "Falta o ID do estabelecimento." });
 
     const instanceName = `loja_${establishmentId}`;
-    const instanceToken = `token_${establishmentId}`;
+    const headers = { 'apikey': GLOBAL_API_KEY, 'Content-Type': 'application/json' };
 
     try {
-        console.log(`[PAINEL] Iniciando conexão para: ${instanceName}`);
-        
-        // 1. Criar Instância
+        console.log(`[PAINEL] Iniciando conexão para: ${instanceName} na V2`);
+        let qrcodeBase64 = '';
+
         try {
-            await axios.post(`${EVOLUTION_API_URL}/instance/create`, {
+            // 1. Tenta criar a instância (Evolution V2)
+            const createPayload = {
                 instanceName: instanceName,
-                token: instanceToken,
-                qrcode: true
-            }, { headers: { 'apikey': GLOBAL_API_KEY } });
-        } catch (e) {
-            if (!e.response?.data?.message?.includes("already exists")) throw e;
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS"
+            };
+            
+            const createResponse = await axios.post(`${EVOLUTION_API_URL}/instance/create`, createPayload, { headers });
+            qrcodeBase64 = createResponse.data?.qrcode?.base64 || createResponse.data?.base64 || createResponse.data?.qrcode;
+
+            console.log(`[PAINEL] Instância criada. Configurando Webhook do n8n...`);
+            
+            // 2. Seta o Webhook do n8n para esta nova instância
+            await axios.post(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
+                webhook: {
+                    enabled: true,
+                    url: N8N_WEBHOOK_URL,
+                    webhookByEvents: false,
+                    events: ["MESSAGES_UPSERT"]
+                }
+            }, { headers });
+
+        } catch (error) {
+            const status = error.response?.status;
+            const errorMsg = JSON.stringify(error.response?.data || error.message);
+            console.log(`[PAINEL] Erro ao criar (${status}): ${errorMsg}`);
+            
+            // Na V2, se a instância já existir, ele retorna 400 ou 403.
+            if (status === 400 || status === 403 || errorMsg.includes('already exists')) {
+                console.log(`[PAINEL] Instância já existe. Apenas buscando QR Code...`);
+                
+                const connectResponse = await axios.get(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { headers });
+                qrcodeBase64 = connectResponse.data?.base64 || connectResponse.data?.qrcode;
+            } else {
+                // Se for outro erro grave (ex: VPS desligada), quebra a função
+                throw error;
+            }
         }
 
-        // 2. Aguarda 2 segundos para a VPS processar a criação antes de setar o Webhook
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // 3. Configurar Webhook AUTOMATICAMENTE
-        console.log(`[PAINEL] Configurando Webhook para: ${instanceName}`);
-        await axios.post(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
-            enabled: true,
-            url: WEBHOOK_URL,
-            webhookByEvents: false,
-            webhookBase64: false,
-            events: ["MESSAGES_UPSERT"] // Habilita o recebimento de mensagens
-        }, { headers: { 'apikey': GLOBAL_API_KEY } });
-
-        // 4. Salva no Firebase
+        // 3. Salva a referência de sucesso no seu Banco de Dados (Firestore)
         await db.collection('establishments').doc(establishmentId).update({
-            whatsappInstance: instanceName,
-            whatsappToken: instanceToken
+            whatsappInstance: instanceName
         });
 
-        // 5. Busca o QR Code para exibir na tela
-        const qrResponse = await axios.get(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, {
-            headers: { 'apikey': GLOBAL_API_KEY }
-        });
-
-        const qrCodeBase64 = qrResponse.data?.base64 || qrResponse.data?.qrcode;
-        if (!qrCodeBase64) return res.json({ success: true, message: "Já conectado!" });
-
-        res.json({ success: true, qrcode: qrCodeBase64 });
+        // 4. Devolve o QR Code para a tela do usuário
+        res.json({ success: true, qrcode: qrcodeBase64 });
 
     } catch (error) {
-        console.error(`[PAINEL] Erro na conexão:`, error.message);
+        console.error(`[PAINEL] ERRO FATAL NO CONNECT:`, error.response?.data || error.message);
         res.status(500).json({ error: "Erro ao configurar WhatsApp na VPS." });
     }
 });
 
-// NOVA ROTA: Rota para Desconectar e Apagar Instância
+// Rota para Desconectar e Apagar Instância
 whatsappApp.post('/api/whatsapp/disconnect', async (req, res) => {
     const { establishmentId } = req.body;
     if (!establishmentId) return res.status(400).json({ error: "ID ausente." });
@@ -422,7 +433,7 @@ whatsappApp.post('/api/whatsapp/disconnect', async (req, res) => {
     try {
         console.log(`[PAINEL] Solicitando desconexão da instância: ${instanceName}`);
         
-        // 1. Deleta a instância na Evolution API (VPS)
+        // Deleta a instância na Evolution API (VPS)
         try {
             await axios.delete(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
                 headers: { 'apikey': GLOBAL_API_KEY }
@@ -431,7 +442,7 @@ whatsappApp.post('/api/whatsapp/disconnect', async (req, res) => {
             console.log("A instância já não existia na VPS.");
         }
 
-        // 2. Limpa os campos no Firebase
+        // Limpa os campos no Firebase
         await db.collection('establishments').doc(establishmentId).update({
             whatsappInstance: admin.firestore.FieldValue.delete(),
             whatsappToken: admin.firestore.FieldValue.delete()
