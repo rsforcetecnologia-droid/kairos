@@ -668,10 +668,12 @@ function renderWhatsAppSection(data, container) {
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
 
-            const FUNCTION_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/connect"; 
+            // Apontando para o SEU backend (ajuste a URL se sua API rodar em outro subdomínio)
+            const LOCAL_API_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp";
 
             try {
-                const response = await fetch(FUNCTION_URL, {
+                // 1. Pede para o seu backend criar a instância e devolver o QR Code
+                const response = await fetch(`${LOCAL_API_URL}/connect`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ establishmentId: currentEditingId })
@@ -682,15 +684,20 @@ function renderWhatsAppSection(data, container) {
                 if (apiData.qrcode) {
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
                     container.querySelector('#qrCodeDisplayArea').classList.remove('hidden');
-                    container.querySelector('#qrCodeImage').src = apiData.qrcode;
+                    
+                    // Tratamento caso a base64 não venha com o prefixo da imagem
+                    const qrSrc = apiData.qrcode.includes('data:image') ? apiData.qrcode : `data:image/png;base64,${apiData.qrcode}`;
+                    container.querySelector('#qrCodeImage').src = qrSrc;
 
+                    // 2. Fica perguntando pro backend se o cliente já escaneou (Polling)
                     pollingInterval = setInterval(async () => {
                         try {
-                            const latestData = await establishmentApi.getEstablishmentDetails(currentEditingId);
+                            const statusRes = await fetch(`${LOCAL_API_URL}/status/${currentEditingId}`);
+                            const statusData = await statusRes.json();
                             
-                            if (latestData.whatsappInstance) {
+                            if (statusData.connected) {
                                 clearInterval(pollingInterval); 
-                                establishmentData.whatsappInstance = latestData.whatsappInstance; 
+                                establishmentData.whatsappInstance = statusData.instanceName; 
                                 
                                 container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
                                 container.querySelector('#connectedStatusArea').classList.remove('hidden');
@@ -699,15 +706,10 @@ function renderWhatsAppSection(data, container) {
                         } catch (err) {
                             console.error("Erro ao verificar status do WhatsApp", err);
                         }
-                    }, 5000); 
+                    }, 5000); // Verifica a cada 5 segundos
 
-                } else if (apiData.message && apiData.message.includes("já está conectado")) {
-                    container.querySelector('#whatsappStatusArea').classList.add('hidden');
-                    container.querySelector('#qrCodeDisplayArea').classList.add('hidden');
-                    container.querySelector('#connectedStatusArea').classList.remove('hidden');
-                    showNotification('Aviso', 'O WhatsApp já estava conectado nesta unidade.', 'success');
                 } else {
-                    showNotification('Erro na API', apiData.error || "Desconhecido", 'error');
+                    showNotification('Erro na API', apiData.error || "Erro desconhecido", 'error');
                 }
             } catch (error) {
                 console.error(error);
@@ -735,10 +737,10 @@ function renderWhatsAppSection(data, container) {
             btnDisconnect.disabled = true;
             btnDisconnect.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Desconectando...';
 
-            const DISCONNECT_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp/disconnect";
+            const LOCAL_API_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp";
 
             try {
-                const response = await fetch(DISCONNECT_URL, {
+                const response = await fetch(`${LOCAL_API_URL}/disconnect`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ establishmentId: currentEditingId })

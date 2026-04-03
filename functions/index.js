@@ -14,13 +14,13 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // ============================================================================
-// CONFIGURAÇÕES GERAIS DO SERVIDOR E WEBHOOK
+// CONFIGURAÇÕES GERAIS DO SERVIDOR E WEBHOOK (ATUALIZADO PARA EASYPANEL)
 // ============================================================================
-const EVOLUTION_API_URL = "http://177.153.38.218:8080"; 
-const GLOBAL_API_KEY = "kairos_senha_segura";
+const EVOLUTION_API_URL = "https://kinghost-evolution-api.tm5bar.easypanel.host"; 
+const GLOBAL_API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
-// 🚨 ATENÇÃO: Esta é a URL oficial do seu Webhook no Google Cloud
-const WEBHOOK_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/webhook";
+// 🚨 ATENÇÃO: COLOQUE AQUI A URL DE PRODUÇÃO DO SEU NÓ "WEBHOOK" LÁ DO N8N:
+const N8N_WEBHOOK_URL = "https://kinghost-n8n.tm5bar.easypanel.host/webhook-test/whatsapp"; 
 
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers) E MULTITENANT
@@ -120,7 +120,6 @@ async function sendWhatsAppMessage(toPhone, messageText, instanceName) {
     };
 
     try {
-        // Usamos axios de forma direta para evitar esperas desnecessárias
         await axios.post(
             `${EVOLUTION_API_URL}/message/sendText/${instanceName}`,
             payload,
@@ -141,21 +140,10 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
         console.log(`[GATILHO-CRIAR] ⚡ Novo agendamento disparado! ID: ${event.params.appointmentId}`);
         
         const appointment = event.data?.data();
-        if (!appointment) {
-            console.log("[GATILHO-CRIAR] ❌ Dados do agendamento vazios.");
-            return;
-        }
-
-        if (!appointment.establishmentId) {
-            console.log("[GATILHO-CRIAR] ❌ Faltou establishmentId no agendamento.");
-            return;
-        }
+        if (!appointment || !appointment.establishmentId) return;
 
         const shop = await getEstablishmentData(appointment.establishmentId);
-        if (!shop || !shop.whatsappInstance) {
-            console.log(`[GATILHO-CRIAR] ⚠️ Loja (${appointment.establishmentId}) não tem whatsappInstance cadastrada.`);
-            return;
-        }
+        if (!shop || !shop.whatsappInstance) return;
 
         const clientName = appointment.clientName || "Cliente";
         const clientPhone = appointment.clientPhone;
@@ -164,11 +152,8 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
         const dateString = formatDate(appointment.startTime || appointment.time);
 
         if (clientPhone) {
-            console.log(`[GATILHO-CRIAR] Preparando mensagem para ${clientPhone}...`);
             const zapMessage = `Olá ${clientName}! 👋\n\nO seu agendamento na *${shop.name || 'Barbearia'}* foi confirmado! 🎉\n\n📅 *Data:* ${dateString}\n💇‍♂️ *Serviço:* ${serviceName}\n👤 *Profissional:* ${professionalName}\n\nEsperamos por você!`;
             await sendWhatsAppMessage(clientPhone, zapMessage, shop.whatsappInstance);
-        } else {
-            console.log("[GATILHO-CRIAR] ⚠️ Agendamento sem telefone de cliente. Ignorando WhatsApp.");
         }
 
         const tokens = await getTargetTokens(appointment.establishmentId);
@@ -182,8 +167,6 @@ exports.sendNewAppointmentNotification = onDocumentCreated(
 exports.sendCancellationNotification = onDocumentUpdated(
     "appointments/{appointmentId}",
     async (event) => {
-        console.log(`[GATILHO-ATUALIZAR] ⚡ Atualização disparada! ID: ${event.params.appointmentId}`);
-        
         const before = event.data.before.data();
         const after = event.data.after.data();
 
@@ -191,7 +174,6 @@ exports.sendCancellationNotification = onDocumentUpdated(
                             (before.status !== "cancelled" && before.status !== "cancelado");
 
         if (isCancelled && after.establishmentId) {
-            console.log(`[GATILHO-ATUALIZAR] 🚫 Cancelamento detectado para ${after.clientName}`);
             const shop = await getEstablishmentData(after.establishmentId);
             if (!shop || !shop.whatsappInstance) return;
 
@@ -205,168 +187,33 @@ exports.sendCancellationNotification = onDocumentUpdated(
 );
 
 // ============================================================================
-// SEÇÃO 4: O BOT DE WHATSAPP (Fluxo Multiempresas com Menus)
+// SEÇÃO 4: BOT ANTIGO DO KAIRÓS (Será substituído pelo n8n, mas mantido para segurança)
 // ============================================================================
-
 const whatsappApp = express();
 whatsappApp.use(express.json());
 whatsappApp.use(cors); 
 
 whatsappApp.post('/webhook', async (req, res) => {
-    // 🚨 O RADAR: Imprime TUDO que bate na URL do Webhook
-    console.log("[RADAR WEBHOOK] Bateu na porta:", JSON.stringify(req.body));
-
-    const { event, instance, data } = req.body;
-    
-    if (event !== "messages.upsert") return res.sendStatus(200);
-    if (!data || !data.key) return res.sendStatus(200);
-    
-    if (data.key.fromMe) {
-        console.log("[BOT] Mensagem enviada por nós mesmos. Ignorando.");
-        return res.sendStatus(200);
-    }
-
-    if (!data.key.remoteJid || !data.key.remoteJid.endsWith('@s.whatsapp.net')) {
-        console.log("[BOT] Mensagem de grupo/canal. Ignorando.");
-        return res.sendStatus(200);
-    }
-
-    const customerPhone = data.key.remoteJid.split('@')[0];
-
-    // MATA-FANTASMAS
-    if (customerPhone.length > 14) {
-        console.log(`[BOT] 👻 Ignorando LID da Meta: ${customerPhone}`);
-        return res.sendStatus(200);
-    }
-
-    const textBody = data.message?.conversation || data.message?.extendedTextMessage?.text;
-    if (!textBody) return res.sendStatus(200);
-
-    console.log(`[BOT] 📩 LENDO: ${customerPhone} na loja [${instance}]: ${textBody}`);
-
-    try {
-        const shop = await getEstablishmentByInstance(instance);
-        if (!shop) {
-            console.log(`[BOT] ⚠️ Loja não encontrada para a instância: ${instance}`);
-            return res.sendStatus(200);
-        }
-
-        let baseUrl = "https://www.kairosagenda.com.br";
-        const linkId = shop.urlId || shop.id;
-        const bookingLink = `${baseUrl}/agendar?id=${linkId}`;
-
-        const sessionRef = db.collection('sessions').doc(`${shop.id}_${customerPhone}`);
-        const sessionSnap = await sessionRef.get();
-        let session = sessionSnap.exists ? sessionSnap.data() : { status: 'IDLE' };
-
-        if (textBody === '0') {
-            session.status = 'IDLE';
-        }
-
-        if (session.status === 'HUMAN') {
-            if (textBody === '0') {
-                session.status = 'IDLE';
-                await sendWhatsAppMessage(customerPhone, "Você encerrou o atendimento humano e voltou ao assistente virtual. 🤖\n\nComo posso ajudar?\n1️⃣ Agendar\n2️⃣ Cancelar\n3️⃣ Remarcar\n4️⃣ Falar com Atendente", instance);
-                await sessionRef.set(session);
-            }
-            return res.sendStatus(200);
-        }
-
-        if (session.status === 'IDLE') {
-            const menu = `Olá! Sou o assistente virtual da *${shop.name}*. 💈\nComo posso te ajudar hoje?\n\n1️⃣ Fazer um Agendamento\n2️⃣ Cancelar um Agendamento\n3️⃣ Remarcar um Agendamento\n4️⃣ Falar com um Atendente`;
-            await sendWhatsAppMessage(customerPhone, menu, instance);
-            
-            session.status = 'WAITING_MENU';
-            await sessionRef.set(session);
-            return res.sendStatus(200);
-        }
-
-        if (session.status === 'WAITING_MENU') {
-            if (textBody === '1') {
-                await sendWhatsAppMessage(customerPhone, `Ótima escolha! Para escolher o seu serviço, profissional e horário com facilidade, acesse a nossa agenda online pelo link abaixo:\n\n🔗 ${bookingLink}\n\n(Se precisar voltar ao menu inicial, digite 0).`, instance);
-                session.status = 'IDLE';
-            } 
-            else if (textBody === '2' || textBody === '3') {
-                const action = textBody === '2' ? 'cancelar' : 'remarcar';
-                const apps = await getClientAppointments(customerPhone, shop.id);
-                
-                if (apps.length === 0) {
-                    await sendWhatsAppMessage(customerPhone, `Não encontrei nenhum agendamento futuro no sistema para o seu número.\n\nPara fazer um novo agendamento, acesse:\n🔗 ${bookingLink}\n\n(Digite 0 para voltar ao menu).`, instance);
-                    session.status = 'IDLE';
-                } else {
-                    let msg = `Encontrei os seguintes agendamentos no sistema. Qual deles você deseja ${action}?\n\n`;
-                    session.tempApps = {}; 
-                    
-                    apps.forEach((app, index) => {
-                        const num = index + 1;
-                        const dateStr = formatDate(app.date);
-                        const profName = app.professionalName || "Profissional";
-                        msg += `${num}️⃣ *${dateStr}* com ${profName}\n`;
-                        session.tempApps[num] = app.id;
-                    });
-                    
-                    msg += `\n👉 Digite apenas o *número* correspondente (ou 0 para cancelar a operação).`;
-                    await sendWhatsAppMessage(customerPhone, msg, instance);
-                    session.status = textBody === '2' ? 'WAITING_CANCEL' : 'WAITING_RESCHEDULE';
-                }
-            }
-            else if (textBody === '4') {
-                await sendWhatsAppMessage(customerPhone, `Certo! Desliguei o robô e chamei um atendente. Por favor, aguarde um momento.\n\n(Para voltar a falar com o robô a qualquer momento, digite 0).`, instance);
-                session.status = 'HUMAN';
-            }
-            else {
-                await sendWhatsAppMessage(customerPhone, `Opção inválida. ❌\nPor favor, digite 1, 2, 3 ou 4.`, instance);
-            }
-            
-            await sessionRef.set(session);
-            return res.sendStatus(200);
-        }
-
-        if (session.status === 'WAITING_CANCEL' || session.status === 'WAITING_RESCHEDULE') {
-            const isReschedule = session.status === 'WAITING_RESCHEDULE';
-            const appId = session.tempApps ? session.tempApps[textBody] : null;
-
-            if (appId) {
-                await sendWhatsAppMessage(customerPhone, `Processando a sua solicitação... Aguarde um instante ⏳`, instance);
-                
-                await db.collection('appointments').doc(appId).update({ status: 'cancelled' });
-                
-                if (isReschedule) {
-                    await sendWhatsAppMessage(customerPhone, `Pronto! O horário anterior foi desmarcado. ✅\n\nAgora, clique no link abaixo para escolher o seu *novo* horário:\n\n🔗 ${bookingLink}\n\nAté logo! (Digite 0 para ver o menu novamente).`, instance);
-                }
-                
-                session.status = 'IDLE';
-                session.tempApps = null;
-            } else {
-                await sendWhatsAppMessage(customerPhone, `Número inválido. Digite o número correspondente ao agendamento ou 0 para voltar ao menu.`, instance);
-            }
-            
-            await sessionRef.set(session);
-        }
-    } catch (err) {
-        console.error("[BOT] Erro geral no Webhook:", err);
-    }
-
+    // Como você vai usar o n8n, o tráfego de mensagens vai todo para lá.
+    // Esta rota interna não será mais ativada pela Evolution, mas a mantemos aqui
+    // caso você queira fazer regras internas no futuro.
     res.sendStatus(200);
 });
 
 // ============================================================================
-// SEÇÃO 5: API PARA O PAINEL DO CLIENTE (Conectar e Desconectar) - V2 + n8n
+// SEÇÃO 5: API PARA O PAINEL DO CLIENTE (Conectar e Desconectar) - Integração n8n
 // ============================================================================
 
-// URL do n8n para onde a Evolution vai mandar as mensagens do robô
-const N8N_WEBHOOK_URL = "http://177.153.38.218:5678/webhook/whatsapp";
-
-// Rota para Gerar QR Code e Configurar Webhook no n8n
+// 1. Rota para Gerar QR Code e Configurar Webhook no n8n
 whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
     const { establishmentId } = req.body;
     if (!establishmentId) return res.status(400).json({ error: "Falta o ID do estabelecimento." });
 
-    const instanceName = `loja_${establishmentId}`;
+    const instanceName = `kairos_${establishmentId}`;
     const headers = { 'apikey': GLOBAL_API_KEY, 'Content-Type': 'application/json' };
 
     try {
-        console.log(`[PAINEL] Iniciando conexão para: ${instanceName} na V2`);
+        console.log(`[PAINEL] Iniciando conexão para: ${instanceName}`);
         let qrcodeBase64 = '';
 
         try {
@@ -387,48 +234,67 @@ whatsappApp.post('/api/whatsapp/connect', async (req, res) => {
                 webhook: {
                     enabled: true,
                     url: N8N_WEBHOOK_URL,
-                    webhookByEvents: false,
-                    events: ["MESSAGES_UPSERT"]
+                    byEvents: false, // Na V2 usa-byEvents
+                    base64: false,
+                    events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"]
                 }
             }, { headers });
 
         } catch (error) {
             const status = error.response?.status;
             const errorMsg = JSON.stringify(error.response?.data || error.message);
-            console.log(`[PAINEL] Erro ao criar (${status}): ${errorMsg}`);
+            console.log(`[PAINEL] Retorno API Evolution: ${errorMsg}`);
             
-            // Na V2, se a instância já existir, ele retorna 400 ou 403.
+            // Se a instância já existir, apenas puxa o QR Code novamente
             if (status === 400 || status === 403 || errorMsg.includes('already exists')) {
-                console.log(`[PAINEL] Instância já existe. Apenas buscando QR Code...`);
-                
+                console.log(`[PAINEL] Instância já existe. Buscando QR Code...`);
                 const connectResponse = await axios.get(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { headers });
                 qrcodeBase64 = connectResponse.data?.base64 || connectResponse.data?.qrcode;
             } else {
-                // Se for outro erro grave (ex: VPS desligada), quebra a função
                 throw error;
             }
         }
 
-        // 3. Salva a referência de sucesso no seu Banco de Dados (Firestore)
-        await db.collection('establishments').doc(establishmentId).update({
-            whatsappInstance: instanceName
-        });
-
-        // 4. Devolve o QR Code para a tela do usuário
-        res.json({ success: true, qrcode: qrcodeBase64 });
+        // Devolve o QR Code para a tela do usuário no Kairós
+        res.json({ success: true, qrcode: qrcodeBase64, instanceName: instanceName });
 
     } catch (error) {
-        console.error(`[PAINEL] ERRO FATAL NO CONNECT:`, error.response?.data || error.message);
+        console.error(`[PAINEL] ERRO NO CONNECT:`, error.response?.data || error.message);
         res.status(500).json({ error: "Erro ao configurar WhatsApp na VPS." });
     }
 });
 
-// Rota para Desconectar e Apagar Instância
+// 2. Rota de Polling: Verifica se o cliente já escaneou o QR Code
+whatsappApp.get('/api/whatsapp/status/:establishmentId', async (req, res) => {
+    const { establishmentId } = req.params;
+    const instanceName = `kairos_${establishmentId}`;
+    const headers = { 'apikey': GLOBAL_API_KEY };
+
+    try {
+        const response = await axios.get(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, { headers });
+        const state = response.data?.instance?.state; 
+
+        if (state === 'open') {
+            // SUCESSO! O cliente escaneou o código. Salvamos isso no BD:
+            await db.collection('establishments').doc(establishmentId).update({
+                whatsappInstance: instanceName
+            });
+            return res.status(200).json({ connected: true, instanceName });
+        } else {
+            // Ainda está 'connecting' ou 'close'
+            return res.status(200).json({ connected: false, state });
+        }
+    } catch (error) {
+        return res.status(200).json({ connected: false, state: 'not_found' });
+    }
+});
+
+// 3. Rota para Desconectar e Apagar Instância
 whatsappApp.post('/api/whatsapp/disconnect', async (req, res) => {
     const { establishmentId } = req.body;
     if (!establishmentId) return res.status(400).json({ error: "ID ausente." });
 
-    const instanceName = `loja_${establishmentId}`;
+    const instanceName = `kairos_${establishmentId}`;
 
     try {
         console.log(`[PAINEL] Solicitando desconexão da instância: ${instanceName}`);
@@ -444,8 +310,7 @@ whatsappApp.post('/api/whatsapp/disconnect', async (req, res) => {
 
         // Limpa os campos no Firebase
         await db.collection('establishments').doc(establishmentId).update({
-            whatsappInstance: admin.firestore.FieldValue.delete(),
-            whatsappToken: admin.firestore.FieldValue.delete()
+            whatsappInstance: admin.firestore.FieldValue.delete()
         });
 
         res.json({ success: true, message: "Desconectado com sucesso!" });

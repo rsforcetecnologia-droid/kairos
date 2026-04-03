@@ -35,6 +35,10 @@
         "destination": "/$1"
       },
       {
+        "source": "/api/whatsapp/**",
+        "function": "whatsapp"
+      },
+      {
         "source": "**",
         "run": {
           "serviceId": "kairos-app",
