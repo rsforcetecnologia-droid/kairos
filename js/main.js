@@ -80,6 +80,34 @@ const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const sidebar = document.getElementById('sidebar');
 const mobileOverlay = document.getElementById('mobile-overlay');
 
+// Bottom nav refs
+const bottomNav = document.getElementById('mobile-bottom-nav');
+const navScroll = document.getElementById('nav-scroll');
+const scrollHintLeft = document.getElementById('scroll-hint-left');
+const scrollHintRight = document.getElementById('scroll-hint-right');
+const bottomNavItems = document.querySelectorAll('.bottom-nav-item');
+
+// Update scroll hint visibility
+function updateScrollHints() {
+    if (!navScroll || !scrollHintLeft || !scrollHintRight) return;
+    const { scrollLeft, scrollWidth, clientWidth } = navScroll;
+    scrollHintLeft.classList.toggle('visible', scrollLeft > 5);
+    scrollHintRight.classList.toggle('visible', scrollLeft + clientWidth < scrollWidth - 5);
+}
+
+// Scroll to selected pill on mobile
+function scrollToActiveItem() {
+    if (!navScroll) return;
+    const activeItem = document.querySelector('.bottom-nav-item.active');
+    if (!activeItem) return;
+    const container = navScroll;
+    const containerRect = container.getBoundingClientRect();
+    const itemRect = activeItem.getBoundingClientRect();
+    const itemCenter = itemRect.left + itemRect.width / 2 - containerRect.left;
+    const centerOffset = itemCenter - containerRect.width / 2;
+    container.scrollBy({ left: centerOffset, behavior: 'smooth' });
+}
+
 // --- 3. MAPEAMENTO DE ROTAS ---
 const pageLoader = {
     'agenda-section': loadAgendaPage,
@@ -343,6 +371,16 @@ export function navigateTo(sectionId, params = {}) {
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
+
+        // Sync bottom nav active state
+        if (bottomNav) {
+            bottomNavItems.forEach(item => {
+                item.classList.toggle('active', item.getAttribute('data-target') === sectionId);
+            });
+            setTimeout(scrollToActiveItem, 50);
+            setTimeout(updateScrollHints, 100);
+        }
+
         if (sectionId === 'my-profile-section') {
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
         }
@@ -481,6 +519,23 @@ async function initialize() {
             if(sidebar) { sidebar.classList.remove('hidden'); sidebar.classList.add('absolute', 'inset-y-0', 'left-0', 'z-40', 'shadow-xl'); }
             if(mobileOverlay) mobileOverlay.classList.remove('hidden');
         });
+    }
+
+    // Mobile Bottom Navigation clicks
+    if (bottomNav) {
+        bottomNav.addEventListener('click', (e) => {
+            const item = e.target.closest('.bottom-nav-item');
+            if (!item) return;
+            e.preventDefault();
+            const target = item.getAttribute('data-target');
+            navigateTo(target);
+        });
+
+        // Scroll hint listener
+        if (navScroll) {
+            navScroll.addEventListener('scroll', updateScrollHints);
+        }
+        updateScrollHints();
     }
 
     if (mobileOverlay) {

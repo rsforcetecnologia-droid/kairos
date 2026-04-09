@@ -55,6 +55,664 @@
         
         .kpi-card { transition: transform 0.2s ease, box-shadow 0.2s ease; display: inline-flex; align-items: center; }
         .kpi-card:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+
+        /* ============================================ */
+        /* MOBILE BOTTOM NAVIGATION - SCROLLABLE PILLS  */
+        /* ============================================ */
+        .mobile-bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9990;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(0,0,0,0.06);
+            padding-bottom: env(safe-area-inset-bottom, 0);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
+        }
+
+        .mobile-bottom-nav-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .mobile-bottom-nav-scroll {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding: 10px 16px;
+            gap: 8px;
+            flex: 1;
+            mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+        }
+
+        .mobile-bottom-nav-scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .bottom-nav-item {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            text-decoration: none;
+            color: #9ca3af;
+            font-size: 0.6rem;
+            font-weight: 500;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            flex-shrink: 0;
+            min-width: 64px;
+            padding: 8px 14px;
+            border-radius: 16px;
+            background: #f8f9fb;
+            border: 1.5px solid transparent;
+            scroll-snap-align: center;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        .bottom-nav-item i {
+            font-size: 1.2rem;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            line-height: 1;
+        }
+
+        .bottom-nav-item.active {
+            background: #4f46e5;
+            color: #ffffff;
+            border-color: #4f46e5;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+            transform: translateY(-2px);
+        }
+
+        .bottom-nav-item.active i {
+            transform: scale(1.1);
+        }
+
+        .bottom-nav-item:not(.active):hover {
+            background: #eef0f6;
+            color: #6366f1;
+            border-color: #e0e2ea;
+        }
+
+        .bottom-nav-item:active {
+            transform: scale(0.95);
+        }
+
+        /* Scroll hint arrows */
+        .scroll-hint {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: rgba(79, 70, 229, 0.9);
+            color: white;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            z-index: 10;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+            animation: hintPulse 2s infinite;
+        }
+
+        .scroll-hint.left { left: 4px; }
+        .scroll-hint.right { right: 4px; }
+
+        .scroll-hint.visible { display: flex; }
+
+        @keyframes hintPulse {
+            0%, 100% { opacity: 0.7; transform: translateY(-50%) scale(0.9); }
+            50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+        }
+
+        /* ============================================ */
+        /* AGENDA - CALENDARIO SEMANAL + LISTA LIMPA    */
+        /* ============================================ */
+
+        /* --- Toolbar --- */
+        .agenda-toolbar {
+            background: #fff;
+            border-bottom: 1px solid #f1f3f5;
+            padding: 10px 16px 12px;
+            position: sticky;
+            top: 0;
+            z-index: 30;
+        }
+
+        .agenda-date-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .agenda-nav-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 14px;
+            border: 1px solid #e9ecef;
+            background: #fff;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .agenda-nav-btn:active {
+            background: #f8f9fa;
+            transform: scale(0.94);
+        }
+
+        .agenda-date-text {
+            text-align: center;
+        }
+
+        .agenda-date-main {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #212529;
+            line-height: 1.3;
+        }
+
+        .agenda-date-sub {
+            font-size: 0.7rem;
+            color: #868e96;
+            font-weight: 400;
+        }
+
+        .agenda-top-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .agenda-today-btn {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #4f46e5;
+            background: #f0eeff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .agenda-today-btn:active {
+            transform: scale(0.95);
+            background: #e5e0ff;
+        }
+
+        .agenda-fab {
+            width: 40px;
+            height: 40px;
+            border-radius: 14px;
+            background: #4f46e5;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            box-shadow: 0 3px 12px rgba(79,70,229,0.35);
+            cursor: pointer;
+            transition: all 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .agenda-fab:active {
+            transform: scale(0.92);
+        }
+
+        /* --- Sub-toolbar: view toggle + prof pills --- */
+        .agenda-subbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px 10px;
+            background: #fff;
+            border-bottom: 1px solid #f8f9fa;
+        }
+
+        .agenda-view-toggle {
+            display: inline-flex;
+            background: #f1f3f5;
+            border-radius: 10px;
+            padding: 2px;
+        }
+
+        .agenda-view-toggle button {
+            padding: 6px 14px;
+            border: none;
+            background: transparent;
+            color: #868e96;
+            font-size: 0.72rem;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .agenda-view-toggle button.active {
+            background: #fff;
+            color: #212529;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .agenda-filter-btn {
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: #868e96;
+            background: none;
+            border: 1px solid #e9ecef;
+            padding: 6px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .agenda-filter-btn:active { background: #f8f9fa; }
+
+        /* --- Professional pills --- */
+        .agenda-prof-bar {
+            display: flex;
+            gap: 8px;
+            padding: 0 16px 10px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            background: #fff;
+        }
+
+        .agenda-prof-bar::-webkit-scrollbar { display: none; }
+
+        .prof-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 14px 5px 5px;
+            border-radius: 20px;
+            background: #f1f3f5;
+            border: 1.5px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
+        }
+
+        .prof-pill.active {
+            border-color: var(--pc, #4f46e5);
+            background: var(--pb, #f0eeff);
+        }
+
+        .prof-pill-dot {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--pc, #4f46e5);
+            background: var(--pl, #e8e5ff);
+        }
+
+        .prof-pill span {
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .prof-pill.active span {
+            font-weight: 600;
+            color: #212529;
+        }
+
+        /* ============================================ */
+        /* CALENDARIO SEMANAL                           */
+        /* ============================================ */
+
+        .week-container {
+            display: flex;
+            -webkit-overflow-scrolling: touch;
+            min-height: 60vh;
+            background: #fff;
+        }
+
+        .week-day-col {
+            border-right: 1px solid #f1f3f5;
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+            flex: 1;
+        }
+
+        .week-day-col:last-child { border-right: none; }
+
+        /* Mobile: 3 of 7 visible, scrollable with snap */
+        @media (max-width: 767px) {
+            .week-container {
+                overflow-x: auto;
+                scroll-snap-type: x mandatory;
+                scrollbar-width: none;
+            }
+            .week-container::-webkit-scrollbar { display: none; }
+            .week-day-col {
+                flex: 0 0 calc(100% / 3);
+                scroll-snap-align: center;
+            }
+        }
+
+        .week-day-header {
+            text-align: center;
+            padding: 10px 4px 8px;
+            border-bottom: 1px solid #f1f3f5;
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 2;
+        }
+
+        .week-day-header .wd-name {
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: #adb5bd;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .week-day-header .wd-num {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #212529;
+            line-height: 1.4;
+        }
+
+        .week-day-header.is-today .wd-name {
+            color: #4f46e5;
+        }
+
+        .week-day-header.is-today .wd-num {
+            width: 32px;
+            height: 32px;
+            background: #4f46e5;
+            color: #fff;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .week-day-events {
+            flex: 1;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .week-event-chip {
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+            overflow: hidden;
+            background: #f8f9fa;
+            border-left: 3px solid var(--ec, #adb5bd);
+        }
+
+        .week-event-chip:active {
+            transform: scale(0.97);
+        }
+
+        .week-event-chip.completed {
+            opacity: 0.5;
+        }
+
+        .week-event-chip .we-time {
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 2px;
+        }
+
+        .week-event-chip .we-client {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #212529;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .week-event-chip .we-service {
+            font-size: 0.62rem;
+            color: #868e96;
+            margin-top: 1px;
+        }
+
+        .week-empty {
+            text-align: center;
+            padding: 20px 6px;
+            color: #ced4da;
+            font-size: 0.65rem;
+            font-weight: 500;
+        }
+
+        .week-blockage {
+            background: #fff5f5;
+            border-left-color: #e03131;
+        }
+
+        .week-blockage .we-time,
+        .week-blockage .we-client {
+            color: #c92a2a;
+        }
+
+        /* ============================================ */
+        /* LISTA LIMPA                                  */
+        /* ============================================ */
+
+        .list-container {
+            padding: 8px 16px 80px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .list-date-group {
+            margin-top: 12px;
+            margin-bottom: 4px;
+        }
+
+        .list-date-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: #868e96;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            padding: 0 4px 4px;
+            border-bottom: 1px solid #f1f3f5;
+            margin-bottom: 6px;
+        }
+
+        .list-card {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #f1f3f5;
+            cursor: pointer;
+            transition: all 0.15s;
+            gap: 10px;
+        }
+
+        .list-card:active {
+            background: #f8f9fa;
+        }
+
+        .list-card.completed {
+            opacity: 0.55;
+            cursor: default;
+        }
+
+        .list-card.blockage {
+            background: #fff5f5;
+            border-color: #ffe3e3;
+        }
+
+        .list-card-time {
+            text-align: center;
+            min-width: 44px;
+            flex-shrink: 0;
+        }
+
+        .list-card-time .t-start {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #212529;
+            line-height: 1;
+        }
+
+        .list-card-time .t-dur {
+            font-size: 0.58rem;
+            color: #adb5bd;
+            margin-top: 3px;
+        }
+
+        .list-card-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--dc, #adb5bd);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .list-card-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .list-card-info .lc-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #212529;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .list-card-info .lc-detail {
+            font-size: 0.65rem;
+            color: #868e96;
+            margin-top: 1px;
+        }
+
+        .list-card-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .lc-action-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .lc-action-btn.wa {
+            background: #e6fcf5;
+            color: #0ca678;
+        }
+
+        .lc-action-btn.comanda {
+            background: #ede9fe;
+            color: #7c3aed;
+        }
+
+        .lc-action-btn:active {
+            transform: scale(0.9);
+        }
+
+        .week-event-chip .we-actions {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            display: flex;
+            gap: 4px;
+        }
+
+        .we-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: none;
+            background: #ede9fe;
+            color: #7c3aed;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-size: 0.7rem;
+        }
+
+        .we-btn:active {
+            transform: scale(0.85);
+            filter: brightness(0.9);
+        }
+
+        .lc-status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #868e96;
+            flex-shrink: 0;
+        }
+
+        .lc-status-dot.done {
+            background: #40c057;
+        }
+
+        /* ============================================ */
+
+        @media (max-width: 767px) {
+            .mobile-bottom-nav { display: block; }
+            #mainContent {
+                padding-bottom: 85px !important;
+            }
+            #agenda-view { padding-bottom: 20px; }
+        }
+
+        @media (min-width: 768px) {
+            .mobile-bottom-nav { display: none !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -198,7 +856,7 @@
 
         <div class="flex-1 flex flex-col">
             <header id="main-header" class="bg-white shadow-sm p-3 md:p-4 flex items-center gap-3 md:gap-4 relative z-20">
-                <button id="hamburger-menu-btn" class="text-gray-600 p-2 rounded-lg hover:bg-gray-100 md:hidden">
+                <button id="hamburger-menu-btn" class="text-gray-600 p-2 rounded-lg hover:bg-gray-100 hidden">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
                 </button>
 
@@ -335,6 +993,30 @@
     </div>
 
 <div id="toast-container"></div>
+
+    <!-- Mobile Bottom Navigation - Scrollable Pills -->
+    <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
+        <div class="mobile-bottom-nav-wrapper">
+            <div class="scroll-hint left" id="scroll-hint-left"><i class="bi bi-chevron-left"></i></div>
+            <div class="mobile-bottom-nav-scroll" id="nav-scroll">
+                <a href="#" class="bottom-nav-item active" data-target="agenda-section"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
+                <a href="#" class="bottom-nav-item" data-target="comandas-section"><i class="bi bi-receipt"></i><span>Comandas</span></a>
+                <a href="#" class="bottom-nav-item" data-target="financial-section"><i class="bi bi-currency-dollar"></i><span>Financeiro</span></a>
+                <a href="#" class="bottom-nav-item" data-target="commissions-section"><i class="bi bi-percent"></i><span>Comissões</span></a>
+                <a href="#" class="bottom-nav-item" data-target="packages-section"><i class="bi bi-box-seam"></i><span>Pacotes</span></a>
+                <a href="#" class="bottom-nav-item" data-target="clientes-section"><i class="bi bi-people"></i><span>Clientes</span></a>
+                <a href="#" class="bottom-nav-item" data-target="profissionais-section"><i class="bi bi-person-workspace"></i><span>Equipa</span></a>
+                <a href="#" class="bottom-nav-item" data-target="servicos-section"><i class="bi bi-scissors"></i><span>Serviços</span></a>
+                <a href="#" class="bottom-nav-item" data-target="produtos-section"><i class="bi bi-box"></i><span>Produtos</span></a>
+                <a href="#" class="bottom-nav-item" data-target="suppliers-section"><i class="bi bi-truck"></i><span>Parceiros</span></a>
+                <a href="#" class="bottom-nav-item" data-target="relatorios-section"><i class="bi bi-bar-chart-fill"></i><span>Relatórios</span></a>
+                <a href="#" class="bottom-nav-item" data-target="estabelecimento-section"><i class="bi bi-gear-fill"></i><span>Empresa</span></a>
+                <a href="#" class="bottom-nav-item" data-target="users-section"><i class="bi bi-shield-lock-fill"></i><span>Usuários</span></a>
+                <a href="#" class="bottom-nav-item" data-target="hierarquia-section"><i class="bi bi-diagram-3-fill"></i><span>Filiais</span></a>
+            </div>
+            <div class="scroll-hint right" id="scroll-hint-right"><i class="bi bi-chevron-right"></i></div>
+        </div>
+    </nav>
 
     <script type="module" src="js/main.js"></script>
 
