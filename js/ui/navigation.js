@@ -2,7 +2,7 @@
 
 /**
  * Módulo responsável pela interatividade da navegação (Arquitetura ERP)
- * Inclui: Busca no menu, Submenus Dinâmicos e Colapso da Sidebar
+ * Inclui: Busca no menu, Submenus Dinâmicos e Colapso/Fixação da Sidebar
  */
 
 const sidebar = document.getElementById('sidebar');
@@ -14,22 +14,25 @@ const menuSearchInput = document.getElementById('menu-search');
 const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const mobileOverlay = document.getElementById('mobile-overlay');
 
+// Variável de controle: Define se a sidebar está travada (fixada) ou solta (hover)
+let isSidebarPinned = true;
+
 // --- CONTROLO DA SIDEBAR ---
 
 function setSidebarState(shouldCollapse) {
     if (!sidebar || !mainContent) return;
-    
+
     sidebar.classList.toggle('collapsed', shouldCollapse);
     mainContent.classList.toggle('sidebar-collapsed-shift', shouldCollapse);
-    
+
     const searchContainer = sidebar.querySelector('.sidebar-search-container');
     const categoryLabels = sidebar.querySelectorAll('.sidebar-category');
-    
+
     if (shouldCollapse) {
         // Quando colapsado, esconde a barra de busca, os titulos e fecha os submenus
         if (searchContainer) searchContainer.style.display = 'none';
         categoryLabels.forEach(lbl => lbl.style.display = 'none');
-        
+
         document.querySelectorAll('.submenu-toggle').forEach(btn => {
             const submenuId = btn.getAttribute('data-target-submenu');
             const submenu = document.getElementById(submenuId);
@@ -122,14 +125,14 @@ function setupMenuSearch() {
 
             if (isMatch) {
                 li.style.display = '';
-                
+
                 // Se encontrou um item que está DENTRO de um submenu, força a abertura do submenu pai
                 const parentSubmenu = li.closest('ul[id$="-submenu"]');
                 if (parentSubmenu) {
                     parentSubmenu.classList.remove('hidden');
                     parentSubmenu.classList.add('flex');
                     parentSubmenu.parentElement.style.display = ''; // Garante que o <li> do Toggle pai apareça
-                    
+
                     // Roda a setinha do pai
                     const toggleBtn = parentSubmenu.parentElement.querySelector('.submenu-toggle');
                     if (toggleBtn) {
@@ -145,7 +148,7 @@ function setupMenuSearch() {
                     if (submenu) {
                         const childLinks = Array.from(submenu.querySelectorAll('.sidebar-link'));
                         const hasMatchingChild = childLinks.some(child => child.textContent.toLowerCase().includes(searchTerm));
-                        
+
                         if (hasMatchingChild) {
                             li.style.display = '';
                         } else {
@@ -165,33 +168,51 @@ function setupMenuSearch() {
 export function initializeNavigation(navigateCallback, userPermissions, enabledModules) {
     if (!sidebar || !mainContent) return;
 
-    mainContent.classList.add('main-content-shift'); 
-    
-    // Configura o estado inicial responsivo
-    if (window.innerWidth >= 768) {
-        setSidebarState(sidebar.classList.contains('collapsed')); 
+    mainContent.classList.add('main-content-shift');
+
+    // Configura o estado inicial responsivo e da fixação
+    if (window.innerWidth >= 1024) {
+        isSidebarPinned = true;
+        setSidebarState(false); // Desktop: Aberto e fixado por defeito
+    } else if (window.innerWidth >= 768) {
+        isSidebarPinned = false;
+        setSidebarState(true); // Tablet: Oculto por defeito
     } else {
         mainContent.classList.remove('main-content-shift', 'sidebar-collapsed-shift');
         closeMobileMenu();
     }
 
-    // Botão de Minimizar (Desktop)
+    // Botão de Minimizar / Fixar (Desktop)
     if (sidebarToggle) {
         sidebarToggle.addEventListener('click', (e) => {
             e.stopPropagation();
-            toggleSidebar(); 
+            if (window.innerWidth >= 768) {
+                isSidebarPinned = !isSidebarPinned; // Alterna entre Fixo e Solto
+                setSidebarState(!isSidebarPinned);  // Recolhe se foi solto, expande se foi fixo
+                
+                // Feedback visual no ícone para o utilizador
+                if (isSidebarPinned) {
+                    sidebarToggle.classList.add('text-indigo-400');
+                    sidebarToggle.classList.remove('text-gray-400');
+                } else {
+                    sidebarToggle.classList.remove('text-indigo-400');
+                    sidebarToggle.classList.add('text-gray-400');
+                }
+            } else {
+                toggleSidebar(); 
+            }
         });
     }
 
-    // Hover inteligente na sidebar
+    // Hover inteligente na sidebar (Só funciona se não estiver fixada)
     sidebar.addEventListener('mouseenter', () => {
-        if (window.innerWidth >= 1024 && sidebar.classList.contains('collapsed')) {
+        if (window.innerWidth >= 768 && !isSidebarPinned && sidebar.classList.contains('collapsed')) {
             setSidebarState(false);
         }
     });
 
     sidebar.addEventListener('mouseleave', () => {
-       if (window.innerWidth >= 1024) {
+       if (window.innerWidth >= 768 && !isSidebarPinned) {
            const isHoveringToggleButton = !!document.querySelector("#sidebarToggle:hover");
            // Só volta a fechar se o input de pesquisa não estiver focado
            const isSearchFocused = document.activeElement === menuSearchInput;

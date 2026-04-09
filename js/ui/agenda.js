@@ -139,11 +139,13 @@ function renderWeekView(allEvents) {
                 }
 
                 const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
+                const totalValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.totalPrice || 0) || Number(event.servicePrice || 0);
                 return `<div class="week-event-chip ${isCompleted ? 'completed' : ''}" style="--ec: ${profColor.main};"
                     ${!isCompleted ? `data-action="edit-appointment" data-appointment="${dataStr}"` : ''}>
                     <div class="we-time">${timeStr}</div>
                     <div class="we-client">${esc(event.clientName)}</div>
                     <div class="we-service">${esc(event.serviceName)} · ${esc((event.professionalName || '').split(' ')[0])}</div>
+                    <div class="we-meta">R$ ${totalValue.toFixed(2).replace('.', ',')} · ${esc(event.clientPhone || '')}</div>
                     <div class="we-actions">
                         <button class="we-btn" data-action="open-comanda" data-appointment="${dataStr}" title="Comanda" onclick="event.stopPropagation();">
                             <i class="bi bi-receipt"></i>
@@ -237,12 +239,18 @@ function renderListView(allEvents) {
                     <div class="list-card-info">
                         <div class="lc-name" style="color:#c92a2a;">${esc(event.reason)}</div>
                         <div class="lc-detail">${esc(event.professionalName)}</div>
+                        <div class="lc-extra"><span>Bloqueado</span></div>
                     </div>
                 </div>`;
                 return;
             }
 
             const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
+
+            const serviceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.totalPrice || 0) || Number(event.servicePrice || 0);
+            const paymentState = event.paymentStatus || (event.status === 'completed' ? 'Finalizado' : 'Agendado');
+            const professionalShort = esc((event.professionalName || '').split(' ')[0]);
+            const serviceCount = (event.services || []).length || (event.serviceName ? 1 : 0);
 
             html += `<div class="list-card ${isCompleted ? 'completed' : ''}"
                 data-action="edit-appointment" data-appointment="${dataStr}">
@@ -254,7 +262,13 @@ function renderListView(allEvents) {
                 <div class="list-card-dot" style="--dc: ${profColor.main};"></div>
                 <div class="list-card-info">
                     <div class="lc-name">${esc(event.clientName)}</div>
-                    <div class="lc-detail">${esc(event.serviceName)} · ${esc((event.professionalName || '').split(' ')[0])}</div>
+                    <div class="lc-detail">${esc(event.serviceName)} · ${professionalShort}</div>
+                    <div class="lc-extra">
+                        <span>R$ ${serviceValue.toFixed(2).replace('.', ',')}</span>
+                        <span>${esc(event.clientPhone || '')}</span>
+                        <span>${serviceCount} serviço(s)</span>
+                        <span>${esc(paymentState)}</span>
+                    </div>
                 </div>
                 <div class="list-card-status">
                     <div class="lc-status-dot ${isCompleted ? 'done' : ''}"></div>
@@ -265,7 +279,7 @@ function renderListView(allEvents) {
                         <i class="bi bi-whatsapp" style="font-size:0.85rem;"></i>
                     </button>
                     <button class="lc-action-btn comanda" data-action="open-comanda" data-appointment="${dataStr}" title="Comanda" onclick="event.stopPropagation();">
-                        <i class="bi bi-receipt" style="font-size:0.8rem;"></i>
+                        <i class="bi bi-receipt"></i>
                     </button>
                 </div>` : ''}
             </div>`;
@@ -602,10 +616,6 @@ export async function loadAgendaPage(params = {}) {
             const weekChip = e.target.closest('.week-event-chip[data-appointment]');
             if (weekChip) {
                 const apptData = JSON.parse(weekChip.dataset.appointment.replace(/&apos;/g, "'"));
-                if (apptData.status === 'completed') {
-                    showNotification('Agendamentos finalizados não podem ser editados.', 'warning');
-                    return;
-                }
                 openAppointmentModal(apptData);
                 return;
             }
@@ -615,10 +625,6 @@ export async function loadAgendaPage(params = {}) {
             if (listCard) {
                 if (localState.isSelectionMode) return;
                 const apptData = JSON.parse(listCard.dataset.appointment.replace(/&apos;/g, "'"));
-                if (apptData.status === 'completed') {
-                    showNotification('Agendamentos finalizados não podem ser editados.', 'warning');
-                    return;
-                }
                 openAppointmentModal(apptData);
                 return;
             }

@@ -80,6 +80,10 @@ const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
 const sidebar = document.getElementById('sidebar');
 const mobileOverlay = document.getElementById('mobile-overlay');
 
+// --- NOVO: Referências do Dark Mode ---
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const themeIcon = document.getElementById('themeIcon');
+
 // Bottom nav refs
 const bottomNav = document.getElementById('mobile-bottom-nav');
 const navScroll = document.getElementById('nav-scroll');
@@ -132,13 +136,13 @@ const pageLoader = {
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
 const colorThemes = {
-    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#e0e7ff', text: '#ffffff' },
-    blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#dbeafe', text: '#ffffff' },
+    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#eef2ff', text: '#ffffff' },
+    blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#eff6ff', text: '#ffffff' },
     sky:    { main: '#0284c7', hover: '#0369a1', light: '#e0f2fe', text: '#ffffff' },
     teal:   { main: '#0d9488', hover: '#0f766e', light: '#ccfbf1', text: '#ffffff' },
     emerald:{ main: '#059669', hover: '#047857', light: '#d1fae5', text: '#ffffff' },
     green:  { main: '#16a34a', hover: '#15803d', light: '#dcfce7', text: '#ffffff' },
-    lime:   { main: '#65a30d', hover: '#4d7c0f', light: '#ecfccb', text: '#ffffff' },
+    lime:   { main: '#65a30d', hover: '#4d7c0f', light: '#ecfccb', text: '#1f2937' },
     amber:  { main: '#d97706', hover: '#b45309', light: '#fef3c7', text: '#1f2937' },
     orange: { main: '#ea580c', hover: '#c2410c', light: '#ffedd5', text: '#ffffff' },
     red:    { main: '#dc2626', hover: '#b91c1c', light: '#fee2e2', text: '#ffffff' },
@@ -147,7 +151,7 @@ const colorThemes = {
     fuchsia:{ main: '#c026d3', hover: '#a21caf', light: '#fae8ff', text: '#ffffff' },
     purple: { main: '#7c3aed', hover: '#6d28d9', light: '#ede9fe', text: '#ffffff' },
     violet: { main: '#8b5cf6', hover: '#7c3aed', light: '#ddd6fe', text: '#ffffff' },
-    gray:   { main: '#4b5563', hover: '#374151', light: '#f3f4f6', text: '#ffffff' },
+    gray:   { main: '#64748b', hover: '#475569', light: '#f1f5f9', text: '#ffffff' },
     black:  { main: '#111827', hover: '#000000', light: '#e5e7eb', text: '#ffffff' },
 };
 
@@ -187,6 +191,40 @@ function applyTheme(themeKey) {
         `;
     }
 }
+
+// --- NOVO: SISTEMA DE DARK/LIGHT MODE ---
+export function setTheme(themeName) {
+    // Aplica na tag <html> o atributo data-theme="dark" ou "light"
+    document.documentElement.setAttribute('data-theme', themeName);
+    // Guarda a preferência para visitas futuras
+    localStorage.setItem('kairos_theme', themeName);
+    
+    // Altera o ícone do botão (Exemplo genérico, adapte ao seu pacote de ícones)
+    if (themeIcon) {
+        if (themeName === 'dark') {
+            themeIcon.innerHTML = '☀️'; // Sol
+            // Se usar Lucide: themeIcon.setAttribute('data-lucide', 'sun'); lucide.createIcons();
+        } else {
+            themeIcon.innerHTML = '🌙'; // Lua
+            // Se usar Lucide: themeIcon.setAttribute('data-lucide', 'moon'); lucide.createIcons();
+        }
+    }
+}
+
+export function initTheme() {
+    const savedTheme = localStorage.getItem('kairos_theme');
+    // Verifica se o telemóvel/PC do utilizador já prefere modo escuro nas configurações do sistema
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else if (prefersDark) {
+        setTheme('dark');
+    } else {
+        setTheme('light');
+    }
+}
+// ---------------------------------------
 
 let unsubscribeNotificationsListener = null;
 let notifications = [];
@@ -512,6 +550,19 @@ async function initialize() {
     
     initializeModalClosers();
     setupBackButtonHandling(); 
+
+    // --- NOVO: Inicializa o Tema e os Eventos do Botão ---
+    initTheme();
+
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            // Alterna entre os dois
+            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        });
+    }
+    // -----------------------------------------------------
 
     if (hamburgerMenuBtn) {
         hamburgerMenuBtn.addEventListener('click', (e) => {
