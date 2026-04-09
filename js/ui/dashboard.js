@@ -2,7 +2,6 @@
 
 import { state } from '../state.js';
 import * as appointmentsApi from '../api/appointments.js';
-import * as salesApi from '../api/sales.js';
 import * as clientsApi from '../api/clients.js';
 import { navigateTo } from '../main.js';
 import { escapeHTML } from '../utils.js';
@@ -12,71 +11,128 @@ let revenueChartInstance = null;
 export async function loadDashboardPage() {
     const contentDiv = document.getElementById('content');
     
-    // Mostra um estado de carregamento
+    // Estado de carregamento suave
     contentDiv.innerHTML = `
         <div class="flex items-center justify-center h-full min-h-[60vh]">
             <div class="flex flex-col items-center">
-                <div class="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                <p class="text-slate-500 font-medium">A carregar o seu resumo...</p>
+                <div class="w-10 h-10 border-4 border-indigo-50 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
+                <p class="text-slate-400 font-medium text-sm">A carregar o seu resumo...</p>
             </div>
         </div>
     `;
 
     try {
-        // Buscar dados necessários (Simulação de chamadas reais)
-        // Substitui pelas tuas funções reais de API depois
-        const today = new Date();
-        const startOfDay = new Date(today.setHours(0,0,0,0)).toISOString();
-        const endOfDay = new Date(today.setHours(23,59,59,999)).toISOString();
+        // --- 1. Lógica de Datas ---
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOfToday = new Date(today);
+        endOfToday.setHours(23, 59, 59, 999);
         
-        // Exemplo de chamadas em paralelo para performance
-        /*
-        const [todaySales, monthSales, todayAppointments, allClients] = await Promise.all([
-            salesApi.getSalesByDateRange(state.establishmentId, startOfDay, endOfDay),
-            salesApi.getSalesByMonth(state.establishmentId, today.getMonth(), today.getFullYear()),
-            appointmentsApi.getAppointmentsByDateRange(state.establishmentId, startOfDay, endOfDay),
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 6);
+
+        // --- 2. Busca de Dados Reais do Sistema ---
+        const [apptsMonth, allClients] = await Promise.all([
+            appointmentsApi.getAppointmentsByDateRange(state.establishmentId, firstDayOfMonth.toISOString(), endOfToday.toISOString(), null),
             clientsApi.getClients(state.establishmentId)
         ]);
-        */
 
-        // DADOS MOCKADOS PARA VISUALIZAÇÃO DA UI (Remove na integração real)
-        const mockMetrics = {
-            receitaHoje: 850.50,
-            agendamentosHoje: 12,
-            receitaMes: 15420.00,
-            ticketMedio: 70.87
+        // Função auxiliar para extrair o valor do agendamento
+        const getPrice = (appt) => {
+            return (appt.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) 
+                   || Number(appt.totalPrice || 0) 
+                   || Number(appt.servicePrice || 0);
         };
 
-        const mockChartData = {
-            labels: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'],
-            data: [450, 600, 300, 850, 1200, 1500, 200]
-        };
+        // --- 3. Cálculo de Métricas ---
+        const apptsToday = apptsMonth.filter(a => {
+            const st = new Date(a.startTime);
+            return st >= today && st <= endOfToday;
+        });
 
-        const mockNextAppointments = [
-            { client: 'Ana Silva', service: 'Corte Feminino', time: '14:30', prof: 'João', status: 'pending' },
-            { client: 'Carlos Santos', service: 'Barba e Cabelo', time: '15:00', prof: 'Miguel', status: 'confirmed' },
-            { client: 'Beatriz Costa', service: 'Manicure', time: '15:45', prof: 'Sara', status: 'pending' }
-        ];
+        const completedToday = apptsToday.filter(a => a.status === 'completed');
+        const completedMonth = apptsMonth.filter(a => a.status === 'completed');
 
-        const mockBirthdays = [
-            { name: 'Maria Fernandes', age: 34, phone: '912345678' }
-        ];
+        const receitaHoje = completedToday.reduce((sum, a) => sum + getPrice(a), 0);
+        const receitaMes = completedMonth.reduce((sum, a) => sum + getPrice(a), 0);
+        const agendamentosHoje = apptsToday.length;
+        const ticketMedio = completedMonth.length > 0 ? (receitaMes / completedMonth.length) : 0;
 
-        // Renderizar a UI
-        renderDashboardUI(contentDiv, mockMetrics, mockChartData, mockNextAppointments, mockBirthdays);
+        // --- 4. Dados para o Gráfico (Últimos 7 dias) ---
+        const labels = [];
+        const data = [];
+        const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
         
-        // Inicializar o Gráfico após renderizar o HTML
-        initRevenueChart(mockChartData);
-        
-        // Configurar Eventos de Clique
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(sevenDaysAgo);
+            d.setDate(sevenDaysAgo.getDate() + i);
+            labels.push(dayNames[d.getDay()]);
+            
+            const dayStart = new Date(d).setHours(0,0,0,0);
+            const dayEnd = new Date(d).setHours(23,59,59,999);
+            
+            const dayAppts = apptsMonth.filter(a => {
+                const st = new Date(a.startTime).getTime();
+                return a.status === 'completed' && st >= dayStart && st <= dayEnd;
+            });
+            const dayRev = dayAppts.reduce((sum, a) => sum + getPrice(a), 0);
+            data.push(dayRev);
+        }
+        const chartData = { labels, data };
+
+        // --- 5. Próximos Agendamentos (Hoje a partir de agora) ---
+        const nextAppointments = apptsToday
+            .filter(a => new Date(a.startTime).getTime() >= now.getTime() && a.status !== 'completed' && a.status !== 'cancelled')
+            .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+            .slice(0, 4) // Pega apenas os 4 próximos
+            .map(a => ({
+                client: a.clientName || 'Desconhecido',
+                service: a.serviceName || (a.services && a.services[0] ? a.services[0].name : 'Serviço'),
+                time: new Date(a.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                prof: (a.professionalName || '').split(' ')[0] || 'Profissional',
+                id: a.id
+            }));
+
+        // --- 6. Aniversariantes de Hoje ---
+        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}`;
+        const birthdays = allClients
+            .filter(c => {
+                if (!c.birthDate) return false;
+                let bMonth, bDay;
+                if (c.birthDate.includes('-')) {
+                    const parts = c.birthDate.split('-');
+                    if(parts[0].length === 4) { bMonth = parts[1]; bDay = parts[2]; } // YYYY-MM-DD
+                    else { bDay = parts[0]; bMonth = parts[1]; } // DD-MM-YYYY
+                } else if (c.birthDate.includes('/')) {
+                    const parts = c.birthDate.split('/');
+                    bDay = parts[0]; bMonth = parts[1];
+                }
+                return `${bDay}/${bMonth}` === todayStr;
+            })
+            .map(c => {
+                let age = '';
+                if (c.birthDate && c.birthDate.includes('-') && c.birthDate.split('-')[0].length === 4) {
+                    age = today.getFullYear() - parseInt(c.birthDate.split('-')[0]);
+                }
+                return { name: c.name, age, phone: c.phone };
+            });
+
+        const metrics = { receitaHoje, agendamentosHoje, receitaMes, ticketMedio };
+
+        // --- 7. Renderizar ---
+        renderDashboardUI(contentDiv, metrics, chartData, nextAppointments, birthdays);
+        initRevenueChart(chartData);
         setupDashboardEvents();
 
     } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
         contentDiv.innerHTML = `
-            <div class="p-6 text-center text-rose-500">
-                <i class="bi bi-exclamation-circle text-4xl mb-2"></i>
-                <p>Ocorreu um erro ao carregar os dados. Tente novamente.</p>
+            <div class="flex flex-col items-center justify-center h-full min-h-[60vh] text-slate-500">
+                <i class="bi bi-exclamation-circle text-4xl mb-3 text-rose-400"></i>
+                <p class="font-medium text-sm">Ocorreu um erro ao carregar os dados.</p>
+                <button onclick="window.navigateTo('dashboard-section')" class="mt-4 px-5 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors">Tentar Novamente</button>
             </div>
         `;
     }
@@ -86,106 +142,109 @@ function renderDashboardUI(container, metrics, chartData, nextAppointments, birt
     const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
     container.innerHTML = `
-        <div class="p-4 md:p-6 max-w-7xl mx-auto space-y-6 pb-24 font-sans animate-fade-in">
+        <div class="p-5 md:p-8 max-w-7xl mx-auto space-y-6 pb-24 font-sans animate-fade-in">
             
-            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
                 <div>
-                    <h2 class="text-2xl font-black text-slate-800 tracking-tight">Visão Geral</h2>
-                    <p class="text-sm text-slate-500 font-medium">Acompanhe o desempenho do seu negócio em tempo real.</p>
+                    <h2 class="text-[1.4rem] font-semibold text-slate-700 tracking-tight">Visão Geral</h2>
+                    <p class="text-[0.85rem] text-slate-500 font-normal mt-1">Acompanhe o desempenho da sua unidade em tempo real.</p>
                 </div>
                 <div class="text-right">
-                    <p class="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg inline-block">
-                        <i class="bi bi-calendar-event me-1"></i> ${new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    <p class="text-xs font-semibold text-indigo-600 bg-indigo-50/70 px-3 py-1.5 rounded-lg inline-block border border-indigo-100/50">
+                        <i class="bi bi-calendar2-week me-1"></i> ${new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'long' })}
                     </p>
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
                 
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center hover:shadow-md transition-shadow">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-inner">
-                            <i class="bi bi-cash-stack text-xl"></i>
+                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-[10px] bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                            <i class="bi bi-cash-stack text-lg"></i>
                         </div>
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Receita Hoje</span>
+                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Receita Hoje</span>
                     </div>
-                    <h3 class="text-2xl font-black text-slate-800">${formatter.format(metrics.receitaHoje)}</h3>
+                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.receitaHoje)}</h3>
                 </div>
 
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center hover:shadow-md transition-shadow">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
-                            <i class="bi bi-calendar-check text-xl"></i>
+                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-[10px] bg-indigo-50 text-indigo-500 flex items-center justify-center">
+                            <i class="bi bi-calendar-check text-lg"></i>
                         </div>
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Agendamentos</span>
+                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Agendamentos</span>
                     </div>
-                    <h3 class="text-2xl font-black text-slate-800">${metrics.agendamentosHoje}</h3>
+                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${metrics.agendamentosHoje}</h3>
                 </div>
 
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center hover:shadow-md transition-shadow">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
-                            <i class="bi bi-graph-up-arrow text-xl"></i>
+                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-[10px] bg-blue-50 text-blue-500 flex items-center justify-center">
+                            <i class="bi bi-graph-up-arrow text-lg"></i>
                         </div>
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Receita (Mês)</span>
+                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Receita (Mês)</span>
                     </div>
-                    <h3 class="text-2xl font-black text-slate-800">${formatter.format(metrics.receitaMes)}</h3>
+                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.receitaMes)}</h3>
                 </div>
 
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center hover:shadow-md transition-shadow">
-                    <div class="flex items-center gap-3 mb-3">
-                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-inner">
-                            <i class="bi bi-receipt text-xl"></i>
+                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-9 h-9 rounded-[10px] bg-amber-50 text-amber-500 flex items-center justify-center">
+                            <i class="bi bi-receipt text-lg"></i>
                         </div>
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Ticket Médio</span>
+                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Ticket Médio</span>
                     </div>
-                    <h3 class="text-2xl font-black text-slate-800">${formatter.format(metrics.ticketMedio)}</h3>
+                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.ticketMedio)}</h3>
                 </div>
 
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6">
                 
-                <div class="lg:col-span-2 space-y-6">
+                <div class="lg:col-span-2 space-y-5 md:space-y-6">
                     
-                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
-                        <div class="flex justify-between items-center mb-6">
-                            <h3 class="text-base font-bold text-slate-800">Receita (Últimos 7 dias)</h3>
-                            <button class="text-slate-400 hover:text-indigo-600"><i class="bi bi-three-dots-vertical"></i></button>
+                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
+                        <div class="flex justify-between items-center mb-5">
+                            <h3 class="text-[0.95rem] font-semibold text-slate-700">Receita (Últimos 7 dias)</h3>
+                            <button class="text-slate-400 hover:text-indigo-500 transition-colors"><i class="bi bi-three-dots"></i></button>
                         </div>
-                        <div class="relative h-64 w-full">
+                        <div class="relative h-60 w-full">
                             <canvas id="revenueChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
-                                <i class="bi bi-clock-history text-indigo-500"></i> Próximas 2 Horas
+                            <h3 class="text-[0.95rem] font-semibold text-slate-700 flex items-center gap-2">
+                                Próximos Agendamentos
                             </h3>
-                            <button data-action="goto-agenda" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wide">Ver Agenda Completa</button>
+                            <button data-action="goto-agenda" class="text-[11px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors">Ver Agenda Completa <i class="bi bi-arrow-right"></i></button>
                         </div>
                         
-                        <div class="space-y-3">
+                        <div class="space-y-2.5">
                             ${nextAppointments.length > 0 ? nextAppointments.map(appt => `
-                                <div class="flex items-center justify-between p-3 md:p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:shadow-md transition-all cursor-pointer">
+                                <div data-action="goto-agenda" class="flex items-center justify-between p-3.5 rounded-[14px] border border-slate-100/60 bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-100 transition-all cursor-pointer group">
                                     <div class="flex items-center gap-4">
-                                        <div class="w-12 h-12 rounded-full bg-white border border-slate-200 flex flex-col items-center justify-center flex-shrink-0 text-indigo-600 font-black shadow-sm">
-                                            ${appt.time.split(':')[0]}<span class="text-[9px] leading-none">${appt.time.split(':')[1]}</span>
+                                        <div class="w-11 h-11 rounded-full bg-white border border-slate-200 flex flex-col items-center justify-center flex-shrink-0 text-indigo-600 shadow-sm">
+                                            <span class="font-semibold text-sm">${appt.time.split(':')[0]}</span><span class="text-[8px] font-medium leading-none text-slate-400">${appt.time.split(':')[1]}</span>
                                         </div>
                                         <div>
-                                            <p class="font-bold text-slate-800 text-sm">${escapeHTML(appt.client)}</p>
-                                            <p class="text-xs text-slate-500 font-medium mt-0.5">${escapeHTML(appt.service)} · <i class="bi bi-person-badge"></i> ${escapeHTML(appt.prof)}</p>
+                                            <p class="font-medium text-slate-700 text-sm group-hover:text-indigo-700 transition-colors">${escapeHTML(appt.client)}</p>
+                                            <p class="text-[11px] text-slate-500 font-normal mt-0.5">${escapeHTML(appt.service)} <span class="mx-1 text-slate-300">•</span> ${escapeHTML(appt.prof)}</p>
                                         </div>
                                     </div>
-                                    <button class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-colors">
-                                        <i class="bi bi-chevron-right"></i>
+                                    <button class="w-8 h-8 rounded-full text-slate-300 flex items-center justify-center group-hover:text-indigo-500 transition-colors">
+                                        <i class="bi bi-chevron-right text-sm"></i>
                                     </button>
                                 </div>
                             `).join('') : `
-                                <div class="text-center py-6 text-slate-400">
-                                    <i class="bi bi-cup-hot text-3xl mb-2 block"></i>
-                                    <p class="text-sm font-medium">Nenhum agendamento para as próximas 2 horas.</p>
+                                <div class="text-center py-8 text-slate-400">
+                                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                        <i class="bi bi-cup-hot text-xl text-slate-300"></i>
+                                    </div>
+                                    <p class="text-sm font-medium text-slate-500">Agenda livre por agora.</p>
+                                    <p class="text-xs font-normal mt-1">Nenhum agendamento pendente para hoje.</p>
                                 </div>
                             `}
                         </div>
@@ -193,57 +252,61 @@ function renderDashboardUI(container, metrics, chartData, nextAppointments, birt
 
                 </div>
 
-                <div class="space-y-6">
+                <div class="space-y-5 md:space-y-6">
                     
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                        <h3 class="text-base font-bold text-slate-800 mb-4">Ações Rápidas</h3>
+                    <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
+                        <h3 class="text-[0.95rem] font-semibold text-slate-700 mb-4">Ações Rápidas</h3>
                         <div class="grid grid-cols-2 gap-3">
-                            <button data-action="new-appointment" class="flex flex-col items-center justify-center p-4 bg-indigo-50 rounded-xl text-indigo-700 hover:bg-indigo-600 hover:text-white transition-all shadow-sm group">
-                                <i class="bi bi-plus-circle text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-xs font-bold text-center">Novo Agendamento</span>
+                            <button data-action="new-appointment" class="flex flex-col items-center justify-center p-4 bg-indigo-50/50 rounded-2xl text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors border border-indigo-100/50 group">
+                                <i class="bi bi-plus-lg text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[11px] font-medium text-center">Agendamento</span>
                             </button>
                             
-                            <button data-action="goto-pdv" class="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-xl text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all shadow-sm group">
-                                <i class="bi bi-cart-plus text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-xs font-bold text-center">Abrir Comanda / PDV</span>
+                            <button data-action="goto-pdv" class="flex flex-col items-center justify-center p-4 bg-emerald-50/50 rounded-2xl text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors border border-emerald-100/50 group">
+                                <i class="bi bi-cart2 text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[11px] font-medium text-center">Abrir PDV</span>
                             </button>
                             
-                            <button data-action="goto-clients" class="flex flex-col items-center justify-center p-4 bg-blue-50 rounded-xl text-blue-700 hover:bg-blue-600 hover:text-white transition-all shadow-sm group">
-                                <i class="bi bi-people text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-xs font-bold text-center">Meus Clientes</span>
+                            <button data-action="goto-clients" class="flex flex-col items-center justify-center p-4 bg-blue-50/50 rounded-2xl text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-blue-100/50 group">
+                                <i class="bi bi-people text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[11px] font-medium text-center">Clientes</span>
                             </button>
                             
-                            <button data-action="open-link" class="flex flex-col items-center justify-center p-4 bg-slate-100 rounded-xl text-slate-700 hover:bg-slate-800 hover:text-white transition-all shadow-sm group">
-                                <i class="bi bi-link-45deg text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-xs font-bold text-center">Link de Agendamento</span>
+                            <button data-action="open-link" class="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors border border-slate-200/60 group">
+                                <i class="bi bi-link-45deg text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
+                                <span class="text-[11px] font-medium text-center">O meu Link</span>
                             </button>
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                        <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <i class="bi bi-gift text-rose-500"></i> Aniversariantes Hoje
+                    <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
+                        <h3 class="text-[0.95rem] font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                            <i class="bi bi-gift text-rose-400"></i> Aniversariantes Hoje
                         </h3>
                         
                         <div class="space-y-3">
-                            ${birthdays.length > 0 ? birthdays.map(b => `
-                                <div class="flex items-center justify-between p-3 rounded-xl border border-rose-100 bg-rose-50/50">
+                            ${birthdays.length > 0 ? birthdays.map(b => {
+                                const cleanPhone = (b.phone || '').replace(/\D/g, '');
+                                const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Olá ${b.name.split(' ')[0]}! A equipa deseja-lhe um Feliz Aniversário! 🎉`)}`;
+                                
+                                return `
+                                <div class="flex items-center justify-between p-3 rounded-[12px] border border-rose-50 bg-rose-50/30">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                                        <div class="w-9 h-9 rounded-full bg-rose-100/70 text-rose-500 flex items-center justify-center font-semibold text-sm">
                                             ${escapeHTML(b.name).charAt(0)}
                                         </div>
                                         <div>
-                                            <p class="font-bold text-slate-800 text-sm">${escapeHTML(b.name)}</p>
-                                            <p class="text-[11px] font-bold text-rose-500 uppercase tracking-wide">${b.age} anos</p>
+                                            <p class="font-medium text-slate-700 text-[0.8rem]">${escapeHTML(b.name)}</p>
+                                            ${b.age ? `<p class="text-[10px] font-medium text-rose-400 mt-0.5">${b.age} anos</p>` : ''}
                                         </div>
                                     </div>
-                                    <button class="w-8 h-8 rounded-full bg-white text-emerald-500 shadow-sm border border-emerald-100 flex items-center justify-center hover:bg-emerald-50 transition-colors" title="Enviar Parabéns pelo WhatsApp">
-                                        <i class="bi bi-whatsapp"></i>
-                                    </button>
+                                    <a href="${waLink}" target="_blank" class="w-8 h-8 rounded-full bg-white text-emerald-500 shadow-sm border border-emerald-50 flex items-center justify-center hover:bg-emerald-50 transition-colors" title="Enviar Parabéns pelo WhatsApp">
+                                        <i class="bi bi-whatsapp text-[0.85rem]"></i>
+                                    </a>
                                 </div>
-                            `).join('') : `
-                                <div class="text-center py-4 text-slate-400">
-                                    <p class="text-sm font-medium">Sem aniversariantes hoje.</p>
+                            `}).join('') : `
+                                <div class="text-center py-5 text-slate-400">
+                                    <p class="text-xs font-normal">Sem aniversariantes hoje.</p>
                                 </div>
                             `}
                         </div>
@@ -268,29 +331,28 @@ function initRevenueChart(chartData) {
         revenueChartInstance.destroy();
     }
 
-    // Cria o gradiente para debaixo da linha
     const canvasContext = ctx.getContext('2d');
-    const gradient = canvasContext.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, 'rgba(79, 70, 229, 0.2)'); // Indigo-600 com transparência
-    gradient.addColorStop(1, 'rgba(79, 70, 229, 0)');
+    const gradient = canvasContext.createLinearGradient(0, 0, 0, 240);
+    gradient.addColorStop(0, 'rgba(79, 70, 229, 0.15)'); 
+    gradient.addColorStop(1, 'rgba(79, 70, 229, 0.01)');
 
     revenueChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: chartData.labels,
             datasets: [{
-                label: 'Receita Diária (R$)',
+                label: 'Receita (R$)',
                 data: chartData.data,
-                borderColor: '#4f46e5', // Indigo 600
+                borderColor: '#6366f1', // Indigo 500 para ser mais suave
                 backgroundColor: gradient,
-                borderWidth: 3,
+                borderWidth: 2.5,
                 pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#4f46e5',
+                pointBorderColor: '#6366f1',
                 pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6,
+                pointRadius: 3,
+                pointHoverRadius: 5,
                 fill: true,
-                tension: 0.4 // Suaviza a linha (curva)
+                tension: 0.35 // Curva suave
             }]
         },
         options: {
@@ -301,16 +363,16 @@ function initRevenueChart(chartData) {
                 tooltip: {
                     backgroundColor: '#1e293b',
                     padding: 12,
-                    titleFont: { size: 13, family: 'Inter' },
-                    bodyFont: { size: 14, weight: 'bold', family: 'Inter' },
+                    cornerRadius: 8,
+                    titleFont: { size: 12, family: 'Inter', weight: 'normal' },
+                    bodyFont: { size: 13, weight: 'bold', family: 'Inter' },
+                    displayColors: false,
                     callbacks: {
                         label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) label += ': ';
                             if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
                             }
-                            return label;
+                            return '';
                         }
                     }
                 }
@@ -318,16 +380,19 @@ function initRevenueChart(chartData) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    grid: { color: '#f1f5f9', drawBorder: false },
+                    grid: { color: '#f8fafc', drawBorder: false },
+                    border: { display: false },
                     ticks: {
                         color: '#94a3b8',
-                        font: { family: 'Inter', size: 11 },
+                        font: { family: 'Inter', size: 10 },
+                        maxTicksLimit: 6,
                         callback: function(value) { return 'R$ ' + value; }
                     }
                 },
                 x: {
                     grid: { display: false, drawBorder: false },
-                    ticks: { color: '#64748b', font: { family: 'Inter', size: 12, weight: '500' } }
+                    border: { display: false },
+                    ticks: { color: '#94a3b8', font: { family: 'Inter', size: 11, weight: '500' } }
                 }
             },
             interaction: { intersect: false, mode: 'index' },
@@ -350,7 +415,7 @@ function setupDashboardEvents() {
                 break;
             case 'new-appointment':
                 navigateTo('agenda-section');
-                // Adicionar lógica opcional para abrir o modal direto ao chegar na agenda
+                // Se a agenda tiver suporte, podes usar um EventBus para abrir o modal direto
                 break;
             case 'goto-pdv':
                 navigateTo('comandas-section');
@@ -359,7 +424,6 @@ function setupDashboardEvents() {
                 navigateTo('clientes-section');
                 break;
             case 'open-link':
-                // Supondo que o link público é baseado no ID do estabelecimento
                 const publicUrl = `${window.location.origin}/cliente.html?id=${state.establishmentId || ''}`;
                 window.open(publicUrl, '_blank');
                 break;
