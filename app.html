@@ -780,9 +780,17 @@
 
             <nav class="flex-1 overflow-y-auto py-4 custom-scrollbar" id="sidebar-nav">
                 <ul class="space-y-1 px-3">
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-2">Operação</li>
+                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-2">Início</li>
                     <li>
-                        <a href="#" class="sidebar-link active flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="agenda-section">
+                        <a href="#" class="sidebar-link active flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="dashboard-section">
+                            <i class="bi bi-grid-1x2-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
+                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Dashboard</span>
+                        </a>
+                    </li>
+
+                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Operação</li>
+                    <li>
+                        <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="agenda-section">
                             <i class="bi bi-calendar3 w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
                             <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Agenda</span>
                         </a>
@@ -1035,7 +1043,8 @@
         <div class="mobile-bottom-nav-wrapper">
             <div class="scroll-hint left" id="scroll-hint-left"><i class="bi bi-chevron-left"></i></div>
             <div class="mobile-bottom-nav-scroll" id="nav-scroll">
-                <a href="#" class="bottom-nav-item active" data-target="agenda-section"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
+                <a href="#" class="bottom-nav-item active" data-target="dashboard-section"><i class="bi bi-grid-1x2-fill"></i><span>Resumo</span></a>
+                <a href="#" class="bottom-nav-item" data-target="agenda-section"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
                 <a href="#" class="bottom-nav-item" data-target="comandas-section"><i class="bi bi-receipt"></i><span>Comandas</span></a>
                 <a href="#" class="bottom-nav-item" data-target="financial-section"><i class="bi bi-currency-dollar"></i><span>Financeiro</span></a>
                 <a href="#" class="bottom-nav-item" data-target="commissions-section"><i class="bi bi-percent"></i><span>Comissões</span></a>

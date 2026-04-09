@@ -98,7 +98,7 @@ function createWhatsAppLink(phone, clientName, serviceName, professionalName, st
     return `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}`;
 }
 
-// --- WEEK VIEW: 7 days, mobile shows 3 at a time (33.33% each), scrollable ---
+// --- WEEK VIEW ---
 function renderWeekView(allEvents) {
     const container = document.getElementById('agenda-view');
     if (!container) return;
@@ -125,10 +125,10 @@ function renderWeekView(allEvents) {
         } else {
             dayContent = dayEvents.map(event => {
                 const st = new Date(event.startTime);
-                const et = new Date(event.endTime);
                 const timeStr = st.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
                 const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd' };
                 const isCompleted = event.status === 'completed';
+                const isChecked = localState.selectedItems.has(event.id);
 
                 if (event.type === 'blockage') {
                     return `<div class="week-event-chip week-blockage">
@@ -140,17 +140,26 @@ function renderWeekView(allEvents) {
 
                 const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
                 
-                // NOTA: Removida a div "we-meta" para deixar a visão semanal mais limpa conforme solicitado
-                return `<div class="week-event-chip ${isCompleted ? 'completed' : ''}" style="--ec: ${profColor.main};"
+                // Estilo para modo de seleção na visão semanal
+                const selStyle = isChecked ? 'box-shadow: 0 0 0 2px #4f46e5; background-color: #eff6ff;' : '';
+                const checkboxHtml = localState.isSelectionMode
+                    ? `<div style="position:absolute; top:6px; right:6px; z-index:1;">
+                           <input type="checkbox" style="width:16px; height:16px; accent-color:#4f46e5; pointer-events:none;" ${isChecked ? 'checked' : ''}>
+                       </div>`
+                    : '';
+
+                return `<div class="week-event-chip ${isCompleted ? 'completed' : ''}" style="--ec: ${profColor.main}; ${selStyle}"
                     data-action="edit-appointment" data-appointment='${dataStr}'>
+                    ${checkboxHtml}
                     <div class="we-time">${timeStr}</div>
-                    <div class="we-client">${esc(event.clientName)}</div>
+                    <div class="we-client" style="${localState.isSelectionMode ? 'padding-right:20px;' : ''}">${esc(event.clientName)}</div>
                     <div class="we-service">${esc(event.serviceName)} · ${esc((event.professionalName || '').split(' ')[0])}</div>
+                    ${!localState.isSelectionMode ? `
                     <div class="we-actions">
                         <button class="we-btn" data-action="open-comanda" data-appointment='${dataStr}' title="Comanda">
                             <i class="bi bi-receipt"></i>
                         </button>
-                    </div>
+                    </div>` : ''}
                 </div>`;
             }).join('');
         }
@@ -167,7 +176,6 @@ function renderWeekView(allEvents) {
     html += '</div>';
     container.innerHTML = html;
 
-    // Scroll active day (today) to center on mobile
     requestAnimationFrame(() => {
         const scroller = document.getElementById('weekScroller');
         if (scroller && window.innerWidth < 768) {
@@ -179,7 +187,7 @@ function renderWeekView(allEvents) {
     });
 }
 
-// --- LIST VIEW: clean, minimal ---
+// --- LIST VIEW ---
 function renderListView(allEvents) {
     const container = document.getElementById('agenda-view');
     if (!container) return;
@@ -200,7 +208,6 @@ function renderListView(allEvents) {
         return;
     }
 
-    // Group by date
     const groups = {};
     allEvents.forEach(ev => {
         const dateKey = new Date(ev.startTime).toLocaleDateString('pt-BR', {
@@ -223,13 +230,17 @@ function renderListView(allEvents) {
             const timeStr = st.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
             const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd', light: '#f1f3f5' };
             const isCompleted = event.status === 'completed';
-            const clientInitials = event.clientName ? event.clientName.charAt(0).toUpperCase() : '?';
             const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
             const isChecked = localState.selectedItems.has(event.id);
 
+            // Ajuste importante no checkbox: pointer-events:none para que o clique seja gerido pelo Card inteiro
             const checkboxHtml = localState.isSelectionMode
-                ? `<input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-indigo-600" data-action="toggle-select-item" data-id="${event.id}">`
+                ? `<div style="display:flex; align-items:center; margin-right: 12px; margin-left: 4px;">
+                       <input type="checkbox" style="width:20px; height:20px; accent-color:#4f46e5; pointer-events:none;" ${isChecked ? 'checked' : ''}>
+                   </div>`
                 : '';
+
+            const selStyle = isChecked ? 'box-shadow: 0 0 0 2px #4f46e5; background-color: #eff6ff;' : '';
 
             if (event.type === 'blockage') {
                 html += `<div class="list-card blockage">
@@ -239,21 +250,18 @@ function renderListView(allEvents) {
                     <div class="list-card-info">
                         <div class="lc-name" style="color:#c92a2a;">${esc(event.reason)}</div>
                         <div class="lc-detail">${esc(event.professionalName)}</div>
-                        <div class="lc-extra"><span>Bloqueado</span></div>
                     </div>
                 </div>`;
                 return;
             }
 
             const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
-
             const serviceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.totalPrice || 0) || Number(event.servicePrice || 0);
             const paymentState = event.paymentStatus || (event.status === 'completed' ? 'Finalizado' : 'Agendado');
             const professionalShort = esc((event.professionalName || '').split(' ')[0]);
             const serviceCount = (event.services || []).length || (event.serviceName ? 1 : 0);
 
-            // NOTA: lc-extra ajustado com Flexbox responsivo e fonte pequena estilizada como "tags"
-            html += `<div class="list-card ${isCompleted ? 'completed' : ''}"
+            html += `<div class="list-card ${isCompleted ? 'completed' : ''}" style="${selStyle}"
                 data-action="edit-appointment" data-appointment='${dataStr}'>
                 ${checkboxHtml}
                 <div class="list-card-time">
@@ -267,7 +275,7 @@ function renderListView(allEvents) {
                     <div class="lc-extra" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
                         <span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;">R$ ${serviceValue.toFixed(2).replace('.', ',')}</span>
                         ${event.clientPhone ? `<span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;"><i class="bi bi-telephone"></i> ${esc(event.clientPhone)}</span>` : ''}
-                        <span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;">${serviceCount} serviço(s)</span>
+                        <span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;">${serviceCount} serv.</span>
                         <span style="font-size: 0.65rem; color: ${isCompleted ? '#059669' : '#d97706'}; background: ${isCompleted ? '#d1fae5' : '#fef3c7'}; padding: 2px 8px; border-radius: 6px; font-weight: 600;">${esc(paymentState)}</span>
                     </div>
                 </div>
@@ -312,16 +320,16 @@ function updateBatchDeleteUI() {
 
     if (localState.isSelectionMode && localState.selectedItems.size > 0) {
         container.innerHTML = `<div class="bg-gray-900 text-white p-3 rounded-xl shadow-xl flex items-center justify-between gap-4 w-full mx-4" style="background:#212529;color:#fff;padding:12px 16px;border-radius:12px;display:flex;align-items:center;gap:12px;">
-            <span class="font-semibold text-sm"><span style="color:#7c3aed;">${localState.selectedItems.size}</span> itens</span>
-            <button data-action="batch-delete" style="background:#e03131;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:0.8rem;font-weight:600;cursor:pointer;">
+            <span class="font-semibold text-sm"><span style="color:#7c3aed; font-size:1.1rem; margin-right:4px;">${localState.selectedItems.size}</span> selecionados</span>
+            <button data-action="batch-delete" style="background:#e03131;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
                 <i class="bi bi-trash"></i> Excluir
             </button>
         </div>`;
         container.style.display = 'block';
-        if (fab) fab.style.display = 'none';
+        if (fab) fab.style.transform = 'scale(0)'; // Esconde suavemente o FAB
     } else {
         container.style.display = 'none';
-        if (fab) fab.style.display = 'flex';
+        if (fab) fab.style.transform = 'scale(1)'; // Mostra o FAB
     }
 }
 
@@ -333,28 +341,22 @@ function updateDateDisplay() {
     today.setHours(0, 0, 0, 0);
     const cd = new Date(localState.currentDate);
     cd.setHours(0, 0, 0, 0);
-    const isTodayRange = isSameWeek(today, cd);
-
+    
     if (localState.currentView === 'list') {
         if (cd.toDateString() === today.toDateString()) {
             display.textContent = 'Hoje';
         } else {
-            display.textContent = cd.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+            // Remove o ano para ficar mais limpo visualmente
+            display.textContent = cd.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
         }
     } else {
         const monday = getMonday(cd);
         const sunday = new Date(monday);
         sunday.setDate(monday.getDate() + 6);
         const mStr = monday.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
-        const sStr = sunday.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
-        display.textContent = `${mStr} — ${sStr}`;
+        const sStr = sunday.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+        display.textContent = `${mStr} - ${sStr}`;
     }
-}
-
-function isSameWeek(d1, d2) {
-    const m1 = getMonday(d1);
-    const m2 = getMonday(d2);
-    return m1.toDateString() === m2.toDateString();
 }
 
 // ============================================================================
@@ -453,54 +455,53 @@ export async function loadAgendaPage(params = {}) {
     localState.isSelectionMode = false;
     localState.selectedItems.clear();
 
+    // === NOVO LAYOUT DO CABEÇALHO DA AGENDA (CENTRALIZADO E MODERNO) ===
     contentDiv.innerHTML = `
         <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 relative font-sans w-full" style="background:#f8f9fa;">
 
-            <div class="agenda-toolbar">
-                <div class="agenda-date-row">
-                    <div class="flex items-center gap-2" style="flex:1;min-width:0;">
-                        <button id="btnPrevDate" class="agenda-nav-btn" style="flex-shrink:0;">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <div class="agenda-date-text" style="flex:1;min-width:0;cursor:pointer;" id="dateDisplayWrap">
-                            <div id="currentDateDisplay" class="agenda-date-main">Carregando...</div>
-                        </div>
-                        <button id="btnNextDate" class="agenda-nav-btn" style="flex-shrink:0;">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
+            <div style="background: #fff; padding: 14px 16px; border-bottom: 1px solid #f1f3f5; position: sticky; top: 0; z-index: 30; display:flex; flex-direction:column; gap:16px;">
+                
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button id="btnWeekDays" style="background:transparent; border:none; color:#495057; font-size:1.2rem; padding:4px; cursor:pointer;" title="Opções">
+                        <i class="bi bi-sliders"></i>
+                    </button>
+
+                    <div class="agenda-view-toggle" style="background: #f1f3f5; padding: 4px; border-radius: 12px; display:flex; gap:4px; margin:0;">
+                        <button class="${localState.currentView === 'list' ? 'active shadow-sm' : ''}" data-action="setView" data-view="list" style="border-radius: 8px; padding: 6px 16px; font-weight:600;">Lista</button>
+                        <button class="${localState.currentView === 'week' ? 'active shadow-sm' : ''}" data-action="setView" data-view="week" style="border-radius: 8px; padding: 6px 16px; font-weight:600;">Semana</button>
                     </div>
-                    <div class="agenda-top-actions" style="flex-shrink:0;">
-                        <button id="btnToday" class="agenda-today-btn">Hoje</button>
-                        <div id="agendaFab" class="agenda-fab" data-action="new-appointment" style="display:none;">
-                            <i class="bi bi-plus-lg"></i>
-                        </div>
+
+                    <button id="agendaFab" data-action="new-appointment" style="width: 38px; height: 38px; border-radius: 50%; background: #4f46e5; color: white; border: none; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(79,70,229,0.3); transition: transform 0.2s; cursor:pointer;" title="Novo Agendamento">
+                        <i class="bi bi-plus-lg text-lg"></i>
+                    </button>
+                </div>
+
+                <div style="display: flex; justify-content: center; align-items: center; gap: 24px;">
+                    <button id="btnPrevDate" class="agenda-nav-btn" style="width: 36px; height: 36px; border-radius: 50%; background: #f8f9fa; border:1px solid #e9ecef; color:#495057;">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    
+                    <div id="btnTodayHeader" style="display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; min-width: 140px; text-align: center; padding: 4px; border-radius:8px; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='transparent'">
+                        <div id="currentDateDisplay" style="font-size: 1.1rem; font-weight: 700; color: #212529; line-height: 1.2;">Carregando...</div>
+                        <div style="font-size: 0.65rem; font-weight: 700; color: #4f46e5; text-transform: uppercase; margin-top: 2px; letter-spacing: 0.5px;">Ir para Hoje</div>
                     </div>
+
+                    <button id="btnNextDate" class="agenda-nav-btn" style="width: 36px; height: 36px; border-radius: 50%; background: #f8f9fa; border:1px solid #e9ecef; color:#495057;">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
                 </div>
             </div>
 
-            <div class="agenda-subbar">
-                <div class="agenda-view-toggle">
-                    <button class="${localState.currentView === 'list' ? 'active' : ''}" data-action="setView" data-view="list">Lista</button>
-                    <button class="${localState.currentView === 'week' ? 'active' : ''}" data-action="setView" data-view="week">Semana</button>
-                </div>
-                <button class="agenda-filter-btn" id="btnWeekDays">
-                    <i class="bi bi-sliders2" style="font-size:0.8rem;"></i> Opções
-                </button>
-            </div>
-
-            <div id="profSelectorContainer" class="agenda-prof-bar">
+           <div id="profSelectorContainer" class="agenda-prof-bar" style="border-bottom: 1px solid #f1f3f5; padding-top:8px; justify-content: center;">
                 <div style="width:24px;height:24px;border:2px solid #e9ecef;border-top:2px solid #4f46e5;border-radius:50%;animation:spin 0.7s linear infinite;margin:8px auto;"></div>
             </div>
 
-            <div id="agenda-view" style="flex:1;overflow-y:auto;"></div>
+            <div id="agenda-view" style="flex:1;overflow-y:auto; padding-bottom:100px;"></div>
 
             <div id="batch-delete-container" style="position:fixed;bottom:80px;left:0;right:0;z-index:50;display:none;"></div>
         </div>`;
 
-    // Show FAB only if not in selection mode
-    document.getElementById('agendaFab').style.display = 'flex';
-
-    // --- Navigation ---
+    // --- Navegação ---
     document.getElementById('btnPrevDate').addEventListener('click', () => {
         if (localState.currentView === 'list') {
             localState.currentDate.setDate(localState.currentDate.getDate() - 1);
@@ -519,43 +520,39 @@ export async function loadAgendaPage(params = {}) {
         fetchAndDisplayAgenda();
     });
 
-    document.getElementById('btnToday').addEventListener('click', () => {
+    document.getElementById('btnTodayHeader').addEventListener('click', () => {
         localState.currentDate = new Date();
         fetchAndDisplayAgenda();
-    });
-
-    // --- FAB ---
-    document.getElementById('agendaFab').addEventListener('click', () => {
-        openAppointmentModal();
     });
 
     // --- View toggle ---
     const viewBtns = document.querySelectorAll('.agenda-view-toggle button');
     viewBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            viewBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+            viewBtns.forEach(b => {
+                b.classList.remove('active', 'shadow-sm');
+                b.style.backgroundColor = 'transparent';
+            });
+            btn.classList.add('active', 'shadow-sm');
+            btn.style.backgroundColor = '#fff';
             localState.currentView = btn.dataset.view;
             fetchAndDisplayAgenda();
         });
     });
 
-    // --- Options menu (week days, selection mode, inactive) ---
-    const btnWeekDays = document.getElementById('btnWeekDays');
-    if (btnWeekDays) {
-        btnWeekDays.addEventListener('click', () => {
-            showOptionsMenu();
-        });
-    }
+    // --- Opções (Modo Seleção, etc) ---
+    document.getElementById('btnWeekDays').addEventListener('click', () => {
+        showOptionsMenu();
+    });
 
-    // --- Event delegation ---
+    // --- Delegação Global de Eventos ---
     if (!hasContentDelegationInitialized) {
         contentDiv.addEventListener('click', async (e) => {
 
             // === Priority 1: Botão de Comanda ===
             const comandaBtn = e.target.closest('[data-action="open-comanda"]');
             if (comandaBtn) {
-                e.stopPropagation(); // Impede que o clique seja passado para o card
+                e.stopPropagation();
                 const apptDataStr = comandaBtn.dataset.appointment || comandaBtn.closest('[data-appointment]')?.dataset.appointment;
                 if (!apptDataStr) return;
                 
@@ -575,30 +572,20 @@ export async function loadAgendaPage(params = {}) {
             // === Priority 1.5: Botão WhatsApp ===
             const waBtn = e.target.closest('.lc-action-btn.wa');
             if (waBtn) {
-                e.stopPropagation(); // Impede que o clique chegue ao card
+                e.stopPropagation();
                 if (waBtn.dataset.link) window.open(waBtn.dataset.link, '_blank');
                 return;
             }
 
-            // === Priority 2: Checkbox toggle ===
-            const checkboxEl = e.target.closest('input[type="checkbox"][data-action="toggle-select-item"]');
-            if (checkboxEl) {
-                e.stopPropagation(); // Impede clique no card
-                if (checkboxEl.checked) localState.selectedItems.add(checkboxEl.dataset.id);
-                else localState.selectedItems.delete(checkboxEl.dataset.id);
-                updateBatchDeleteUI();
-                return;
-            }
-
-            // === Priority 3: Batch delete ===
+            // === Priority 2: Exclusão em Lote ===
             if (e.target.closest('[data-action="batch-delete"]')) {
                 const count = localState.selectedItems.size;
-                const confirmed = await showConfirmation('Excluir em Lote', `Excluir ${count} agendamento(s)?`);
+                const confirmed = await showConfirmation('Excluir Selecionados', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
                 if (confirmed) {
                     await Promise.all(Array.from(localState.selectedItems).map(async (id) => {
                         try { await appointmentsApi.deleteAppointment(id); } catch (err) {}
                     }));
-                    showNotification(`${count} excluído(s).`, 'success');
+                    showNotification(`${count} agendamento(s) excluído(s).`, 'success');
                     localState.selectedItems.clear();
                     localState.isSelectionMode = false;
                     fetchAndDisplayAgenda();
@@ -606,7 +593,7 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 4: Professional pill ===
+            // === Priority 3: Botões da barra de Profissionais ===
             const profPill = e.target.closest('[data-action="select-professional"]');
             if (profPill) {
                 const profId = profPill.dataset.profId;
@@ -615,44 +602,46 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 5: Clique no Card/Chip abre a edição ===
+            // === Priority 4: Clique no Card/Chip (Abre Edição ou Seleciona no Modo Seleção) ===
             const card = e.target.closest('.list-card[data-appointment], .week-event-chip[data-appointment]');
             if (card) {
                 if (localState.isSelectionMode) {
+                    e.stopPropagation();
                     const cb = card.querySelector('input[type="checkbox"]');
                     if (cb) {
-                        cb.checked = !cb.checked;
-                        if (cb.checked) localState.selectedItems.add(cb.dataset.id);
-                        else localState.selectedItems.delete(cb.dataset.id);
+                        const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
+                        const isNowChecked = !cb.checked; // inverte o estado
+                        cb.checked = isNowChecked;
+                        
+                        if (isNowChecked) localState.selectedItems.add(apptData.id);
+                        else localState.selectedItems.delete(apptData.id);
+                        
+                        // Atualiza a UI visualmente no mesmo instante
+                        if (card.classList.contains('week-event-chip') || card.classList.contains('list-card')) {
+                            if (isNowChecked) {
+                                card.style.boxShadow = '0 0 0 2px #4f46e5';
+                                card.style.backgroundColor = '#eff6ff';
+                            } else {
+                                card.style.boxShadow = 'none';
+                                card.style.backgroundColor = card.classList.contains('week-event-chip') ? '#f8f9fa' : '#fff';
+                            }
+                        }
                         updateBatchDeleteUI();
                     }
                     return;
                 }
+                
+                // Se não está em modo seleção, abre edição
                 const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
                 openAppointmentModal(apptData);
                 return;
             }
 
-            // === Priority 6: Exclusões pontuais (fallback options) ===
-            const targetEl = e.target.closest('[data-action]');
-            if (!targetEl) return;
-
-            const action = targetEl.dataset.action;
-            switch (action) {
-                case 'new-appointment':
-                    openAppointmentModal();
-                    break;
-                case 'delete-appointment': {
-                    e.stopPropagation();
-                    const id = targetEl.dataset.id;
-                    const confirmed = await showConfirmation('Confirmar', 'Apagar este agendamento?');
-                    if (confirmed) {
-                        await appointmentsApi.deleteAppointment(id);
-                        showNotification('Agendamento apagado.', 'success');
-                        fetchAndDisplayAgenda();
-                    }
-                    break;
-                }
+            // === Priority 5: FAB (Botão de Novo Agendamento) ===
+            const fab = e.target.closest('[data-action="new-appointment"]');
+            if (fab) {
+                openAppointmentModal();
+                return;
             }
         });
         hasContentDelegationInitialized = true;
@@ -669,35 +658,44 @@ function showOptionsMenu() {
 
     const sheet = document.createElement('div');
     sheet.id = 'optionsSheet';
-    sheet.style.cssText = 'position:fixed;bottom:0;left:50%;right:auto;transform:translateX(-50%) translateY(100%);width:100%;max-width:440px;background:#fff;border-radius:16px 16px 0 0;z-index:10000;box-shadow:0 -8px 30px rgba(0,0,0,0.12);transition:transform 0.3s ease;max-height:60vh;overflow-y:auto;';
+    sheet.style.cssText = 'position:fixed;bottom:0;left:50%;right:auto;transform:translateX(-50%) translateY(100%);width:100%;max-width:440px;background:#fff;border-radius:24px 24px 0 0;z-index:10000;box-shadow:0 -8px 40px rgba(0,0,0,0.15);transition:transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);';
+    
+    // Cor e texto do botão mudam consoante o estado
+    const selModeBtnBg = localState.isSelectionMode ? '#fee2e2' : '#f0fdf4';
+    const selModeBtnColor = localState.isSelectionMode ? '#ef4444' : '#16a34a';
+    const selModeIcon = localState.isSelectionMode ? 'bi-x-circle' : 'bi-check2-square';
+
     sheet.innerHTML = `
-        <div style="padding:16px 20px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <span style="font-size:0.9rem;font-weight:700;color:#212529;">Opções</span>
-                <button id="closeOptSheet" style="width:30px;height:30px;border:none;background:#f1f3f5;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
-                    <i class="bi bi-x-lg" style="font-size:0.7rem;color:#495057;"></i>
+        <div style="padding:20px 24px;">
+            <div style="width: 40px; height: 4px; background: #e5e7eb; border-radius: 4px; margin: 0 auto 16px;"></div>
+            
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <span style="font-size:1.1rem;font-weight:700;color:#111827;">Opções da Agenda</span>
+                <button id="closeOptSheet" style="width:32px;height:32px;border:none;background:#f3f4f6;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <i class="bi bi-x-lg" style="font-size:0.8rem;color:#4b5563;"></i>
                 </button>
             </div>
 
-            <div style="margin-bottom:16px;">
-                <div style="font-size:0.65rem;font-weight:600;color:#adb5bd;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Modo seleção</div>
-                <button id="optSelectMode" style="width:100%;padding:10px 16px;border:1.5px solid #e9ecef;background:#fff;border-radius:10px;font-size:0.8rem;font-weight:500;color:#495057;cursor:pointer;display:flex;align-items:center;gap:8px;">
-                    <i class="bi bi-check2-square"></i> ${localState.isSelectionMode ? 'Sair do modo seleção' : 'Ativar modo seleção'}
+            <div style="margin-bottom:20px;">
+                <div style="font-size:0.7rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Gestão em Lote</div>
+                <button id="optSelectMode" style="width:100%;padding:12px 16px;border:none;background:${selModeBtnBg};border-radius:12px;font-size:0.9rem;font-weight:600;color:${selModeBtnColor};cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 0.2s;">
+                    <i class="bi ${selModeIcon}"></i> ${localState.isSelectionMode ? 'Desativar Modo de Exclusão' : 'Ativar Seleção para Excluir'}
                 </button>
+                <p style="font-size:0.75rem; color:#6b7280; text-align:center; margin-top:8px;">${localState.isSelectionMode ? 'Toque num card para desmarcar.' : 'Permite selecionar vários agendamentos para apagar de uma vez.'}</p>
             </div>
 
             <div style="margin-bottom:16px;">
-                <div style="font-size:0.65rem;font-weight:600;color:#adb5bd;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Equipa</div>
-                <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:#495057;cursor:pointer;padding:4px 0;">
-                    <input type="checkbox" id="optInactiveToggle" style="width:16px;height:16px;accent-color:#4f46e5;" ${localState.showInactiveProfs ? 'checked' : ''}>
-                    Exibir equipa inativa
+                <div style="font-size:0.7rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Equipa</div>
+                <label style="display:flex;align-items:center;gap:12px;font-size:0.9rem;font-weight:500;color:#374151;cursor:pointer;padding:8px 0; background:#f9fafb; border-radius:12px; padding:12px 16px;">
+                    <input type="checkbox" id="optInactiveToggle" style="width:18px;height:18px;accent-color:#4f46e5;" ${localState.showInactiveProfs ? 'checked' : ''}>
+                    Exibir profissionais inativos na barra superior
                 </label>
             </div>
         </div>`;
 
     const overlay = document.createElement('div');
     overlay.id = 'optionsOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9999;opacity:0;transition:opacity 0.3s;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;opacity:0;transition:opacity 0.3s;';
 
     document.body.appendChild(overlay);
     document.body.appendChild(sheet);
@@ -719,12 +717,16 @@ function showOptionsMenu() {
     document.getElementById('closeOptSheet').addEventListener('click', closeSheet);
     overlay.addEventListener('click', closeSheet);
 
-    // Selection mode
+    // Ativa/Desativa o modo de Seleção
     document.getElementById('optSelectMode').addEventListener('click', () => {
         localState.isSelectionMode = !localState.isSelectionMode;
-        if (!localState.isSelectionMode) localState.selectedItems.clear();
+        if (!localState.isSelectionMode) localState.selectedItems.clear(); // Limpa ao sair
         closeSheet();
-        renderAgenda();
+        renderAgenda(); // Recarrega a vista com as caixas de seleção à mostra
+        
+        if (localState.isSelectionMode) {
+            setTimeout(() => { showNotification('Modo de Exclusão Ativo.', 'info'); }, 300);
+        }
     });
 
     // Inactive profs

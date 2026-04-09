@@ -83,12 +83,10 @@ body.sidebar-collapsed .app-header {
 /* ESTILOS DA BARRA LATERAL (Sidebar) - MODIFICADO */
 /* ----------------------------------------------- */
 #sidebar {
-    width: 16.56rem;
+    /* CORREÇÃO: Removido o 'position: fixed' para não sobrepor o conteúdo no Flexbox */
+    width: 260px; /* Alinhado com a largura do Tailwind no HTML */
     transition: width 0.3s ease-in-out, padding-top 0.3s ease, transform 0.3s ease, background-color 0.3s ease;
-    position: fixed;
-    top: 0;
     height: 100vh;
-    left: 0;
     overflow-y: auto;
     z-index: 40;
     border-top-right-radius: 1rem;
@@ -103,7 +101,7 @@ body.sidebar-collapsed .app-header {
 }
 
 #sidebar.collapsed {
-    width: 4.5rem;
+    width: 4.5rem !important; /* !important garante que sobrescreve ao colapsar */
     background: linear-gradient(180deg, #fafbfd 0%, #edf2f7 100%);
 }
 #sidebar.collapsed .sidebar-text {
@@ -419,7 +417,6 @@ input:checked + .toggle-bg {
     color: #111827; /* gray-900 */
 }
 
-
 .current-time-line {
     position: absolute;
     left: -5px;
@@ -438,7 +435,6 @@ input:checked + .toggle-bg {
     background-color: #ef4444;
     border-radius: 50%;
 }
-
 
 /* --- ESTILOS DO MODAL DE AGENDAMENTO --- */
 .time-slot-card {
@@ -474,7 +470,6 @@ input:checked + .toggle-bg {
 .loyalty-progress {
     transition: width 0.5s ease-in-out;
 }
-
 
 /* --- ESTILOS DIVERSOS DE PÁGINAS --- */
 .day-schedule-card.disabled .time-inputs {
@@ -563,14 +558,14 @@ input:checked + .toggle-bg {
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    margin-right: 0.1200rem; /* <-- CORREÇÃO: Reduzido em ~15% (de 0.75rem para 0.625rem) */
+    margin-right: 0.1200rem; /* <-- CORREÇÃO: Reduzido em ~15% */
     cursor: pointer;
     padding: 4px;
     transition: all 0.2s ease-in-out;
     border-radius: 9999px;
     position: relative;
     user-select: none;
-    vertical-align: top; /* Esta é a correção de alinhamento da última vez */
+    vertical-align: top; 
 }
 
 .prof-card-photo {
@@ -584,16 +579,14 @@ input:checked + .toggle-bg {
 }
 
 .prof-card.selected .prof-card-photo {
-    /* Usa a cor principal do sistema (indigo-600) para o anel de seleção */
     border-color: var(--theme-main, #4f46e5);
     box-shadow: 0 0 0 2px var(--theme-main, #4f46e5);
 }
 
 .prof-card-name {
-/* --- MODIFICAÇÃO: Aumento da fonte --- */
-font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
+    font-size: 0.875rem; 
     font-weight: 600;
-    color: #4b5563; /* gray-600 */
+    color: #4b5563; 
     white-space: nowrap;
     margin-top: 4px;
 }
@@ -602,32 +595,27 @@ font-size: 0.875rem; /* Aumentado de 0.75rem (10.5px) para 12.25px */
     width: 64px;
     height: 64px;
     border-radius: 9999px;
-    background-color: #e0e7ff; /* indigo-100 */
+    background-color: #e0e7ff; 
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.5rem;
     font-weight: 700;
-    color: #4f46e5; /* indigo-600 */
+    color: #4f46e5; 
     border: 3px solid transparent;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-/* Garante que o campo de busca fique bem visível acima da barra de rolagem */
 .prof-search-bar {
     padding: 0.5rem 0;
 }
-/*
-* Adiciona variáveis CSS para o tema dinâmico para ser usado pelo JavaScript.
-* O JS deve definir --theme-main
-*/
+
 body {
-    --theme-main: #4f46e5; /* Padrão: indigo-600 */
+    --theme-main: #4f46e5; 
 }
 
 /* --- NOVOS ESTILOS PARA O MODAL DE PROFISSIONAL --- */
 
-/* Overlay do Modal */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -649,19 +637,17 @@ body {
     visibility: visible;
 }
 
-/* Container do Modal */
 .modal-container {
     background-color: white;
     border-radius: 12px;
     width: 90%;
-    max-width: 800px; /* Aumentado para mais espaço */
+    max-width: 800px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
     max-height: 90vh;
 }
 
-/* Cabeçalho do Modal */
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -670,10 +656,9 @@ body {
     border-bottom: 1px solid #eee;
 }
 
-/* Abas de Navegação */
 .modal-tabs {
     display: flex;
-    padding: 0 16px; /* Reduzido para mais abas caberem */
+    padding: 0 16px;
     border-bottom: 1px solid #eee;
     background-color: #f9fafb;
 }
@@ -683,8 +668,7 @@ body {
     border: none;
     padding: 12px 16px;
     cursor: pointer;
-    /* --- MODIFICAÇÃO: Padronização de unidade --- */
-    font-size: 0.9rem; /* Alterado de 0.9em para 0.9rem (12.6px) */
+    font-size: 0.9rem;
     font-weight: 600;
     color: #555;
     border-bottom: 3px solid transparent;
@@ -692,22 +676,20 @@ body {
 }
 
 .tab-link.active {
-    color: #4f46e5; /* Cor principal do tema */
+    color: #4f46e5;
     border-bottom-color: #4f46e5;
 }
 
-/* Corpo do Modal */
 .modal-body {
     padding: 24px;
     overflow-y: auto;
-    background-color: #f9fafb; /* Fundo levemente cinza */
+    background-color: #f9fafb;
 }
 
 .tab-content.hidden {
     display: none;
 }
 
-/* Rodapé do Modal */
 .modal-footer {
     display: flex;
     justify-content: space-between;
@@ -717,7 +699,6 @@ body {
     background-color: #f9f9f9;
 }
 
-/* Estilo para o Card de Profissional na lista principal */
 .professional-card {
     transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -731,7 +712,7 @@ body {
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem; /* Espaçamento entre os campos */
+    gap: 1.5rem;
 }
 
 .form-group {
@@ -740,19 +721,19 @@ body {
 }
 
 .form-group label {
-    margin-bottom: 6px; /* Espaço entre o label e o campo */
-    font-size: 0.875rem; /* 14px */
+    margin-bottom: 6px;
+    font-size: 0.875rem;
     font-weight: 500;
-    color: #4b5563; /* gray-600 */
+    color: #4b5563;
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
     padding: 10px 12px;
-    border: 1px solid #d1d5db; /* gray-300 */
-    border-radius: 8px; /* Mais arredondado */
-    font-size: 1rem; /* 16px */
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 1rem;
     transition: border-color 0.2s, box-shadow 0.2s;
     background-color: #fff;
 }
@@ -761,7 +742,7 @@ body {
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #4f46e5; /* indigo-600 */
+    border-color: #4f46e5;
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
 }
 
@@ -776,44 +757,27 @@ body {
     padding-right: 2.5rem;
 }
 
-/* --- NOVO: ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
-
-/* Largura da sidebar ativa: 16.56rem */
+/* --- ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
+/* Nota: Se estás a usar o Flexbox do Tailwind, esta classe pode já não ser necessária, 
+   mas vamos mantê-la atualizada caso seja acionada nalgum lado pelo JS. */
 .main-content-shift {
-    margin-left: 18rem;
     transition: margin-left 0.3s ease-in-out;
     padding-top: 4rem;
     padding-left: 0.75rem;
     background: linear-gradient(180deg, rgba(248, 250, 252, 0.55) 0%, rgba(241, 245, 249, 0.85) 100%);
 }
 
-/* Largura da sidebar colapsada: 4.5rem */
 .main-content-shift.sidebar-collapsed-shift {
-    margin-left: 4.5rem;
+    margin-left: 0;
 }
-
-/* --- NOVOS ESTILOS PARA OCULTAR A BARRA DE ROLAGEM DA SIDEBAR --- */
-#sidebar {
-    /* ... (outras regras de sidebar) ... */
-    /* Regras do Firefox */
-    scrollbar-width: none;
-}
-
-/* Regras do Chrome, Edge e Safari */
-#sidebar::-webkit-scrollbar {
-    display: none;
-}
-
 
 /* --- INÍCIO DA NOVA SEÇÃO: ESTILOS PARA O MENU MOBILE (OVERLAY) --- */
 @media (max-width: 767px) { 
 
-    /* 1. Esconde o botão de toggle original do desktop */
     #sidebarToggle {
         display: none;
     }
 
-    /* 2. Remove o "empurrão" do conteúdo principal */
     .main-content-shift {
         margin-left: 0 !important;
     }
@@ -822,47 +786,38 @@ body {
         margin-left: 0 !important;
     }
 
-    /* 3. Transforma a sidebar num overlay fixo */
     #sidebar {
-        position: fixed; /* Fica por cima de tudo */
+        position: fixed; /* Fica por cima de tudo no mobile */
         top: 0;
         left: 0;
-        height: 100vh; /* Altura total */
-        z-index: 40; /* Acima do conteúdo, abaixo do overlay */
-        
-        /* Começa escondida fora do ecrã */
+        height: 100vh;
+        z-index: 40;
         transform: translateX(-100%);
         transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
-        
-        /* Garante que não está colapsada no modo mobile */
-        width: 16.56rem !important;
+        width: 260px !important;
     }
     
     #sidebar.collapsed {
-        /* Remove o estado colapsado no mobile */
-        width: 16.56rem !important;
+        width: 260px !important;
     }
     
     #sidebar.collapsed .sidebar-text {
-        display: block; /* Garante que o texto aparece */
+        display: block; 
     }
     #sidebar.collapsed .sidebar-link {
-        justify-content: flex-start; /* Alinhamento normal */
+        justify-content: flex-start; 
     }
     #sidebar.collapsed .sidebar-link svg {
-        margin-right: 0.75rem; /* Margem normal */
+        margin-right: 0.75rem; 
     }
 
-
-    /* 4. Estado "Aberto" da sidebar no mobile */
     #sidebar.mobile-open {
-        transform: translateX(0); /* Move para dentro do ecrã */
+        transform: translateX(0); 
     }
 
-    /* 5. Mostra o overlay quando o menu está aberto */
     #mobile-overlay.visible {
         display: block;
-        z-index: 39; /* Fica atrás da sidebar */
+        z-index: 39; 
     }
 }
 /* --- FIM DA NOVA SEÇÃO --- */
@@ -872,24 +827,22 @@ body {
 /* === REFORMULAÇÃO VISUAL: TELA DE COMANDAS (FINAL) === */
 /* ============================================================ */
 
-/* Container Principal */
 #comandas-layout {
     width: 100%;
-    min-height: calc(100vh - 150px); /* Garante altura mínima */
+    min-height: calc(100vh - 150px);
 }
 
-/* --- ESTILO DESKTOP (Telas Grandes > 1024px) --- */
 @media (min-width: 1024px) {
     #comandas-layout {
         display: grid;
-        grid-template-columns: 350px 1fr; /* Coluna fixa p/ lista, resto p/ detalhe */
+        grid-template-columns: 350px 1fr;
         gap: 1.5rem;
         align-items: start;
     }
 
     #comandas-list-column {
-        display: block !important; /* Sempre visível */
-        height: calc(100vh - 140px); /* Altura fixa com scroll interno */
+        display: block !important;
+        height: calc(100vh - 140px);
         overflow-y: auto;
         background-color: white;
         border-radius: 1rem;
@@ -898,61 +851,56 @@ body {
     }
 
     #comanda-detail-container {
-        display: flex !important; /* Sempre visível */
+        display: flex !important;
         flex-direction: column;
         height: calc(100vh - 140px);
         background-color: white;
         border-radius: 1rem;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         border: 1px solid #e5e7eb;
-        overflow: hidden; /* Header fixo, corpo rola */
+        overflow: hidden;
     }
 
-    /* Esconde elementos exclusivos de mobile no desktop */
     .mobile-only-header {
         display: none !important;
     }
 }
 
-/* --- ESTILO MOBILE (Celulares e Tablets < 1023px) --- */
 @media (max-width: 1023px) {
     #comandas-layout {
-        display: block; /* Remove flex/grid complexos */
-        padding-bottom: 80px; /* Espaço para o rodapé não cortar */
+        display: block;
+        padding-bottom: 80px;
     }
 
-    /* --- ESTADO 1: Vendo a Lista (Padrão) --- */
     #comandas-list-column {
         display: block;
         width: 100%;
     }
 
     #comanda-detail-container {
-        display: none; /* Esconde completamente o detalhe (evita tela branca) */
+        display: none; 
     }
 
-    /* --- ESTADO 2: Vendo o Detalhe (Ativado pelo JS) --- */
     #comandas-layout.detail-view-active #comandas-list-column {
-        display: none; /* Esconde a lista */
+        display: none; 
     }
 
     #comandas-layout.detail-view-active #comanda-detail-container {
-        display: flex; /* Mostra o detalhe */
+        display: flex;
         flex-direction: column;
         width: 100%;
         height: auto;
         min-height: 100vh;
         background-color: white;
-        position: fixed; /* Ocupa a tela toda */
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 60; /* Fica acima de tudo (header/menu) */
+        z-index: 60;
         overflow-y: auto;
     }
 
-    /* Header Específico do Mobile no Detalhe */
     .mobile-only-header {
         display: flex;
         align-items: center;
@@ -966,13 +914,10 @@ body {
     }
 }
 
-/* --- AJUSTES VISUAIS GERAIS PARA OS CARDS --- */
-
-/* Card da Comanda na Lista */
 .comanda-card {
     background: white;
     border: 1px solid #f3f4f6;
-    border-left: 4px solid transparent; /* Prepara para a cor de status */
+    border-left: 4px solid transparent; 
     margin-bottom: 0.75rem;
     padding: 1rem;
     border-radius: 0.75rem;
@@ -986,12 +931,11 @@ body {
 }
 
 .comanda-card.selected {
-    background-color: #eff6ff; /* Azul bem claro */
-    border-left-color: #4f46e5; /* Roxo principal */
+    background-color: #eff6ff; 
+    border-left-color: #4f46e5; 
     border-color: #c7d2fe;
 }
 
-/* Botão Voltar (Mobile) */
 .btn-back-mobile {
     display: flex;
     align-items: center;
@@ -1009,32 +953,29 @@ body {
 /* == CSS para o Bottom Sheet de Filtros Mobile == */
 /* ============================================== */
 
-/* O "sheet" (menu) que desliza de baixo */
 #filter-sheet {
     transform: translateY(100%);
     transition: transform 0.3s ease-in-out;
-    z-index: 40; /* Acima do overlay, abaixo do modal principal */
+    z-index: 40; 
 }
 #filter-sheet.show {
     transform: translateY(0);
 }
 
-/* O fundo escuro que cobre a página */
 #filter-overlay {
     z-index: 39;
 }
 
-/* Ajustes para os botões de filtro dentro do sheet mobile */
 #mobile-filter-list .client-filter-btn,
 #mobile-filter-list .flex.items-center.gap-2 {
     width: 100%;
-    justify-content: start; /* Alinha o texto à esquerda */
+    justify-content: start; 
     padding-top: 12px;
     padding-bottom: 12px;
 }
 
 #mobile-filter-list .flex.items-center.gap-2 {
-    flex-direction: column; /* Empilha o select abaixo do botão */
+    flex-direction: column; 
     align-items: flex-start;
 }
 
@@ -1047,37 +988,31 @@ body {
 /* == CSS para a Página de Usuários (Mobile) == */
 /* ============================================== */
 
-/* --- (NOVO) ESTILOS PARA CARD DE USUÁRIO CLICÁVEL --- */
 .user-card-clickable {
     cursor: pointer;
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 .user-card-clickable:hover {
      transform: translateY(-4px);
-     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); 
 }
 
-/* * Impede que os botões internos tenham um "hover" duplo,
- * mas re-ativa o hover para o botão de excluir.
-*/
 .user-card-clickable:hover .action-btn-delete:hover {
-     background-color: #fee2e2; /* red-100 */
-     color: #ef4444; /* red-500 */
+     background-color: #fee2e2; 
+     color: #ef4444; 
 }
 
-
-/* --- (NOVO) ESTILOS PARA O BOTÃO FLUTUANTE (FAB) --- */
 #fab-new-user {
     position: fixed;
-    bottom: 1.5rem;  /* 24px */
-    right: 1.5rem;   /* 24px */
-    z-index: 30;     /* Acima do conteúdo, abaixo dos modals */
-    width: 3.5rem;   /* 56px */
-    height: 3.5rem;  /* 56px */
-    background-color: #4f46e5; /* indigo-600 */
+    bottom: 1.5rem;  
+    right: 1.5rem;   
+    z-index: 30;     
+    width: 3.5rem;   
+    height: 3.5rem;  
+    background-color: #4f46e5; 
     color: white;
-    border-radius: 9999px; /* rounded-full */
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); /* shadow-lg */
+    border-radius: 9999px; 
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1087,18 +1022,14 @@ body {
 }
 #fab-new-user:hover {
     transform: scale(1.05);
-    background-color: #4338ca; /* indigo-700 */
+    background-color: #4338ca; 
 }
 
 /* ============================================== */
 /* == CSS para a Página de Configurações (Mobile) == */
 /* ============================================== */
 
-/* --- (REMOVIDO) O seletor de abas mobile foi removido --- */
-
-/* --- (NOVO) ESTILO PARA A GRELHA DE PRÉMIOS DE FIDELIDADE --- */
 .loyalty-tier-row {
-    /* No mobile, é um card */
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.5rem;
@@ -1112,7 +1043,6 @@ body {
     width: 100%;
 }
 
-/* No desktop (md e acima), volta à grelha horizontal */
 @media (min-width: 768px) {
     .loyalty-tier-row {
         grid-template-columns: 1fr 2fr 1fr auto;
@@ -1127,8 +1057,8 @@ body {
     border: 1px solid #ccc;
     border-radius: 4px;
     padding: 10px;
-    max-height: 150px; /* Define altura fixa */
-    overflow-y: auto;  /* Adiciona barra de rolagem se houver muitos */
+    max-height: 150px; 
+    overflow-y: auto;  
     background: #fff;
     margin-bottom: 15px;
 }
@@ -1143,53 +1073,39 @@ body {
 
 .checkbox-item input {
     margin-right: 10px;
-    width: auto; /* Evita que o input ocupe 100% */
+    width: auto; 
 }
 
-/* --- CSS para Esconder a Barra de Rolagem (mas manter a funcionalidade) --- */
-
-/* Para Chrome, Safari e Opera */
 .no-scrollbar::-webkit-scrollbar, ::-webkit-scrollbar {
     display: none;
 }
 
-/* Para IE, Edge e Firefox */
 .no-scrollbar, html, body, * {
-    -ms-overflow-style: none;  /* IE e Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  
+    scrollbar-width: none;  
 }
 
 /* ============================================================ */
 /* === CORREÇÃO DE ÁREA SEGURA (APENAS PARA APP NATIVO) === */
 /* ============================================================ */
-/* As regras abaixo só se aplicam quando o JS adiciona a classe .is-app-native ao body */
 
-/* --- HEADER FIXO --- */
-/* Modificado para encontrar o ID #main-header específico */
 body.is-app-native #main-header {
-    /* Mantém o padding lateral/inferior e soma a área segura ao superior */
     padding-top: calc(1rem + var(--safe-area-top)) !important; 
-    /* Garante que a altura se ajuste ao novo padding */
     height: auto;
 }
 
-/* --- SIDEBAR --- */
 body.is-app-native #sidebar {
-    /* Empurra o conteúdo do menu para baixo */
     padding-top: var(--safe-area-top);
 }
 
 body.is-app-native .main-content-shift {
-    /* Compensa o novo tamanho do header no corpo da página */
     padding-top: calc(4rem + var(--safe-area-top));
 }
 
 body.is-app-native .modal {
-    /* Garante que modais não fiquem embaixo da barra */
     padding-top: var(--safe-area-top);
 }
 
-/* Correções específicas do App Mobile no modo responsivo */
 body.is-app-native #comandas-layout.detail-view-active #comanda-detail-container {
     padding-top: var(--safe-area-top);
 }
@@ -1198,9 +1114,7 @@ body.is-app-native .mobile-only-header {
     padding-top: calc(1rem + var(--safe-area-top));
     min-height: calc(3.5rem + var(--safe-area-top));
 }
-/* --- TELA DE CARREGAMENTO (LOADING SCREEN) --- */
 
-/* Animação suave de "respiração" para a logo */
 @keyframes logo-breathing {
     0% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 0 rgba(79, 70, 229, 0)); }
     50% { transform: scale(1.05); opacity: 0.9; filter: drop-shadow(0 4px 6px rgba(79, 70, 229, 0.2)); }
@@ -1211,39 +1125,36 @@ body.is-app-native .mobile-only-header {
     animation: logo-breathing 2s ease-in-out infinite;
 }
 
-/* Animação da barra de carregamento infinita */
 @keyframes shimmer-loading {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
 }
 
 .loading-bar-fill {
-    width: 50%; /* Tamanho da barra que corre */
+    width: 50%; 
     animation: shimmer-loading 1.5s infinite linear;
 }
 
-/* Opcional: Classe para esconder a tela com fade-out suave via JS */
 .fade-out {
     opacity: 0;
     pointer-events: none;
 }
+
 /* --- ESTILO MODERNO: LISTA DE CLIENTES --- */
 
-/* O Container da Lista */
 .clients-list-container {
     display: flex;
     flex-direction: column;
-    gap: 12px; /* Espaço entre cartões */
+    gap: 12px; 
     padding: 10px;
-    padding-bottom: 90px; /* Espaço extra para o botão flutuante não tapar o último item */
+    padding-bottom: 90px; 
 }
 
-/* O Cartão do Cliente */
 .client-list-card {
     background: white;
-    border-radius: 16px; /* Bordas bem arredondadas (estilo iOS 15+) */
+    border-radius: 16px; 
     padding: 16px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.03); /* Sombra super suave */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03); 
     border: 1px solid #f3f4f6;
     display: flex;
     align-items: center;
@@ -1253,31 +1164,29 @@ body.is-app-native .mobile-only-header {
 }
 
 .client-list-card:active {
-    transform: scale(0.98); /* Efeito de clique tátil */
+    transform: scale(0.98); 
     background-color: #fafafa;
 }
 
-/* Avatar com Iniciais */
 .client-avatar {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); /* Gradiente Indigo Suave */
+    background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); 
     color: #4f46e5;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
     font-weight: 700;
-    flex-shrink: 0; /* Impede que o avatar encolha */
+    flex-shrink: 0; 
     border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-/* Informações de Texto */
 .client-info {
     flex-grow: 1;
-    min-width: 0; /* Permite que o texto trunque corretamente */
+    min-width: 0; 
 }
 
 .client-name {
@@ -1298,7 +1207,6 @@ body.is-app-native .mobile-only-header {
     gap: 6px;
 }
 
-/* Badges (Etiquetas) */
 .badge-status {
     font-size: 10px;
     padding: 2px 8px;
@@ -1310,7 +1218,6 @@ body.is-app-native .mobile-only-header {
 .badge-birthday { background-color: #fce7f3; color: #db2777; }
 .badge-points { background-color: #ecfccb; color: #4d7c0f; }
 
-/* Ações (Botões Laterais) */
 .client-actions {
     display: flex;
     gap: 8px;
@@ -1329,8 +1236,8 @@ body.is-app-native .mobile-only-header {
 }
 
 .btn-whatsapp-modern {
-    background-color: #dcfce7; /* Verde bem claro */
-    color: #16a34a; /* Verde WhatsApp */
+    background-color: #dcfce7; 
+    color: #16a34a; 
 }
 .btn-whatsapp-modern:hover { background-color: #bbf7d0; }
 
@@ -1340,7 +1247,6 @@ body.is-app-native .mobile-only-header {
 }
 .btn-phone-modern:hover { background-color: #e5e7eb; }
 
-/* Botão Flutuante (FAB) Modernizado */
 .fab-modern {
     position: fixed;
     bottom: 24px;
@@ -1349,7 +1255,7 @@ body.is-app-native .mobile-only-header {
     height: 60px;
     background-color: #4f46e5;
     color: white;
-    border-radius: 20px; /* Quadrado arredondado (Squircle) */
+    border-radius: 20px; 
     box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
     display: flex;
     align-items: center;
@@ -1361,34 +1267,30 @@ body.is-app-native .mobile-only-header {
 }
 .fab-modern:active { transform: scale(0.90); }
 
-/* --- CORREÇÃO DE ÁREA SEGURA PARA IPHONE (PWA/WEB) --- */
-
-/* Classe utilitária genérica */
 .safe-area-pb {
     padding-bottom: calc(1rem + var(--safe-area-bottom, 0px)) !important;
 }
 
-/* Aplicação automática no rodapé da comanda mobile */
 #comanda-detail-container footer {
     padding-bottom: calc(1rem + var(--safe-area-bottom, 0px)) !important;
 }
+
 /* --- BOTÕES FLUTUANTES (FABs) PARA COMANDAS (MOBILE ONLY) --- */
 
 .mobile-fabs-container {
-    display: none; /* Escondido por padrão (Desktop) */
+    display: none; 
     position: fixed;
-    /* Usa a variável de safe area (importante para iPhone) */
     bottom: calc(1.5rem + var(--safe-area-bottom, 0px));
     right: 1.5rem;
     gap: 12px;
-    z-index: 70; /* Acima do footer fixo do mobile */
+    z-index: 70; 
     flex-direction: column;
 }
 
 .fab-btn-primary, .fab-btn-secondary {
-    width: 50px; /* Tamanho reduzido conforme solicitado */
+    width: 50px; 
     height: 50px;
-    border-radius: 20px; /* Formato "Squircle" moderno */
+    border-radius: 20px; 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1398,86 +1300,67 @@ body.is-app-native .mobile-only-header {
     transition: transform 0.2s, background-color 0.2s;
 }
 
-/* Botão de Check-out (Verde) */
 .fab-btn-primary {
-    background-color: #16a34a; /* green-600 */
+    background-color: #16a34a; 
     color: white;
 }
 .fab-btn-primary:active {
-    background-color: #15803d; /* green-700 */
+    background-color: #15803d; 
 }
 
-/* Botão de Adicionar (Azul claro) */
 .fab-btn-secondary {
-    background-color: #eff6ff; /* blue-50 */
-    color: #2563eb; /* blue-600 */
-    border: 1px solid #dbeafe; /* blue-100 */
+    background-color: #eff6ff; 
+    color: #2563eb; 
+    border: 1px solid #dbeafe; 
 }
 .fab-btn-secondary:active {
-    background-color: #dbeafe; /* blue-100 */
+    background-color: #dbeafe; 
 }
 
 .fab-btn-primary:active, .fab-btn-secondary:active {
     transform: scale(0.95);
 }
 
-/* Regras exclusivas para Mobile (telas < 1023px) */
 @media (max-width: 1023px) {
-    /* Esconde os botões originais do rodapé */
     .mobile-hidden {
         display: none !important;
     }
     
-    /* Mostra os FABs */
     .mobile-fabs-container {
         display: flex;
     }
 }
-/* css/styles.css */
 
 html, body {
-    /* Impede o zoom por gestos (pinça) e duplo toque */
     touch-action: pan-x pan-y; 
-    
-    /* Garante altura total e previne comportamento elástico indesejado em alguns browsers */
     height: 100%;
-    overflow-x: hidden; /* Evita rolagem horizontal acidental */
-    
-    /* Melhoria de texto para mobile */
+    overflow-x: hidden; 
     -webkit-text-size-adjust: 100%;
 }
 
-/* Opcional: Evita que inputs de texto dêem zoom automático no iPhone ao focar */
 input, select, textarea {
-    font-size: 16px !important; /* Tamanho mínimo para o iOS não dar zoom */
+    font-size: 16px !important; 
 }
 
-/* --- AJUSTE DE FONTE DO MENU LATERAL --- */
-/* Aumenta a fonte do menu para compensar a falta de zoom e melhorar leitura */
 .sidebar-text {
-    font-size: 16px !important; /* Força 16px (maior que o padrão anterior) */
+    font-size: 16px !important; 
     line-height: 1.5;
 }
 
-/* Opcional: Aumentar também o ícone ligeiramente se achar necessário */
 .sidebar-link svg {
-    width: 1.5rem; /* 24px */
+    width: 1.5rem; 
     height: 1.5rem;
 }
+
 /* ==========================================================================
    ESTADO RECOLHIDO DA SIDEBAR (MODO ÍCONES)
    ========================================================================== */
-#sidebar {
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    width: 256px; /* w-64 do Tailwind */
-}
 
 #sidebar.collapsed {
-    width: 72px !important; /* Apenas espaço para o ícone */
+    width: 72px !important; 
     background: linear-gradient(180deg, #ffffff 0%, #edf2f7 100%);
 }
 
-/* Esconde textos, setas, barra de busca e títulos de categoria quando recolhido */
 #sidebar.collapsed .menu-text,
 #sidebar.collapsed .submenu-arrow,
 #sidebar.collapsed .sidebar-category,
@@ -1487,7 +1370,6 @@ input, select, textarea {
     opacity: 0;
 }
 
-/* Centraliza os ícones quando recolhido */
 #sidebar.collapsed .sidebar-link,
 #sidebar.collapsed .submenu-toggle {
     justify-content: center;
@@ -1496,14 +1378,12 @@ input, select, textarea {
     margin-inline: 0.3rem;
 }
 
-/* Remove a margem do ícone para ele ficar perfeitamente no centro */
 #sidebar.collapsed .bi {
     margin: 0 !important;
     font-size: 1.25rem;
     color: #475569;
 }
 
-/* Esconde as opções filhas (submenus) se o menu estiver recolhido */
 #sidebar.collapsed ul[id$="-submenu"] {
     display: none !important;
 }
@@ -1513,28 +1393,23 @@ input, select, textarea {
    1. VARIÁVEIS CSS (TEMA CLARO - DEFAULT)
    ========================================================================== */
 :root {
-    /* Fundo e Superfícies */
-    --bg-body: #F3F4F6;        /* Fundo geral da aplicação */
-    --bg-surface: #FFFFFF;     /* Fundo de cards, modais e painéis */
+    --bg-body: #F3F4F6;        
+    --bg-surface: #FFFFFF;     
     --bg-surface-hover: #F9FAFB;
     
-    /* Cores Principais (Brand) */
-    --primary-color: #2563EB;  /* Azul Kairos */
+    --primary-color: #2563EB;  
     --primary-hover: #1D4ED8;
     --primary-light: #EFF6FF;
     
-    /* Textos */
-    --text-main: #111827;      /* Títulos e texto principal */
-    --text-muted: #6B7280;     /* Texto secundário, legendas */
-    --text-inverse: #FFFFFF;   /* Texto sobre cores escuras */
+    --text-main: #111827;      
+    --text-muted: #6B7280;     
+    --text-inverse: #FFFFFF;   
     
-    /* Bordas e Divisórias */
     --border-color: #E5E7EB;
     --border-radius-sm: 6px;
     --border-radius-md: 12px;
     --border-radius-lg: 20px;
     
-    /* Feedback / Status */
     --success-color: #10B981;
     --success-bg: #D1FAE5;
     --danger-color: #EF4444;
@@ -1542,12 +1417,10 @@ input, select, textarea {
     --warning-color: #F59E0B;
     --warning-bg: #FEF3C7;
     
-    /* Sombras (Soft UI) */
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
     
-    /* Transições globais */
     --transition: all 0.3s ease;
 }
 
@@ -1555,24 +1428,19 @@ input, select, textarea {
    2. VARIÁVEIS CSS (TEMA ESCURO - DARK MODE)
    ========================================================================== */
 [data-theme="dark"] {
-    /* Fundo e Superfícies */
-    --bg-body: #0F172A;        /* Fundo geral escuro (Slate) */
-    --bg-surface: #1E293B;     /* Superfícies escuras */
+    --bg-body: #0F172A;        
+    --bg-surface: #1E293B;     
     --bg-surface-hover: #334155;
     
-    /* Cores Principais (Brand ajustada para contraste) */
     --primary-color: #3B82F6;  
     --primary-hover: #60A5FA;
     --primary-light: rgba(59, 130, 246, 0.1);
     
-    /* Textos */
     --text-main: #F9FAFB;
     --text-muted: #9CA3AF;
     
-    /* Bordas e Divisórias */
     --border-color: #334155;
     
-    /* Sombras (Mais intensas no modo escuro para dar profundidade) */
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
 }
@@ -1619,7 +1487,6 @@ a:hover {
     width: 100%;
 }
 
-/* Sidebar Lateral */
 .sidebar {
     width: 260px;
     background-color: var(--bg-surface);
@@ -1664,10 +1531,9 @@ a:hover {
     color: var(--primary-color);
 }
 
-/* Conteúdo Principal */
 .main-content {
     flex: 1;
-    margin-left: 260px; /* Compensa a sidebar fixa */
+    margin-left: 260px; 
     display: flex;
     flex-direction: column;
 }
@@ -1691,7 +1557,6 @@ a:hover {
     overflow-y: auto;
 }
 
-/* Ocultar sidebar em mobile */
 @media (max-width: 768px) {
     .sidebar {
         transform: translateX(-100%);
@@ -1894,7 +1759,7 @@ a:hover {
     align-items: center;
     justify-content: center;
     z-index: 1000;
-    backdrop-filter: blur(4px); /* Efeito blur moderno no fundo */
+    backdrop-filter: blur(4px); 
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;

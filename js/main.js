@@ -44,6 +44,7 @@ import { initPushNotifications as initWebPush, requestWebPermission } from './ui
 import { getSummaryKPIs } from './api/reports.js';
 
 // Páginas (Módulos)
+import { loadDashboardPage } from './ui/dashboard.js'; // <-- NOVO: Importação do Dashboard
 import { loadAgendaPage } from './ui/agenda.js';
 import { loadComandasPage } from './ui/comandas.js';
 import { loadReportsPage } from './ui/reports.js';
@@ -114,6 +115,7 @@ function scrollToActiveItem() {
 
 // --- 3. MAPEAMENTO DE ROTAS ---
 const pageLoader = {
+    'dashboard-section': loadDashboardPage, // <-- NOVO: Rota do Dashboard
     'agenda-section': loadAgendaPage,
     'comandas-section': loadComandasPage,
     'relatorios-section': loadReportsPage,
@@ -192,28 +194,21 @@ function applyTheme(themeKey) {
     }
 }
 
-// --- NOVO: SISTEMA DE DARK/LIGHT MODE ---
 export function setTheme(themeName) {
-    // Aplica na tag <html> o atributo data-theme="dark" ou "light"
     document.documentElement.setAttribute('data-theme', themeName);
-    // Guarda a preferência para visitas futuras
     localStorage.setItem('kairos_theme', themeName);
     
-    // Altera o ícone do botão (Exemplo genérico, adapte ao seu pacote de ícones)
     if (themeIcon) {
         if (themeName === 'dark') {
-            themeIcon.innerHTML = '☀️'; // Sol
-            // Se usar Lucide: themeIcon.setAttribute('data-lucide', 'sun'); lucide.createIcons();
+            themeIcon.innerHTML = '☀️'; 
         } else {
-            themeIcon.innerHTML = '🌙'; // Lua
-            // Se usar Lucide: themeIcon.setAttribute('data-lucide', 'moon'); lucide.createIcons();
+            themeIcon.innerHTML = '🌙'; 
         }
     }
 }
 
 export function initTheme() {
     const savedTheme = localStorage.getItem('kairos_theme');
-    // Verifica se o telemóvel/PC do utilizador já prefere modo escuro nas configurações do sistema
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
     if (savedTheme) {
@@ -224,7 +219,6 @@ export function initTheme() {
         setTheme('light');
     }
 }
-// ---------------------------------------
 
 let unsubscribeNotificationsListener = null;
 let notifications = [];
@@ -279,9 +273,6 @@ function setupRealtimeListeners(establishmentId) {
     });
 }
 
-// ====================================================================
-// 🔥 MOTOR DO SELETOR DE UNIDADES (CONTEXT SWITCHER) - CORRIGIDO
-// ====================================================================
 async function setupContextSwitcher(baseEstablishmentId) {
     const switcher = document.getElementById('global-context-switcher');
     const switcherWrapper = switcher?.parentElement;
@@ -305,12 +296,11 @@ async function setupContextSwitcher(baseEstablishmentId) {
             }
         });
 
-        if (count > 0) { // Mostra mesmo se houver apenas 1 (A Matriz) para garantir a coerência visual
+        if (count > 0) { 
             switcher.innerHTML = optionsHtml;
             switcherWrapper.classList.remove('hidden');
             switcherWrapper.classList.add('flex');
             
-            // Lógica de "Auto-Select": Se o ID do token não estiver na lista (ex: token desatualizado), pega a Matriz por defeito
             let initialIdToSelect = baseEstablishmentId;
             if (!Array.from(switcher.options).some(opt => opt.value === baseEstablishmentId)) {
                 initialIdToSelect = switcher.options[0].value;
@@ -318,11 +308,9 @@ async function setupContextSwitcher(baseEstablishmentId) {
             
             switcher.value = initialIdToSelect;
 
-            // Clona o select para evitar eventos duplicados caso a função rode 2x
             const newSwitcher = switcher.cloneNode(true);
             switcher.parentNode.replaceChild(newSwitcher, switcher);
 
-            // 🎯 FUNÇÃO CENTRAL PARA APLICAR O CONTEXTO (USADA NO INIT E NO CHANGE)
             const applyContext = async (selectedId, selectedName, isInitialLoad = false) => {
                 if (loadingScreen && !isInitialLoad) {
                     loadingScreen.classList.remove('hidden', 'fade-out');
@@ -332,7 +320,6 @@ async function setupContextSwitcher(baseEstablishmentId) {
                 try {
                     const estDetails = await getEstablishmentDetails(selectedId);
                     
-                    // ATUALIZAÇÃO GERAL DO STATE PARA O SISTEMA
                     state.establishmentId = selectedId;
                     state.establishmentName = selectedName;
                     state.enabledModules = estDetails.modules;
@@ -345,11 +332,11 @@ async function setupContextSwitcher(baseEstablishmentId) {
                     setupRealtimeListeners(selectedId);
                     loadHeaderKPIs(state.userPermissions);
 
-                    // Só mostra a notificação visual e força a navegação se NÃO for o carregamento do login
                     if (!isInitialLoad) {
                         showNotification('Unidade Alterada', `Agora a gerir: ${selectedName}`, 'info');
                         const activeLink = document.querySelector('.sidebar-link.active');
-                        const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'agenda-section';
+                        // Se não encontrar aba, vai pro Dashboard
+                        const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'dashboard-section';
                         navigateTo(currentSection);
                     }
 
@@ -364,11 +351,9 @@ async function setupContextSwitcher(baseEstablishmentId) {
                 }
             };
 
-            // 🔥 DISPARA AUTOMATICAMENTE NO PRIMEIRO LOGIN
             const initialName = newSwitcher.options[newSwitcher.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
             await applyContext(initialIdToSelect, initialName, true);
 
-            // Evento de mudança manual pelo utilizador
             newSwitcher.addEventListener('change', async (e) => {
                 const selectedId = e.target.value;
                 const selectedName = e.target.options[e.target.selectedIndex].text.replace(/🏢 |📍 |&nbsp;/g, '').trim();
@@ -384,12 +369,12 @@ async function setupContextSwitcher(baseEstablishmentId) {
         switcherWrapper.classList.add('hidden');
     }
 }
-// ====================================================================
 
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
     if (sectionId !== 'my-profile-section') {
-        const isHierarchyOrConfig = ['hierarquia-section', 'establishments-section', 'estabelecimento-section'].includes(sectionId);
+        // --- NOVO: Adicionado 'dashboard-section' à lista de permissões sempre livres ---
+        const isHierarchyOrConfig = ['hierarquia-section', 'establishments-section', 'estabelecimento-section', 'dashboard-section'].includes(sectionId);
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
         
@@ -523,8 +508,9 @@ function setupBackButtonHandling() {
                 }
 
                 const activeLink = document.querySelector('.sidebar-link.active');
-                if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') showModal();
-                else navigateTo('agenda-section');
+                // --- NOVO: Modificado para fechar a app se estiver no Dashboard ---
+                if (activeLink && activeLink.getAttribute('data-target') === 'dashboard-section') showModal();
+                else navigateTo('dashboard-section'); // Volta pro dashboard em vez da agenda
             }
         });
     } else {
@@ -537,8 +523,9 @@ function setupBackButtonHandling() {
             if (otherModals.length > 0) { otherModals.forEach(m => m.style.display = 'none'); history.pushState(null, document.title, location.href); return; }
 
             const activeLink = document.querySelector('.sidebar-link.active');
-            if (activeLink && activeLink.getAttribute('data-target') === 'agenda-section') showModal();
-            else { navigateTo('agenda-section'); history.pushState(null, document.title, location.href); }
+            // --- NOVO: Modificado para fechar a app se estiver no Dashboard ---
+            if (activeLink && activeLink.getAttribute('data-target') === 'dashboard-section') showModal();
+            else { navigateTo('dashboard-section'); history.pushState(null, document.title, location.href); }
         });
     }
 }
@@ -551,18 +538,15 @@ async function initialize() {
     initializeModalClosers();
     setupBackButtonHandling(); 
 
-    // --- NOVO: Inicializa o Tema e os Eventos do Botão ---
     initTheme();
 
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
             const currentTheme = document.documentElement.getAttribute('data-theme');
-            // Alterna entre os dois
             setTheme(currentTheme === 'dark' ? 'light' : 'dark');
         });
     }
-    // -----------------------------------------------------
 
     if (hamburgerMenuBtn) {
         hamburgerMenuBtn.addEventListener('click', (e) => {
@@ -572,7 +556,6 @@ async function initialize() {
         });
     }
 
-    // Mobile Bottom Navigation clicks
     if (bottomNav) {
         bottomNav.addEventListener('click', (e) => {
             const item = e.target.closest('.bottom-nav-item');
@@ -582,7 +565,6 @@ async function initialize() {
             navigateTo(target);
         });
 
-        // Scroll hint listener
         if (navScroll) {
             navScroll.addEventListener('scroll', updateScrollHints);
         }
@@ -682,7 +664,6 @@ async function initialize() {
                     
                     const finalUserName = userName || user.email;
                     
-                    // Inicializa o estado global base (será sobrescrito pelo switcher logo a seguir)
                     setGlobalState(claims.establishmentId, establishmentDetails.name, userPermissions);
 
                     if (profileMenuButton) profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
@@ -697,9 +678,7 @@ async function initialize() {
                         });
                     }
 
-                    // 🔥 INICIA O SELECTOR DE UNIDADES NO CABEÇALHO COM AUTO-LOAD!
                     await setupContextSwitcher(claims.establishmentId);
-
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     
                     if (loadingScreen) {
@@ -708,11 +687,10 @@ async function initialize() {
                     }
                     if (dashboardContent) dashboardContent.style.display = 'flex';
 
-                    // Após montar tudo, lança o Tour (se necessário)
                     setTimeout(() => { checkAndStartOnboarding(); }, 1500); 
                     
-                    // Redireciona para a primeira página
-                    navigateTo('agenda-section');
+                    // --- NOVO: Redireciona para o Dashboard em vez da Agenda ---
+                    navigateTo('dashboard-section');
 
                 } else {
                     throw new Error("Permissão ou estabelecimento não configurado.");
