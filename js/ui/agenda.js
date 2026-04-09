@@ -139,15 +139,15 @@ function renderWeekView(allEvents) {
                 }
 
                 const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
-                const totalValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.totalPrice || 0) || Number(event.servicePrice || 0);
+                
+                // NOTA: Removida a div "we-meta" para deixar a visão semanal mais limpa conforme solicitado
                 return `<div class="week-event-chip ${isCompleted ? 'completed' : ''}" style="--ec: ${profColor.main};"
-                    ${!isCompleted ? `data-action="edit-appointment" data-appointment="${dataStr}"` : ''}>
+                    data-action="edit-appointment" data-appointment='${dataStr}'>
                     <div class="we-time">${timeStr}</div>
                     <div class="we-client">${esc(event.clientName)}</div>
                     <div class="we-service">${esc(event.serviceName)} · ${esc((event.professionalName || '').split(' ')[0])}</div>
-                    <div class="we-meta">R$ ${totalValue.toFixed(2).replace('.', ',')} · ${esc(event.clientPhone || '')}</div>
                     <div class="we-actions">
-                        <button class="we-btn" data-action="open-comanda" data-appointment="${dataStr}" title="Comanda" onclick="event.stopPropagation();">
+                        <button class="we-btn" data-action="open-comanda" data-appointment='${dataStr}' title="Comanda">
                             <i class="bi bi-receipt"></i>
                         </button>
                     </div>
@@ -228,7 +228,7 @@ function renderListView(allEvents) {
             const isChecked = localState.selectedItems.has(event.id);
 
             const checkboxHtml = localState.isSelectionMode
-                ? `<input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-indigo-600" data-action="toggle-select-item" data-id="${event.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()">`
+                ? `<input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-indigo-600" data-action="toggle-select-item" data-id="${event.id}">`
                 : '';
 
             if (event.type === 'blockage') {
@@ -252,8 +252,9 @@ function renderListView(allEvents) {
             const professionalShort = esc((event.professionalName || '').split(' ')[0]);
             const serviceCount = (event.services || []).length || (event.serviceName ? 1 : 0);
 
+            // NOTA: lc-extra ajustado com Flexbox responsivo e fonte pequena estilizada como "tags"
             html += `<div class="list-card ${isCompleted ? 'completed' : ''}"
-                data-action="edit-appointment" data-appointment="${dataStr}">
+                data-action="edit-appointment" data-appointment='${dataStr}'>
                 ${checkboxHtml}
                 <div class="list-card-time">
                     <div class="t-start ${isCompleted ? 'opacity-50 line-through' : ''}">${timeStr}</div>
@@ -263,11 +264,11 @@ function renderListView(allEvents) {
                 <div class="list-card-info">
                     <div class="lc-name">${esc(event.clientName)}</div>
                     <div class="lc-detail">${esc(event.serviceName)} · ${professionalShort}</div>
-                    <div class="lc-extra">
-                        <span>R$ ${serviceValue.toFixed(2).replace('.', ',')}</span>
-                        <span>${esc(event.clientPhone || '')}</span>
-                        <span>${serviceCount} serviço(s)</span>
-                        <span>${esc(paymentState)}</span>
+                    <div class="lc-extra" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+                        <span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;">R$ ${serviceValue.toFixed(2).replace('.', ',')}</span>
+                        ${event.clientPhone ? `<span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;"><i class="bi bi-telephone"></i> ${esc(event.clientPhone)}</span>` : ''}
+                        <span style="font-size: 0.65rem; color: #4b5563; background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-weight: 500;">${serviceCount} serviço(s)</span>
+                        <span style="font-size: 0.65rem; color: ${isCompleted ? '#059669' : '#d97706'}; background: ${isCompleted ? '#d1fae5' : '#fef3c7'}; padding: 2px 8px; border-radius: 6px; font-weight: 600;">${esc(paymentState)}</span>
                     </div>
                 </div>
                 <div class="list-card-status">
@@ -275,10 +276,10 @@ function renderListView(allEvents) {
                 </div>
                 ${!isCompleted && !localState.isSelectionMode ? `
                 <div class="list-card-actions">
-                    <button class="lc-action-btn wa" onclick="event.stopPropagation(); window.open('${whatsappLink}', '_blank')" title="WhatsApp">
+                    <button class="lc-action-btn wa" data-link="${whatsappLink}" title="WhatsApp">
                         <i class="bi bi-whatsapp" style="font-size:0.85rem;"></i>
                     </button>
-                    <button class="lc-action-btn comanda" data-action="open-comanda" data-appointment="${dataStr}" title="Comanda" onclick="event.stopPropagation();">
+                    <button class="lc-action-btn comanda" data-action="open-comanda" data-appointment='${dataStr}' title="Comanda">
                         <i class="bi bi-receipt"></i>
                     </button>
                 </div>` : ''}
@@ -455,7 +456,6 @@ export async function loadAgendaPage(params = {}) {
     contentDiv.innerHTML = `
         <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 relative font-sans w-full" style="background:#f8f9fa;">
 
-            <!-- TOOLBAR -->
             <div class="agenda-toolbar">
                 <div class="agenda-date-row">
                     <div class="flex items-center gap-2" style="flex:1;min-width:0;">
@@ -471,14 +471,13 @@ export async function loadAgendaPage(params = {}) {
                     </div>
                     <div class="agenda-top-actions" style="flex-shrink:0;">
                         <button id="btnToday" class="agenda-today-btn">Hoje</button>
-                        <div id="agendaFab" class="agenda-fab" data-action="new-appointment" style="display:none;" onclick="event.stopPropagation();">
+                        <div id="agendaFab" class="agenda-fab" data-action="new-appointment" style="display:none;">
                             <i class="bi bi-plus-lg"></i>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- SUB-BAR: View toggle + Filter -->
             <div class="agenda-subbar">
                 <div class="agenda-view-toggle">
                     <button class="${localState.currentView === 'list' ? 'active' : ''}" data-action="setView" data-view="list">Lista</button>
@@ -489,12 +488,10 @@ export async function loadAgendaPage(params = {}) {
                 </button>
             </div>
 
-            <!-- PROFESSIONAL PILLS -->
             <div id="profSelectorContainer" class="agenda-prof-bar">
                 <div style="width:24px;height:24px;border:2px solid #e9ecef;border-top:2px solid #4f46e5;border-radius:50%;animation:spin 0.7s linear infinite;margin:8px auto;"></div>
             </div>
 
-            <!-- CONTENT AREA -->
             <div id="agenda-view" style="flex:1;overflow-y:auto;"></div>
 
             <div id="batch-delete-container" style="position:fixed;bottom:80px;left:0;right:0;z-index:50;display:none;"></div>
@@ -555,15 +552,17 @@ export async function loadAgendaPage(params = {}) {
     if (!hasContentDelegationInitialized) {
         contentDiv.addEventListener('click', async (e) => {
 
-            // === Priority 1: Action buttons (Comanda, WhatsApp) inside cards/chips ===
-            const actionBarBtn = e.target.closest('.we-btn[data-action="open-comanda"], .lc-action-btn[data-action="open-comanda"]');
-            if (actionBarBtn) {
-                e.stopPropagation();
-                const card = actionBarBtn.closest('.list-card') || actionBarBtn.closest('.week-event-chip');
-                const apptData = card && card.dataset.appointment ? JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'")) : null;
-                if (!apptData) return;
+            // === Priority 1: Botão de Comanda ===
+            const comandaBtn = e.target.closest('[data-action="open-comanda"]');
+            if (comandaBtn) {
+                e.stopPropagation(); // Impede que o clique seja passado para o card
+                const apptDataStr = comandaBtn.dataset.appointment || comandaBtn.closest('[data-appointment]')?.dataset.appointment;
+                if (!apptDataStr) return;
+                
+                const apptData = JSON.parse(apptDataStr.replace(/&apos;/g, "'"));
                 const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
                 const navParams = { selectedAppointmentId: apptData.id, initialFilter };
+                
                 if (initialFilter === 'finalizadas' && apptData.transaction?.paidAt) {
                     navParams.filterDate = typeof apptData.transaction.paidAt === 'object'
                         ? new Date(apptData.transaction.paidAt._seconds * 1000)
@@ -573,16 +572,20 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
+            // === Priority 1.5: Botão WhatsApp ===
             const waBtn = e.target.closest('.lc-action-btn.wa');
             if (waBtn) {
-                e.stopPropagation();
+                e.stopPropagation(); // Impede que o clique chegue ao card
+                if (waBtn.dataset.link) window.open(waBtn.dataset.link, '_blank');
                 return;
             }
 
             // === Priority 2: Checkbox toggle ===
-            if (e.target.dataset?.action === 'toggle-select-item') {
-                if (e.target.checked) localState.selectedItems.add(e.target.dataset.id);
-                else localState.selectedItems.delete(e.target.dataset.id);
+            const checkboxEl = e.target.closest('input[type="checkbox"][data-action="toggle-select-item"]');
+            if (checkboxEl) {
+                e.stopPropagation(); // Impede clique no card
+                if (checkboxEl.checked) localState.selectedItems.add(checkboxEl.dataset.id);
+                else localState.selectedItems.delete(checkboxEl.dataset.id);
                 updateBatchDeleteUI();
                 return;
             }
@@ -612,24 +615,25 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 5: Week view chip click → edit appointment ===
-            const weekChip = e.target.closest('.week-event-chip[data-appointment]');
-            if (weekChip) {
-                const apptData = JSON.parse(weekChip.dataset.appointment.replace(/&apos;/g, "'"));
+            // === Priority 5: Clique no Card/Chip abre a edição ===
+            const card = e.target.closest('.list-card[data-appointment], .week-event-chip[data-appointment]');
+            if (card) {
+                if (localState.isSelectionMode) {
+                    const cb = card.querySelector('input[type="checkbox"]');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        if (cb.checked) localState.selectedItems.add(cb.dataset.id);
+                        else localState.selectedItems.delete(cb.dataset.id);
+                        updateBatchDeleteUI();
+                    }
+                    return;
+                }
+                const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
                 openAppointmentModal(apptData);
                 return;
             }
 
-            // === Priority 6: List card click → edit appointment ===
-            const listCard = e.target.closest('.list-card[data-appointment]');
-            if (listCard) {
-                if (localState.isSelectionMode) return;
-                const apptData = JSON.parse(listCard.dataset.appointment.replace(/&apos;/g, "'"));
-                openAppointmentModal(apptData);
-                return;
-            }
-
-            // === Priority 7: Generic data-action catch-all ===
+            // === Priority 6: Exclusões pontuais (fallback options) ===
             const targetEl = e.target.closest('[data-action]');
             if (!targetEl) return;
 
@@ -647,22 +651,6 @@ export async function loadAgendaPage(params = {}) {
                         showNotification('Agendamento apagado.', 'success');
                         fetchAndDisplayAgenda();
                     }
-                    break;
-                }
-                case 'open-comanda': {
-                    e.stopPropagation();
-                    let apptData = null;
-                    const card = e.target.closest('[data-appointment]');
-                    if (card) apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-                    if (localState.isSelectionMode || !apptData) return;
-                    const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
-                    const navParams = { selectedAppointmentId: apptData.id, initialFilter };
-                    if (initialFilter === 'finalizadas' && apptData.transaction?.paidAt) {
-                        navParams.filterDate = typeof apptData.transaction.paidAt === 'object'
-                            ? new Date(apptData.transaction.paidAt._seconds * 1000)
-                            : apptData.transaction.paidAt;
-                    }
-                    navigateTo('comandas-section', navParams);
                     break;
                 }
             }
