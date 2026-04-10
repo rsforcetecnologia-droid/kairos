@@ -29,7 +29,7 @@ let localState = {
     pendingRedemption: null,
     paging: {
         page: 1,
-        limit: 50, // Aumentado para melhor visualização de KPIs
+        limit: 15, // Aumentado para melhor visualização de KPIs
         total: 0,
     },
     checkoutState: {
@@ -194,7 +194,6 @@ function hideMobileDetail() {
     }
 }
 
-// --- NOVO: FUNÇÃO PARA ATUALIZAR OS KPIs SUPERIORES ---
 function updateKPIs() {
     const comandas = localState.allComandas || [];
     
@@ -222,23 +221,21 @@ function updateKPIs() {
     if(elTicket) elTicket.textContent = `R$ ${ticketMedio.toFixed(2).replace('.', ',')}`;
 }
 
-
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
 function renderPageLayout() {
     const todayStr = new Date().toISOString().split('T')[0];
     
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col">
+        <section class="h-full flex flex-col p-4 md:p-6 md:pl-8">
             
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 px-1">
-                <h2 class="text-2xl md:text-3xl font-bold text-gray-800">Ponto de Venda</h2>
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 w-full">
                 
-                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                    <div id="cashier-controls" class="flex items-center gap-2 mr-auto md:mr-4">
-                        <div class="loader-sm"></div>
-                    </div>
-                    
+                <div id="cashier-controls" class="flex items-center gap-2">
+                    <div class="loader-sm"></div>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
                     <button data-action="toggle-history" class="py-2 px-4 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-2 text-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                         Histórico
@@ -252,7 +249,7 @@ function renderPageLayout() {
 
             <div id="cashier-alert-box"></div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 px-1">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
                     <span class="text-xs font-semibold text-gray-500 uppercase">Comandas Abertas</span>
                     <span id="kpi-abertas" class="text-2xl font-bold text-indigo-600 mt-1">0</span>
@@ -271,7 +268,7 @@ function renderPageLayout() {
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 px-1 gap-3">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
                 <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
                     <button data-filter="todas" class="filter-btn px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap">Todas</button>
                     <button data-filter="abertas" class="filter-btn px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap">Abertas</button>
@@ -284,15 +281,15 @@ function renderPageLayout() {
                 </div>
             </div>
 
-            <div id="comandas-layout" class="flex-grow flex gap-4 min-h-0">
-                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-100 rounded-xl shadow-sm h-full w-full md:w-1/3 lg:w-1/4">
+            <div id="comandas-layout" class="flex-grow gap-4 min-h-0 w-full">
+                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-100 rounded-xl shadow-sm h-full">
                     <div id="comandas-list" class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-grow">
                         <div class="loader mx-auto mt-10"></div>
                     </div>
                     <div id="pagination-container" class="p-2 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 min-h-[50px] flex justify-center items-center rounded-b-xl"></div>
                 </div>
 
-                <div id="comanda-detail-container" class="bg-white border border-gray-100 rounded-xl shadow-sm h-full w-full md:w-2/3 lg:w-3/4 flex flex-col relative overflow-hidden">
+                <div id="comanda-detail-container" class="bg-white border border-gray-100 rounded-xl shadow-sm h-full flex flex-col relative overflow-hidden">
                     <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
                         <p>Selecione uma venda para ver os detalhes</p>
                     </div>
@@ -378,7 +375,7 @@ function renderComandaList() {
     if (!localState.isCashierOpen && localState.activeFilter === 'abertas') {
         listContainer.innerHTML = `
             <div class="text-center py-10 opacity-60">
-                <svg class="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <svg class="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                 <p class="text-sm font-medium text-gray-700">Caixa Fechado</p>
                 <p class="text-xs text-gray-500">Abra o caixa para ver as vendas</p>
             </div>
@@ -387,16 +384,14 @@ function renderComandaList() {
         return;
     }
     
-    // FILTRAGEM LOCAL COM BASE NOS NOVOS MINI CARDS
     let filteredComandas = localState.allComandas || [];
     if(localState.activeFilter === 'abertas') {
         filteredComandas = filteredComandas.filter(c => c.status !== 'completed');
     } else if (localState.activeFilter === 'pagas') {
         filteredComandas = filteredComandas.filter(c => c.status === 'completed');
     }
-    // Se for 'todas', não filtra.
 
-    updateKPIs(); // Atualiza painéis superiores sempre que a lista for refeita
+    updateKPIs(); 
 
     if (filteredComandas.length === 0) {
         listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda encontrada para este filtro.</p>`;
@@ -422,14 +417,19 @@ function renderComandaList() {
             : '';
 
         const isSelected = comanda.id === localState.selectedComandaId;
-        const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        
+        // --- NOVO FORMATO DE DATA E HORA ---
+        const dateObj = new Date(comanda.startTime);
+        const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dateTimeFormatted = `${dateStr} às ${timeStr}`;
+
         const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
         const isCompleted = comanda.status === 'completed';
 
         const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
         const safeProfName = escapeHTML(comanda.professionalName || 'Sem profissional');
         
-        // Indicador Visual de Status/Tipo
         let typeIndicator = '';
         if(isCompleted) {
             typeIndicator = `<span class="text-[10px] font-bold uppercase text-green-700 bg-green-100 px-2 py-0.5 rounded-md border border-green-200">Paga</span>`;
@@ -456,7 +456,7 @@ function renderComandaList() {
                     ${typeIndicator}
                     <p class="text-xs text-gray-500 truncate max-w-[100px]">${safeProfName}</p>
                 </div>
-                <p class="text-xs text-gray-400 font-medium">${time}</p> 
+                <p class="text-[11px] text-gray-600 font-semibold bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">${dateTimeFormatted}</p> 
             </div>
         `;
         fragment.appendChild(div);
@@ -591,7 +591,7 @@ function renderComandaDetail() {
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
             </button>
             <button data-action="go-to-checkout" class="fab-btn-primary" title="Receber / Pagar">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08-.402-2.599-1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
         </div>
     `;
@@ -854,7 +854,6 @@ function renderCheckoutView(comanda, container) {
     });
 }
 
-// --- FUNÇÕES DE FIDELIDADE (MANTIDAS EXATAMENTE IGUAIS) ---
 async function checkAndRenderLoyalty(comanda, containerElement) {
     if (!containerElement) return;
     const settings = localState.loyaltySettings;
@@ -1010,7 +1009,6 @@ async function addRewardToComanda(reward, comanda) {
     }
 }
 
-// --- FUNÇÕES DE MODAIS E OPERAÇÕES BÁSICAS (MANTIDAS) ---
 function openAddItemModal() {
     if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
     const { modalElement, close } = showGenericModal({ title: "Adicionar Item à Comanda", contentHTML: '<div id="add-item-content"></div>', maxWidth: 'max-w-4xl' });
@@ -1269,7 +1267,6 @@ async function handleOpenCloseCashierModal() {
     } catch (error) { showNotification('Erro', `Falha ao carregar relatório: ${error.message}`, 'error'); }
 }
 
-// --- HANDLERS DA NOVA INTERFACE ---
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
     localState.activeFilter = filter;
@@ -1283,8 +1280,6 @@ async function handleFilterClick(filter) {
     const listContainer = document.getElementById('comandas-list');
     if (listContainer) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     
-    // Quando mudamos o filtro local, apenas chamamos o render se já tivermos dados (fetch apenas se mudar data)
-    // Para simplificar, vou manter fetchAndDisplayData para garantir que temos as informações corretas.
     await fetchAndDisplayData();
 }
 
@@ -1439,7 +1434,7 @@ async function handleFinalizeCheckout(comanda) {
         localState.selectedComandaId = null;
         localState.viewMode = 'items';
         localState.pendingRedemption = null;
-        await fetchAndDisplayData(); // Isso também fará o update dos KPIs
+        await fetchAndDisplayData(); 
     } catch (error) { 
         showNotification('Erro no Checkout', error.message, 'error'); 
     } finally { 
@@ -1479,14 +1474,12 @@ async function handleCreateNewSale(e) {
     localState.viewMode = 'items';
     document.getElementById('genericModal').style.display = 'none';
     
-    // Força ir para "Abertas" ou "Todas" para ver a nova comanda
     if(localState.activeFilter === 'pagas') localState.activeFilter = 'abertas';
     updateFilterStyles();
     
     handleComandaClick(newComanda.id);
 }
 
-// --- FETCH PRINCIPAL OTIMIZADO ---
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
     
@@ -1494,12 +1487,10 @@ async function fetchAndDisplayData() {
         listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     }
     
-    // Se estiver com "Histórico" ativado, pegamos a data do calendário
     const filterDate = localState.showHistoryDate ? document.getElementById('filter-date').value : null;
 
     try {
         const sessionPromise = cashierApi.getActiveSession();
-        // A API original talvez usasse a data apenas para finalizadas. Aqui passamos a data se o painel estiver ativado.
         const comandasPromise = comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
         const loyaltyPromise = establishmentsApi.getEstablishmentDetails(state.establishmentId);
 
@@ -1539,7 +1530,6 @@ async function fetchAndDisplayData() {
     }
 }
 
-// --- INICIALIZAÇÃO DA PÁGINA ---
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
     localState.selectedComandaId = params.selectedAppointmentId || null;
@@ -1556,7 +1546,6 @@ export async function loadComandasPage(params = {}) {
         const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
         const dateInput = e.target.id === 'filter-date';
 
-        // Se mudou a data, refaz o fetch (útil quando Histórico está ativado)
         if (dateInput) {
              localState.paging.page = 1;
              await fetchAndDisplayData();
@@ -1576,15 +1565,13 @@ export async function loadComandasPage(params = {}) {
             const comanda = localState.allComandas.find(c => c.id === comandaId);
 
             switch (action) {
-                // Ação para o novo botão de Histórico
                 case 'toggle-history':
                     localState.showHistoryDate = !localState.showHistoryDate;
                     if(localState.showHistoryDate && localState.activeFilter === 'abertas') {
-                        localState.activeFilter = 'todas'; // Historico faz mais sentido para todas
+                        localState.activeFilter = 'todas';
                     }
                     updateFilterStyles();
                     if(!localState.showHistoryDate) {
-                        // Se desativou o histórico, força voltar para o dia atual no fetch (remove date filter behavior)
                         await fetchAndDisplayData();
                     }
                     break;
@@ -1720,7 +1707,6 @@ export async function loadComandasPage(params = {}) {
     contentDiv.addEventListener('click', pageEventListener);
     contentDiv.addEventListener('change', pageEventListener);
 
-    // Mapeamento caso venha por navegação de outras telas
     if (params.initialFilter) {
         if(params.initialFilter === 'finalizadas') localState.activeFilter = 'pagas';
         else localState.activeFilter = 'abertas';
