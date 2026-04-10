@@ -1,974 +1,777 @@
 // js/ui/reports.js
 
-// --- 1. IMPORTAÇÕES ---
-import * as reportsApi from '../api/reports.js';
-import * as professionalsApi from '../api/professionals.js';
-import * as appointmentsApi from '../api/appointments.js';
 import * as financialApi from '../api/financial.js';
+import * as appointmentsApi from '../api/appointments.js';
+import * as clientsApi from '../api/clients.js';
+import * as salesApi from '../api/sales.js';
+import * as productsApi from '../api/products.js';
+import { getHierarchy } from '../api/establishments.js';
 import { state } from '../state.js';
-import { escapeHTML } from '../utils.js';
+import { showNotification } from '../components/modal.js';
+
+// ============================================================================
+// 📊 ESTADO LOCAL (STATE MANAGEMENT)
+// ============================================================================
+const today = new Date();
+const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+let localState = {
+    establishments: [],
+    filterEstablishmentIds: new Set(),
+    startDate: firstDay.toISOString().split('T')[0],
+    endDate: today.toISOString().split('T')[0],
+    
+    currentTab: 'financeiro', 
+    drillDownMonth: null, // Usado na Agenda e Clientes
+    
+    data: {
+        financeiro: null,
+        agenda: null,
+        clientes: null,
+        vendas: null,
+        estoque: null
+    },
+    
+    charts: {}
+};
 
 const contentDiv = document.getElementById('content');
-let chartsInstances = {}; // Cache dos gráficos
+let pageEventListener = null;
 
-// Cores para o Fluxo de Caixa
-const cashFlowColors = {
-    creditRealized: '#10b981',      // Verde Forte
-    creditProvisioned: '#6ee7b7',   // Verde Claro
-    debitRealized: '#ef4444',       // Vermelho Forte
-    debitProvisioned: '#fca5a5',    // Vermelho Claro
-    balance: '#3b82f6'              // Azul
-};
+// ============================================================================
+// 🛠️ FUNÇÕES AUXILIARES
+// ============================================================================
 
-const chartColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
-
-// --- 2. ESTADO LOCAL ---
-const localState = {
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0], 
-    endDate: new Date().toISOString().split('T')[0], 
-    selectedProfessional: 'all',
-    selectedCostCenter: 'all',
-    
-    professionalsList: [],
-    costCentersList: [],
-    naturesList: [],
-
-    // Dados Brutos (Financeiro)
-    rawPayables: [],
-    rawReceivables: [],
-
-    // Dados Processados Localmente
-    processedDRE: null,
-    processedCashFlow: null,
-    processedDailyRevenue: null,
-
-    // Dados do Backend (Legado/Complementar)
-    backendData: null,            
-    appointmentsData: [],  
-
-    currentTab: 'dashboards',
-    isFilterOpen: false
-};
-
-// --- 3. CARREGAMENTO DE RECURSOS ---
-async function loadChartJs() {
-    if (window.Chart) return;
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-    });
+function formatCurrency(value) {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 }
 
-// --- 4. PONTO DE ENTRADA (INIT) ---
+function formatDateDisplay(dateStr) {
+    if (!dateStr) return '--/--/----';
+    const parts = dateStr.split('T')[0].split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return dateStr;
+}
+
+function destroyChart(chartKey) {
+    if (localState.charts[chartKey]) {
+        localState.charts[chartKey].destroy();
+        localState.charts[chartKey] = null;
+    }
+}
+
+// ============================================================================
+// 🚀 INICIALIZAÇÃO E LAYOUT PRINCIPAL
+// ============================================================================
+
 export async function loadReportsPage() {
-    contentDiv.innerHTML = `
-        <div class="flex flex-col items-center justify-center h-[calc(100vh-100px)] w-full">
-            <div class="loader mb-4 border-t-indigo-600"></div>
-            <p class="text-gray-500 font-medium animate-pulse">Carregando inteligência...</p>
-        </div>`;
-    
     try {
-        await loadChartJs();
+        const hierarchyPayload = await getHierarchy().catch(() => ({ matrizes: [] }));
+        const matrizes = hierarchyPayload.matrizes || [];
+        localState.establishments = [];
         
-        // Carrega listas auxiliares
-        const [profs, costs, natures] = await Promise.all([
-            professionalsApi.getProfessionals(state.establishmentId),
-            reportsApi.getCostCenters(state.establishmentId).catch(() => []),
-            financialApi.getNatures(state.establishmentId).catch(() => [])
-        ]);
+        matrizes.forEach(m => {
+            localState.establishments.push({ id: m.id, name: m.name, type: 'Matriz' });
+            if (m.branches) {
+                m.branches.forEach(b => localState.establishments.push({ id: b.id, name: b.name, type: 'Filial' }));
+            }
+        });
         
-        localState.professionalsList = profs || [];
-        localState.costCentersList = costs || [];
-        localState.naturesList = natures || [];
-
-        renderLayout();
-        await fetchAndRenderData();
+        if (localState.filterEstablishmentIds.size === 0) {
+            localState.filterEstablishmentIds.add(state.establishmentId);
+        }
     } catch (e) {
-        console.error("Erro no loadReportsPage:", e);
-        contentDiv.innerHTML = `
-            <div class="flex flex-col items-center justify-center h-full text-red-500 p-6 text-center w-full">
-                <div class="bg-red-50 p-4 rounded-full mb-4"><svg class="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                <h3 class="text-lg font-bold text-gray-800">Ops! Algo deu errado.</h3>
-                <p class="text-sm text-gray-600 mt-2 max-w-xs mx-auto break-words">${escapeHTML(e.message)}</p>
-                <button onclick="window.location.reload()" class="mt-6 px-6 py-3 bg-indigo-600 text-white rounded-lg shadow-lg hover:bg-indigo-700 transition-transform active:scale-95">Tentar Novamente</button>
-            </div>`;
+        console.error("Erro ao buscar hierarquia de empresas", e);
     }
+
+    renderBaseLayout();
+    setupEventListeners();
+    await fetchTabData();
 }
 
-// --- 5. RENDERIZAÇÃO E LAYOUT ---
-function renderLayout() {
-    const profOptions = localState.professionalsList.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
-    const costOptions = localState.costCentersList.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
+function renderBaseLayout() {
+    const estCheckboxes = localState.establishments.map(est => `
+        <label class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-lg cursor-pointer hover:bg-slate-50 transition-all shadow-sm est-label select-none">
+            <input type="checkbox" class="est-filter-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
+            <span class="text-[10px] font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
+        </label>
+    `).join('');
 
     contentDiv.innerHTML = `
-        <div class="flex flex-col min-h-screen bg-gray-50 pb-24 relative w-full max-w-[100vw] overflow-x-hidden">
+        <section class="h-full flex flex-col p-3 md:p-6 w-full bg-slate-50 relative overflow-hidden">
             
-            <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 transition-all duration-300 w-full">
-                <div class="max-w-7xl mx-auto px-3 md:px-4 py-3">
-                    <div class="flex justify-between items-center">
-                        <div class="flex-1 min-w-0 mr-2">
-                            <h1 class="text-lg md:text-xl font-bold text-gray-800 flex items-center gap-2">
-                                <span class="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg flex-shrink-0 shadow-sm border border-indigo-100">
-                                    <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                                </span>
-                                <span class="truncate">Relatórios</span>
-                            </h1>
-                            <p class="text-[10px] md:text-xs text-gray-500 mt-0.5 ml-1 truncate" id="date-range-display">
-                                ${formatDateShort(localState.startDate)} até ${formatDateShort(localState.endDate)}
-                            </p>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-4 z-20 relative">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-200">
+                            <i class="bi bi-bar-chart-fill text-xl"></i>
                         </div>
-                        <button id="toggle-filters-btn" class="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition-colors relative flex-shrink-0">
-                            <svg class="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
+                        <div>
+                            <h1 class="text-lg font-black text-slate-800 tracking-tight">Relatórios & BI</h1>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Painel Gerencial</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+                        <div class="hidden md:flex bg-slate-100 p-1 rounded-lg">
+                            <button data-action="preset-date" data-preset="month" class="px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-colors bg-white text-indigo-600 shadow-sm border border-slate-200">Este Mês</button>
+                            <button data-action="preset-date" data-preset="last_month" class="px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-colors text-slate-500 hover:text-slate-700">Mês Passado</button>
+                            <button data-action="preset-date" data-preset="year" class="px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-colors text-slate-500 hover:text-slate-700">Este Ano</button>
+                        </div>
+
+                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 shadow-inner w-full md:w-auto">
+                            <input type="date" id="report-start" value="${localState.startDate}" class="p-1.5 bg-transparent text-xs font-semibold text-slate-700 outline-none w-full md:w-auto">
+                            <span class="text-slate-400 text-xs font-bold">até</span>
+                            <input type="date" id="report-end" value="${localState.endDate}" class="p-1.5 bg-transparent text-xs font-semibold text-slate-700 outline-none w-full md:w-auto">
+                        </div>
+
+                        <button data-action="apply-filters" class="w-full md:w-auto py-2 px-5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-md flex items-center justify-center gap-2 text-xs">
+                            Atualizar
                         </button>
                     </div>
                 </div>
 
-                <div id="filters-container" class="hidden border-t border-gray-100 bg-gray-50/50 overflow-hidden transition-all duration-300 w-full">
-                    <div class="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 max-w-7xl mx-auto w-full">
-                        <div class="space-y-1">
-                            <label class="text-xs font-semibold text-gray-500 ml-1">Início</label>
-                            <input type="date" id="report-start" value="${localState.startDate}" class="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs font-semibold text-gray-500 ml-1">Fim</label>
-                            <input type="date" id="report-end" value="${localState.endDate}" class="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs font-semibold text-gray-500 ml-1">Profissional</label>
-                            <select id="report-prof" class="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm text-gray-700">
-                                <option value="all">Todos Profissionais</option>
-                                ${profOptions}
-                            </select>
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-xs font-semibold text-gray-500 ml-1">Centro de Custo</label>
-                            <select id="report-cost" class="w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm text-gray-700">
-                                <option value="all">Todos Centros</option>
-                                ${costOptions}
-                            </select>
-                        </div>
-                        <button id="btn-apply-filters" class="md:col-span-4 mt-2 w-full py-3 bg-indigo-600 text-white font-semibold rounded-xl shadow-md active:scale-95 transition-transform flex justify-center items-center gap-2">
-                            Aplicar Filtros
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        </button>
+                ${localState.establishments.length > 1 ? `
+                <div class="mt-4 pt-3 border-t border-slate-100">
+                    <div class="flex flex-wrap gap-2" id="establishment-filters-container">
+                        ${estCheckboxes}
                     </div>
                 </div>
+                ` : ''}
+            </div>
 
-                <div class="overflow-x-auto no-scrollbar border-t border-gray-100 bg-white w-full">
-                    <div class="flex px-3 md:px-4 py-2 gap-2 min-w-max max-w-7xl mx-auto">
-                        <button data-tab="dashboards" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">Financeiro</button>
-                        <button data-tab="dre" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">DRE Contábil</button>
-                        <button data-tab="appointments" class="tab-btn flex-1 py-2 px-4 rounded-full text-xs md:text-sm font-medium transition-all whitespace-nowrap border">Agendamentos</button>
-                    </div>
+            <div class="flex overflow-x-auto custom-scrollbar gap-2 mb-4 pb-1 z-10">
+                <button data-tab="financeiro" class="tab-btn ${localState.currentTab === 'financeiro' ? 'active bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200'} px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2">
+                    <i class="bi bi-currency-dollar text-base"></i> Financeiro
+                </button>
+                <button data-tab="agenda" class="tab-btn ${localState.currentTab === 'agenda' ? 'active bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200'} px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2">
+                    <i class="bi bi-calendar3 text-base"></i> Agenda
+                </button>
+                <button data-tab="clientes" class="tab-btn ${localState.currentTab === 'clientes' ? 'active bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200'} px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2">
+                    <i class="bi bi-people text-base"></i> Clientes
+                </button>
+                <button data-tab="vendas" class="tab-btn ${localState.currentTab === 'vendas' ? 'active bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200'} px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2">
+                    <i class="bi bi-receipt text-base"></i> Vendas / PDV
+                </button>
+                <button data-tab="estoque" class="tab-btn ${localState.currentTab === 'estoque' ? 'active bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm' : 'bg-white text-slate-500 border-slate-200'} px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2">
+                    <i class="bi bi-box-seam text-base"></i> Estoque
+                </button>
+                
+                <div class="ml-auto pl-2 border-l border-slate-200 flex items-center">
+                    <button data-action="export-excel" class="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-xl hover:bg-emerald-100 transition shadow-sm flex items-center gap-2 text-xs">
+                        <i class="bi bi-file-earmark-excel-fill"></i> Exportar
+                    </button>
                 </div>
             </div>
 
-            <main id="report-content" class="flex-1 max-w-7xl w-full mx-auto px-3 md:px-4 py-4 space-y-4 animate-fade-in overflow-hidden"></main>
-        </div>
+            <div id="tab-content" class="flex-1 overflow-y-auto custom-scrollbar rounded-xl pb-20 md:pb-0"></div>
+        </section>
     `;
+}
 
-    document.getElementById('toggle-filters-btn').onclick = toggleFilters;
-    document.getElementById('btn-apply-filters').onclick = () => {
-        applyFilters();
-        toggleFilters();
-    };
+// ============================================================================
+// 🔄 GESTÃO DE DADOS
+// ============================================================================
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = () => {
-            localState.currentTab = btn.dataset.tab;
-            updateTabsUI();
-            renderCurrentView();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-    });
+async function fetchTabData() {
+    const container = document.getElementById('tab-content');
+    if (container) container.innerHTML = '<div class="flex justify-center items-center h-40"><div class="loader"></div></div>';
+
+    const { currentTab, startDate, endDate, filterEstablishmentIds } = localState;
+    const estIds = Array.from(filterEstablishmentIds);
+    const estString = estIds.join(',');
     
-    updateTabsUI(); 
-}
-
-function toggleFilters() {
-    const container = document.getElementById('filters-container');
-    const btn = document.getElementById('toggle-filters-btn');
-    localState.isFilterOpen = !localState.isFilterOpen;
-    
-    if (localState.isFilterOpen) {
-        container.classList.remove('hidden');
-        btn.classList.add('bg-indigo-100', 'text-indigo-800');
-    } else {
-        container.classList.add('hidden');
-        btn.classList.remove('bg-indigo-100', 'text-indigo-800');
-    }
-}
-
-function updateTabsUI() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        const isActive = btn.dataset.tab === localState.currentTab;
-        btn.className = isActive 
-            ? "tab-btn py-2 px-6 rounded-full text-xs md:text-sm font-bold bg-indigo-600 text-white shadow-md transform scale-105 transition-all whitespace-nowrap border-transparent"
-            : "tab-btn py-2 px-6 rounded-full text-xs md:text-sm font-medium text-gray-500 bg-white border-gray-200 hover:bg-gray-50 transition-all whitespace-nowrap";
-    });
-}
-
-function formatDateShort(dateString) {
-    if (!dateString) return '';
-    const parts = dateString.split('-');
-    return `${parts[2]}/${parts[1]}`;
-}
-
-// --- 6. LÓGICA DE DADOS ---
-
-async function applyFilters() {
-    localState.startDate = document.getElementById('report-start').value;
-    localState.endDate = document.getElementById('report-end').value;
-    localState.selectedProfessional = document.getElementById('report-prof').value;
-    localState.selectedCostCenter = document.getElementById('report-cost').value;
-
-    document.getElementById('date-range-display').textContent = 
-        `${formatDateShort(localState.startDate)} até ${formatDateShort(localState.endDate)}`;
-
-    await fetchAndRenderData();
-}
-
-// Processamento Local: DRE (Somente Realizado/Pago)
-function processDREData(payables, receivables) {
-    const natureMap = new Map();
-    localState.naturesList.forEach(n => natureMap.set(n.id, n.name));
-
-    const dre = { revenues: {}, expenses: {}, totalRevenues: 0, totalExpenses: 0, netResult: 0 };
-
-    receivables.forEach(r => {
-        if (r.status === 'paid') {
-            const natureName = r.naturezaId ? (natureMap.get(r.naturezaId) || 'Outras Receitas') : 'Geral';
-            if (!dre.revenues[natureName]) dre.revenues[natureName] = 0;
-            dre.revenues[natureName] += r.amount;
-            dre.totalRevenues += r.amount;
-        }
-    });
-
-    payables.forEach(p => {
-        if (p.status === 'paid') {
-            const natureName = p.naturezaId ? (natureMap.get(p.naturezaId) || 'Outras Despesas') : 'Geral';
-            if (!dre.expenses[natureName]) dre.expenses[natureName] = 0;
-            dre.expenses[natureName] += p.amount;
-            dre.totalExpenses += p.amount;
-        }
-    });
-
-    dre.netResult = dre.totalRevenues - dre.totalExpenses;
-    return dre;
-}
-
-// Processamento Local: Fluxo de Caixa
-function processCashFlowData(payables, receivables) {
-    const dataMap = {};
-    const initDate = (date) => {
-        if (!dataMap[date]) dataMap[date] = { realizedCredit: 0, provisionedCredit: 0, realizedDebit: 0, provisionedDebit: 0 };
-    };
-
-    let curr = new Date(localState.startDate);
-    const end = new Date(localState.endDate);
-    while (curr <= end) {
-        initDate(curr.toISOString().split('T')[0]);
-        curr.setDate(curr.getDate() + 1);
-    }
-
-    receivables.forEach(item => {
-        const date = item.dueDate.split('T')[0];
-        if (dataMap[date]) { 
-            if (item.status === 'paid') dataMap[date].realizedCredit += item.amount;
-            else dataMap[date].provisionedCredit += item.amount;
-        }
-    });
-
-    payables.forEach(item => {
-        const date = item.dueDate.split('T')[0];
-        if (dataMap[date]) {
-            if (item.status === 'paid') dataMap[date].realizedDebit += item.amount;
-            else dataMap[date].provisionedDebit += item.amount;
-        }
-    });
-
-    const sortedDates = Object.keys(dataMap).sort();
-    const balanceData = [];
-    let accumulated = 0;
-    
-    sortedDates.forEach(date => {
-        const day = dataMap[date];
-        const dailyNet = (day.realizedCredit + day.provisionedCredit) - (day.realizedDebit + day.provisionedDebit);
-        accumulated += dailyNet;
-        balanceData.push(accumulated);
-    });
-
-    return {
-        labels: sortedDates,
-        realizedCredit: sortedDates.map(d => dataMap[d].realizedCredit),
-        provisionedCredit: sortedDates.map(d => dataMap[d].provisionedCredit),
-        realizedDebit: sortedDates.map(d => dataMap[d].realizedDebit * -1),
-        provisionedDebit: sortedDates.map(d => dataMap[d].provisionedDebit * -1),
-        balance: balanceData
-    };
-}
-
-// Processamento Local: Faturamento Diário
-function processDailyRevenueData(receivables) {
-    const dailyMap = {};
-    let curr = new Date(localState.startDate);
-    const end = new Date(localState.endDate);
-    while (curr <= end) {
-        dailyMap[curr.toISOString().split('T')[0]] = 0;
-        curr.setDate(curr.getDate() + 1);
-    }
-
-    receivables.forEach(r => {
-        if (r.status === 'paid') {
-            const date = r.dueDate.split('T')[0];
-            if (dailyMap.hasOwnProperty(date)) dailyMap[date] += r.amount;
-        }
-    });
-
-    const labels = Object.keys(dailyMap).sort();
-    const data = labels.map(d => dailyMap[d]);
-    return { labels, data };
-}
-
-// Cálculo de Tendência Linear
-function calculateLinearTrend(data) {
-    const n = data.length;
-    if (n < 2) return { trendData: Array(n).fill(data[0] || 0), color: '#9ca3af' }; 
-
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (let i = 0; i < n; i++) {
-        sumX += i;
-        sumY += data[i];
-        sumXY += i * data[i];
-        sumXX += i * i;
-    }
-
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    const intercept = (sumY - slope * sumX) / n;
-
-    const trendData = [];
-    for (let i = 0; i < n; i++) {
-        trendData.push(slope * i + intercept);
-    }
-
-    const color = slope >= 0 ? '#10b981' : '#ef4444'; 
-    return { trendData, color };
-}
-
-async function fetchAndRenderData() {
-    const container = document.getElementById('report-content');
-    container.innerHTML = `<div class="flex justify-center py-20 w-full"><div class="loader border-t-indigo-600"></div></div>`;
+    const startISO = new Date(startDate).toISOString();
+    const endDateObj = new Date(endDate);
+    endDateObj.setHours(23, 59, 59, 999);
+    const endISO = endDateObj.toISOString();
 
     try {
-        const filters = { 
-            startDate: localState.startDate, 
-            endDate: localState.endDate, 
-            establishmentId: state.establishmentId 
-        };
-        if(localState.selectedCostCenter !== 'all') filters.costCenterId = localState.selectedCostCenter;
-
-        const [payablesResult, receivablesResult] = await Promise.all([
-            financialApi.getPayables(filters),
-            financialApi.getReceivables(filters)
-        ]);
-
-        localState.rawPayables = payablesResult.entries || [];
-        localState.rawReceivables = receivablesResult.entries || [];
-
-        const backendData = await reportsApi.getAdvancedIndicators(
-            localState.startDate, 
-            localState.endDate, 
-            localState.selectedProfessional,
-            localState.selectedCostCenter
-        ).catch(() => ({ charts: { professionals: { labels: [], data: [] }, salesMonthly: { labels: [], data: [] } } }));
-
-        localState.backendData = backendData;
-        localState.processedDRE = processDREData(localState.rawPayables, localState.rawReceivables);
-        localState.processedCashFlow = processCashFlowData(localState.rawPayables, localState.rawReceivables);
-        localState.processedDailyRevenue = processDailyRevenueData(localState.rawReceivables);
-
-        const startISO = new Date(localState.startDate + 'T00:00:00').toISOString();
-        const endISO = new Date(localState.endDate + 'T23:59:59').toISOString();
-        const profIdFilter = localState.selectedProfessional === 'all' ? null : localState.selectedProfessional;
-        
-        const appointments = await appointmentsApi.getAppointmentsByDateRange(
-            state.establishmentId, startISO, endISO, profIdFilter
-        ).catch(() => []);
-
-        localState.appointmentsData = Array.isArray(appointments) ? appointments : [];
-        renderCurrentView();
-
+        if (currentTab === 'financeiro') {
+            const filters = { startDate, endDate, establishmentId: estString };
+            const [payablesRes, receivablesRes, natures] = await Promise.all([
+                financialApi.getPayables(filters).catch(() => ({ entries: [] })),
+                financialApi.getReceivables(filters).catch(() => ({ entries: [] })),
+                financialApi.getNatures(state.establishmentId).catch(() => [])
+            ]);
+            localState.data.financeiro = { payables: payablesRes.entries, receivables: receivablesRes.entries, natures };
+            renderFinanceiroTab();
+        } 
+        else if (currentTab === 'agenda') {
+            const activePromises = estIds.map(id => appointmentsApi.getAppointmentsByDateRange(id, startISO, endISO).catch(() => []));
+            const cancelledPromises = estIds.map(id => appointmentsApi.getCancelledAppointments(id, startISO, endISO).catch(() => []));
+            const [activeResults, cancelledResults] = await Promise.all([Promise.all(activePromises), Promise.all(cancelledPromises)]);
+            localState.data.agenda = { active: activeResults.flat(), cancelled: cancelledResults.flat() };
+            renderAgendaTab();
+        }
+        else if (currentTab === 'clientes') {
+            // Clientes são transversais ou por unidade, dependendo da regra de negócio.
+            // Para efeitos de BI, vamos buscar clientes da raiz ou das unidades selecionadas.
+            const clientsResults = await Promise.all(estIds.map(id => clientsApi.getClients(id).catch(() => [])));
+            
+            // Remove duplicados pelo ID do cliente
+            const uniqueClientsMap = new Map();
+            clientsResults.flat().forEach(c => uniqueClientsMap.set(c.id, c));
+            localState.data.clientes = Array.from(uniqueClientsMap.values());
+            
+            renderClientesTab();
+        }
+        else if (currentTab === 'vendas') {
+            // Busca vendas no período
+            const salesResults = await Promise.all(estIds.map(id => salesApi.getSalesHistory({ startDate, endDate, establishmentId: id }).catch(() => [])));
+            localState.data.vendas = salesResults.flat();
+            renderVendasTab();
+        }
+        else if (currentTab === 'estoque') {
+            // Busca produtos para análise de estoque
+            const productsResults = await Promise.all(estIds.map(id => productsApi.getProducts(id).catch(() => [])));
+            localState.data.estoque = productsResults.flat();
+            renderEstoqueTab();
+        }
     } catch (error) {
-        console.error(error);
-        container.innerHTML = `
-            <div class="bg-red-50 border border-red-100 p-6 rounded-2xl text-center mx-4 w-full">
-                <p class="font-bold text-gray-800">Não foi possível carregar</p>
-                <p class="text-sm text-gray-500 mt-1">${escapeHTML(error.message || 'Verifique sua conexão.')}</p>
-            </div>`;
+        container.innerHTML = `<div class="p-10 text-center text-red-500 bg-red-50 rounded-xl border border-red-100"><i class="bi bi-exclamation-triangle text-3xl mb-2"></i><br>Erro ao carregar dados: ${error.message}</div>`;
     }
 }
 
-function renderCurrentView() {
-    const container = document.getElementById('report-content');
-    
-    switch(localState.currentTab) {
-        case 'dashboards': renderFinancialDashboards(container); break;
-        case 'appointments': renderAppointmentsTab(container); break;
-        case 'dre': renderDRE(container); break;
-    }
-}
+// ============================================================================
+// 💰 ABA FINANCEIRO
+// ============================================================================
 
-// --- 7. ABA FINANCEIRO ---
-function renderFinancialDashboards(container) {
-    const dre = localState.processedDRE;
-    const dailyRev = localState.processedDailyRevenue;
-    const monthlyRev = localState.backendData.charts?.salesMonthly || { labels: [], data: [] };
-    const profsChart = localState.backendData.charts?.professionals || { labels: [], data: [] };
+function renderFinanceiroTab() {
+    const container = document.getElementById('tab-content');
+    const { payables, receivables, natures } = localState.data.financeiro;
+
+    const paidRec = receivables.filter(r => r.status === 'paid');
+    const paidPay = payables.filter(p => p.status === 'paid');
+
+    const totalIn = paidRec.reduce((s, i) => s + i.amount, 0);
+    const totalOut = paidPay.reduce((s, i) => s + i.amount, 0);
+    const saldo = totalIn - totalOut;
+    const margem = totalIn > 0 ? (saldo / totalIn) * 100 : 0;
+
+    const flowMap = {};
+    [...paidRec, ...paidPay].forEach(item => {
+        const date = item.paymentDate || item.dueDate;
+        if (!date) return;
+        if (!flowMap[date]) flowMap[date] = { in: 0, out: 0 };
+        if (item.status === 'paid' && paidRec.includes(item)) flowMap[date].in += item.amount;
+        if (item.status === 'paid' && paidPay.includes(item)) flowMap[date].out += item.amount;
+    });
+
+    const sortedDates = Object.keys(flowMap).sort();
+    const chartLabels = sortedDates.map(d => formatDateDisplay(d).substring(0, 5)); 
+    const chartIn = sortedDates.map(d => flowMap[d].in);
+    const chartOut = sortedDates.map(d => flowMap[d].out);
+
+    const natMap = new Map(natures.map(n => [n.id, n.name]));
+    const dreIn = {}; paidRec.forEach(r => { const n = r.naturezaId ? (natMap.get(r.naturezaId) || 'Outros') : 'Sem Cat.'; dreIn[n] = (dreIn[n] || 0) + r.amount; });
+    const dreOut = {}; paidPay.forEach(p => { const n = p.naturezaId ? (natMap.get(p.naturezaId) || 'Outros') : 'Sem Cat.'; dreOut[n] = (dreOut[n] || 0) + p.amount; });
 
     container.innerHTML = `
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 animate-slide-up w-full">
-            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group w-full">
-                 <div class="flex items-center gap-2 mb-2">
-                    <span class="p-2 bg-blue-50 text-blue-600 rounded-lg flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z" /></svg></span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider truncate">Receita Realizada</p>
-                </div>
-                <p class="text-2xl font-black text-gray-800 tracking-tight truncate">R$ ${dre.totalRevenues.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-            </div>
-            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden w-full">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="p-2 bg-red-50 text-red-600 rounded-lg flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" /></svg></span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider truncate">Despesa Realizada</p>
-                </div>
-                <p class="text-2xl font-black text-red-500 tracking-tight truncate">R$ ${dre.totalExpenses.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-            </div>
-            <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden w-full">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="p-2 bg-emerald-50 text-emerald-600 rounded-lg flex-shrink-0"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></span>
-                    <p class="text-xs text-gray-500 font-bold uppercase tracking-wider truncate">Saldo Realizado</p>
-                </div>
-                <p class="text-2xl font-black text-emerald-600 tracking-tight truncate">R$ ${dre.netResult.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-            </div>
-        </div>
-
-        <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 mt-4 md:mt-6 animate-slide-up delay-100 w-full overflow-hidden">
-            <div class="mb-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                <div>
-                    <h3 class="text-base md:text-lg font-bold text-gray-800">Fluxo de Caixa</h3>
-                    <p class="text-[10px] md:text-xs text-gray-400">Analise provisionado vs realizado.</p>
-                </div>
-                <div class="flex flex-wrap gap-2 md:gap-3">
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100"><input type="checkbox" checked class="chart-toggle w-4 h-4 text-emerald-500 rounded border-gray-300 focus:ring-emerald-500" data-dataset="0"><span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Créd. Real.</span></label>
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100"><input type="checkbox" checked class="chart-toggle w-4 h-4 text-emerald-300 rounded border-gray-300 focus:ring-emerald-300" data-dataset="1"><span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Créd. Prov.</span></label>
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100"><input type="checkbox" checked class="chart-toggle w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500" data-dataset="2"><span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Déb. Real.</span></label>
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100"><input type="checkbox" checked class="chart-toggle w-4 h-4 text-red-300 rounded border-gray-300 focus:ring-red-300" data-dataset="3"><span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Déb. Prov.</span></label>
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100"><input type="checkbox" checked class="chart-toggle w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-500" data-dataset="4"><span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Saldo</span></label>
-                </div>
-            </div>
-            <div class="relative w-full h-60 md:h-80"><canvas id="chart-cashflow-modern"></canvas></div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-4 md:mt-6 animate-slide-up delay-200 w-full">
-            <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 w-full overflow-hidden">
-                <h3 class="font-bold text-gray-800 mb-4 text-xs md:text-sm uppercase tracking-wide truncate">Faturamento Diário (Realizado)</h3>
-                <div class="relative h-56 md:h-64 w-full"><canvas id="chart-daily-revenue"></canvas></div>
-            </div>
-             <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 w-full overflow-hidden">
-                <h3 class="font-bold text-gray-800 mb-4 text-xs md:text-sm uppercase tracking-wide truncate">Evolução Mensal (Realizada)</h3>
-                <div class="relative h-56 md:h-64 w-full"><canvas id="chart-monthly"></canvas></div>
-            </div>
-            <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 w-full overflow-hidden lg:col-span-2">
-                <h3 class="font-bold text-gray-800 mb-4 text-xs md:text-sm uppercase tracking-wide truncate">Faturamento por Profissional</h3>
-                <div class="relative h-56 md:h-64 flex justify-center w-full"><canvas id="chart-profs"></canvas></div>
-            </div>
-        </div>
-    `;
-
-    renderModernCashFlowChart('chart-cashflow-modern', localState.processedCashFlow);
-    
-    renderTrendChart('chart-daily-revenue', 'Receita Diária', 
-        dailyRev.labels.map(d => d.split('-').reverse().slice(0, 2).join('/')), 
-        dailyRev.data
-    );
-
-    renderTrendChart('chart-monthly', 'Receita Mensal', 
-        monthlyRev.labels, 
-        monthlyRev.data
-    );
-    
-    renderChart('chart-profs', 'doughnut', 'Total Vendas', profsChart.labels, profsChart.data, chartColors);
-    
-    document.querySelectorAll('.chart-toggle').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-            const chart = chartsInstances['chart-cashflow-modern'];
-            if (chart) {
-                const datasetIndex = parseInt(e.target.dataset.dataset);
-                chart.setDatasetVisibility(datasetIndex, e.target.checked);
-                chart.update();
-            }
-        });
-    });
-}
-
-// --- 8. ABA AGENDAMENTOS ---
-function renderAppointmentsTab(container) {
-    const appointments = localState.appointmentsData;
-    const totalCount = appointments.length;
-    let completedCount = 0;
-    let cancelledCount = 0;
-    let totalValue = 0;
-
-    const dailyMap = {};
-    const professionalMap = {};
-
-    let curr = new Date(localState.startDate);
-    const end = new Date(localState.endDate);
-    while (curr <= end) {
-        dailyMap[curr.toISOString().split('T')[0]] = { active: 0, cancelled: 0 };
-        curr.setDate(curr.getDate() + 1);
-    }
-
-    appointments.forEach(app => {
-        const val = parseFloat(app.totalAmount || app.price || 0);
-        const status = (app.status || '').toLowerCase();
-        let dateStr = '';
-        if (app.startTime) {
-             const d = app.startTime.toDate ? app.startTime.toDate() : new Date(app.startTime);
-             if (!isNaN(d)) dateStr = d.toISOString().split('T')[0];
-        }
-        
-        const profName = app.professionalName || 'Sem Profissional';
-        if (!professionalMap[profName]) professionalMap[profName] = { name: profName, count: 0, value: 0 };
-
-        if (['cancelled', 'cancelado', 'no-show', 'cancelada'].includes(status)) {
-            cancelledCount++;
-            if (dateStr && dailyMap[dateStr]) dailyMap[dateStr].cancelled++;
-        } else {
-            if (['completed', 'finalized', 'paid'].includes(status)) completedCount++;
-            
-            totalValue += val;
-            
-            if (dateStr && dailyMap[dateStr]) dailyMap[dateStr].active++;
-            professionalMap[profName].count++;
-            professionalMap[profName].value += val;
-        }
-    });
-
-    const dailyLabels = Object.keys(dailyMap).sort();
-    const activeValues = dailyLabels.map(d => dailyMap[d].active);
-    const cancelledValues = dailyLabels.map(d => dailyMap[d].cancelled);
-    const byProfessional = Object.values(professionalMap).sort((a,b) => b.value - a.value);
-
-    container.innerHTML = `
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 animate-slide-up w-full">
-            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1 w-full">
-                <p class="text-[10px] text-gray-500 font-bold uppercase truncate">Agendamentos</p>
-                <div class="flex items-end gap-2 mt-1">
-                    <p class="text-2xl md:text-3xl font-black text-gray-800">${totalCount}</p>
-                </div>
+        <div class="space-y-4 animate-fade-in pb-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-up-circle text-emerald-500 mr-1"></i> Receitas</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(totalIn)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-down-circle text-red-500 mr-1"></i> Despesas</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(totalOut)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-wallet2 text-indigo-500 mr-1"></i> Saldo</span><span class="text-xl md:text-2xl font-black ${saldo >= 0 ? 'text-emerald-600' : 'text-red-600'} mt-1">${formatCurrency(saldo)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-pie-chart text-amber-500 mr-1"></i> Margem</span><span class="text-xl md:text-2xl font-black ${margem >= 0 ? 'text-indigo-600' : 'text-red-600'} mt-1">${margem.toFixed(1)}%</span></div>
             </div>
             
-            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 w-full">
-                <p class="text-[10px] text-gray-500 font-bold uppercase truncate">Concluídos</p>
-                <p class="text-lg md:text-xl font-black text-indigo-600 mt-1">${totalCount > 0 ? Math.round((completedCount/totalCount)*100) : 0}%</p>
-            </div>
-             <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 w-full">
-                <p class="text-[10px] text-gray-500 font-bold uppercase truncate">Cancelados</p>
-                <p class="text-lg md:text-xl font-black text-red-500 mt-1">${cancelledCount}</p>
-            </div>
-
-            <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 col-span-2 md:col-span-1 w-full">
-                <p class="text-[10px] text-gray-500 font-bold uppercase truncate">Valor Estimado</p>
-                 <p class="text-xl md:text-2xl font-black text-gray-800 mt-1 truncate">R$ ${totalValue.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</p>
-            </div>
-        </div>
-
-        <div class="bg-white p-4 md:p-5 rounded-3xl shadow-sm border border-gray-100 mt-4 animate-slide-up delay-100 w-full overflow-hidden">
-            <div class="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <h3 class="text-base md:text-lg font-bold text-gray-800 truncate">Volume Diário</h3>
-                
-                <div class="flex flex-wrap gap-2">
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                        <input type="checkbox" checked class="app-chart-toggle w-4 h-4 text-indigo-500 rounded border-gray-300 focus:ring-indigo-500" data-dataset="0">
-                        <span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Realizados</span>
-                    </label>
-                    <label class="inline-flex items-center cursor-pointer bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                        <input type="checkbox" checked class="app-chart-toggle w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500" data-dataset="1">
-                        <span class="ml-1.5 text-[10px] md:text-xs font-semibold text-gray-700">Cancelados</span>
-                    </label>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-bar-chart text-indigo-500 mr-1"></i> Fluxo de Caixa (Realizado)</h3>
+                    <div class="relative h-64 w-full"><canvas id="chartFin"></canvas></div>
                 </div>
-            </div>
-            
-            <div class="relative w-full h-56 md:h-64">
-                <canvas id="chart-appointments-daily"></canvas>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mt-4 animate-slide-up delay-200 w-full">
-            <div class="p-4 md:p-5 border-b border-gray-50 bg-gray-50/50">
-                <h3 class="text-base md:text-lg font-bold text-gray-800 truncate">Ranking Profissional</h3>
-            </div>
-            <div class="overflow-x-auto no-scrollbar w-full">
-                <table class="w-full text-xs md:text-sm min-w-full">
-                    <tbody class="divide-y divide-gray-100">
-                        ${byProfessional.map((p, idx) => {
-                            const maxVal = byProfessional[0]?.value || 1;
-                            const percent = (p.value / maxVal) * 100;
-                            return `
-                            <tr class="group">
-                                <td class="p-3 md:p-4 w-8 md:w-12 text-center font-bold text-gray-300">${idx + 1}</td>
-                                <td class="p-3 md:p-4 pl-0 min-w-[100px]">
-                                    <p class="font-bold text-gray-800 truncate max-w-[120px] md:max-w-xs">${escapeHTML(p.name)}</p>
-                                    <div class="w-full h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                                        <div class="h-full bg-indigo-500 rounded-full" style="width: ${percent}%"></div>
-                                    </div>
-                                </td>
-                                <td class="p-3 md:p-4 text-center">
-                                    <span class="bg-indigo-50 text-indigo-700 px-2 md:px-2.5 py-1 rounded-lg font-bold text-xs">${p.count}</span>
-                                </td>
-                                <td class="p-3 md:p-4 text-right font-bold text-gray-700 whitespace-nowrap">R$ ${p.value.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</td>
-                            </tr>
-                        `}).join('')}
-                        ${byProfessional.length === 0 ? '<tr><td colspan="4" class="p-8 text-center text-gray-400">Sem dados.</td></tr>' : ''}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
-
-    renderAppointmentsChart('chart-appointments-daily', dailyLabels, activeValues, cancelledValues);
-
-    document.querySelectorAll('.app-chart-toggle').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-            const chart = chartsInstances['chart-appointments-daily'];
-            if (chart) {
-                const datasetIndex = parseInt(e.target.dataset.dataset);
-                chart.setDatasetVisibility(datasetIndex, e.target.checked);
-                chart.update();
-            }
-        });
-    });
-}
-
-// --- 9. ABA DRE ---
-function renderDRE(container) {
-    const dre = localState.processedDRE;
-    if(!dre) return;
-
-    const totalRev = dre.totalRevenues;
-    
-    const renderRow = (label, value, colorClass, isNegative = false) => {
-        const percent = totalRev > 0 ? (value / totalRev) * 100 : 0;
-        const sign = isNegative ? '- ' : '';
-        return `
-        <div class="flex items-center justify-between py-2 md:py-3 px-3 md:px-4 border-b border-dashed border-gray-100 last:border-0 w-full">
-            <div class="flex-1 pr-2 md:pr-4 overflow-hidden min-w-0">
-                <p class="text-[10px] md:text-xs font-semibold text-gray-600 truncate">${escapeHTML(label)}</p>
-                <div class="w-full h-1 bg-gray-100 rounded-full mt-1.5 overflow-hidden max-w-[80px] md:max-w-[100px]">
-                    <div class="h-full ${colorClass.replace('text-', 'bg-')} opacity-40" style="width: ${Math.min(percent, 100)}%"></div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-card-list text-indigo-500 mr-1"></i> DRE Gerencial</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                        <div class="mb-4"><p class="text-[10px] font-bold text-emerald-600 uppercase border-b border-emerald-100 pb-1 mb-2">Receitas</p>
+                        ${Object.entries(dreIn).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-1.5"><span class="text-xs text-slate-600 truncate mr-2">${k}</span><span class="text-xs font-bold text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-[10px] text-slate-400">Sem dados.</p>'}</div>
+                        <div class="mb-4"><p class="text-[10px] font-bold text-red-500 uppercase border-b border-red-100 pb-1 mb-2">Despesas</p>
+                        ${Object.entries(dreOut).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-1.5"><span class="text-xs text-slate-600 truncate mr-2">${k}</span><span class="text-xs font-bold text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-[10px] text-slate-400">Sem dados.</p>'}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="text-right flex-shrink-0">
-                <p class="text-xs md:text-sm font-bold ${colorClass}">${sign}R$ ${value.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-                <p class="text-[9px] md:text-[10px] text-gray-400 font-medium">${percent.toFixed(1)}%</p>
             </div>
         </div>`;
-    };
 
-    const revRows = Object.entries(dre.revenues).map(([k, v]) => renderRow(k, v, 'text-emerald-600', false)).join('');
-    const expRows = Object.entries(dre.expenses).map(([k, v]) => renderRow(k, v, 'text-red-500', true)).join('');
+    setTimeout(() => {
+        const ctx = document.getElementById('chartFin');
+        if (ctx) {
+            destroyChart('fin');
+            localState.charts['fin'] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: chartLabels.length ? chartLabels : ['-'], datasets: [{ label: 'Receitas', data: chartIn, backgroundColor: '#10b981', borderRadius: 4 }, { label: 'Despesas', data: chartOut, backgroundColor: '#ef4444', borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { borderDash: [2, 4], color: '#f1f5f9' } }, x: { grid: { display: false } } } }
+            });
+        }
+    }, 100);
+}
 
-    const netResultLabel = dre.netResult >= 0 ? 'Lucro Real' : 'Prejuízo Real';
+// ============================================================================
+// 📅 ABA AGENDA
+// ============================================================================
+
+function renderAgendaTab() {
+    const container = document.getElementById('tab-content');
+    const { active, cancelled } = localState.data.agenda;
+
+    const total = active.length + cancelled.length;
+    const concluidas = active.filter(a => a.status === 'completed').length;
+    const aguardando = active.filter(a => ['confirmed', 'pending', 'in-progress'].includes(a.status)).length;
+    const noShow = active.filter(a => a.status === 'no-show').length;
+    const canceladas = cancelled.length;
+    const taxaConclusao = total > 0 ? ((concluidas / total) * 100).toFixed(1) : 0;
+    const receitaTotal = active.filter(a => a.status === 'completed').reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
+
+    let labels = [];
+    let dataPoints = [];
+    
+    if (localState.drillDownMonth !== null) {
+        const anoAtual = new Date(localState.startDate).getFullYear();
+        const daysInMonth = new Date(anoAtual, localState.drillDownMonth + 1, 0).getDate();
+        labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
+        dataPoints = labels.map(day => active.filter(a => { const d = new Date(a.startTime); return d.getMonth() === localState.drillDownMonth && d.getDate() === parseInt(day); }).length);
+    } else {
+        labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        dataPoints = labels.map((_, idx) => active.filter(a => new Date(a.startTime).getMonth() === idx).length);
+    }
 
     container.innerHTML = `
-        <div class="max-w-xl mx-auto animate-slide-up pb-10 w-full">
-            <div class="bg-gray-900 text-white rounded-3xl p-5 md:p-6 shadow-xl relative overflow-hidden mb-4 md:mb-6 w-full">
-                <div class="absolute right-0 top-0 opacity-10 transform translate-x-1/4 -translate-y-1/4">
-                    <svg class="w-32 h-32 md:w-48 md:h-48" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <div class="space-y-4 animate-fade-in pb-10">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Total Agendas</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${total}</span></div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest block">Concluídas</span><span class="text-xl md:text-2xl font-black text-emerald-600 mt-1">${concluidas}</span></div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-amber-500 uppercase tracking-widest block">Aguardando</span><span class="text-xl md:text-2xl font-black text-amber-600 mt-1">${aguardando}</span></div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-red-400 uppercase tracking-widest block">Faltou (No-Show)</span><span class="text-xl md:text-2xl font-black text-red-500 mt-1">${noShow}</span></div>
+                <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Canceladas</span><span class="text-xl md:text-2xl font-black text-slate-400 mt-1">${canceladas}</span></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-indigo-600 p-5 rounded-2xl text-white shadow-md flex items-center justify-between"><div><p class="text-xs font-bold uppercase opacity-80 tracking-widest mb-1">Taxa de Conclusão</p><p class="text-3xl md:text-4xl font-black">${taxaConclusao}%</p></div><i class="bi bi-graph-up-arrow text-4xl opacity-50"></i></div>
+                <div class="bg-emerald-600 p-5 rounded-2xl text-white shadow-md flex items-center justify-between"><div><p class="text-xs font-bold uppercase opacity-80 tracking-widest mb-1">Receita em Atendimentos</p><p class="text-3xl md:text-4xl font-black">${formatCurrency(receitaTotal)}</p></div><i class="bi bi-cash-coin text-4xl opacity-50"></i></div>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                    <h3 class="text-sm font-bold text-slate-800"><i class="bi bi-clock-history text-indigo-500 mr-1"></i> Volume de Agendamentos ${localState.drillDownMonth !== null ? `(${labels.length} dias)` : '(Por Mês)'}</h3>
+                    ${localState.drillDownMonth !== null ? `<button id="btn-back-agenda" class="text-[10px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors shadow-sm"><i class="bi bi-arrow-left mr-1"></i> Voltar</button>` : '<span class="hidden md:inline-block text-[10px] text-slate-400 italic">Dica: Clique num mês para ver por dia.</span>'}
                 </div>
-                <p class="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest mb-1 truncate">Resultado Líquido (Realizado)</p>
-                <h2 class="text-3xl md:text-4xl font-black mb-2 truncate">R$ ${dre.netResult.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h2>
-                <span class="inline-block px-2 py-1 md:px-3 md:py-1 bg-white/20 rounded-lg text-[10px] md:text-xs font-bold backdrop-blur-sm whitespace-nowrap">
-                    ${netResultLabel}: ${(totalRev > 0 ? (dre.netResult/totalRev)*100 : 0).toFixed(1)}% de Margem
-                </span>
+                <div class="relative h-72 w-full"><canvas id="chartAgenda"></canvas></div>
+            </div>
+        </div>`;
+
+    setTimeout(() => {
+        const ctx = document.getElementById('chartAgenda');
+        if (ctx) {
+            destroyChart('agenda');
+            localState.charts['agenda'] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ label: 'Ativos', data: dataPoints, borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4, pointRadius: 5, borderWidth: 2 }] },
+                options: { responsive: true, maintainAspectRatio: false, onClick: (e, elements) => { if (elements.length > 0 && localState.drillDownMonth === null) { localState.drillDownMonth = elements[0].index; renderAgendaTab(); } }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9', borderDash: [2, 4] }, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+            });
+        }
+        const backBtn = document.getElementById('btn-back-agenda');
+        if (backBtn) backBtn.onclick = () => { localState.drillDownMonth = null; renderAgendaTab(); };
+    }, 100);
+}
+
+// ============================================================================
+// 👥 ABA CLIENTES
+// ============================================================================
+
+function renderClientesTab() {
+    const container = document.getElementById('tab-content');
+    const clients = localState.data.clientes || [];
+    
+    const startObj = new Date(localState.startDate);
+    const endObj = new Date(localState.endDate);
+    
+    // Filtros
+    const totalBase = clients.length;
+    const novosNoPeriodo = clients.filter(c => {
+        if (!c.createdAt) return false;
+        const cDate = new Date(c.createdAt);
+        return cDate >= startObj && cDate <= endObj;
+    });
+    
+    // Mock de clientes ausentes (> 60 dias sem interagir/sem data recente)
+    const ausentes = clients.filter(c => {
+        if (!c.createdAt && !c.lastVisit) return true;
+        const lastDate = c.lastVisit ? new Date(c.lastVisit) : new Date(c.createdAt);
+        const diffDays = (new Date() - lastDate) / (1000 * 60 * 60 * 24);
+        return diffDays > 60;
+    });
+
+    const taxaCrescimento = totalBase > 0 ? ((novosNoPeriodo.length / totalBase) * 100).toFixed(1) : 0;
+
+    // Gráfico de Novos Clientes
+    let labels = [];
+    let dataPoints = [];
+    if (localState.drillDownMonth !== null) {
+        const anoAtual = new Date(localState.startDate).getFullYear();
+        const daysInMonth = new Date(anoAtual, localState.drillDownMonth + 1, 0).getDate();
+        labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
+        dataPoints = labels.map(day => novosNoPeriodo.filter(c => { const d = new Date(c.createdAt); return d.getMonth() === localState.drillDownMonth && d.getDate() === parseInt(day); }).length);
+    } else {
+        labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        dataPoints = labels.map((_, idx) => novosNoPeriodo.filter(c => new Date(c.createdAt).getMonth() === idx).length);
+    }
+
+    container.innerHTML = `
+        <div class="space-y-4 animate-fade-in pb-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-people-fill text-indigo-500 mr-1"></i> Base Total</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${totalBase}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest"><i class="bi bi-person-plus-fill mr-1"></i> Cadastros (Período)</span><span class="text-xl md:text-2xl font-black text-emerald-600 mt-1">${novosNoPeriodo.length}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest"><i class="bi bi-person-dash-fill mr-1"></i> Ausentes (>60 dias)</span><span class="text-xl md:text-2xl font-black text-amber-600 mt-1">${ausentes.length}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest"><i class="bi bi-graph-up-arrow mr-1"></i> Taxa Crescimento</span><span class="text-xl md:text-2xl font-black text-blue-600 mt-1">+${taxaCrescimento}%</span></div>
             </div>
 
-            <div class="space-y-3 md:space-y-4 w-full">
-                <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden w-full">
-                    <div class="bg-gray-50/50 p-3 border-b border-gray-100 flex justify-between items-center">
-                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-2 truncate">Receitas Baixadas</h3>
-                        <span class="text-[10px] md:text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md flex-shrink-0 whitespace-nowrap">Total: R$ ${dre.totalRevenues.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-bold text-slate-800"><i class="bi bi-person-lines-fill text-indigo-500 mr-1"></i> Aquisição de Clientes ${localState.drillDownMonth !== null ? '(Diário)' : '(Mensal)'}</h3>
+                        ${localState.drillDownMonth !== null ? `<button id="btn-back-clientes" class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-50 px-3 py-1 rounded">Voltar</button>` : ''}
                     </div>
-                    <div>${revRows || '<p class="text-xs text-gray-400 p-4 text-center">Nenhuma receita baixada.</p>'}</div>
+                    <div class="relative h-64 w-full"><canvas id="chartClientes"></canvas></div>
                 </div>
 
-                <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden w-full">
-                    <div class="bg-gray-50/50 p-3 border-b border-gray-100 flex justify-between items-center">
-                        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider pl-2 truncate">Despesas Baixadas</h3>
-                        <span class="text-[10px] md:text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md flex-shrink-0 whitespace-nowrap">Total: R$ ${dre.totalExpenses.toLocaleString('pt-BR', {minimumFractionDigits: 0})}</span>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-star-fill text-amber-400 mr-1"></i> Últimos Cadastros</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                        ${novosNoPeriodo.slice(0, 10).reverse().map(c => `
+                            <div class="flex items-center justify-between border-b border-slate-50 pb-2">
+                                <div>
+                                    <p class="text-xs font-bold text-slate-700 truncate max-w-[150px]">${c.name}</p>
+                                    <p class="text-[9px] text-slate-400">${c.phone || 'Sem contato'}</p>
+                                </div>
+                                <span class="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold uppercase">Novo</span>
+                            </div>
+                        `).join('') || '<p class="text-xs text-slate-400">Nenhum cliente novo neste período.</p>'}
                     </div>
-                    <div>${expRows || '<p class="text-xs text-gray-400 p-4 text-center">Nenhuma despesa baixada.</p>'}</div>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
+
+    setTimeout(() => {
+        if (!window.Chart) return;
+        const ctx = document.getElementById('chartClientes');
+        if (ctx) {
+            destroyChart('clientes');
+            localState.charts['clientes'] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: 'Novos Cadastros', data: dataPoints, backgroundColor: '#3b82f6', borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, onClick: (e, elements) => { if (elements.length > 0 && localState.drillDownMonth === null) { localState.drillDownMonth = elements[0].index; renderClientesTab(); } }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+            });
+        }
+        const backBtn = document.getElementById('btn-back-clientes');
+        if (backBtn) backBtn.onclick = () => { localState.drillDownMonth = null; renderClientesTab(); };
+    }, 100);
 }
 
-// --- FUNÇÕES DE GRÁFICO (Chart.js Configs) ---
+// ============================================================================
+// 🛍️ ABA VENDAS E PDV
+// ============================================================================
 
-function renderModernCashFlowChart(canvasId, data) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+function renderVendasTab() {
+    const container = document.getElementById('tab-content');
+    const sales = localState.data.vendas || [];
+    
+    const vendasConcluidas = sales.filter(s => s.status === 'completed' || s.status === 'paid');
+    const faturamentoBruto = vendasConcluidas.reduce((acc, s) => acc + (Number(s.totalAmount) || 0), 0);
+    const qtdVendas = vendasConcluidas.length;
+    const ticketMedio = qtdVendas > 0 ? faturamentoBruto / qtdVendas : 0;
+    
+    // Contagem de itens
+    let totalItens = 0;
+    const itemRanking = {};
+    
+    vendasConcluidas.forEach(venda => {
+        (venda.items || []).forEach(item => {
+            const qtd = Number(item.quantity) || 1;
+            totalItens += qtd;
+            const nome = item.name || 'Produto/Serviço Indefinido';
+            itemRanking[nome] = (itemRanking[nome] || 0) + qtd;
+        });
+    });
 
-    if (chartsInstances[canvasId]) chartsInstances[canvasId].destroy();
+    const topItens = Object.entries(itemRanking).sort((a,b) => b[1] - a[1]).slice(0, 5);
 
-    const gradientBalance = ctx.createLinearGradient(0, 0, 0, 400);
-    gradientBalance.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
-    gradientBalance.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+    container.innerHTML = `
+        <div class="space-y-4 animate-fade-in pb-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-indigo-600 text-white p-4 rounded-2xl shadow-sm flex flex-col"><span class="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Faturamento PDV</span><span class="text-xl md:text-2xl font-black mt-1">${formatCurrency(faturamentoBruto)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ticket Médio</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(ticketMedio)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total de Vendas (Recibos)</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${qtdVendas}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Volume de Itens</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${totalItens}</span></div>
+            </div>
 
-    const labelsFormatted = data.labels.map(d => d.split('-').reverse().slice(0, 2).join('/'));
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-trophy-fill text-amber-500 mr-1"></i> Top 5 Mais Vendidos (Curva A)</h3>
+                    <div class="relative h-64 w-full"><canvas id="chartVendas"></canvas></div>
+                </div>
 
-    chartsInstances[canvasId] = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labelsFormatted,
-            datasets: [
-                {
-                    label: 'Créd. Realizado',
-                    data: data.realizedCredit,
-                    backgroundColor: cashFlowColors.creditRealized,
-                    borderRadius: 3,
-                    barPercentage: 0.7,
-                    order: 1
-                },
-                {
-                    label: 'Créd. Provisionado',
-                    data: data.provisionedCredit,
-                    backgroundColor: cashFlowColors.creditProvisioned,
-                    borderRadius: 3,
-                    borderWidth: 1,
-                    borderColor: '#fff',
-                    borderDash: [5, 5],
-                    barPercentage: 0.7,
-                    order: 2
-                },
-                {
-                    label: 'Déb. Realizado',
-                    data: data.realizedDebit,
-                    backgroundColor: cashFlowColors.debitRealized,
-                    borderRadius: 3,
-                    barPercentage: 0.7,
-                    order: 3
-                },
-                {
-                    label: 'Déb. Provisionado',
-                    data: data.provisionedDebit,
-                    backgroundColor: cashFlowColors.debitProvisioned,
-                    borderRadius: 3,
-                    borderWidth: 1,
-                    borderColor: '#fff',
-                    borderDash: [5, 5],
-                    barPercentage: 0.7,
-                    order: 4
-                },
-                {
-                    label: 'Saldo Acumulado',
-                    data: data.balance,
-                    type: 'line',
-                    borderColor: '#3b82f6',
-                    backgroundColor: gradientBalance,
-                    borderWidth: 3,
-                    
-                    pointRadius: 3,
-                    pointBackgroundColor: '#fff', 
-                    pointBorderColor: '#3b82f6',
-                    pointBorderWidth: 2,
-                    pointHoverRadius: 8,
-                    hitRadius: 30, 
-                    
-                    fill: true,
-                    tension: 0.4,
-                    order: 0, 
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { 
-                mode: 'index',
-                intersect: false 
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: { 
-                    backgroundColor: '#fff', 
-                    titleColor: '#111', 
-                    bodyColor: '#444', 
-                    borderColor: '#eee', 
-                    borderWidth: 1, 
-                    padding: 10,
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.dataset.label || '';
-                            if (label) label += ': ';
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(context.parsed.y));
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
-                y: { stacked: true, display: true, grid: { color: '#f3f4f6', borderDash: [4, 4] }, ticks: { callback: v => new Intl.NumberFormat('pt-BR', { notation: "compact" }).format(Math.abs(v)), font: { size: 10 } } }
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-receipt-cutoff text-indigo-500 mr-1"></i> Últimas Vendas Fechadas</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                        ${vendasConcluidas.slice(0, 8).map(v => `
+                            <div class="flex items-center justify-between border border-slate-100 bg-slate-50 p-2.5 rounded-xl">
+                                <div>
+                                    <p class="text-xs font-bold text-slate-700">Recibo #${(v.id || '').substring(0,5).toUpperCase()}</p>
+                                    <p class="text-[9px] text-slate-400">${formatDateDisplay(v.createdAt || v.date || '')}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xs font-black text-emerald-600">${formatCurrency(v.totalAmount)}</p>
+                                    <p class="text-[9px] text-slate-400">${(v.items || []).length} itens</p>
+                                </div>
+                            </div>
+                        `).join('') || '<p class="text-xs text-slate-400">Nenhuma venda concluída no período.</p>'}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    setTimeout(() => {
+        if (!window.Chart) return;
+        const ctx = document.getElementById('chartVendas');
+        if (ctx && topItens.length > 0) {
+            destroyChart('vendas');
+            localState.charts['vendas'] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: topItens.map(i => i[0].substring(0,15)+'...'), datasets: [{ label: 'Quantidade Vendida', data: topItens.map(i => i[1]), backgroundColor: '#f59e0b', borderRadius: 4 }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } }, y: { grid: { display: false } } } }
+            });
+        } else if (ctx) {
+            ctx.parentElement.innerHTML = '<div class="flex h-full items-center justify-center text-xs text-slate-400">Sem dados suficientes para o gráfico</div>';
+        }
+    }, 100);
+}
+
+// ============================================================================
+// 📦 ABA ESTOQUE
+// ============================================================================
+
+function renderEstoqueTab() {
+    const container = document.getElementById('tab-content');
+    const products = localState.data.estoque || [];
+    
+    let totalImobilizado = 0;
+    let ativos = 0;
+    let baixoEstoque = [];
+    let esgotados = [];
+
+    products.forEach(p => {
+        if (p.active !== false) ativos++;
+        
+        const qtd = Number(p.currentStock) || 0;
+        const min = Number(p.minStock) || 0;
+        const custo = Number(p.costPrice) || Number(p.price) || 0; // Tenta custo, se não existir usa preço venda
+        
+        if (qtd > 0) totalImobilizado += (qtd * custo);
+        if (qtd <= 0) esgotados.push(p);
+        else if (qtd <= min) baixoEstoque.push(p);
+    });
+
+    container.innerHTML = `
+        <div class="space-y-4 animate-fade-in pb-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-indigo-600 text-white p-4 rounded-2xl shadow-sm flex flex-col"><span class="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Capital Imobilizado</span><span class="text-xl md:text-2xl font-black mt-1">${formatCurrency(totalImobilizado)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Produtos Ativos</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${ativos}</span></div>
+                <div class="bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Estoque Baixo</span><span class="text-xl md:text-2xl font-black text-amber-600 mt-1">${baixoEstoque.length}</span></div>
+                <div class="bg-red-50 p-4 rounded-2xl border border-red-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-red-600 uppercase tracking-widest">Esgotados</span><span class="text-xl md:text-2xl font-black text-red-600 mt-1">${esgotados.length}</span></div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="text-sm font-bold text-slate-800 mb-4"><i class="bi bi-pie-chart-fill text-indigo-500 mr-1"></i> Saúde do Estoque</h3>
+                    <div class="relative h-56 w-full flex justify-center"><canvas id="chartEstoque"></canvas></div>
+                </div>
+
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-bold text-red-500 mb-4"><i class="bi bi-exclamation-triangle-fill mr-1"></i> Alertas de Reposição Crítica</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                        <table class="w-full text-left text-xs">
+                            <thead class="text-slate-400 border-b border-slate-100">
+                                <tr>
+                                    <th class="pb-2 font-bold uppercase tracking-wider">Produto</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-center">Mínimo Ideal</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-center">Atual</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-right">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                ${[...esgotados, ...baixoEstoque].map(p => `
+                                    <tr class="hover:bg-slate-50 transition-colors">
+                                        <td class="py-2.5 font-bold text-slate-700">${p.name}</td>
+                                        <td class="py-2.5 text-center text-slate-500">${p.minStock || 0}</td>
+                                        <td class="py-2.5 text-center font-black ${p.currentStock <= 0 ? 'text-red-500' : 'text-amber-500'}">${p.currentStock || 0}</td>
+                                        <td class="py-2.5 text-right">
+                                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded ${p.currentStock <= 0 ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}">
+                                                ${p.currentStock <= 0 ? 'Esgotado' : 'Comprar'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="4" class="text-center py-6 text-slate-400">Estoque saudável. Nenhum alerta.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    setTimeout(() => {
+        if (!window.Chart) return;
+        const ctx = document.getElementById('chartEstoque');
+        const saudavel = ativos - baixoEstoque.length - esgotados.length;
+        if (ctx) {
+            destroyChart('estoque');
+            localState.charts['estoque'] = new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels: ['Saudável', 'Baixo', 'Esgotado'], datasets: [{ data: [Math.max(0, saudavel), baixoEstoque.length, esgotados.length], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } } }
+            });
+        }
+    }, 100);
+}
+
+// ============================================================================
+// ⚙️ EVENTOS E EXPORTAÇÃO
+// ============================================================================
+
+function setupEventListeners() {
+    if (pageEventListener) contentDiv.removeEventListener('click', pageEventListener);
+
+    pageEventListener = (e) => {
+        const target = e.target;
+
+        const tabBtn = target.closest('.tab-btn');
+        if (tabBtn) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'border-indigo-200', 'bg-indigo-50', 'text-indigo-700', 'shadow-sm');
+                btn.classList.add('border-slate-200', 'bg-white', 'text-slate-500');
+            });
+            tabBtn.classList.remove('border-slate-200', 'bg-white', 'text-slate-500');
+            tabBtn.classList.add('active', 'border-indigo-200', 'bg-indigo-50', 'text-indigo-700', 'shadow-sm');
+            
+            localState.currentTab = tabBtn.dataset.tab;
+            localState.drillDownMonth = null; 
+            fetchTabData(); 
+            return;
+        }
+
+        const actionBtn = target.closest('button[data-action]');
+        if (actionBtn) {
+            const action = actionBtn.dataset.action;
+
+            if (action === 'apply-filters') {
+                localState.startDate = document.getElementById('report-start').value;
+                localState.endDate = document.getElementById('report-end').value;
+                localState.drillDownMonth = null;
+                fetchTabData();
+            }
+            else if (action === 'preset-date') {
+                const preset = actionBtn.dataset.preset;
+                const now = new Date();
+                let start, end;
+
+                if (preset === 'month') { start = new Date(now.getFullYear(), now.getMonth(), 1); end = new Date(now.getFullYear(), now.getMonth() + 1, 0); } 
+                else if (preset === 'last_month') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = new Date(now.getFullYear(), now.getMonth(), 0); } 
+                else if (preset === 'year') { start = new Date(now.getFullYear(), 0, 1); end = new Date(now.getFullYear(), 11, 31); }
+
+                document.getElementById('report-start').value = start.toISOString().split('T')[0];
+                document.getElementById('report-end').value = end.toISOString().split('T')[0];
+                
+                document.querySelectorAll('[data-preset]').forEach(b => {
+                    b.classList.remove('bg-white', 'text-indigo-600', 'shadow-sm', 'border', 'border-slate-200');
+                    b.classList.add('text-slate-500');
+                });
+                actionBtn.classList.remove('text-slate-500');
+                actionBtn.classList.add('bg-white', 'text-indigo-600', 'shadow-sm', 'border', 'border-slate-200');
+
+                localState.startDate = start.toISOString().split('T')[0];
+                localState.endDate = end.toISOString().split('T')[0];
+                localState.drillDownMonth = null;
+                fetchTabData();
+            }
+            else if (action === 'export-excel') {
+                handleExportExcel();
             }
         }
-    });
-}
+    };
 
-function renderAppointmentsChart(canvasId, labels, activeData, cancelledData) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    contentDiv.addEventListener('click', pageEventListener);
 
-    if (chartsInstances[canvasId]) chartsInstances[canvasId].destroy();
-
-    const labelsFormatted = labels.map(d => d.split('-').reverse().slice(0, 2).join('/'));
-
-    chartsInstances[canvasId] = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labelsFormatted,
-            datasets: [
-                {
-                    label: 'Realizados',
-                    data: activeData,
-                    backgroundColor: '#4f46e5', // Indigo
-                    borderRadius: 3,
-                    barPercentage: 0.6,
-                    order: 1
-                },
-                {
-                    label: 'Cancelados',
-                    data: cancelledData,
-                    backgroundColor: '#ef4444', // Red
-                    borderRadius: 3,
-                    barPercentage: 0.6,
-                    order: 2
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { display: false },
-                tooltip: { backgroundColor: '#fff', titleColor: '#111', bodyColor: '#444', borderColor: '#eee', borderWidth: 1 }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-                y: { beginAtZero: true, grid: { color: '#f3f4f6' }, ticks: { stepSize: 1, font: { size: 10 } } }
+    document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const label = e.target.closest('label');
+            if (e.target.checked) {
+                localState.filterEstablishmentIds.add(e.target.value);
+                label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                label.classList.remove('border-slate-200', 'text-slate-600');
+            } else {
+                localState.filterEstablishmentIds.delete(e.target.value);
+                label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                label.classList.add('border-slate-200', 'text-slate-600');
             }
-        }
+            localState.drillDownMonth = null;
+            fetchTabData(); 
+        });
     });
 }
 
-// Novo renderizador com suporte a linha de tendência "com bolinhas" e seta
-function renderTrendChart(canvasId, label, labels, data) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (chartsInstances[canvasId]) chartsInstances[canvasId].destroy();
+function handleExportExcel() {
+    if (typeof XLSX === 'undefined') {
+        showNotification('Erro', 'A biblioteca XLSX não está disponível.', 'error');
+        return;
+    }
 
-    // Calcula Tendência
-    const { trendData, color } = calculateLinearTrend(data);
+    const { currentTab, data, startDate, endDate } = localState;
+    let exportData = [];
+    let fileName = `Relatorio_${currentTab.toUpperCase()}_${startDate}_a_${endDate}.xlsx`;
 
-    // Ajusta o estilo do último ponto para ser um triângulo (seta)
-    const pointStyles = trendData.map((_, i) => i === trendData.length - 1 ? 'triangle' : 'circle');
-    const pointRadii = trendData.map((_, i) => i === trendData.length - 1 ? 6 : 3); // Aumenta o triângulo
-    const pointRotations = trendData.map((_, i) => {
-       if (i === trendData.length - 1) {
-           // Se a tendência é de alta (verde), aponta pra cima (0 grau no chart.js é topo?)
-           // ChartJS triangle points up by default. 
-           // Se for vermelho (queda), rotacionar 180.
-           return color === '#ef4444' ? 180 : 0; 
-       }
-       return 0;
-    });
+    if (currentTab === 'financeiro') {
+        if (!data.financeiro || (!data.financeiro.payables.length && !data.financeiro.receivables.length)) return showNotification('Aviso', 'Sem dados financeiros para exportar.', 'info');
+        const estMap = new Map(localState.establishments.map(e => [e.id, e.name]));
+        const natureMap = new Map(data.financeiro.natures.map(n => [n.id, n.name]));
+        const allTransactions = [
+            ...data.financeiro.receivables.filter(r => r.status === 'paid').map(r => ({...r, tipo: 'Receita'})),
+            ...data.financeiro.payables.filter(p => p.status === 'paid').map(p => ({...p, tipo: 'Despesa'}))
+        ];
+        exportData = allTransactions.map(t => ({
+            "Unidade": estMap.get(t.establishmentId) || 'Atual', "Data Pagamento": t.paymentDate ? formatDateDisplay(t.paymentDate) : '-', "Tipo": t.tipo, "Descrição": t.description || '-', "Natureza (DRE)": t.naturezaId ? (natureMap.get(t.naturezaId) || 'Outros') : 'Geral', "Valor (R$)": t.amount || 0
+        }));
+    } 
+    else if (currentTab === 'agenda') {
+        if (!data.agenda || data.agenda.active.length === 0) return showNotification('Aviso', 'Sem dados de agenda.', 'info');
+        exportData = data.agenda.active.map(a => ({
+            "Data": a.startTime ? formatDateDisplay(a.startTime) : '-', "Cliente": a.clientName || 'Sem nome', "Profissional": a.professionalName || '-', "Status": a.status, "Valor Faturado (R$)": a.totalAmount || 0
+        }));
+    } 
+    else if (currentTab === 'clientes') {
+        if (!data.clientes || data.clientes.length === 0) return showNotification('Aviso', 'Sem dados de clientes.', 'info');
+        exportData = data.clientes.map(c => ({
+            "Data de Cadastro": c.createdAt ? formatDateDisplay(c.createdAt) : '-', "Nome": c.name || '-', "Telefone": c.phone || '-', "E-mail": c.email || '-', "Última Visita": c.lastVisit ? formatDateDisplay(c.lastVisit) : '-'
+        }));
+    }
+    else if (currentTab === 'vendas') {
+        if (!data.vendas || data.vendas.length === 0) return showNotification('Aviso', 'Sem dados de vendas.', 'info');
+        exportData = data.vendas.map(v => ({
+            "ID Venda": v.id || '-', "Data": v.createdAt ? formatDateDisplay(v.createdAt) : '-', "Status": v.status || '-', "Qtd Itens": (v.items || []).length, "Faturamento (R$)": v.totalAmount || 0
+        }));
+    }
+    else if (currentTab === 'estoque') {
+        if (!data.estoque || data.estoque.length === 0) return showNotification('Aviso', 'Sem dados de estoque.', 'info');
+        exportData = data.estoque.map(p => ({
+            "Produto": p.name || '-', "Código/SKU": p.sku || '-', "Estoque Atual": p.currentStock || 0, "Estoque Mínimo": p.minStock || 0, "Preço Venda (R$)": p.price || 0, "Alerta": p.currentStock <= 0 ? 'Esgotado' : (p.currentStock <= p.minStock ? 'Baixo' : 'OK')
+        }));
+    }
 
+    if (exportData.length === 0) return showNotification('Aviso', 'Nenhum dado válido para exportar.', 'info');
 
-    chartsInstances[canvasId] = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: label,
-                    data: data,
-                    backgroundColor: '#4f46e5', // Indigo
-                    borderRadius: 4,
-                    order: 1
-                },
-                {
-                    label: 'Tendência',
-                    data: trendData,
-                    type: 'line',
-                    borderColor: color, // Verde ou Vermelho
-                    borderWidth: 3, 
-                    
-                    // Configuração de Bolinhas e Seta
-                    pointStyle: pointStyles,
-                    pointRadius: pointRadii,
-                    pointRotation: pointRotations,
-                    
-                    pointBackgroundColor: '#fff',
-                    pointBorderColor: color,
-                    pointBorderWidth: 2,
-                    pointHoverRadius: 8,
-                    hitRadius: 30, 
-
-                    fill: false,
-                    tension: 0, // Linha reta
-                    order: 0
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-                y: { grid: { color: '#f3f4f6' }, beginAtZero: true, ticks: { font: { size: 9 }, callback: v => new Intl.NumberFormat('pt-BR', { notation: "compact" }).format(v) } }
-            }
-        }
-    });
-}
-
-// Renderizador genérico (para Doughnut)
-function renderChart(canvasId, type, label, labels, data, color) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (chartsInstances[canvasId]) chartsInstances[canvasId].destroy();
-
-    new Chart(ctx, {
-        type: type,
-        data: {
-            labels: labels,
-            datasets: [{ label: label, data: data, backgroundColor: color, borderColor: Array.isArray(color) ? '#fff' : color, borderWidth: 1, tension: 0.3, fill: type === 'line' }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: type === 'doughnut', position: 'right', labels: { usePointStyle: true, boxWidth: 8, font: { size: 10 } } } },
-            scales: type === 'doughnut' ? {} : { x: { grid: { display: false }, ticks: {font:{size:9}} }, y: { grid: { color: '#f3f4f6' }, beginAtZero: true, ticks: {font:{size:9}} } }
-        }
-    });
+    try {
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, currentTab.toUpperCase());
+        XLSX.writeFile(workbook, fileName);
+    } catch (e) {
+        console.error("Erro na exportação Excel: ", e);
+        showNotification('Erro', 'Falha ao gerar o ficheiro Excel.', 'error');
+    }
 }
