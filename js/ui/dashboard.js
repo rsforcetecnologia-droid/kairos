@@ -16,7 +16,7 @@ export async function loadDashboardPage() {
         <div class="flex items-center justify-center h-full min-h-[60vh]">
             <div class="flex flex-col items-center">
                 <div class="w-10 h-10 border-4 border-indigo-50 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
-                <p class="text-slate-400 font-medium text-sm">A carregar o seu resumo...</p>
+                <p class="text-slate-400 font-medium text-sm">A processar dados consolidados...</p>
             </div>
         </div>
     `;
@@ -33,11 +33,32 @@ export async function loadDashboardPage() {
         const sevenDaysAgo = new Date(today);
         sevenDaysAgo.setDate(today.getDate() - 6);
 
-        // --- 2. Busca de Dados Reais do Sistema ---
-        const [apptsMonth, allClients] = await Promise.all([
-            appointmentsApi.getAppointmentsByDateRange(state.establishmentId, firstDayOfMonth.toISOString(), endOfToday.toISOString(), null),
-            clientsApi.getClients(state.establishmentId)
-        ]);
+        // --- 2. Identificar Contextos Selecionados (Multiseleção) ---
+        // Se a multiseleção já estiver ativa no state, usamos. Caso contrário, usamos o id único.
+        const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments 
+            : [state.establishmentId];
+
+        // --- 3. Busca de Dados Reais Agregada (Para Múltiplas Unidades) ---
+        // Faz a busca em paralelo para todas as lojas selecionadas
+        const fetchPromises = estIds.map(async (estId) => {
+            const [appts, clients] = await Promise.all([
+                appointmentsApi.getAppointmentsByDateRange(estId, firstDayOfMonth.toISOString(), endOfToday.toISOString(), null),
+                clientsApi.getClients(estId)
+            ]);
+            return { appts: appts || [], clients: clients || [] };
+        });
+
+        const results = await Promise.all(fetchPromises);
+
+        // Consolidação dos dados
+        let apptsMonth = [];
+        let allClients = [];
+
+        results.forEach(res => {
+            apptsMonth = apptsMonth.concat(res.appts);
+            allClients = allClients.concat(res.clients);
+        });
 
         // Função auxiliar para extrair o valor do agendamento
         const getPrice = (appt) => {
@@ -46,7 +67,7 @@ export async function loadDashboardPage() {
                    || Number(appt.servicePrice || 0);
         };
 
-        // --- 3. Cálculo de Métricas ---
+        // --- 4. Cálculo de Métricas ---
         const apptsToday = apptsMonth.filter(a => {
             const st = new Date(a.startTime);
             return st >= today && st <= endOfToday;
@@ -60,7 +81,7 @@ export async function loadDashboardPage() {
         const agendamentosHoje = apptsToday.length;
         const ticketMedio = completedMonth.length > 0 ? (receitaMes / completedMonth.length) : 0;
 
-        // --- 4. Dados para o Gráfico (Últimos 7 dias) ---
+        // --- 5. Dados para o Gráfico (Últimos 7 dias consolidados) ---
         const labels = [];
         const data = [];
         const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -82,7 +103,7 @@ export async function loadDashboardPage() {
         }
         const chartData = { labels, data };
 
-        // --- 5. Próximos Agendamentos (Hoje a partir de agora) ---
+        // --- 6. Próximos Agendamentos (Hoje a partir de agora) ---
         const nextAppointments = apptsToday
             .filter(a => new Date(a.startTime).getTime() >= now.getTime() && a.status !== 'completed' && a.status !== 'cancelled')
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
@@ -95,9 +116,18 @@ export async function loadDashboardPage() {
                 id: a.id
             }));
 
-        // --- 6. Aniversariantes de Hoje ---
+        // --- 7. Aniversariantes de Hoje ---
         const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}`;
-        const birthdays = allClients
+        
+        // Remove duplicados pelo telefone (caso o mesmo cliente exista em filiais diferentes)
+        const uniqueClientsMap = new Map();
+        allClients.forEach(c => {
+            if (c.phone) uniqueClientsMap.set(c.phone, c);
+            else uniqueClientsMap.set(c.id || Math.random().toString(), c);
+        });
+        const uniqueClients = Array.from(uniqueClientsMap.values());
+
+        const birthdays = uniqueClients
             .filter(c => {
                 if (!c.birthDate) return false;
                 let bMonth, bDay;
@@ -120,9 +150,10 @@ export async function loadDashboardPage() {
             });
 
         const metrics = { receitaHoje, agendamentosHoje, receitaMes, ticketMedio };
+        const isMultiView = estIds.length > 1;
 
-        // --- 7. Renderizar ---
-        renderDashboardUI(contentDiv, metrics, chartData, nextAppointments, birthdays);
+        // --- 8. Renderizar ---
+        renderDashboardUI(contentDiv, metrics, chartData, nextAppointments, birthdays, isMultiView);
         initRevenueChart(chartData);
         setupDashboardEvents();
 
@@ -138,16 +169,21 @@ export async function loadDashboardPage() {
     }
 }
 
-function renderDashboardUI(container, metrics, chartData, nextAppointments, birthdays) {
+function renderDashboardUI(container, metrics, chartData, nextAppointments, birthdays, isMultiView) {
     const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    // Badge extra caso estejamos a ver os dados agregados
+    const multiViewBadge = isMultiView 
+        ? `<span class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 align-middle">CONSOLIDADO</span>` 
+        : '';
 
     container.innerHTML = `
         <div class="p-5 md:p-8 max-w-7xl mx-auto space-y-6 pb-24 font-sans animate-fade-in">
             
             <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
                 <div>
-                    <h2 class="text-[1.4rem] font-semibold text-slate-700 tracking-tight">Visão Geral</h2>
-                    <p class="text-[0.85rem] text-slate-500 font-normal mt-1">Acompanhe o desempenho da sua unidade em tempo real.</p>
+                    <h2 class="text-[1.4rem] font-semibold text-slate-700 tracking-tight">Visão Geral ${multiViewBadge}</h2>
+                    <p class="text-[0.85rem] text-slate-500 font-normal mt-1">Acompanhe o desempenho em tempo real.</p>
                 </div>
                 <div class="text-right">
                     <p class="text-xs font-semibold text-indigo-600 bg-indigo-50/70 px-3 py-1.5 rounded-lg inline-block border border-indigo-100/50">
@@ -343,7 +379,7 @@ function initRevenueChart(chartData) {
             datasets: [{
                 label: 'Receita (R$)',
                 data: chartData.data,
-                borderColor: '#6366f1', // Indigo 500 para ser mais suave
+                borderColor: '#6366f1', 
                 backgroundColor: gradient,
                 borderWidth: 2.5,
                 pointBackgroundColor: '#ffffff',
@@ -352,7 +388,7 @@ function initRevenueChart(chartData) {
                 pointRadius: 3,
                 pointHoverRadius: 5,
                 fill: true,
-                tension: 0.35 // Curva suave
+                tension: 0.35 
             }]
         },
         options: {
@@ -415,7 +451,6 @@ function setupDashboardEvents() {
                 break;
             case 'new-appointment':
                 navigateTo('agenda-section');
-                // Se a agenda tiver suporte, podes usar um EventBus para abrir o modal direto
                 break;
             case 'goto-pdv':
                 navigateTo('comandas-section');

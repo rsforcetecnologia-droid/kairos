@@ -20,16 +20,16 @@ import { escapeHTML } from '../utils.js';
 let localState = {
     allComandas: [],
     catalog: { services: [], products: [], packages: [] },
-    activeFilter: 'atendimento',
+    activeFilter: 'abertas', // Novo padrão de filtro: todas, abertas, pagas
     selectedComandaId: null,
     viewMode: 'items', // 'items' ou 'checkout'
     isCashierOpen: false,
     activeCashierSessionId: null,
     loyaltySettings: null,
-    pendingRedemption: null, // Armazena dados do prémio a ser resgatado
+    pendingRedemption: null,
     paging: {
         page: 1,
-        limit: 10,
+        limit: 50, // Aumentado para melhor visualização de KPIs
         total: 0,
     },
     checkoutState: {
@@ -37,13 +37,11 @@ let localState = {
         selectedMethod: 'dinheiro',
         installments: 1,
         amountReceived: '',
-        discount: {
-            type: 'real', // 'real' ou 'percent'
-            value: 0
-        },
-        discountReason: '' // Novo campo para o motivo
+        discount: { type: 'real', value: 0 },
+        discountReason: ''
     },
-    isProcessing: false
+    isProcessing: false,
+    showHistoryDate: false // Controle de exibição do calendário de histórico
 };
 
 let pageEventListener = null;
@@ -59,7 +57,6 @@ function debounce(func, wait) {
     };
 }
 
-// Executa o salvamento com Loading na tela
 async function executeSaveAction(comanda, nextStep = 'stay') {
     if (!comanda || !comanda.id) return;
 
@@ -75,7 +72,6 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         localState.checkoutState.selectedMethod = 'dinheiro';
         localState.checkoutState.amountReceived = '';
         
-        // Mantém desconto se já tiver sido aplicado (ex: fidelidade), senão reseta
         if (!localState.checkoutState.discount.value) {
              localState.checkoutState.discount = { type: 'real', value: 0 };
              localState.checkoutState.discountReason = '';
@@ -118,14 +114,12 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
             });
 
         if (comanda.type === 'walk-in' && String(comanda.id).startsWith('temp-')) {
-             // Lógica para temp se necessário
+             // Lógica temp
         } else {
             await comandasApi.updateComandaItems(comanda.id, itemsToSave);
         }
         
-        if(document.body.contains(loadingOverlay)) {
-            document.body.removeChild(loadingOverlay);
-        }
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
 
         if (nextStep !== 'checkout') {
             showNotification('Sucesso', 'Comanda atualizada!', 'success');
@@ -133,9 +127,7 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         }
 
     } catch (error) {
-        if(document.body.contains(loadingOverlay)) {
-            document.body.removeChild(loadingOverlay);
-        }
+        if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
         console.error("Erro ao salvar:", error);
         comanda._hasUnsavedChanges = true; 
         renderComandaDetail();
@@ -202,6 +194,35 @@ function hideMobileDetail() {
     }
 }
 
+// --- NOVO: FUNÇÃO PARA ATUALIZAR OS KPIs SUPERIORES ---
+function updateKPIs() {
+    const comandas = localState.allComandas || [];
+    
+    // Contadores
+    const abertas = comandas.filter(c => c.status !== 'completed').length;
+    const pagas = comandas.filter(c => c.status === 'completed');
+    
+    // Valores
+    const totalVendasHoje = pagas.reduce((acc, c) => {
+        let val = c.totalAmount !== undefined ? Number(c.totalAmount) : getSafeAllItems(c).reduce((s, i) => s + Number(i.price || 0), 0);
+        return acc + val;
+    }, 0);
+    
+    const ticketMedio = pagas.length > 0 ? (totalVendasHoje / pagas.length) : 0;
+
+    // Atualiza DOM
+    const elAbertas = document.getElementById('kpi-abertas');
+    const elPagas = document.getElementById('kpi-pagas');
+    const elVendas = document.getElementById('kpi-vendas');
+    const elTicket = document.getElementById('kpi-ticket');
+
+    if(elAbertas) elAbertas.textContent = abertas;
+    if(elPagas) elPagas.textContent = pagas.length;
+    if(elVendas) elVendas.textContent = `R$ ${totalVendasHoje.toFixed(2).replace('.', ',')}`;
+    if(elTicket) elTicket.textContent = `R$ ${ticketMedio.toFixed(2).replace('.', ',')}`;
+}
+
+
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
 function renderPageLayout() {
@@ -209,45 +230,69 @@ function renderPageLayout() {
     
     contentDiv.innerHTML = `
         <section class="h-full flex flex-col">
-            <div class="flex flex-wrap justify-between items-center mb-4 gap-4 px-1">
+            
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 px-1">
                 <h2 class="text-2xl md:text-3xl font-bold text-gray-800">Ponto de Venda</h2>
-                <div id="cashier-controls" class="flex items-center gap-2">
-                    <div class="loader-sm"></div>
+                
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                    <div id="cashier-controls" class="flex items-center gap-2 mr-auto md:mr-4">
+                        <div class="loader-sm"></div>
+                    </div>
+                    
+                    <button data-action="toggle-history" class="py-2 px-4 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-2 text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        Histórico
+                    </button>
+
+                    <button id="btn-new-sale" data-action="new-sale" class="py-2 px-4 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-md flex items-center gap-2 text-sm">
+                        <span>+</span> Nova Comanda Avulsa
+                    </button>
                 </div>
             </div>
 
             <div id="cashier-alert-box"></div>
 
-            <div id="comandas-layout">
-                <div id="comandas-list-column" class="flex flex-col h-full">
-                    <div class="p-4 pb-2 sticky top-0 bg-white z-10 border-b border-gray-100 shadow-sm flex-shrink-0">
-                        <button 
-                            id="btn-new-sale"
-                            data-action="new-sale" 
-                            class="w-full py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-md flex items-center justify-center gap-2 mb-3"
-                        >
-                            <span>+</span> NOVA VENDA
-                        </button>
-                        
-                        <div class="flex bg-gray-100 rounded-lg p-1">
-                            <button data-filter="atendimento" class="filter-btn flex-1 text-sm font-medium py-2 rounded-md transition-all">Em Aberto</button>
-                            <button data-filter="finalizadas" class="filter-btn flex-1 text-sm font-medium py-2 rounded-md transition-all">Finalizadas</button>
-                        </div>
-                    </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 px-1">
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Comandas Abertas</span>
+                    <span id="kpi-abertas" class="text-2xl font-bold text-indigo-600 mt-1">0</span>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Vendas Hoje</span>
+                    <span id="kpi-vendas" class="text-2xl font-bold text-green-600 mt-1">R$ 0,00</span>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Comandas Pagas</span>
+                    <span id="kpi-pagas" class="text-2xl font-bold text-gray-800 mt-1">0</span>
+                </div>
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Ticket Médio</span>
+                    <span id="kpi-ticket" class="text-2xl font-bold text-blue-600 mt-1">R$ 0,00</span>
+                </div>
+            </div>
 
-                    <div id="finalizadas-datepicker" class="hidden px-4 py-2 bg-gray-50 border-b flex-shrink-0">
-                        <label for="filter-date" class="text-xs font-semibold text-gray-500 uppercase">Data:</label>
-                        <input type="date" id="filter-date" value="${todayStr}" class="w-full mt-1 p-2 border rounded-md bg-white text-sm">
-                    </div>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 px-1 gap-3">
+                <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
+                    <button data-filter="todas" class="filter-btn px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap">Todas</button>
+                    <button data-filter="abertas" class="filter-btn px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap">Abertas</button>
+                    <button data-filter="pagas" class="filter-btn px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap">Fechadas / Pagas</button>
+                </div>
+                
+                <div id="finalizadas-datepicker" class="hidden flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm w-full md:w-auto">
+                    <label for="filter-date" class="text-xs font-semibold text-gray-500 uppercase pl-2">Data:</label>
+                    <input type="date" id="filter-date" value="${todayStr}" class="w-full md:w-auto p-1.5 border-0 rounded bg-gray-50 text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+            </div>
 
+            <div id="comandas-layout" class="flex-grow flex gap-4 min-h-0">
+                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-100 rounded-xl shadow-sm h-full w-full md:w-1/3 lg:w-1/4">
                     <div id="comandas-list" class="p-3 space-y-2 overflow-y-auto custom-scrollbar flex-grow">
                         <div class="loader mx-auto mt-10"></div>
                     </div>
-                    
-                    <div id="pagination-container" class="p-2 border-t bg-gray-50 flex-shrink-0 min-h-[50px] flex justify-center items-center"></div>
+                    <div id="pagination-container" class="p-2 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 min-h-[50px] flex justify-center items-center rounded-b-xl"></div>
                 </div>
 
-                <div id="comanda-detail-container">
+                <div id="comanda-detail-container" class="bg-white border border-gray-100 rounded-xl shadow-sm h-full w-full md:w-2/3 lg:w-3/4 flex flex-col relative overflow-hidden">
                     <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
                         <p>Selecione uma venda para ver os detalhes</p>
                     </div>
@@ -256,6 +301,24 @@ function renderPageLayout() {
         </section>
     `;
     updateCashierUIState();
+    updateFilterStyles();
+}
+
+function updateFilterStyles() {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+        btn.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+    });
+    const activeBtn = document.querySelector(`[data-filter="${localState.activeFilter}"]`);
+    if(activeBtn) {
+        activeBtn.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+        activeBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+    }
+
+    const datePicker = document.getElementById('finalizadas-datepicker');
+    if(datePicker) {
+        datePicker.classList.toggle('hidden', !localState.showHistoryDate);
+    }
 }
 
 function updateCashierUIState() {
@@ -264,12 +327,12 @@ function updateCashierUIState() {
 
     if (!localState.isCashierOpen) {
         if (alertBox) alertBox.innerHTML = `
-            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg animate-fade-in">
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r-lg animate-fade-in mx-1">
                 <div class="flex">
                     <div class="flex-shrink-0">⚠️</div>
                     <div class="ml-3">
                         <p class="text-sm text-yellow-700">
-                            <strong>Caixa Fechado!</strong> Abra o caixa para realizar vendas.
+                            <strong>Caixa Fechado!</strong> Abra o caixa para realizar operações e novas vendas.
                         </p>
                     </div>
                 </div>
@@ -295,15 +358,13 @@ function renderCashierControls() {
     
     if (localState.isCashierOpen) {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-sm font-medium text-green-700 bg-green-100 py-1 px-3 rounded-full border border-green-200">Caixa Aberto</span>
-            <button data-action="close-cashier" class="py-2 px-4 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 text-sm transition">Fechar Caixa</button>
-            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
+            <span class="hidden sm:inline-block text-xs font-bold text-green-700 bg-green-100 py-1.5 px-3 rounded-lg border border-green-200 uppercase">Caixa Aberto</span>
+            <button data-action="close-cashier" class="py-1.5 px-3 bg-red-50 text-red-700 border border-red-200 font-semibold rounded-lg hover:bg-red-100 text-xs transition">Fechar Caixa</button>
         `;
     } else {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-sm font-medium text-red-700 bg-red-100 py-1 px-3 rounded-full border border-red-200">Caixa Fechado</span>
-            <button data-action="open-cashier" class="py-2 px-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 text-sm shadow transition">Abrir Caixa</button>
-            <button data-action="view-sales-report" class="py-2 px-4 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 text-sm transition">Relatório</button>
+            <span class="hidden sm:inline-block text-xs font-bold text-red-700 bg-red-100 py-1.5 px-3 rounded-lg border border-red-200 uppercase">Caixa Fechado</span>
+            <button data-action="open-cashier" class="py-1.5 px-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 text-xs shadow transition">Abrir Caixa</button>
         `;
     }
 }
@@ -314,7 +375,7 @@ function renderComandaList() {
     
     if (!listContainer) return;
     
-    if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
+    if (!localState.isCashierOpen && localState.activeFilter === 'abertas') {
         listContainer.innerHTML = `
             <div class="text-center py-10 opacity-60">
                 <svg class="w-12 h-12 mx-auto text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
@@ -326,15 +387,19 @@ function renderComandaList() {
         return;
     }
     
-    const statusMap = {
-        atendimento: 'confirmed',
-        finalizadas: 'completed'
-    };
-    const currentStatus = statusMap[localState.activeFilter];
-    const filteredComandas = localState.allComandas.filter(c => c.status === currentStatus);
+    // FILTRAGEM LOCAL COM BASE NOS NOVOS MINI CARDS
+    let filteredComandas = localState.allComandas || [];
+    if(localState.activeFilter === 'abertas') {
+        filteredComandas = filteredComandas.filter(c => c.status !== 'completed');
+    } else if (localState.activeFilter === 'pagas') {
+        filteredComandas = filteredComandas.filter(c => c.status === 'completed');
+    }
+    // Se for 'todas', não filtra.
+
+    updateKPIs(); // Atualiza painéis superiores sempre que a lista for refeita
 
     if (filteredComandas.length === 0) {
-        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda encontrada.</p>`;
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-sm">Nenhuma venda encontrada para este filtro.</p>`;
         renderPaginationControls(paginationContainer);
         return;
     }
@@ -344,8 +409,6 @@ function renderComandaList() {
     filteredComandas.forEach(comanda => {
         const allItems = getSafeAllItems(comanda);
         
-        // --- CÁLCULO ATUALIZADO DO TOTAL PARA EXIBIÇÃO NO CARD ---
-        // Se a comanda está finalizada, usa o valor total salvo (que já inclui descontos)
         let displayTotal = 0;
         if (comanda.status === 'completed' && comanda.totalAmount !== undefined && comanda.totalAmount !== null) {
             displayTotal = Number(comanda.totalAmount);
@@ -353,7 +416,6 @@ function renderComandaList() {
             displayTotal = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
         }
 
-        // --- INDICADOR DE PRÊMIO RESGATADO ---
         const hasReward = comanda.loyaltyRedemption || (comanda.discount && comanda.discount.reason && String(comanda.discount.reason).toLowerCase().includes('fidelidade'));
         const rewardIndicator = hasReward 
             ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-5 h-5 ml-2" title="Prémio Resgatado">🎁</span>` 
@@ -362,11 +424,20 @@ function renderComandaList() {
         const isSelected = comanda.id === localState.selectedComandaId;
         const time = new Date(comanda.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
+        const isCompleted = comanda.status === 'completed';
+
         const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
         const safeProfName = escapeHTML(comanda.professionalName || 'Sem profissional');
-        const typeIndicator = isWalkIn
-            ? `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">Avulso</span>`
-            : `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">Agenda</span>`;
+        
+        // Indicador Visual de Status/Tipo
+        let typeIndicator = '';
+        if(isCompleted) {
+            typeIndicator = `<span class="text-[10px] font-bold uppercase text-green-700 bg-green-100 px-2 py-0.5 rounded-md border border-green-200">Paga</span>`;
+        } else if (isWalkIn) {
+            typeIndicator = `<span class="text-[10px] font-bold uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">Avulsa</span>`;
+        } else {
+            typeIndicator = `<span class="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">Agenda</span>`;
+        }
 
         const div = document.createElement('div');
         div.className = `comanda-card cursor-pointer ${isSelected ? 'selected' : ''}`;
@@ -376,7 +447,7 @@ function renderComandaList() {
             <div class="flex justify-between items-start mb-1 pointer-events-none">
                 <p class="font-bold text-gray-800 truncate max-w-[70%] text-sm">${safeClientName}</p>
                 <div class="flex items-center">
-                    <p class="font-bold text-gray-900 text-sm">R$ ${displayTotal.toFixed(2)}</p>
+                    <p class="font-bold ${isCompleted ? 'text-green-600' : 'text-gray-900'} text-sm">R$ ${displayTotal.toFixed(2)}</p>
                     ${rewardIndicator}
                 </div>
             </div>
@@ -462,7 +533,7 @@ function renderComandaDetail() {
             <div class="hidden lg:flex flex-col items-center justify-center h-full text-center text-gray-400">
                 <svg class="w-16 h-16 mb-4 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/></svg>
                 <p class="text-lg font-medium">Selecione uma venda</p>
-                <p class="text-sm">Toque em um item à esquerda para ver os detalhes</p>
+                <p class="text-sm">Clique em um card ao lado para gerenciar a comanda</p>
             </div>
         `;
         return;
@@ -557,8 +628,6 @@ function renderComandaDetail() {
                 <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Itens do Pedido</h4>
                 ${Object.values(groupedItems).map(item => {
                     const isOriginal = item.sources && item.sources.includes('original_service');
-                    
-                    // --- IDENTIFICAÇÃO VISUAL DO ITEM RESGATADO ---
                     const isRedeemedItem = localState.pendingRedemption && String(localState.pendingRedemption.appliedToItemId) === String(item.id);
                     const showRewardTag = item.isReward || isRedeemedItem;
 
@@ -594,7 +663,7 @@ function renderComandaDetail() {
             </div>
         </div>
 
-        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
             <div class="flex flex-col items-start lg:flex-row lg:justify-between lg:items-end mb-4">
                 <span class="text-sm text-gray-500 font-medium">Total a Pagar</span>
                 <span class="text-4xl lg:text-3xl font-extrabold text-gray-900 mt-1 lg:mt-0">R$ ${total.toFixed(2)}</span>
@@ -615,13 +684,11 @@ function renderComandaDetail() {
     }
 }
 
-// --- ESTÁGIO 2: TELA DE CHECKOUT (OTIMIZADA) ---
 function renderCheckoutView(comanda, container) {
     const rawItems = getSafeAllItems(comanda);
     const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const checkoutState = localState.checkoutState;
 
-    // Cálculo inicial
     const discount = checkoutState.discount || { type: 'real', value: 0 };
     let discountValue = 0;
     if (discount.type === 'percent') {
@@ -632,11 +699,9 @@ function renderCheckoutView(comanda, container) {
     if (discountValue > subtotal) discountValue = subtotal;
     const totalFinal = subtotal - discountValue;
     
-    // Pagamentos
     const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
     const remaining = Math.max(0, totalFinal - totalPaid);
     
-    // Atualiza valor sugerido se necessário
     if (!checkoutState.amountReceived || remaining > 0) {
          checkoutState.amountReceived = remaining.toFixed(2);
     }
@@ -729,15 +794,13 @@ function renderCheckoutView(comanda, container) {
             ` : ''}
         </div>
 
-        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-3">
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-3 z-10">
             <button data-action="back-to-items" class="py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition">Voltar</button>
             <button data-action="finalize-checkout" class="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-200">Finalizar</button>
         </footer>
     `;
 
-    // Função interna para atualizar APENAS os números sem redesenhar o HTML
     const updateCheckoutUI = () => {
-        // Recalcular
         const dType = localState.checkoutState.discount.type;
         const dVal = localState.checkoutState.discount.value;
         let cDiscount = (dType === 'percent') ? (subtotal * dVal) / 100 : dVal;
@@ -747,7 +810,6 @@ function renderCheckoutView(comanda, container) {
         const cPaid = localState.checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
         const cRemaining = Math.max(0, cFinal - cPaid);
 
-        // Atualizar DOM
         const elTotal = container.querySelector('#checkout-total-display');
         if (elTotal) elTotal.textContent = `R$ ${cFinal.toFixed(2)}`;
 
@@ -760,21 +822,17 @@ function renderCheckoutView(comanda, container) {
             }
         }
         
-        // Atualiza input de pagamento se ainda não foi pago
         const elAmount = container.querySelector('#checkout-amount');
         if (elAmount && cRemaining > 0) {
-             // Opcional: Atualizar o valor sugerido se o usuário não estiver digitando nele
              if (document.activeElement !== elAmount) {
                  elAmount.value = cRemaining.toFixed(2);
              }
         }
     };
 
-    // Listeners OTIMIZADOS
     container.querySelector('#discount-value')?.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value) || 0;
         localState.checkoutState.discount.value = val;
-        // NÃO chama renderComandaDetail(), chama updateCheckoutUI
         updateCheckoutUI();
     });
 
@@ -783,7 +841,6 @@ function renderCheckoutView(comanda, container) {
         updateCheckoutUI();
     });
     
-    // Listener para o motivo do desconto
     container.querySelector('#discount-reason')?.addEventListener('input', (e) => {
         localState.checkoutState.discountReason = e.target.value;
     });
@@ -797,8 +854,7 @@ function renderCheckoutView(comanda, container) {
     });
 }
 
-// --- FIDELIDADE E MODAIS ---
-
+// --- FUNÇÕES DE FIDELIDADE (MANTIDAS EXATAMENTE IGUAIS) ---
 async function checkAndRenderLoyalty(comanda, containerElement) {
     if (!containerElement) return;
     const settings = localState.loyaltySettings;
@@ -860,7 +916,6 @@ function openRewardSelectionModal(rewards, comanda) {
                     let typeLabel = '';
                     let typeColor = 'bg-gray-100 text-gray-600';
 
-                    // Definir rótulos e cores baseados no tipo
                     switch(type) {
                         case 'service': typeLabel = 'Serviço'; typeColor = 'bg-indigo-100 text-indigo-700'; break;
                         case 'product': typeLabel = 'Produto'; typeColor = 'bg-green-100 text-green-700'; break;
@@ -896,13 +951,11 @@ function openRewardSelectionModal(rewards, comanda) {
     });
 }
 
-// --- FUNÇÃO ATUALIZADA: RESGATE ROBUSTO E INTEGRAÇÃO FINANCEIRA ---
 async function addRewardToComanda(reward, comanda) {
     const cost = Number(reward.costPoints || reward.points || 0);
     const name = reward.name || reward.reward;
     const type = reward.type || 'money';
     
-    // --- CENÁRIO 1: VALOR LIVRE (MONEY) ---
     if (type === 'money') {
         const discountValue = parseFloat(reward.discount) || 0;
         
@@ -911,35 +964,17 @@ async function addRewardToComanda(reward, comanda) {
             return;
         }
 
-        // Aplica o desconto no estado do checkout
-        localState.checkoutState.discount = {
-            type: 'real',
-            value: discountValue
-        };
-        
+        localState.checkoutState.discount = { type: 'real', value: discountValue };
         localState.checkoutState.discountReason = `Resgate Fidelidade: ${name}`;
         
-        localState.pendingRedemption = {
-            rewardId: reward.id || null,
-            name: name,
-            cost: cost,
-            type: 'money'
-        };
+        localState.pendingRedemption = { rewardId: reward.id || null, name: name, cost: cost, type: 'money' };
 
         showNotification('Sucesso', `Prémio "${name}" resgatado! Desconto de R$ ${discountValue.toFixed(2)} aplicado.`, 'success');
-        
-        // Renderiza o checkout diretamente, pois não há item específico
         renderComandaDetail(); 
         return;
     }
-
-    // --- CENÁRIO 2: ITEM ESPECÍFICO (SERVIÇO, PRODUTO, PACOTE) ---
     
-    // 1. Busca todos os itens atuais da comanda
     const allItems = getSafeAllItems(comanda);
-
-    // 2. Tenta encontrar EXATAMENTE o item do prémio na comanda
-    // Normalização de IDs para evitar falhas de comparação (String vs Number)
     const rewardItemId = reward.itemId ? String(reward.itemId) : null;
 
     if (!rewardItemId) {
@@ -948,67 +983,34 @@ async function addRewardToComanda(reward, comanda) {
     }
 
     const match = allItems.find(i => {
-        // Normaliza IDs do item da comanda
         const itemId = i.id ? String(i.id) : null;
         const itemServiceId = i.serviceId ? String(i.serviceId) : (i.service_id ? String(i.service_id) : null);
         const itemProductId = i.productId ? String(i.productId) : (i.product_id ? String(i.product_id) : null);
 
-        // Verifica compatibilidade baseado no tipo do prémio
-        if (type === 'service') {
-            return (itemId === rewardItemId || itemServiceId === rewardItemId);
-        } else if (type === 'product') {
-            return (itemId === rewardItemId || itemProductId === rewardItemId);
-        } else if (type === 'package') {
-            // Lógica para pacote pode variar dependendo da estrutura do item na comanda
-            return itemId === rewardItemId; 
-        }
+        if (type === 'service') return (itemId === rewardItemId || itemServiceId === rewardItemId);
+        else if (type === 'product') return (itemId === rewardItemId || itemProductId === rewardItemId);
+        else if (type === 'package') return itemId === rewardItemId; 
         return false;
     });
 
     if (match) {
-        // --- ITEM ENCONTRADO (APLICAR DESCONTO) ---
-        
-        // Se o desconto configurado for 0 ou null, assume 100% do valor do item (preço cheio)
-        // Se tiver valor configurado, usa o valor configurado.
         let discountValue = parseFloat(reward.discount);
-        if (!discountValue || discountValue <= 0) {
-            discountValue = parseFloat(match.price || 0);
-        }
+        if (!discountValue || discountValue <= 0) discountValue = parseFloat(match.price || 0);
         
-        // Aplica o desconto no estado do checkout
-        localState.checkoutState.discount = {
-            type: 'real',
-            value: discountValue
-        };
-        
-        // Define o motivo automaticamente
+        localState.checkoutState.discount = { type: 'real', value: discountValue };
         localState.checkoutState.discountReason = `Resgate Fidelidade: ${name}`;
         
-        // Armazena informações do resgate e referencia o item para identificação visual
-        localState.pendingRedemption = {
-            rewardId: reward.id || null,
-            name: name,
-            cost: cost,
-            type: type,
-            appliedToItemId: match.id 
-        };
+        localState.pendingRedemption = { rewardId: reward.id || null, name: name, cost: cost, type: type, appliedToItemId: match.id };
 
         showNotification('Sucesso', `Prémio "${name}" resgatado! Item encontrado e desconto de R$ ${discountValue.toFixed(2)} aplicado.`, 'success');
-        
-        // Atualiza a interface (agora identificará visualmente o item)
         renderComandaDetail(); 
     } else {
-        // --- ITEM NÃO ENCONTRADO (BLOQUEAR) ---
         let itemTypeName = type === 'service' ? 'serviço' : (type === 'product' ? 'produto' : 'pacote');
-        
-        showNotification(
-            'Item Não Encontrado', 
-            `Para resgatar o prémio "${name}", o ${itemTypeName} correspondente deve estar lançado nesta comanda. Por favor, adicione o item primeiro e tente resgatar novamente.`, 
-            'warning'
-        );
+        showNotification('Item Não Encontrado', `Para resgatar o prémio "${name}", o ${itemTypeName} correspondente deve estar lançado nesta comanda. Por favor, adicione o item primeiro e tente resgatar novamente.`, 'warning');
     }
 }
 
+// --- FUNÇÕES DE MODAIS E OPERAÇÕES BÁSICAS (MANTIDAS) ---
 function openAddItemModal() {
     if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
     const { modalElement, close } = showGenericModal({ title: "Adicionar Item à Comanda", contentHTML: '<div id="add-item-content"></div>', maxWidth: 'max-w-4xl' });
@@ -1267,31 +1269,28 @@ async function handleOpenCloseCashierModal() {
     } catch (error) { showNotification('Erro', `Falha ao carregar relatório: ${error.message}`, 'error'); }
 }
 
-// --- HANDLERS E OPERAÇÕES CRÍTICAS ---
-
+// --- HANDLERS DA NOVA INTERFACE ---
 async function handleFilterClick(filter) {
     if (localState.activeFilter === filter) return;
     localState.activeFilter = filter;
     localState.paging.page = 1;
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
-    document.querySelector(`[data-filter="${filter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
-    document.getElementById('finalizadas-datepicker').classList.toggle('hidden', filter !== 'finalizadas');
     
-    // UI Otimista: Limpa e mostra loader imediatamente
+    updateFilterStyles();
+    
     hideMobileDetail();
     localState.selectedComandaId = null;
     localState.viewMode = 'items';
     const listContainer = document.getElementById('comandas-list');
     if (listContainer) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     
+    // Quando mudamos o filtro local, apenas chamamos o render se já tivermos dados (fetch apenas se mudar data)
+    // Para simplificar, vou manter fetchAndDisplayData para garantir que temos as informações corretas.
     await fetchAndDisplayData();
-    renderComandaDetail();
 }
 
 function handleComandaClick(comandaId) {
     localState.selectedComandaId = comandaId;
     localState.viewMode = 'items';
-    // Limpa estado pendente de resgate ao mudar de comanda
     localState.pendingRedemption = null;
     localState.checkoutState.discount = { type: 'real', value: 0 };
     localState.checkoutState.discountReason = '';
@@ -1306,7 +1305,6 @@ async function handleAddItemToComanda(itemData, quantity) {
     if (!comanda) return;
 
     if (!itemData.id || String(itemData.id) === 'undefined') {
-        console.error("Tentativa de adicionar item sem ID:", itemData);
         showNotification('Erro', 'Item sem identificador. Não foi possível adicionar.', 'error');
         return;
     }
@@ -1330,7 +1328,6 @@ async function handleAddItemToComanda(itemData, quantity) {
             baseItem.serviceId = baseItem.id;
             baseItem.service_id = baseItem.id;
         }
-        
         return baseItem;
     });
     
@@ -1361,8 +1358,6 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
         renderComandaDetail();
     }
 }
-
-// js/ui/comandas.js - Parte corrigida
 
 async function handleFinalizeCheckout(comanda) {
     if (localState.isProcessing) return;
@@ -1399,21 +1394,13 @@ async function handleFinalizeCheckout(comanda) {
     const isAppointment = comanda.type === 'appointment';
     const finalItems = rawItems; 
 
-    // --- LÓGICA DE FIDELIDADE (SIMPLIFICADA: APENAS PONTOS POR VISITA) ---
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
 
     if (settings && settings.enabled) {
-        // MODIFICAÇÃO: Removemos a verificação de tipo (Valor vs Visita).
-        // Agora, independente da configuração antiga, usa-se a regra de Visita.
-        // Se não houver valor definido, atribui 1 ponto por padrão.
         pointsToAward = parseInt(settings.pointsPerVisit || 1, 10);
-        
-        // Log para depuração (opcional, pode remover depois)
-        console.log(`Fidelidade: Cliente ganhou ${pointsToAward} pontos fixos pela visita.`);
     }
 
-    // Prepara o objeto de desconto incluindo o motivo
     const enrichedDiscount = {
         ...discount,
         reason: localState.checkoutState.discountReason || '' 
@@ -1424,7 +1411,7 @@ async function handleFinalizeCheckout(comanda) {
         totalAmount: Number(totalAmount),
         items: finalItems,
         cashierSessionId: localState.activeCashierSessionId,
-        loyaltyPointsEarned: pointsToAward, // Envia a pontuação fixa calculada acima
+        loyaltyPointsEarned: pointsToAward,
         discount: enrichedDiscount,
         loyaltyRedemption: localState.pendingRedemption 
     };
@@ -1452,7 +1439,7 @@ async function handleFinalizeCheckout(comanda) {
         localState.selectedComandaId = null;
         localState.viewMode = 'items';
         localState.pendingRedemption = null;
-        await fetchAndDisplayData();
+        await fetchAndDisplayData(); // Isso também fará o update dos KPIs
     } catch (error) { 
         showNotification('Erro no Checkout', error.message, 'error'); 
     } finally { 
@@ -1491,28 +1478,29 @@ async function handleCreateNewSale(e) {
     localState.selectedComandaId = newComanda.id;
     localState.viewMode = 'items';
     document.getElementById('genericModal').style.display = 'none';
+    
+    // Força ir para "Abertas" ou "Todas" para ver a nova comanda
+    if(localState.activeFilter === 'pagas') localState.activeFilter = 'abertas';
+    updateFilterStyles();
+    
     handleComandaClick(newComanda.id);
 }
 
-// --- INICIALIZAÇÃO OTIMIZADA ---
-
+// --- FETCH PRINCIPAL OTIMIZADO ---
 async function fetchAndDisplayData() {
     const listContainer = document.getElementById('comandas-list');
     
-    // Exibe loader apenas se a lista estiver vazia ou já tiver um loader (evita piscar se já tem dados)
     if (!listContainer.hasChildNodes() || listContainer.innerHTML.includes('loader')) {
         listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     }
     
-    const filterDate = localState.activeFilter === 'finalizadas' ? document.getElementById('filter-date').value : null;
+    // Se estiver com "Histórico" ativado, pegamos a data do calendário
+    const filterDate = localState.showHistoryDate ? document.getElementById('filter-date').value : null;
 
     try {
-        // --- OTIMIZAÇÃO: PARALELISMO DE REQUISIÇÕES CRÍTICAS ---
         const sessionPromise = cashierApi.getActiveSession();
+        // A API original talvez usasse a data apenas para finalizadas. Aqui passamos a data se o painel estiver ativado.
         const comandasPromise = comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
-        
-        // --- CORREÇÃO FUNDAMENTAL ---
-        // Sempre busca as configurações de fidelidade para garantir que não estamos usando cache antigo
         const loyaltyPromise = establishmentsApi.getEstablishmentDetails(state.establishmentId);
 
         const [activeSession, response, establishmentData] = await Promise.all([
@@ -1521,7 +1509,6 @@ async function fetchAndDisplayData() {
             loyaltyPromise
         ]);
 
-        // Processamento dos resultados
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
         updateCashierUIState();
@@ -1530,17 +1517,9 @@ async function fetchAndDisplayData() {
             localState.loyaltySettings = establishmentData.loyaltyProgram;
         }
 
-        if (!localState.isCashierOpen && localState.activeFilter === 'atendimento') {
-            renderComandaList();
-            renderComandaDetail();
-            return;
-        }
-
-        localState.allComandas = response.data || response;
-        localState.paging.total = response.total || response.length;
+        localState.allComandas = response.data || response || [];
+        localState.paging.total = response.total || localState.allComandas.length;
         
-        // --- CARREGAMENTO DE CATÁLOGO OTIMIZADO ---
-        // Só carrega se o catálogo estiver vazio
         if (localState.catalog.services.length === 0) {
             const [services, products, packages, professionals] = await Promise.all([
                 servicesApi.getServices(state.establishmentId),
@@ -1560,6 +1539,7 @@ async function fetchAndDisplayData() {
     }
 }
 
+// --- INICIALIZAÇÃO DA PÁGINA ---
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
     localState.selectedComandaId = params.selectedAppointmentId || null;
@@ -1576,7 +1556,8 @@ export async function loadComandasPage(params = {}) {
         const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
         const dateInput = e.target.id === 'filter-date';
 
-        if (dateInput && localState.activeFilter === 'finalizadas') {
+        // Se mudou a data, refaz o fetch (útil quando Histórico está ativado)
+        if (dateInput) {
              localState.paging.page = 1;
              await fetchAndDisplayData();
              return;
@@ -1595,6 +1576,19 @@ export async function loadComandasPage(params = {}) {
             const comanda = localState.allComandas.find(c => c.id === comandaId);
 
             switch (action) {
+                // Ação para o novo botão de Histórico
+                case 'toggle-history':
+                    localState.showHistoryDate = !localState.showHistoryDate;
+                    if(localState.showHistoryDate && localState.activeFilter === 'abertas') {
+                        localState.activeFilter = 'todas'; // Historico faz mais sentido para todas
+                    }
+                    updateFilterStyles();
+                    if(!localState.showHistoryDate) {
+                        // Se desativou o histórico, força voltar para o dia atual no fetch (remove date filter behavior)
+                        await fetchAndDisplayData();
+                    }
+                    break;
+                    
                 case 'back-to-list': hideMobileDetail(); localState.selectedComandaId = null; document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected')); renderComandaDetail(); break;
                 case 'new-sale': openNewSaleModal(); break;
                 case 'add-item': openAddItemModal(); break;
@@ -1638,16 +1632,13 @@ export async function loadComandasPage(params = {}) {
                     if (isNaN(value) || value <= 0) { showNotification('Valor inválido', 'Insira um valor maior que zero.', 'error'); break; }
                     if (value > remaining + 0.05) { showNotification('Valor inválido', 'Valor excede o restante.', 'error'); break; }
 
-                    const newPayment = { 
-                        method: localState.checkoutState.selectedMethod, 
-                        value: value 
-                    };
+                    const newPayment = { method: localState.checkoutState.selectedMethod, value: value };
                     if (['credito', 'crediario'].includes(localState.checkoutState.selectedMethod) && localState.checkoutState.installments > 1) {
                         newPayment.installments = localState.checkoutState.installments;
                     }
                     
                     localState.checkoutState.payments.push(newPayment);
-                    localState.checkoutState.selectedMethod = 'dinheiro'; // Reset
+                    localState.checkoutState.selectedMethod = 'dinheiro'; 
                     localState.checkoutState.installments = 1;
                     localState.checkoutState.amountReceived = '';
                     renderComandaDetail();
@@ -1668,7 +1659,7 @@ export async function loadComandasPage(params = {}) {
                     const itemType = target.dataset.itemType;
                     
                     if (!itemId || itemId === 'undefined' || itemId === 'null') {
-                        showNotification('Erro', 'Item inválido para adição.', 'error');
+                        showNotification('Erro', 'Item inválido.', 'error');
                         return;
                     }
                     
@@ -1681,26 +1672,13 @@ export async function loadComandasPage(params = {}) {
                     }
 
                     const safeItem = itemToClone 
-                        ? { 
-                            id: itemToClone.id, 
-                            name: itemToClone.name, 
-                            price: Number(itemToClone.price), 
-                            type: itemToClone.type 
-                          } 
-                        : { 
-                            id: itemId, 
-                            name: 'Item Indisponível', 
-                            price: 0, 
-                            type: itemType 
-                          };
+                        ? { id: itemToClone.id, name: itemToClone.name, price: Number(itemToClone.price), type: itemToClone.type } 
+                        : { id: itemId, name: 'Item', price: 0, type: itemType };
 
                     await handleAddItemToComanda(safeItem, 1);
                     break;
                 }
-                case 'decrease-qty': {
-                    await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType);
-                    break;
-                }
+                case 'decrease-qty': await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType); break;
                 case 'remove-item': await handleRemoveItemFromComanda(target.dataset.itemId, target.dataset.itemType); break;
                 
                 case 'reopen-appointment': {
@@ -1716,9 +1694,7 @@ export async function loadComandasPage(params = {}) {
                     break;
                 }
                 case 'go-to-appointment': {
-                    const appointmentId = target.dataset.id;
-                    const startTime = target.dataset.date;
-                    navigateTo('agenda-section', { scrollToAppointmentId: appointmentId, targetDate: new Date(startTime) });
+                    navigateTo('agenda-section', { scrollToAppointmentId: target.dataset.id, targetDate: new Date(target.dataset.date) });
                     break;
                 }
                 case 'delete-walk-in': {
@@ -1744,13 +1720,17 @@ export async function loadComandasPage(params = {}) {
     contentDiv.addEventListener('click', pageEventListener);
     contentDiv.addEventListener('change', pageEventListener);
 
-    if (params.initialFilter) localState.activeFilter = params.initialFilter === 'finalizadas' ? 'finalizadas' : 'atendimento';
-    if (params.selectedAppointmentId) localState.selectedComandaId = params.selectedAppointmentId;
+    // Mapeamento caso venha por navegação de outras telas
+    if (params.initialFilter) {
+        if(params.initialFilter === 'finalizadas') localState.activeFilter = 'pagas';
+        else localState.activeFilter = 'abertas';
+    }
     
-    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('bg-white', 'text-indigo-600', 'shadow'));
-    document.querySelector(`[data-filter="${localState.activeFilter}"]`).classList.add('bg-white', 'text-indigo-600', 'shadow');
-    document.getElementById('finalizadas-datepicker').classList.toggle('hidden', localState.activeFilter !== 'finalizadas');
-    if (params.filterDate) document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
+    if (params.selectedAppointmentId) localState.selectedComandaId = params.selectedAppointmentId;
+    if (params.filterDate) {
+        document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
+        localState.showHistoryDate = true;
+    }
 
     await fetchAndDisplayData();
 }

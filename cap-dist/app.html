@@ -88,6 +88,37 @@
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
         /* ============================================ */
+        /* CHECKBOXES PERSONALIZADOS DO CABEÇALHO       */
+        /* ============================================ */
+        .context-checkbox {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #cbd5e1;
+            border-radius: 6px;
+            background-color: white;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .context-checkbox:checked {
+            background-color: #4f46e5;
+            border-color: #4f46e5;
+        }
+        .context-checkbox:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            width: 5px;
+            height: 10px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        /* ============================================ */
         /* MOBILE BOTTOM NAVIGATION - SCROLLABLE PILLS  */
         /* ============================================ */
         .mobile-bottom-nav {
@@ -745,7 +776,7 @@
             .mobile-bottom-nav { display: none !important; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/app-BpFb05Ws.js"></script>
+  <script type="module" crossorigin src="/assets/app-DYYdY5rP.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
   <link rel="stylesheet" crossorigin href="/assets/styles-CZYPZ0h4.css">
@@ -907,15 +938,29 @@
 
                 <div class="flex items-center gap-3 sm:gap-5 flex-shrink-0">
                     
-                    <div class="relative group">
-                        <div class="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 hover:border-indigo-400 transition-all cursor-pointer h-9 sm:h-10">
-                            <div class="text-indigo-600 w-6 h-6 rounded flex items-center justify-center mr-1 flex-shrink-0">
-                                <i class="bi bi-shop text-sm"></i>
+                    <div class="relative group" id="multi-context-container" style="display: none;">
+                        <button id="multi-context-btn" class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 hover:border-indigo-400 hover:bg-white transition-all cursor-pointer h-9 sm:h-10 w-[140px] sm:w-[220px] shadow-sm">
+                            <div class="flex items-center truncate">
+                                <div class="text-indigo-600 w-6 h-6 rounded flex items-center justify-center mr-1.5 flex-shrink-0 bg-indigo-50/50">
+                                    <i class="bi bi-buildings text-sm"></i>
+                                </div>
+                                <span id="multi-context-label" class="text-[12px] sm:text-sm font-semibold text-slate-700 truncate">Carregando...</span>
                             </div>
-                            <select id="global-context-switcher" class="appearance-none bg-transparent border-none text-[12px] sm:text-sm font-semibold text-slate-700 focus:ring-0 cursor-pointer outline-none pr-6 truncate w-[100px] sm:w-[180px]">
-                                <option value="">Carregando...</option>
-                            </select>
-                            <i class="bi bi-chevron-expand absolute right-2.5 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none text-xs"></i>
+                            <i class="bi bi-chevron-down text-slate-400 text-[10px] ml-2 flex-shrink-0 transition-transform" id="multi-context-arrow"></i>
+                        </button>
+
+                        <div id="multi-context-dropdown" class="hidden absolute top-full left-0 mt-2 w-[260px] sm:w-[320px] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[100] transform origin-top-left transition-all flex flex-col max-h-[70vh]">
+                            <div class="p-3 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl flex justify-between items-center">
+                                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Unidades Selecionadas</span>
+                                <span id="multi-context-count" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
+                            </div>
+                            <div class="p-2 overflow-y-auto custom-scrollbar flex-1" id="multi-context-list">
+                                </div>
+                            <div class="p-3 border-t border-slate-100 bg-white rounded-b-2xl">
+                                <button id="multi-context-apply" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors flex justify-center items-center gap-2 shadow-sm">
+                                    <i class="bi bi-check2"></i> Aplicar Visualização
+                                </button>
+                            </div>
                         </div>
                     </div>
 

@@ -233,7 +233,7 @@ function renderListView(allEvents) {
             const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
             const isChecked = localState.selectedItems.has(event.id);
 
-            // Ajuste importante no checkbox: pointer-events:none para que o clique seja gerido pelo Card inteiro
+            // Ajuste no checkbox: pointer-events:none para que o clique seja gerido pelo Card inteiro
             const checkboxHtml = localState.isSelectionMode
                 ? `<div style="display:flex; align-items:center; margin-right: 12px; margin-left: 4px;">
                        <input type="checkbox" style="width:20px; height:20px; accent-color:#4f46e5; pointer-events:none;" ${isChecked ? 'checked' : ''}>
@@ -326,10 +326,10 @@ function updateBatchDeleteUI() {
             </button>
         </div>`;
         container.style.display = 'block';
-        if (fab) fab.style.transform = 'scale(0)'; // Esconde suavemente o FAB
+        if (fab) fab.style.transform = 'scale(0)'; 
     } else {
         container.style.display = 'none';
-        if (fab) fab.style.transform = 'scale(1)'; // Mostra o FAB
+        if (fab) fab.style.transform = 'scale(1)'; 
     }
 }
 
@@ -346,7 +346,6 @@ function updateDateDisplay() {
         if (cd.toDateString() === today.toDateString()) {
             display.textContent = 'Hoje';
         } else {
-            // Remove o ano para ficar mais limpo visualmente
             display.textContent = cd.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
         }
     } else {
@@ -360,7 +359,7 @@ function updateDateDisplay() {
 }
 
 // ============================================================================
-// BUSCA DE DADOS
+// BUSCA DE DADOS COM MULTI-CONTEXTO
 // ============================================================================
 
 async function fetchAndDisplayAgenda() {
@@ -388,10 +387,28 @@ async function fetchAndDisplayAgenda() {
     }
 
     try {
-        const [appts, blockages] = await Promise.all([
-            appointmentsApi.getAppointmentsByDateRange(state.establishmentId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId),
-            blockagesApi.getBlockagesByDateRange(state.establishmentId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId)
-        ]);
+        // Deteta as lojas selecionadas (Se não houver, usa o ID principal)
+        const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments 
+            : [state.establishmentId];
+
+        // Faz os pedidos à API em paralelo para TODAS as lojas selecionadas
+        const fetchPromises = estIds.map(async (estId) => {
+            const [appts, blockages] = await Promise.all([
+                appointmentsApi.getAppointmentsByDateRange(estId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId === 'all' ? null : localState.selectedProfessionalId),
+                blockagesApi.getBlockagesByDateRange(estId, start.toISOString(), end.toISOString(), localState.selectedProfessionalId)
+            ]);
+            return { appts: appts || [], blockages: blockages || [] };
+        });
+
+        const results = await Promise.all(fetchPromises);
+        
+        let allAppts = [];
+        let allBlockages = [];
+        results.forEach(res => {
+            allAppts = allAppts.concat(res.appts);
+            allBlockages = allBlockages.concat(res.blockages);
+        });
 
         if (!document.getElementById('agenda-view')) return;
 
@@ -404,10 +421,11 @@ async function fetchAndDisplayAgenda() {
             })()
         }));
 
-        state.allEvents = [...enrich(appts || []), ...enrich(blockages || [])];
+        state.allEvents = [...enrich(allAppts), ...enrich(allBlockages)];
         renderProfessionalSelector();
         renderAgenda();
     } catch (error) {
+        console.error(error);
         if (document.getElementById('agenda-view')) {
             document.getElementById('agenda-view').innerHTML = `
                 <div class="text-center py-12" style="color:#868e96;">
@@ -420,18 +438,37 @@ async function fetchAndDisplayAgenda() {
 
 async function populateFilters() {
     try {
-        const [profs, services, establishmentDetails] = await Promise.all([
-            professionalsApi.getProfessionals(state.establishmentId),
-            servicesApi.getServices(state.establishmentId),
-            establishmentApi.getEstablishmentDetails(state.establishmentId)
-        ]);
+        const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments 
+            : [state.establishmentId];
 
-        state.professionals = profs || [];
-        state.services = services || [];
+        const fetchPromises = estIds.map(async (estId) => {
+            const [profs, services, estDetails] = await Promise.all([
+                professionalsApi.getProfessionals(estId),
+                servicesApi.getServices(estId),
+                establishmentApi.getEstablishmentDetails(estId)
+            ]);
+            return { profs: profs || [], services: services || [], estDetails };
+        });
+
+        const results = await Promise.all(fetchPromises);
+        
+        const profsMap = new Map();
+        const servicesMap = new Map();
+        let primaryDetails = results[0]?.estDetails;
+
+        // Agrupa e remove duplicados via ID
+        results.forEach(res => {
+            res.profs.forEach(p => profsMap.set(p.id, p));
+            res.services.forEach(s => servicesMap.set(s.id, s));
+        });
+
+        state.professionals = Array.from(profsMap.values());
+        state.services = Array.from(servicesMap.values());
         allClientsData = [];
 
-        if (establishmentDetails) {
-            loyaltySettingsForModal = establishmentDetails.loyaltyProgram || { enabled: false };
+        if (primaryDetails) {
+            loyaltySettingsForModal = primaryDetails.loyaltyProgram || { enabled: false };
         }
 
         state.professionals.forEach((prof, index) => {
@@ -455,11 +492,11 @@ export async function loadAgendaPage(params = {}) {
     localState.isSelectionMode = false;
     localState.selectedItems.clear();
 
-    // === NOVO LAYOUT DO CABEÇALHO DA AGENDA (CENTRALIZADO E MODERNO) ===
+    // === Z-INDEX CORRIGIDO PARA 10 NO CABEÇALHO ===
     contentDiv.innerHTML = `
         <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 relative font-sans w-full" style="background:#f8f9fa;">
 
-            <div style="background: #fff; padding: 14px 16px; border-bottom: 1px solid #f1f3f5; position: sticky; top: 0; z-index: 30; display:flex; flex-direction:column; gap:16px;">
+            <div style="background: #fff; padding: 14px 16px; border-bottom: 1px solid #f1f3f5; position: sticky; top: 0; z-index: 10; display:flex; flex-direction:column; gap:16px;">
                 
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <button id="btnWeekDays" style="background:transparent; border:none; color:#495057; font-size:1.2rem; padding:4px; cursor:pointer;" title="Opções">
@@ -492,7 +529,7 @@ export async function loadAgendaPage(params = {}) {
                 </div>
             </div>
 
-           <div id="profSelectorContainer" class="agenda-prof-bar" style="border-bottom: 1px solid #f1f3f5; padding-top:8px; justify-content: center;">
+            <div id="profSelectorContainer" class="agenda-prof-bar" style="border-bottom: 1px solid #f1f3f5; padding-top:8px; justify-content: center;">
                 <div style="width:24px;height:24px;border:2px solid #e9ecef;border-top:2px solid #4f46e5;border-radius:50%;animation:spin 0.7s linear infinite;margin:8px auto;"></div>
             </div>
 
@@ -549,7 +586,6 @@ export async function loadAgendaPage(params = {}) {
     if (!hasContentDelegationInitialized) {
         contentDiv.addEventListener('click', async (e) => {
 
-            // === Priority 1: Botão de Comanda ===
             const comandaBtn = e.target.closest('[data-action="open-comanda"]');
             if (comandaBtn) {
                 e.stopPropagation();
@@ -569,7 +605,6 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 1.5: Botão WhatsApp ===
             const waBtn = e.target.closest('.lc-action-btn.wa');
             if (waBtn) {
                 e.stopPropagation();
@@ -577,7 +612,6 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 2: Exclusão em Lote ===
             if (e.target.closest('[data-action="batch-delete"]')) {
                 const count = localState.selectedItems.size;
                 const confirmed = await showConfirmation('Excluir Selecionados', `Tem certeza que deseja excluir ${count} agendamento(s)? Esta ação não pode ser desfeita.`);
@@ -593,7 +627,6 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 3: Botões da barra de Profissionais ===
             const profPill = e.target.closest('[data-action="select-professional"]');
             if (profPill) {
                 const profId = profPill.dataset.profId;
@@ -602,7 +635,6 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            // === Priority 4: Clique no Card/Chip (Abre Edição ou Seleciona no Modo Seleção) ===
             const card = e.target.closest('.list-card[data-appointment], .week-event-chip[data-appointment]');
             if (card) {
                 if (localState.isSelectionMode) {
@@ -610,13 +642,12 @@ export async function loadAgendaPage(params = {}) {
                     const cb = card.querySelector('input[type="checkbox"]');
                     if (cb) {
                         const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-                        const isNowChecked = !cb.checked; // inverte o estado
+                        const isNowChecked = !cb.checked; 
                         cb.checked = isNowChecked;
                         
                         if (isNowChecked) localState.selectedItems.add(apptData.id);
                         else localState.selectedItems.delete(apptData.id);
                         
-                        // Atualiza a UI visualmente no mesmo instante
                         if (card.classList.contains('week-event-chip') || card.classList.contains('list-card')) {
                             if (isNowChecked) {
                                 card.style.boxShadow = '0 0 0 2px #4f46e5';
@@ -631,13 +662,11 @@ export async function loadAgendaPage(params = {}) {
                     return;
                 }
                 
-                // Se não está em modo seleção, abre edição
                 const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
                 openAppointmentModal(apptData);
                 return;
             }
 
-            // === Priority 5: FAB (Botão de Novo Agendamento) ===
             const fab = e.target.closest('[data-action="new-appointment"]');
             if (fab) {
                 openAppointmentModal();
@@ -717,19 +746,17 @@ function showOptionsMenu() {
     document.getElementById('closeOptSheet').addEventListener('click', closeSheet);
     overlay.addEventListener('click', closeSheet);
 
-    // Ativa/Desativa o modo de Seleção
     document.getElementById('optSelectMode').addEventListener('click', () => {
         localState.isSelectionMode = !localState.isSelectionMode;
-        if (!localState.isSelectionMode) localState.selectedItems.clear(); // Limpa ao sair
+        if (!localState.isSelectionMode) localState.selectedItems.clear(); 
         closeSheet();
-        renderAgenda(); // Recarrega a vista com as caixas de seleção à mostra
+        renderAgenda(); 
         
         if (localState.isSelectionMode) {
             setTimeout(() => { showNotification('Modo de Exclusão Ativo.', 'info'); }, 300);
         }
     });
 
-    // Inactive profs
     document.getElementById('optInactiveToggle').addEventListener('change', (e) => {
         localState.showInactiveProfs = e.target.checked;
         renderProfessionalSelector();
@@ -990,8 +1017,13 @@ async function handleAppointmentFormSubmit(e) {
     const [h, m] = newAppointmentState.data.time.split(':');
     const startTime = new Date(`${newAppointmentState.data.date}T${h}:${m}:00`);
 
+    // No modo multi-empresa, usamos o primeiro ID selecionado como base para criar um agendamento novo
+    const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+        ? state.selectedEstablishments[0] 
+        : state.establishmentId;
+
     const data = {
-        establishmentId: state.establishmentId,
+        establishmentId: targetEstId,
         clientName: newAppointmentState.data.clientName,
         clientPhone: newAppointmentState.data.clientPhone,
         services: servicesData,
@@ -1036,8 +1068,12 @@ async function updateTimesAndDuration() {
     }
 
     try {
+        const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments[0] 
+            : state.establishmentId;
+
         let slots = await appointmentsApi.getAvailability({
-            establishmentId: state.establishmentId,
+            establishmentId: targetEstId,
             professionalId,
             serviceIds: selectedServiceIds,
             date
@@ -1093,12 +1129,29 @@ async function handleClientSearch(term) {
     container.innerHTML = '<div class="text-center py-3"><div class="w-5 h-5 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div></div>';
 
     try {
-        const found = await clientsApi.getClients(state.establishmentId, term.trim());
+        const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments 
+            : [state.establishmentId];
+
+        const searchPromises = estIds.map(estId => clientsApi.getClients(estId, term.trim()));
+        const results = await Promise.all(searchPromises);
+        
+        const clientsMap = new Map();
+        results.forEach(res => {
+            res.forEach(c => {
+                if (c.phone) clientsMap.set(c.phone, c);
+                else clientsMap.set(c.id || Math.random().toString(), c);
+            });
+        });
+
+        const found = Array.from(clientsMap.values());
         allClientsData = found;
+
         if (!found.length) {
             container.innerHTML = '<p class="text-xs text-gray-400">Nenhum cliente encontrado.</p>';
             return;
         }
+        
         container.innerHTML = found.map(c => {
             const sel = newAppointmentState.data.clientName === c.name && newAppointmentState.data.clientPhone === c.phone;
             return `<div class="client-card p-2.5 bg-white rounded-lg border ${sel ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'} cursor-pointer flex items-center gap-2" data-client-name="${esc(c.name)}" data-client-phone="${esc(c.phone)}" data-loyalty-points="${c.loyaltyPoints || 0}">
