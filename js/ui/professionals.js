@@ -114,7 +114,7 @@ function renderBaseLayout() {
 
             <div id="filter-panel" class="${localState.isAdvancedFilterOpen ? 'block' : 'hidden'} mb-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
                 <div class="flex flex-col md:flex-row items-end gap-3">
-                    <div class="flex-1 w-full">
+                    <div class="w-full md:w-64">
                         <label class="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Serviço Habilitado</label>
                         <select id="filterServiceId" class="w-full p-2 border border-gray-200 rounded-lg text-xs bg-gray-50 focus:bg-white outline-none focus:ring-1 focus:ring-indigo-500">
                             <option value="all">Todos os serviços</option>
@@ -146,10 +146,10 @@ function setupEventListeners() {
     const globalApplyBtn = document.getElementById('multi-context-apply');
     if (globalApplyBtn) {
         // Previne duplicação de eventos
-        globalApplyBtn.removeEventListener('click', filterAndRenderProfessionals);
+        globalApplyBtn.removeEventListener('click', fetchAndDisplayData);
         globalApplyBtn.addEventListener('click', () => {
-            // Um pequeno delay garante que o DOM do checkbox global atualizou antes de lermos
-            setTimeout(filterAndRenderProfessionals, 100);
+            // Agora forçamos o recarregamento total (busca no BD) das lojas selecionadas
+            setTimeout(fetchAndDisplayData, 100);
         });
     }
 
@@ -270,21 +270,32 @@ function setupEventListeners() {
 
 async function fetchAndDisplayData() {
     const listDiv = document.getElementById('professionalsList');
+    const activeHeaderEstablishments = getActiveEstablishmentsFromHeader();
     
     try {
-        const [professionals, services] = await Promise.all([
-            professionalsApi.getProfessionals(state.establishmentId),
-            servicesApi.getServices(state.establishmentId)
-        ]);
+        // Busca profissionais e serviços em paralelo para TODAS as unidades selecionadas no cabeçalho
+        const profPromises = activeHeaderEstablishments.map(id => professionalsApi.getProfessionals(id));
+        const servPromises = activeHeaderEstablishments.map(id => servicesApi.getServices(id));
         
-        localState.professionals = professionals;
-        localState.services = services;
-        state.professionals = professionals; 
+        const profResults = await Promise.all(profPromises);
+        const servResults = await Promise.all(servPromises);
+        
+        // Mescla e remove duplicatas (caso um profissional atenda em mais de uma loja selecionada)
+        const profMap = new Map();
+        profResults.flat().forEach(p => profMap.set(p.id, p));
+        localState.professionals = Array.from(profMap.values());
+        state.professionals = localState.professionals;
+        
+        // Mescla e remove duplicatas de serviços
+        const servMap = new Map();
+        servResults.flat().forEach(s => servMap.set(s.id, s));
+        localState.services = Array.from(servMap.values());
         
         populateServiceFilter();
         filterAndRenderProfessionals(); 
         
     } catch (error) {
+        console.error(error);
         listDiv.innerHTML = '<div class="col-span-full py-16 text-center"><p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl border border-red-100 inline-block text-sm"><i class="bi bi-exclamation-triangle"></i> Erro ao carregar dados do servidor.</p></div>';
     }
 }
@@ -700,7 +711,7 @@ function fillCadastroTab(prof, services) {
                     </button>
                 </div>
                 
-                <div id="profServicesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-gray-200 rounded-xl bg-gray-50 max-h-64 overflow-y-auto custom-scrollbar">
+                <div id="profServicesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-gray-200 rounded-xl bg-gray-50 max-h-40 overflow-y-auto custom-scrollbar">
                     ${services.map(s => `
                         <label class="flex items-center space-x-3 p-2.5 bg-white rounded-lg cursor-pointer transition-colors border border-gray-100 hover:border-indigo-300 hover:shadow-sm">
                             <input type="checkbox" value="${s.id}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" ${prof.services?.includes(s.id) ? 'checked' : ''}>
