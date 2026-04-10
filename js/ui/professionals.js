@@ -1,43 +1,400 @@
-// js/ui/professionals.js (Versão Completa + Multi-Tenant / Distribuição na Rede)
+// js/ui/professionals.js
 
 // --- 1. IMPORTAÇÕES ---
 import * as professionalsApi from '../api/professionals.js';
 import * as servicesApi from '../api/services.js';
 import * as blockagesApi from '../api/blockages.js';
-import { getHierarchy } from '../api/establishments.js'; // NOVO: Para buscar a estrutura da rede
+import { getHierarchy } from '../api/establishments.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
 import { logAction } from '../api/audit.js';
 import { auth } from '../firebase-config.js';
 import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
-// --- 2. CONSTANTES E VARIÁVEIS DO MÓDULO ---
+// --- 2. CONSTANTES E ESTADO LOCAL ---
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
-let selectedProfessionals = new Set();
+
+let localState = {
+    professionals: [],
+    services: [],
+    hierarchyCache: [],
+    
+    // Filtros
+    statusFilter: 'all',
+    searchQuery: '',
+    filterServiceId: 'all',
+    isAdvancedFilterOpen: false,
+    
+    selectedIds: new Set()
+};
+
 let pageEventListener = null;
 let modalEventListener = null;
-let hierarchyCache = []; // NOVO: Cache da hierarquia da rede
 
-// --- FUNÇÃO AUXILIAR PARA OBTER UTILIZADOR ATUAL (Para o Log) ---
 function getCurrentUserForLog() {
     const user = auth.currentUser;
     if (!user) return { uid: 'unknown', name: 'Desconhecido' };
     return { uid: user.uid, name: user.displayName || user.email };
 }
 
-// --- 3. FUNÇÕES DE RENDERIZAÇÃO E LÓGICA ---
+// --- FUNÇÃO AUXILIAR: LER CHAVE SELETORA DO TOPO DO SISTEMA ---
+function getActiveEstablishmentsFromHeader() {
+    const checkboxes = document.querySelectorAll('#multi-context-list input[type="checkbox"]:checked');
+    if (checkboxes.length > 0) {
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    return [state.establishmentId];
+}
 
-// Renderiza esqueletos de carregamento (UX)
+// --- 3. RENDERIZAÇÃO DO LAYOUT PRINCIPAL ---
+
+export async function loadProfessionalsPage() {
+    localState.selectedIds.clear();
+    
+    try {
+        // Mantemos a busca da hierarquia APENAS para usar no Modal de Cadastro
+        const payload = await getHierarchy();
+        localState.hierarchyCache = payload.matrizes || [];
+    } catch (e) { console.warn("Erro ao buscar lojas", e); }
+
+    renderBaseLayout();
+    setupEventListeners();
+    await fetchAndDisplayData();
+}
+
+function renderBaseLayout() {
+    contentDiv.innerHTML = `
+        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
+            
+            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-gray-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
+                <div class="flex items-center gap-3">
+                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-gray-700 rounded-full transition-colors text-gray-300 hover:text-white">
+                        <i class="bi bi-x-lg text-lg"></i>
+                    </button>
+                    <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
+                </div>
+                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm">
+                    <i class="bi bi-trash3"></i> Excluir
+                </button>
+            </div>
+
+            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full">
+                <div class="flex bg-gray-200/80 p-1 rounded-xl border border-gray-300 w-full md:w-auto shadow-inner hidden md:flex opacity-0 pointer-events-none">
+                    <button class="flex-1 md:w-32 py-1.5 text-xs font-bold rounded-lg transition-all flex justify-center items-center gap-2">Space</button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end ml-auto">
+                    <button data-action="open-professional-modal" data-professional="{}" class="py-1.5 px-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-2 text-xs flex-1 md:flex-none justify-center">
+                        <i class="bi bi-person-plus-fill text-sm"></i> Novo Profissional
+                    </button>
+                </div>
+            </div>
+
+            <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                </div>
+
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2 w-full">
+                <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
+                    <button data-status="all" class="status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 transition whitespace-nowrap ${localState.statusFilter === 'all' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-50'}">Todos</button>
+                    <button data-status="active" class="status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 transition whitespace-nowrap ${localState.statusFilter === 'active' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-gray-600 hover:bg-gray-50'}">Ativos</button>
+                    <button data-status="inactive" class="status-filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 transition whitespace-nowrap ${localState.statusFilter === 'inactive' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white text-gray-600 hover:bg-gray-50'}">Inativos</button>
+                </div>
+
+                <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+                    <div class="relative flex-shrink-0 w-full md:w-64">
+                        <i class="bi bi-search absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="text" id="searchInput" value="${localState.searchQuery}" placeholder="Nome ou especialidade..." class="w-full pl-8 p-1.5 bg-white border border-gray-200 shadow-sm rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                    <button id="toggle-filter-btn" class="px-3 py-1.5 bg-white border border-gray-200 text-gray-600 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-1.5 text-xs flex-shrink-0 ${localState.isAdvancedFilterOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : ''}">
+                        <i class="bi bi-funnel"></i> Filtros
+                    </button>
+                </div>
+            </div>
+
+            <div id="filter-panel" class="${localState.isAdvancedFilterOpen ? 'block' : 'hidden'} mb-3 bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in">
+                <div class="flex flex-col md:flex-row items-end gap-3">
+                    <div class="flex-1 w-full">
+                        <label class="block text-[9px] font-bold text-gray-400 mb-1 uppercase tracking-widest">Serviço Habilitado</label>
+                        <select id="filterServiceId" class="w-full p-2 border border-gray-200 rounded-lg text-xs bg-gray-50 focus:bg-white outline-none focus:ring-1 focus:ring-indigo-500">
+                            <option value="all">Todos os serviços</option>
+                        </select>
+                    </div>
+
+                    <div class="flex gap-2 w-full md:w-auto">
+                        <button id="clear-filters-btn" class="w-full md:w-auto px-4 py-2 bg-gray-100 text-gray-700 font-semibold rounded-lg hover:bg-gray-200 transition-colors text-xs">Limpar</button>
+                        <button id="apply-filter-btn" class="w-full md:w-auto px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-sm hover:bg-indigo-700 active:scale-95 transition-all text-xs">
+                            Aplicar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-20 mt-1 flex-1 content-start overflow-y-auto custom-scrollbar pr-1">
+                ${renderSkeletonList(8)}
+            </div>
+
+            <button data-action="open-professional-modal" data-professional="{}" class="md:hidden fixed bottom-20 right-4 w-12 h-12 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-all z-40">
+                <i class="bi bi-plus-lg text-xl"></i>
+            </button>
+        </section>
+    `;
+}
+
+function setupEventListeners() {
+    // Escuta o Botão de "Aplicar Visualização" do Cabeçalho Global
+    const globalApplyBtn = document.getElementById('multi-context-apply');
+    if (globalApplyBtn) {
+        // Previne duplicação de eventos
+        globalApplyBtn.removeEventListener('click', filterAndRenderProfessionals);
+        globalApplyBtn.addEventListener('click', () => {
+            // Um pequeno delay garante que o DOM do checkbox global atualizou antes de lermos
+            setTimeout(filterAndRenderProfessionals, 100);
+        });
+    }
+
+    // Filtros de Status (Abas Estilo Financeiro)
+    document.querySelectorAll('.status-filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const status = e.target.dataset.status;
+            localState.statusFilter = status;
+            
+            document.querySelectorAll('.status-filter-btn').forEach(b => {
+                b.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200', 'bg-red-50', 'text-red-700', 'border-red-200');
+                b.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+            });
+            
+            if (status === 'inactive') {
+                e.target.classList.add('bg-red-50', 'text-red-700', 'border-red-200');
+            } else {
+                e.target.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+            }
+            e.target.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+            
+            filterAndRenderProfessionals();
+        });
+    });
+
+    // Toggle Filtros Avançados
+    const toggleFilterBtn = document.getElementById('toggle-filter-btn');
+    if (toggleFilterBtn) {
+        toggleFilterBtn.addEventListener('click', () => {
+            const panel = document.getElementById('filter-panel');
+            localState.isAdvancedFilterOpen = !localState.isAdvancedFilterOpen;
+            
+            if (localState.isAdvancedFilterOpen) {
+                panel.classList.remove('hidden');
+                toggleFilterBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+                toggleFilterBtn.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
+            } else {
+                panel.classList.add('hidden');
+                toggleFilterBtn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+                toggleFilterBtn.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
+            }
+        });
+    }
+
+    // Input de Busca
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            localState.searchQuery = e.target.value.toLowerCase();
+            filterAndRenderProfessionals();
+        });
+    }
+
+    // Botões Limpar e Aplicar
+    const clearBtn = document.getElementById('clear-filters-btn');
+    if(clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            localState.filterServiceId = 'all';
+            document.getElementById('filterServiceId').value = 'all';
+            filterAndRenderProfessionals();
+        });
+    }
+
+    const applyBtn = document.getElementById('apply-filter-btn');
+    if(applyBtn) {
+        applyBtn.addEventListener('click', () => {
+            localState.filterServiceId = document.getElementById('filterServiceId').value;
+            document.getElementById('toggle-filter-btn').click(); // Fecha painel
+            filterAndRenderProfessionals();
+        });
+    }
+
+    // Delegação de Eventos (Cards, Modais, Ações em Lote)
+    if (pageEventListener) contentDiv.removeEventListener('click', pageEventListener);
+    
+    pageEventListener = e => {
+        const cardOrBtn = e.target.closest('[data-action="open-professional-modal"]');
+        if (cardOrBtn) {
+            e.preventDefault();
+            let profData = {};
+            if (cardOrBtn.dataset.professional) {
+                try { profData = JSON.parse(cardOrBtn.dataset.professional); } catch (err) {}
+            }
+            openProfessionalModal(profData);
+            return;
+        }
+
+        const checkbox = e.target.closest('.professional-checkbox');
+        if (checkbox) {
+             const id = checkbox.dataset.id;
+             if (checkbox.checked) localState.selectedIds.add(id); 
+             else localState.selectedIds.delete(id);
+             
+             updateBatchActionBar();
+             e.stopPropagation();
+             return;
+        }
+
+        const cancelSelectionBtn = e.target.closest('#cancel-selection-btn');
+        if (cancelSelectionBtn) {
+            localState.selectedIds.clear();
+            document.querySelectorAll('.professional-checkbox').forEach(cb => cb.checked = false);
+            updateBatchActionBar();
+            return;
+        }
+
+        const batchDeleteBtn = e.target.closest('#batch-delete-btn');
+        if (batchDeleteBtn) {
+            handleBatchDelete();
+            return;
+        }
+    };
+    
+    contentDiv.addEventListener('click', pageEventListener);
+}
+
+// --- 4. COMUNICAÇÃO DE DADOS E RENDERIZAÇÃO DA LISTA ---
+
+async function fetchAndDisplayData() {
+    const listDiv = document.getElementById('professionalsList');
+    
+    try {
+        const [professionals, services] = await Promise.all([
+            professionalsApi.getProfessionals(state.establishmentId),
+            servicesApi.getServices(state.establishmentId)
+        ]);
+        
+        localState.professionals = professionals;
+        localState.services = services;
+        state.professionals = professionals; 
+        
+        populateServiceFilter();
+        filterAndRenderProfessionals(); 
+        
+    } catch (error) {
+        listDiv.innerHTML = '<div class="col-span-full py-16 text-center"><p class="text-red-500 font-bold bg-red-50 p-4 rounded-xl border border-red-100 inline-block text-sm"><i class="bi bi-exclamation-triangle"></i> Erro ao carregar dados do servidor.</p></div>';
+    }
+}
+
+function populateServiceFilter() {
+    const serviceSelect = document.getElementById('filterServiceId');
+    if(serviceSelect && localState.services) {
+        serviceSelect.innerHTML = '<option value="all">Todos os serviços</option>';
+        localState.services.forEach(s => {
+            const option = document.createElement('option');
+            option.value = s.id; 
+            option.textContent = escapeHTML(s.name);
+            if(localState.filterServiceId === s.id) option.selected = true;
+            serviceSelect.appendChild(option);
+        });
+    }
+}
+
+function updateBatchActionBar() {
+    const bar = document.getElementById('batch-action-bar');
+    const countSpan = document.getElementById('selected-count');
+    const count = localState.selectedIds.size;
+
+    if (!bar || !countSpan) return;
+
+    if (count > 0) {
+        countSpan.textContent = count;
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+}
+
+function renderKPIs(filteredList) {
+    const section = document.getElementById('summary-section');
+    if (!section) return;
+
+    // Calcula baseado nos profissionais que as empresas SELECIONADAS NO TOPO têm
+    const total = filteredList.length;
+    const ativos = filteredList.filter(p => p.status !== 'inactive').length;
+    const inativos = total - ativos;
+
+    section.innerHTML = `
+        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Membros na Unidade</span>
+            <span class="text-xl font-black text-gray-800 mt-0.5">${total}</span>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ativos</span>
+            <span class="text-xl font-bold text-emerald-600 mt-0.5">${ativos}</span>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col">
+            <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Inativos</span>
+            <span class="text-xl font-bold text-red-500 mt-0.5">${inativos}</span>
+        </div>
+        <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100 shadow-sm flex flex-col">
+            <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Filtrados / Exibidos</span>
+            <span class="text-xl font-bold text-indigo-700 mt-0.5">${filteredList.length}</span>
+        </div>
+    `;
+}
+
+function filterAndRenderProfessionals() {
+    const listDiv = document.getElementById('professionalsList');
+    if (!listDiv) return;
+
+    if (!localState.professionals || localState.professionals.length === 0) {
+        listDiv.innerHTML = renderSkeletonList(8); 
+        return;
+    }
+
+    // Pega as empresas marcadas na chave seletora global do topo
+    const activeHeaderEstablishments = getActiveEstablishmentsFromHeader();
+    
+    const filtered = localState.professionals.filter(p => {
+        // Texto (Nome / Especialidade)
+        const matchesSearch = p.name.toLowerCase().includes(localState.searchQuery) || (p.specialty && p.specialty.toLowerCase().includes(localState.searchQuery));
+        
+        // Status
+        let matchesStatus = true;
+        if(localState.statusFilter === 'active') matchesStatus = p.status !== 'inactive';
+        if(localState.statusFilter === 'inactive') matchesStatus = p.status === 'inactive';
+        
+        // Serviço
+        const matchesService = localState.filterServiceId === "all" || (p.services && p.services.includes(localState.filterServiceId));
+        
+        // Integração Multi-Loja: Verifica se o profissional tem acesso a pelo menos UMA das lojas selecionadas no topo
+        const pUnits = p.accessibleIn && p.accessibleIn.length > 0 ? p.accessibleIn : [p.establishmentId || state.establishmentId];
+        const matchesBranch = activeHeaderEstablishments.some(id => pUnits.includes(id));
+
+        return matchesSearch && matchesStatus && matchesService && matchesBranch;
+    });
+    
+    renderKPIs(filtered);
+    listDiv.innerHTML = renderProfessionalsListHTML(filtered);
+}
+
+// --- RENDERS DE COMPONENTES ---
+
 function renderSkeletonList(count = 8) {
     let skeletonHTML = '';
     for (let i = 0; i < count; i++) {
         skeletonHTML += `
-        <div class="bg-white rounded-lg shadow-md flex items-center gap-4 p-3 overflow-hidden animate-pulse sm:flex-col sm:items-stretch sm:p-0 sm:gap-0">
-            <div class="w-16 h-16 rounded-full bg-gray-200 flex-shrink-0 sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg"></div>
-            <div class="flex-1 space-y-3 sm:p-4">
-                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+        <div class="bg-white rounded-xl border border-gray-100 shadow-sm flex items-center p-3 animate-pulse h-[74px]">
+            <div class="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0 mr-3"></div>
+            <div class="flex-1 space-y-2">
+                <div class="h-2.5 bg-gray-200 rounded w-3/4"></div>
+                <div class="h-2 bg-gray-200 rounded w-1/2"></div>
             </div>
         </div>
         `;
@@ -45,10 +402,17 @@ function renderSkeletonList(count = 8) {
     return skeletonHTML;
 }
 
-// Renderiza a lista de profissionais (Lista no Mobile / Grid no Desktop)
 function renderProfessionalsListHTML(professionals) {
     if (professionals.length === 0) {
-        return `<p class="col-span-full text-center text-gray-500 py-10">Nenhum profissional encontrado.</p>`;
+        return `
+            <div class="col-span-full flex flex-col items-center justify-center py-16">
+                <div class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                    <i class="bi bi-people text-xl text-gray-300"></i>
+                </div>
+                <h3 class="text-sm font-bold text-gray-600 mb-1">Nenhum profissional encontrado</h3>
+                <p class="text-[10px] text-gray-400">Tente ajustar os filtros ou verificar as unidades no topo.</p>
+            </div>
+        `;
     }
 
     return professionals.map(prof => {
@@ -59,43 +423,43 @@ function renderProfessionalsListHTML(professionals) {
         const photoSrc = prof.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
         const profDataString = JSON.stringify(prof).replace(/'/g, "&apos;");
 
-        // NOVO: Distintivo de Multi-Loja
         const unitCount = prof.accessibleIn ? prof.accessibleIn.length : 1;
-        const unitBadge = unitCount > 1 
-            ? `<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded ml-2 border border-indigo-200" title="Atende em ${unitCount} unidades"><i class="bi bi-diagram-3"></i> ${unitCount} Lojas</span>` 
-            : '';
+        const serviceCount = prof.services ? prof.services.length : 0;
+        const isSelected = localState.selectedIds.has(prof.id);
 
         return `
-            <div class="professional-card bg-white rounded-lg shadow-md flex items-center gap-4 p-3 cursor-pointer transition-transform transform hover:shadow-lg hover:bg-gray-50
-                        sm:flex-col sm:items-stretch sm:p-0 sm:gap-0 ${isInactive ? 'opacity-50 bg-gray-100' : ''}" 
+            <div class="professional-card relative bg-white rounded-xl border ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200 shadow-md bg-indigo-50/20' : 'border-gray-200'} shadow-sm flex items-center p-3 cursor-pointer transition-all hover:shadow-md hover:border-indigo-300 ${isInactive ? 'opacity-60 bg-gray-50' : ''}" 
                  data-action="open-professional-modal" data-professional='${profDataString}'>
                 
-                <img src="${photoSrc}" alt="Foto de ${safeName}" class="w-16 h-16 rounded-full object-cover flex-shrink-0
-                            sm:w-full sm:h-32 sm:rounded-b-none sm:rounded-t-lg">
+                <div class="absolute top-2 right-2 z-10 flex flex-col gap-2 items-center" onclick="event.stopPropagation()">
+                    <input type="checkbox" data-id="${prof.id}" class="professional-checkbox w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
+                </div>
+
+                <div class="relative flex-shrink-0 mr-3">
+                    <img src="${photoSrc}" alt="${safeName}" class="w-12 h-12 rounded-full object-cover border border-gray-100 shadow-sm">
+                    <span class="absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-white rounded-full ${isInactive ? 'bg-red-500' : 'bg-emerald-500'}" title="${isInactive ? 'Inativo' : 'Ativo'}"></span>
+                </div>
                 
-                <div class="flex-1 sm:p-4">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="text-sm font-bold text-gray-900 text-left sm:text-base flex items-center">
-                                ${safeName} ${unitBadge}
-                            </h3>
-                            <p class="text-xs text-gray-500 text-left sm:text-sm mt-0.5">${safeSpecialty}</p>
-                        </div>
-                        <span class="text-[10px] font-bold py-1 px-2 rounded-full hidden sm:inline-block uppercase tracking-wider ${isInactive ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
-                            ${isInactive ? 'Inativo' : 'Ativo'}
-                        </span>
-                    </div>
-                    <div class="mt-2 pt-2 border-t sm:hidden">
-                        <span class="text-xs font-semibold ${isInactive ? 'text-red-700' : 'text-green-700'}">${isInactive ? 'Inativo' : 'Ativo'}</span>
-                    </div>
-                    <div class="hidden sm:block mt-3 pt-3 border-t">
-                        <p class="text-xs text-gray-600">Serviços Habilitados: <span class="font-semibold text-indigo-600">${prof.services?.length || 0}</span></p>
+                <div class="flex-1 min-w-0 pr-4">
+                    <h3 class="text-xs font-bold text-gray-800 truncate leading-tight">
+                        ${safeName}
+                    </h3>
+                    <p class="text-[10px] text-gray-500 truncate mt-0.5">${safeSpecialty}</p>
+                    
+                    <div class="flex items-center gap-1 mt-1.5">
+                        ${unitCount > 1 
+                            ? `<span class="text-[8px] font-bold bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded border border-indigo-100 flex items-center gap-1"><i class="bi bi-diagram-3"></i> ${unitCount}</span>` 
+                            : `<span class="text-[8px] font-bold bg-gray-100 text-gray-600 px-1 py-0.5 rounded border border-gray-200 flex items-center gap-1"><i class="bi bi-geo-alt"></i> Única</span>`
+                        }
+                        <span class="text-[8px] font-semibold text-gray-600 bg-gray-100 px-1 py-0.5 rounded border border-gray-200 flex items-center gap-1" title="${serviceCount} serviços habilitados"><i class="bi bi-scissors"></i> ${serviceCount}</span>
                     </div>
                 </div>
             </div>`;
     }).join('');
 }
 
+
+// --- 5. LÓGICA DE MODAIS E FORMULÁRIOS ---
 
 function closeProfessionalModal() {
     const modal = document.getElementById('genericModal');
@@ -105,45 +469,45 @@ function closeProfessionalModal() {
     }
 }
 
-
 async function openProfessionalModal(professional) {
     const modal = document.getElementById('genericModal');
     const prof = professional.id ? professional : { name: 'Novo Profissional', specialty: '', status: 'active', workingHours: {}, services: [] };
     
     const safeTitle = escapeHTML(prof.name);
 
-    const services = state.services || await servicesApi.getServices(state.establishmentId);
-    const professionals = state.professionals || await professionalsApi.getProfessionals(state.establishmentId);
-
     const modalHTML = `
-        <div class="modal-content max-w-5xl p-0 overflow-y-auto max-h-[90vh]"> 
-            <div class="modal-header px-6 py-4 flex justify-between items-center border-b bg-white sticky top-0 z-10">
+        <div class="modal-content max-w-5xl p-0 overflow-hidden flex flex-col max-h-[90vh]"> 
+            <div class="modal-header px-6 py-4 flex justify-between items-center border-b bg-white flex-shrink-0">
                 <h2 class="text-2xl font-bold text-gray-800">${safeTitle}</h2>
                 <button data-action="close-modal" class="text-gray-400 hover:text-red-500 transition-colors text-3xl leading-none">&times;</button>
             </div>
-            <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto bg-gray-50/50">
-                <button class="tab-link active whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-indigo-600 text-indigo-600" data-tab="cadastro">Cadastro e Rede</button>
-                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700" data-tab="jornada">Jornada Semanal</button>
-                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-gray-700" data-tab="bloqueios">Bloqueios e Férias</button>
+            
+            <div class="modal-tabs px-6 border-b flex items-center overflow-x-auto bg-gray-50 flex-shrink-0 custom-scrollbar">
+                <button class="tab-link active whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-indigo-600 text-indigo-600 transition-colors" data-tab="dados-basicos">1. Dados Básicos</button>
+                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-indigo-500 transition-colors" data-tab="atuacao">2. Atuação (Rede & Serviços)</button>
+                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-indigo-500 transition-colors" data-tab="jornada">3. Jornada Semanal</button>
+                <button class="tab-link whitespace-nowrap font-semibold py-3 px-4 border-b-2 border-transparent text-gray-500 hover:text-indigo-500 transition-colors" data-tab="bloqueios">4. Bloqueios e Férias</button>
             </div>
-            <div class="modal-body p-6 bg-white flex-1 overflow-y-auto"> 
-                <div id="cadastro" class="tab-content active"><form id="professionalForm" class="space-y-6"></form></div>
+            
+            <div class="modal-body p-6 bg-white flex-1 overflow-y-auto custom-scrollbar relative"> 
+                <form id="professionalForm" class="h-full">
+                    <input type="hidden" id="professionalId" value="${prof.id || ''}">
+                    <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
+                    
+                    <div id="dados-basicos" class="tab-content active space-y-6"></div>
+                    <div id="atuacao" class="tab-content hidden space-y-6"></div>
+                </form>
+                
                 <div id="jornada" class="tab-content hidden"></div>
                 <div id="bloqueios" class="tab-content hidden"></div>
             </div>
-            <div class="modal-footer px-6 py-4 bg-gray-50 border-t flex justify-between items-center">
-                
-                <button 
-                    type="button" 
-                    data-action="delete-professional" 
-                    data-id="${prof.id || ''}" 
-                    class="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg font-medium transition-colors ${prof.id ? '' : 'hidden'}" 
-                    title="Excluir Profissional"
-                >
-                    <i class="bi bi-trash3 mr-1"></i> Excluir Profissional
+            
+            <div class="modal-footer px-6 py-4 bg-gray-50 border-t flex justify-between items-center flex-shrink-0">
+                <button type="button" data-action="delete-professional" data-id="${prof.id || ''}" class="text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg font-medium transition-colors ${prof.id ? '' : 'hidden'}" title="Excluir Profissional">
+                    <i class="bi bi-trash3 mr-1"></i> Excluir
                 </button>
 
-                <div class="flex gap-3">
+                <div class="flex gap-3 ml-auto">
                     <button data-action="close-modal" class="py-2.5 px-5 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 shadow-sm transition-colors">Cancelar</button>
                     <button type="button" data-action="save-professional" class="py-2.5 px-6 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2 transition-colors">
                         <i class="bi bi-save"></i> Salvar
@@ -155,35 +519,33 @@ async function openProfessionalModal(professional) {
     modal.innerHTML = modalHTML;
     modal.style.display = 'flex';
 
-    fillCadastroTab(prof, services);
+    fillCadastroTab(prof, localState.services);
     fillJornadaTab(prof);
-    fillBloqueiosTab(prof, professionals);
+    fillBloqueiosTab(prof, localState.professionals);
 
     setupModalEventListeners(prof);
 }
 
-// --- NOVO: GERADOR DE CHECKBOXES PARA MULTI-TENANT ---
+// Checkboxes de Unidade apenas para o Modal de Atribuição (Criar/Editar Profissional)
 function generateUnitCheckboxesHTML(selectedIds = []) {
-    if (!hierarchyCache || hierarchyCache.length === 0) {
+    if (!localState.hierarchyCache || localState.hierarchyCache.length === 0) {
         return `
             <input type="hidden" name="accessibleIn" value="${state.establishmentId}">
             <div class="bg-gray-50 p-3 rounded border text-sm text-gray-500">
-                <i class="bi bi-info-circle mr-1"></i> Profissional exclusivo desta unidade.
+                <i class="bi bi-info-circle mr-1"></i> Exclusivo desta unidade.
             </div>`;
     }
 
-    let html = '<div class="space-y-1 mt-2 max-h-48 overflow-y-auto p-3 border border-indigo-100 rounded-lg bg-indigo-50/30">';
+    let html = '<div class="space-y-1 mt-2 max-h-48 overflow-y-auto p-3 border border-indigo-100 rounded-lg bg-indigo-50/30 custom-scrollbar">';
     
-    hierarchyCache.forEach(matriz => {
+    localState.hierarchyCache.forEach(matriz => {
         const isMatrizSelected = selectedIds.includes(matriz.id) || (selectedIds.length === 0 && matriz.id === state.establishmentId);
-        
         html += `
             <label class="flex items-center space-x-3 py-1.5 cursor-pointer hover:bg-white rounded px-2 transition-colors">
                 <input type="checkbox" name="accessibleIn" value="${matriz.id}" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isMatrizSelected ? 'checked' : ''}>
-                <span class="text-sm font-bold text-gray-800">🏢 ${escapeHTML(matriz.name)} (Matriz)</span>
+                <span class="text-sm font-bold text-gray-800">🏢 ${escapeHTML(matriz.name)}</span>
             </label>
         `;
-        
         if (matriz.branches && matriz.branches.length > 0) {
             matriz.branches.forEach(branch => {
                 const isBranchSelected = selectedIds.includes(branch.id) || (selectedIds.length === 0 && branch.id === state.establishmentId);
@@ -202,7 +564,9 @@ function generateUnitCheckboxesHTML(selectedIds = []) {
 }
 
 function fillCadastroTab(prof, services) {
-    const form = document.getElementById('professionalForm');
+    const dadosBasicosContainer = document.getElementById('dados-basicos');
+    const atuacaoContainer = document.getElementById('atuacao');
+    
     const dob = prof.dob ? prof.dob.split('/') : ['', ''];
     const monthOptions = Array.from({ length: 12 }, (_, i) => {
         const month = i + 1;
@@ -211,85 +575,170 @@ function fillCadastroTab(prof, services) {
         return `<option value="${month}" ${selected}>${monthName.charAt(0).toUpperCase() + monthName.slice(1)}</option>`;
     }).join('');
     
-    const currentStatus = prof.status || 'active';
-
     const safeName = escapeHTML(prof.name || '');
     const safeSpecialty = escapeHTML(prof.specialty || '');
     const safePhone = escapeHTML(prof.phone || '');
     const safeNotes = escapeHTML(prof.notes || '');
 
-    form.innerHTML = `
-        <input type="hidden" id="professionalId" value="${prof.id || ''}">
-        <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
-        
+    dadosBasicosContainer.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div class="md:col-span-1 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Foto de Perfil</label>
-                    <div class="flex flex-col items-center p-4 border border-dashed border-gray-300 rounded-xl bg-gray-50">
-                        <img id="profPhotoPreview" src="${prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`}" alt="Foto de Perfil" class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-white shadow-sm">
-                        <input type="file" id="profPhotoInput" class="hidden" accept="image/*">
-                        <button type="button" id="profPhotoButton" class="bg-white py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors w-full">Alterar Foto</button>
+                <div class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm text-center">
+                    <label class="block text-sm font-bold text-gray-700 mb-3">Foto de Perfil</label>
+                    <div class="relative group mx-auto w-32 h-32 mb-4 cursor-pointer" id="profPhotoContainer">
+                        <img id="profPhotoPreview" src="${prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`}" alt="Foto de Perfil" class="w-32 h-32 rounded-full object-cover border-4 border-gray-50 shadow-md transition-all group-hover:brightness-75">
+                        <div id="profPhotoButtonOverlay" class="absolute inset-0 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                            <i class="bi bi-camera-fill text-white text-3xl drop-shadow-md"></i>
+                        </div>
                     </div>
+                    <input type="file" id="profPhotoInput" class="hidden" accept="image/*">
+                    <button type="button" id="profPhotoButton" class="text-indigo-600 text-sm font-semibold hover:text-indigo-800 transition-colors w-full">Alterar Imagem</button>
                 </div>
-                 <div class="form-group">
-                    <label for="profStatus" class="block text-sm font-medium text-gray-700 mb-1">Status na Rede</label>
-                    <select id="profStatus" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                        <option value="active" ${currentStatus !== 'inactive' ? 'selected' : ''}>Ativo</option>
-                        <option value="inactive" ${currentStatus === 'inactive' ? 'selected' : ''}>Inativo</option>
-                    </select>
+
+                 <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-bold text-gray-700">Status do Perfil</p>
+                        <p class="text-xs text-gray-500">Inativos não aparecem na agenda.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="profStatusToggle" class="sr-only peer" ${prof.status !== 'inactive' ? 'checked' : ''}>
+                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
                 </div>
             </div>
 
             <div class="md:col-span-2 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="form-group"><label for="profName" class="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label><input type="text" id="profName" value="${safeName}" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="form-group"><label for="profSpecialty" class="block text-sm font-medium text-gray-700 mb-1">Especialidade / Cargo</label><input type="text" id="profSpecialty" value="${safeSpecialty}" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="form-group"><label for="profPhone" class="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Telefone</label><input type="tel" id="profPhone" value="${safePhone}" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="form-group"><label for="profOrderOnAgenda" class="block text-sm font-medium text-gray-700 mb-1">Ordem de exibição na agenda</label><input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="form-group"><label for="profDobDay" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Dia)</label><input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="form-group"><label for="profDobMonth" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Mês)</label><select id="profDobMonth" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Selecione...</option>${monthOptions}</select></div>
+                    <div class="form-group sm:col-span-2">
+                        <label for="profName" class="block text-sm font-medium text-gray-700 mb-1">Nome Completo <span class="text-red-500">*</span></label>
+                        <input type="text" id="profName" value="${safeName}" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors">
+                    </div>
+                    <div class="form-group">
+                        <label for="profSpecialty" class="block text-sm font-medium text-gray-700 mb-1">Especialidade / Cargo <span class="text-red-500">*</span></label>
+                        <input type="text" id="profSpecialty" value="${safeSpecialty}" required placeholder="Ex: Cabeleireiro, Médico" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors">
+                    </div>
+                    <div class="form-group">
+                        <label for="profPhone" class="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Telefone</label>
+                        <input type="tel" id="profPhone" value="${safePhone}" placeholder="(00) 00000-0000" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors">
+                    </div>
+                    <div class="form-group">
+                        <label for="profDobDay" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Dia)</label>
+                        <input type="number" id="profDobDay" value="${dob[0]}" min="1" max="31" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors">
+                    </div>
+                    <div class="form-group">
+                        <label for="profDobMonth" class="block text-sm font-medium text-gray-700 mb-1">Aniversário (Mês)</label>
+                        <select id="profDobMonth" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors">
+                            <option value="">Selecione...</option>${monthOptions}
+                        </select>
+                    </div>
                 </div>
-                 <div class="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
-                    <div class="form-group"><label for="profCommission" class="block text-sm font-medium text-gray-700 mb-1">Paga Comissão?</label><select id="profCommission" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="sim" ${prof.receivesCommission ? 'selected' : ''}>Sim</option><option value="nao" ${!prof.receivesCommission ? 'selected' : ''}>Não</option></select></div>
-                    <div class="form-group"><label for="profShowOnAgenda" class="block text-sm font-medium text-gray-700 mb-1">Exibir aos Clientes (App)</label><select id="profShowOnAgenda" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500"><option value="sim" ${prof.showOnAgenda !== false ? 'selected' : ''}>Sim</option><option value="nao" ${prof.showOnAgenda === false ? 'selected' : ''}>Não</option></select></div>
+
+                <div class="form-group pt-2">
+                    <label for="profNotes" class="block text-sm font-medium text-gray-700 mb-1">Observações Internas (Apenas Gestão)</label>
+                    <textarea id="profNotes" rows="3" class="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50 focus:bg-white transition-colors placeholder-gray-400" placeholder="Ex: Informações contratuais, detalhes de preferência...">${safeNotes}</textarea>
+                </div>
+            </div>
+        </div>
+    `;
+
+    atuacaoContainer.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="flex items-center justify-between border-b md:border-b-0 md:border-r border-gray-100 pb-4 md:pb-0 md:pr-4">
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Paga Comissão?</p>
+                    <p class="text-[11px] text-gray-500 leading-tight mt-1">Gera comissão ao realizar serviços.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer ml-3">
+                    <input type="checkbox" id="profCommissionToggle" class="sr-only peer" ${prof.receivesCommission !== false ? 'checked' : ''}>
+                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between border-b md:border-b-0 md:border-r border-gray-100 py-4 md:py-0 md:px-4">
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Exibir no App</p>
+                    <p class="text-[11px] text-gray-500 leading-tight mt-1">Clientes podem agendar online.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer ml-3">
+                    <input type="checkbox" id="profShowOnAgendaToggle" class="sr-only peer" ${prof.showOnAgenda !== false ? 'checked' : ''}>
+                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+            </div>
+
+            <div class="pt-4 md:pt-0 md:pl-4">
+                <label for="profOrderOnAgenda" class="block text-sm font-bold text-gray-800 mb-1">Ordem na Agenda</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" id="profOrderOnAgenda" value="${prof.orderOnAgenda || '1'}" min="1" class="w-20 p-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 text-center bg-gray-50 focus:bg-white">
+                    <span class="text-[11px] text-gray-500 leading-tight">Posição na visualização diária.</span>
                 </div>
             </div>
         </div>
 
-        <div class="pt-6 border-t border-gray-100">
-            <label class="block text-base font-bold text-indigo-900 mb-1">
-                <i class="bi bi-diagram-3 mr-1"></i> Locais de Atendimento
-            </label>
-            <p class="text-xs text-gray-500 mb-3">Marque em quais unidades da rede este profissional trabalha e recebe agendamentos.</p>
-            ${generateUnitCheckboxesHTML(prof.accessibleIn || [])}
-        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+                <div class="flex items-center mb-3 text-indigo-900">
+                    <div class="bg-indigo-100 p-2 rounded-lg mr-3"><i class="bi bi-diagram-3 text-lg"></i></div>
+                    <div>
+                        <h3 class="text-base font-bold">Lojas de Atendimento</h3>
+                        <p class="text-xs text-gray-500">Unidades onde este membro atende.</p>
+                    </div>
+                </div>
+                ${generateUnitCheckboxesHTML(prof.accessibleIn || [])}
+            </div>
 
-        <div class="pt-6 border-t border-gray-100">
-            <label class="block text-base font-bold text-gray-800 mb-3">Serviços que realiza</label>
-            <div id="profServicesContainer" class="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border border-gray-200 rounded-xl bg-gray-50 max-h-64 overflow-y-auto">
-                ${services.map(s => `
-                    <label class="flex items-center space-x-3 p-2 hover:bg-white rounded-lg cursor-pointer transition-colors border border-transparent hover:border-gray-200 hover:shadow-sm">
-                        <input type="checkbox" value="${s.id}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" ${prof.services?.includes(s.id) ? 'checked' : ''}>
-                        <span class="text-sm font-medium text-gray-700">${escapeHTML(s.name)}</span>
-                    </label>
-                `).join('')}
+            <div>
+                <div class="flex justify-between items-end mb-3">
+                    <div class="flex items-center text-emerald-900">
+                        <div class="bg-emerald-100 p-2 rounded-lg mr-3"><i class="bi bi-scissors text-lg"></i></div>
+                        <div>
+                            <h3 class="text-base font-bold">Serviços Habilitados</h3>
+                            <p class="text-xs text-gray-500">O que este profissional faz.</p>
+                        </div>
+                    </div>
+                    <button type="button" id="selectAllServicesBtn" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-md transition-colors">
+                        Selecionar Todos
+                    </button>
+                </div>
+                
+                <div id="profServicesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-gray-200 rounded-xl bg-gray-50 max-h-64 overflow-y-auto custom-scrollbar">
+                    ${services.map(s => `
+                        <label class="flex items-center space-x-3 p-2.5 bg-white rounded-lg cursor-pointer transition-colors border border-gray-100 hover:border-indigo-300 hover:shadow-sm">
+                            <input type="checkbox" value="${s.id}" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" ${prof.services?.includes(s.id) ? 'checked' : ''}>
+                            <span class="text-sm font-medium text-gray-700 truncate" title="${escapeHTML(s.name)}">${escapeHTML(s.name)}</span>
+                        </label>
+                    `).join('')}
+                    ${services.length === 0 ? '<p class="col-span-full text-center text-sm text-gray-500 py-4">Nenhum serviço cadastrado no sistema.</p>' : ''}
+                </div>
             </div>
         </div>
+    `;
 
-        <div class="form-group pt-4">
-            <label for="profNotes" class="block text-sm font-medium text-gray-700 mb-1">Observações Internas</label>
-            <textarea id="profNotes" rows="3" class="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500">${safeNotes}</textarea>
-        </div>`;
+    const selectAllBtn = document.getElementById('selectAllServicesBtn');
+    if(selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => {
+            const checkboxes = document.querySelectorAll('#profServicesContainer input[type="checkbox"]');
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            checkboxes.forEach(cb => { cb.checked = !allChecked; });
+            selectAllBtn.textContent = allChecked ? "Selecionar Todos" : "Desmarcar Todos";
+        });
+        
+        const checkboxes = document.querySelectorAll('#profServicesContainer input[type="checkbox"]');
+        if(checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked)) {
+            selectAllBtn.textContent = "Desmarcar Todos";
+        }
+    }
 
     const photoInput = document.getElementById('profPhotoInput');
     const photoButton = document.getElementById('profPhotoButton');
+    const photoContainer = document.getElementById('profPhotoContainer');
     const photoPreview = document.getElementById('profPhotoPreview');
     const photoBase64Input = document.getElementById('profPhotoBase64');
     const originalPhotoSrc = prof.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(prof.name ? prof.name.charAt(0) : 'P')}`;
     const originalBase64 = prof.photo || '';
 
-    if (photoButton) photoButton.addEventListener('click', () => photoInput.click());
+    const triggerFileInput = () => photoInput.click();
+    if (photoButton) photoButton.addEventListener('click', triggerFileInput);
+    if (photoContainer) photoContainer.addEventListener('click', triggerFileInput);
 
     if (photoInput) {
         photoInput.onchange = async () => {
@@ -299,12 +748,9 @@ function fillCadastroTab(prof, services) {
              
              try {
                  const resizedBase64 = await resizeAndCompressImage(file, 800, 800, 0.8);
-                 
                  const stringLength = resizedBase64.length;
                  const sizeInBytes = (stringLength * 3) / 4; 
-                 const maxSizeInBytes = 1000 * 1024; // 1MB Hard Limit
-                 
-                 if (sizeInBytes > maxSizeInBytes) throw new Error('A imagem é muito grande mesmo após a compressão.');
+                 if (sizeInBytes > 1000 * 1024) throw new Error('A imagem é muito grande mesmo após a compressão.');
 
                  photoPreview.src = resizedBase64;
                  photoBase64Input.value = resizedBase64;
@@ -338,7 +784,7 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 <form id="batchBlockageForm" class="p-5 bg-orange-50/50 border border-orange-100 rounded-xl space-y-4">
                     <div>
                         <h4 class="font-bold text-gray-700 mb-2 text-sm">Aplicar aos Profissionais:</h4>
-                        <div id="batchProfSelectionContainer" class="max-h-40 overflow-y-auto p-3 border border-orange-200 rounded-lg bg-white space-y-2 shadow-sm">
+                        <div id="batchProfSelectionContainer" class="max-h-40 overflow-y-auto custom-scrollbar p-3 border border-orange-200 rounded-lg bg-white space-y-2 shadow-sm">
                             ${allProfessionals.map(p => `
                                 <label class="flex items-center space-x-3 hover:bg-orange-50 p-1 rounded cursor-pointer transition-colors">
                                     <input type="checkbox" name="batch-professionals" value="${p.id}" class="rounded border-gray-300 text-orange-500 focus:ring-orange-500" ${p.id === prof.id ? 'checked' : ''}>
@@ -347,14 +793,14 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
-                        <div><label for="batchBlockageStartDate" class="block text-sm font-medium text-gray-700 mb-1">Data Início</label><input type="date" id="batchBlockageStartDate" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
-                        <div><label for="batchBlockageEndDate" class="block text-sm font-medium text-gray-700 mb-1">Data Fim (Opcional)</label><input type="date" id="batchBlockageEndDate" class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                        <div><label for="batchBlockageStartDate" class="block text-sm font-medium text-gray-700 mb-1">Data Início</label><input type="date" id="batchBlockageStartDate" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"></div>
+                        <div><label for="batchBlockageEndDate" class="block text-sm font-medium text-gray-700 mb-1">Data Fim (Opcional)</label><input type="date" id="batchBlockageEndDate" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"></div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Início</label><input type="time" id="batchBlockageStartTime" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
-                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Fim</label><input type="time" id="batchBlockageEndTime" required class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Início</label><input type="time" id="batchBlockageStartTime" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"></div>
+                        <div><label class="block text-sm font-medium text-gray-700 mb-1">Fim</label><input type="time" id="batchBlockageEndTime" required class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"></div>
                     </div>
-                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Motivo / Descrição</label><input type="text" id="batchBlockageReason" placeholder="Ex: Férias, Médico, Casamento" class="w-full p-2.5 border border-gray-300 rounded-lg"></div>
+                    <div><label class="block text-sm font-medium text-gray-700 mb-1">Motivo / Descrição</label><input type="text" id="batchBlockageReason" placeholder="Ex: Férias, Médico, Casamento" class="w-full p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"></div>
                     <button type="submit" class="w-full bg-orange-500 text-white font-bold py-3 rounded-lg hover:bg-orange-600 shadow-sm transition-colors mt-2">Gravar Bloqueio</button>
                 </form>
             </div>
@@ -366,7 +812,7 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                         <option value="history">Histórico Passado</option>
                     </select>
                 </div>
-                <div id="blockagesList" class="space-y-3 max-h-[500px] overflow-y-auto pr-2"></div>
+                <div id="blockagesList" class="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2"></div>
             </div>
         </div>`;
     
@@ -410,7 +856,6 @@ async function fillBloqueiosTab(prof, allProfessionals) {
                 await Promise.all(blockagePromises);
                 showNotification('Sucesso!', `${selectedProfIds.length} bloqueios foram criados.`);
                 
-                // Limpa o form exceto o profissional atual
                 batchBlockageForm.reset();
                 e.target.querySelectorAll('input[name="batch-professionals"]').forEach(cb => {
                     cb.checked = cb.value === prof.id;
@@ -595,14 +1040,14 @@ function setupModalEventListeners(professional) {
             
             case 'delete-professional':
                 const idToDelete = button.dataset.id;
-                const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita e ele será removido da agenda e de todas as lojas.`);
+                const confirmed = await showConfirmation('Excluir Profissional', `Tem certeza que deseja excluir ${professional.name}? Esta ação não pode ser desfeita.`);
                 if(confirmed) {
                     try {
                         await professionalsApi.deleteProfessional(idToDelete);
                         logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Excluiu', `Excluiu profissional: ${professional.name}`);
                         showNotification('Sucesso!', 'Profissional excluído da rede.', 'success');
                         closeProfessionalModal();
-                        loadProfessionalsPage(); 
+                        fetchAndDisplayData(); 
                     } catch (error) {
                          showNotification('Erro', `Não foi possível excluir: ${error.message}`, 'error');
                     }
@@ -614,7 +1059,7 @@ function setupModalEventListeners(professional) {
                 const saveButton = button;
                 
                 const scheduleContainer = document.getElementById('profScheduleContainer');
-                const selectedServices = Array.from(form.querySelectorAll('#profServicesContainer input:checked')).map(cb => cb.value);
+                const selectedServices = Array.from(document.querySelectorAll('#profServicesContainer input[type="checkbox"]:checked')).map(cb => cb.value);
                 
                 const workingHours = {};
                 if (scheduleContainer) {
@@ -630,27 +1075,30 @@ function setupModalEventListeners(professional) {
                     });
                 }
 
-                // 🎯 Captura as checkboxes da Hierarquia/Rede
                 const checkedUnits = Array.from(form.querySelectorAll('input[name="accessibleIn"]:checked')).map(cb => cb.value);
                 const accessibleIn = checkedUnits.length > 0 ? checkedUnits : [state.establishmentId];
 
+                const isActive = document.getElementById('profStatusToggle').checked;
+                const receivesCommission = document.getElementById('profCommissionToggle').checked;
+                const showOnAgenda = document.getElementById('profShowOnAgendaToggle').checked;
+
                 const professionalData = {
                     ...professional,
-                    id: form.querySelector('#professionalId').value || undefined, 
-                    accessibleIn: accessibleIn, // Array Multi-Loja
-                    name: form.querySelector('#profName').value.trim(),
-                    specialty: form.querySelector('#profSpecialty').value,
-                    photo: form.querySelector('#profPhotoBase64').value,
+                    id: document.getElementById('professionalId').value || undefined, 
+                    accessibleIn: accessibleIn,
+                    name: document.getElementById('profName').value.trim(),
+                    specialty: document.getElementById('profSpecialty').value,
+                    photo: document.getElementById('profPhotoBase64').value,
                     services: selectedServices,
                     workingHours: workingHours,
-                    phone: form.querySelector('#profPhone').value,
-                    dob: `${form.querySelector('#profDobDay').value}/${form.querySelector('#profDobMonth').value}`,
-                    receivesCommission: form.querySelector('#profCommission').value === 'sim',
-                    showOnAgenda: form.querySelector('#profShowOnAgenda').value === 'sim',
-                    orderOnAgenda: parseInt(form.querySelector('#profOrderOnAgenda').value) || 1,
-                    notes: form.querySelector('#profNotes').value,
-                    status: form.querySelector('#profStatus').value,
-                    establishmentId: state.establishmentId // Mantém como criador original
+                    phone: document.getElementById('profPhone').value,
+                    dob: `${document.getElementById('profDobDay').value}/${document.getElementById('profDobMonth').value}`,
+                    receivesCommission: receivesCommission, 
+                    showOnAgenda: showOnAgenda, 
+                    orderOnAgenda: parseInt(document.getElementById('profOrderOnAgenda').value) || 1,
+                    notes: document.getElementById('profNotes').value,
+                    status: isActive ? 'active' : 'inactive', 
+                    establishmentId: state.establishmentId
                 };
 
                 const originalText = saveButton.innerHTML;
@@ -670,7 +1118,7 @@ function setupModalEventListeners(professional) {
                     }
                     
                     closeProfessionalModal();
-                    loadProfessionalsPage(); 
+                    fetchAndDisplayData(); 
                 } catch (error) {
                     showNotification('Erro', error.message, 'error');
                     saveButton.disabled = false;
@@ -711,169 +1159,21 @@ function setupModalEventListeners(professional) {
     modal.addEventListener('click', modalEventListener);
 }
 
-function updateBatchActionsVisibility() {
-    const container = document.getElementById('batch-actions-container');
-    const countSpan = document.getElementById('selected-count');
-    if (!container || !countSpan) return;
-
-    if (selectedProfessionals.size > 0) {
-        countSpan.textContent = `${selectedProfessionals.size} selecionado(s)`;
-        container.classList.remove('hidden');
-        container.classList.add('flex');
-    } else {
-        container.classList.add('hidden');
-        container.classList.remove('flex');
-    }
-}
-
 function handleBatchDelete() {
-    showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${selectedProfessionals.size} profissionais da rede? Esta ação não pode ser desfeita.`)
+    showConfirmation('Excluir em Lote', `Tem certeza que deseja excluir ${localState.selectedIds.size} profissionais da rede? Esta ação não pode ser desfeita.`)
         .then(async (confirmed) => {
             if (confirmed) {
                 try {
-                    await professionalsApi.batchDeleteProfessionals(Array.from(selectedProfessionals));
-                    logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Excluiu em Lote', `Excluiu ${selectedProfessionals.size} profissionais`);
-                    showNotification('Sucesso!', `${selectedProfessionals.size} profissionais foram excluídos.`, 'success');
-                    selectedProfessionals.clear();
-                    updateBatchActionsVisibility();
-                    loadProfessionalsPage();
+                    await professionalsApi.batchDeleteProfessionals(Array.from(localState.selectedIds));
+                    logAction(state.establishmentId, getCurrentUserForLog(), 'Equipe', 'Excluiu em Lote', `Excluiu ${localState.selectedIds.size} profissionais`);
+                    showNotification('Sucesso!', `${localState.selectedIds.size} profissionais foram excluídos.`, 'success');
+                    
+                    localState.selectedIds.clear();
+                    updateBatchActionBar();
+                    fetchAndDisplayData();
                 } catch (error) {
                     showNotification('Erro', `Não foi possível excluir em lote: ${error.message}`, 'error');
                 }
             }
         });
-}
-
-function filterAndRenderProfessionals() {
-    const listDiv = document.getElementById('professionalsList');
-    if (!listDiv) return;
-
-    if (!state.professionals) {
-        listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 pb-20';
-        listDiv.innerHTML = renderSkeletonList(); 
-        return;
-    }
-    
-    const showInactive = document.getElementById('showInactiveProfToggle').checked;
-    const searchTerm = document.getElementById('profSearchInput').value.toLowerCase();
-
-    const filtered = state.professionals.filter(p => {
-        const nameMatch = p.name.toLowerCase().includes(searchTerm);
-        const statusMatch = showInactive || p.status !== 'inactive';
-        return nameMatch && statusMatch;
-    });
-    
-    listDiv.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 pb-20'; 
-    listDiv.innerHTML = renderProfessionalsListHTML(filtered);
-}
-
-// --- 4. FUNÇÃO PRINCIPAL EXPORTADA ---
-
-export async function loadProfessionalsPage() {
-    selectedProfessionals.clear();
-    contentDiv.innerHTML = `
-        <section id="professional-list-view" class="p-4 sm:p-6 max-w-7xl mx-auto">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-                
-                <div class="mb-8 border-b border-gray-100 pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-gray-800">Equipa e Profissionais</h2>
-                        <p class="text-sm text-gray-500 mt-1">Gira os membros da equipa e defina em quais lojas eles atendem.</p>
-                    </div>
-                    <button data-action="open-professional-modal" data-professional="{}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-5 rounded-lg transition-colors shadow-sm flex items-center gap-2">
-                        <i class="bi bi-person-plus-fill"></i> Novo Profissional
-                    </button>
-                </div>
-
-                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <div class="relative w-full md:w-96">
-                        <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                        <input type="search" id="profSearchInput" placeholder="Pesquisar por nome..." class="w-full pl-10 p-2.5 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-sm">
-                    </div>
-                    
-                    <label class="flex items-center space-x-3 cursor-pointer bg-white px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors w-full md:w-auto shadow-sm">
-                        <div class="relative">
-                            <input type="checkbox" id="showInactiveProfToggle" class="sr-only">
-                            <div class="toggle-bg block bg-gray-300 w-10 h-6 rounded-full peer-checked:bg-indigo-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
-                        </div>
-                        <span class="text-sm font-bold text-gray-700">Mostrar Inativos</span>
-                    </label>
-                </div>
-
-                <div id="batch-actions-container" class="hidden bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl shadow-sm mb-6 justify-between items-center transition-all">
-                    <span id="selected-count" class="font-bold text-lg"><i class="bi bi-check2-square"></i> </span>
-                    <button data-action="batch-delete" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
-                        <i class="bi bi-trash3"></i> Excluir Todos
-                    </button>
-                </div>
-
-                <div id="professionalsList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-10">
-                    </div>
-            </div>
-        </section>`;
-
-    if (pageEventListener) {
-        contentDiv.removeEventListener('click', pageEventListener);
-    }
-
-    pageEventListener = e => {
-        const cardOrBtn = e.target.closest('[data-action="open-professional-modal"]');
-        const batchDeleteButton = e.target.closest('[data-action="batch-delete"]');
-
-        if (cardOrBtn) {
-            e.preventDefault();
-            let profData = {};
-            if (cardOrBtn.dataset.professional) {
-                try {
-                    profData = JSON.parse(cardOrBtn.dataset.professional);
-                } catch (error) {
-                    console.error("Erro ao fazer parse do professional data:", error);
-                    return;
-                }
-            }
-            openProfessionalModal(profData);
-            return;
-        }
-
-        if (batchDeleteButton) {
-            handleBatchDelete();
-            return;
-        }
-        
-        const checkbox = e.target.closest('.professional-checkbox');
-        if (checkbox) {
-             const id = checkbox.dataset.id;
-             if (checkbox.checked) { selectedProfessionals.add(id); } else { selectedProfessionals.delete(id); }
-             filterAndRenderProfessionals();
-             updateBatchActionsVisibility();
-             return;
-        }
-    };
-    
-    contentDiv.addEventListener('click', pageEventListener);
-    document.getElementById('profSearchInput').addEventListener('input', filterAndRenderProfessionals);
-    document.getElementById('showInactiveProfToggle').addEventListener('change', filterAndRenderProfessionals);
-
-    const listDiv = document.getElementById('professionalsList');
-    
-    state.professionals = null;
-    state.services = null;
-    filterAndRenderProfessionals(); 
-    
-    try {
-        const [professionals, services, hierarchyData] = await Promise.all([
-            professionalsApi.getProfessionals(state.establishmentId),
-            servicesApi.getServices(state.establishmentId),
-            getHierarchy() // Busca a estrutura da rede para usar nas checkboxes
-        ]);
-        
-        state.professionals = professionals;
-        state.services = services;
-        hierarchyCache = hierarchyData?.matrizes || [];
-        
-        filterAndRenderProfessionals(); 
-        updateBatchActionsVisibility();
-    } catch (error) {
-        listDiv.innerHTML = '<p class="text-red-500 col-span-full font-bold text-center py-10 bg-red-50 rounded-lg border border-red-100">Erro ao carregar dados do servidor.</p>';
-    }
 }

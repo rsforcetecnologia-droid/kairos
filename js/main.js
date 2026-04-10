@@ -145,7 +145,7 @@ const pageTitles = {
     'servicos-section': 'Serviços do Menu',
     'produtos-section': 'Produtos (Estoque)',
     'suppliers-section': 'Parceiros de Negócio',
-    'profissionais-section': 'Equipa / Profissionais',
+    'profissionais-section': 'Equipe / Profissionais',
     'clientes-section': 'Clientes',
     'estabelecimento-section': 'Minha Empresa',
     'ausencias-section': 'Ausências',
