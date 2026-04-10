@@ -126,17 +126,7 @@ function renderBaseLayout() {
                 </button>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-3 w-full">
-                <div class="flex items-center gap-2">
-                    <div class="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-200">
-                        <i class="bi bi-percent text-xl"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-lg font-black text-slate-800 tracking-tight">Comissões</h1>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão de Pagamentos</p>
-                    </div>
-                </div>
-
+            <div class="flex flex-col md:flex-row justify-end items-start md:items-center mb-3 gap-3 w-full">
                 <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
                     <button id="export-excel-btn" class="py-1.5 px-3 bg-white border border-slate-300 text-emerald-700 font-bold rounded-lg hover:bg-emerald-50 transition shadow-sm flex items-center gap-2 text-xs">
                         <i class="bi bi-file-earmark-excel-fill"></i> Excel

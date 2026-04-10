@@ -106,9 +106,9 @@ function renderBaseLayout() {
     `).join('');
 
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 md:p-4 w-full bg-slate-50 relative overflow-hidden">
+        <section class="h-full flex flex-col p-2 pt-1 md:px-6 md:py-3 md:pt-2 w-full bg-slate-50 relative overflow-hidden">
             
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-2 md:p-3 mb-3 z-20 flex flex-col gap-3 flex-shrink-0">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-2 md:p-3 mb-2 z-20 flex flex-col gap-2 flex-shrink-0">
                 
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
                     
@@ -137,7 +137,7 @@ function renderBaseLayout() {
                     </div>
                 </div>
 
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pt-2 border-t border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 pt-2 border-t border-slate-100">
                     
                     <div class="flex flex-wrap gap-1.5 items-center w-full md:w-auto" id="establishment-filters-container">
                         ${localState.establishments.length > 1 ? estCheckboxes : '<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-100 px-2 py-1 rounded-md"><i class="bi bi-shop mr-1"></i> Unidade Atual</span>'}

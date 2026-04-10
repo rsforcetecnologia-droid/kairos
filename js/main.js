@@ -113,7 +113,7 @@ function scrollToActiveItem() {
     container.scrollBy({ left: centerOffset, behavior: 'smooth' });
 }
 
-// --- 3. MAPEAMENTO DE ROTAS ---
+// --- 3. MAPEAMENTO DE ROTAS E TÍTULOS ---
 const pageLoader = {
     'dashboard-section': loadDashboardPage, 
     'agenda-section': loadAgendaPage,
@@ -134,6 +134,29 @@ const pageLoader = {
     'my-profile-section': loadMyProfilePage,
     'hierarquia-section': () => renderHierarchyScreen(contentDiv),
     'establishments-section': () => renderHierarchyScreen(contentDiv),
+};
+
+// Dicionário de títulos para o cabeçalho dinâmico
+const pageTitles = {
+    'dashboard-section': 'Dashboard',
+    'agenda-section': 'Agenda',
+    'comandas-section': 'Comandas / PDV',
+    'relatorios-section': 'Relatórios',
+    'servicos-section': 'Serviços do Menu',
+    'produtos-section': 'Produtos (Estoque)',
+    'suppliers-section': 'Parceiros de Negócio',
+    'profissionais-section': 'Equipa / Profissionais',
+    'clientes-section': 'Clientes',
+    'estabelecimento-section': 'Minha Empresa',
+    'ausencias-section': 'Ausências',
+    'users-section': 'Usuários e Acessos',
+    'sales-report-section': 'Relatório de Vendas',
+    'financial-section': 'Financeiro (ERP)',
+    'commissions-section': 'Comissões',
+    'packages-section': 'Planos e Pacotes',
+    'my-profile-section': 'Meu Perfil',
+    'hierarquia-section': 'Rede / Filiais',
+    'establishments-section': 'Rede / Filiais'
 };
 
 // --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
@@ -478,6 +501,15 @@ export function navigateTo(sectionId, params = {}) {
     
     const loadPage = pageLoader[sectionId];
     if (loadPage && contentDiv) {
+        
+        // --- 🔴 NOVO: Atualiza o título no cabeçalho superior ---
+        const headerTitleEl = document.getElementById('header-page-title');
+        if (headerTitleEl) {
+            // Procura o nome no nosso dicionário (pageTitles). Se não achar, coloca o padrão "Painel de Gestão"
+            headerTitleEl.textContent = pageTitles[sectionId] || 'Painel de Gestão';
+        }
+        // -------------------------------------------------------
+
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
