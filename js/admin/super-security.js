@@ -1,8 +1,10 @@
 // Arquivo: js/admin/super-security.js
 
 import { auth, db } from '../firebase-config.js'; // Ajuste o caminho se necessário
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+// ✅ CORREÇÃO 1: Atualizado para a versão 11.6.1 para bater com o admin-login.html
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // 1. Definição da Matriz de Permissões (Quem pode acessar quais módulos)
 const PERMISSIONS = {
@@ -18,7 +20,6 @@ export let currentUserRole = null;
 // 2. Função Principal que inicializa a segurança da página
 export function initializeSecurity() {
     // Escondemos o corpo inteiro da página até termos certeza de quem é o usuário
-    // Isso evita que a tela pisque funções não permitidas antes do JS carregar
     document.body.style.display = 'none';
 
     // Fica escutando se existe alguém logado no Firebase
@@ -46,15 +47,17 @@ export function initializeSecurity() {
                     // CUIDADO: O usuário tem login, mas não está na tabela de administradores!
                     console.error("🚨 Intruso detectado: Usuário sem registro de Admin.");
                     await signOut(auth); // Desloga o intruso à força
-                    window.location.href = '/admin-login.html';
+                    
+                    // ✅ CORREÇÃO 2: Removida a barra inicial para caminho relativo
+                    window.location.href = 'admin-login.html';
                 }
             } catch (error) {
                 console.error("Erro ao verificar permissões de segurança:", error);
-                window.location.href = '/admin-login.html';
+                window.location.href = 'admin-login.html';
             }
         } else {
             // Não há ninguém logado, redireciona para a tela de login
-            window.location.href = '/admin-login.html';
+            window.location.href = 'admin-login.html';
         }
     });
 }
@@ -65,7 +68,6 @@ function applyUIPermissions(role) {
     const allowedModules = PERMISSIONS[role] || [];
 
     // Busca no HTML todos os elementos que possuem o atributo "data-module"
-    // Exemplo: <li data-module="financial">...</li>
     const protectedElements = document.querySelectorAll('[data-module]');
 
     protectedElements.forEach(element => {
@@ -83,7 +85,7 @@ function applyUIPermissions(role) {
 export async function logoutAdmin() {
     try {
         await signOut(auth);
-        window.location.href = '/admin-login.html';
+        window.location.href = 'admin-login.html';
     } catch (error) {
         console.error("Erro ao sair:", error);
     }
