@@ -4,176 +4,144 @@ service cloud.firestore {
 
     // --- FUNÇÕES AUXILIARES DE SEGURANÇA ---
 
-    // Verifica se o usuário está logado
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Obtém o cargo (role) do token de autenticação (Custom Claim)
+    // Verifica se o usuário logado é um Super Administrador do sistema
+    function isSuperAdmin() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admin_users/$(request.auth.uid)).data.role == 'super_admin';
+    }
+
     function getRole() {
       return request.auth.token.role;
     }
 
-    // 🔥 CORREÇÃO MULTI-TENANT: 
-    // Verifica se o usuário pertence à loja pelo Token OU se ele é o DONO (ownerId) daquela loja
     function isMemberOf(establishmentId) {
       return isSignedIn() && (
+        isSuperAdmin() || 
         request.auth.token.establishmentId == establishmentId || 
         get(/databases/$(database)/documents/establishments/$(establishmentId)).data.ownerId == request.auth.uid
       );
     }
 
-    // Verifica se o usuário é DONO do estabelecimento alvo
     function isOwner(establishmentId) {
-      return isMemberOf(establishmentId) && getRole() == 'owner';
+      return isSuperAdmin() || (isMemberOf(establishmentId) && getRole() == 'owner');
     }
 
-    // Verifica se campos sensíveis foram alterados na requisição
     function isNotChangingSensitiveFields() {
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny(['role', 'permissions', 'establishmentId', 'subscription']);
     }
 
-    // --- COLEÇÕES DE SISTEMA ---
+    // --- COLEÇÕES DO SISTEMA (KAIROS CORE) ---
 
-    // USUÁRIOS
+    // Permite que admins loguem e usuários consultem seu próprio perfil de acesso
+    match /admin_users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+
+    // Gerenciamento de Planos/Pacotes
+    match /packages/{packageId} {
+      allow read: if true; // Público para o registro, mas escrita só Super Admin
+      allow write: if isSuperAdmin();
+    }
+
+    // --- COLEÇÕES DE CLIENTES (TENANTS) ---
+
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isMemberOf(resource.data.establishmentId));
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner';
-      allow delete: if isSignedIn() && isMemberOf(resource.data.establishmentId) && getRole() == 'owner';
+      allow create: if isSignedIn() && (isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner') || isSuperAdmin();
+      allow delete: if isSignedIn() && (isMemberOf(resource.data.establishmentId) && getRole() == 'owner') || isSuperAdmin();
       allow update: if isSignedIn() && (
-        (request.auth.uid == userId && isNotChangingSensitiveFields()) 
-        || 
-        (isMemberOf(resource.data.establishmentId) && getRole() == 'owner')
+        (request.auth.uid == userId && isNotChangingSensitiveFields()) || 
+        (isMemberOf(resource.data.establishmentId) && getRole() == 'owner') ||
+        isSuperAdmin()
       );
     }
 
-    // ESTABELECIMENTOS
     match /establishments/{establishmentId} {
-      allow get: if true; // Público para leitura (agendamento)
-      
-      // O Dono pode editar dados, EXCETO a assinatura
+      allow get: if true; 
+      allow list, create, delete: if isSuperAdmin();
       allow update: if isOwner(establishmentId) 
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']);
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']) || isSuperAdmin());
 
       match /notifications/{notificationId} {
-        allow read: if isMemberOf(establishmentId); // 🔥 O erro 4865 acontecia aqui e foi resolvido!
-        allow write: if false; // Apenas backend cria notificações
+        allow read: if isMemberOf(establishmentId);
+        allow write: if isSuperAdmin(); 
       }
     }
 
     // --- COLEÇÕES DE NEGÓCIO ---
 
-    // FORNECEDORES
     match /suppliers/{supplierId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
 
-    // HISTÓRICO DE COMPRAS
     match /purchases/{purchaseId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
 
-    // CLIENTES
     match /clients/{clientId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
       
       match /loyaltyHistory/{historyId} {
-        allow read: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
-        allow create: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
+        allow read, create: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
       }
     }
 
-    // AGENDAMENTOS
     match /appointments/{appointmentId} {
-      allow create: if true; // Permite criação pública (agendamento online)
+      allow create: if true; 
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
-    // PRODUTOS
     match /products/{productId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
 
       match /stockHistory/{historyId} {
-        allow read: if isSignedIn() && isMemberOf(resource.ancestor.data.establishmentId);
+        allow read: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/products/$(productId)).data.establishmentId);
         allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
       }
     }
     
     match /productCategories/{categoryId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
 
-    // VENDAS, CAIXA E BLOQUEIOS
     match /sales/{saleId} {
-       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+       allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
     
     match /blockages/{blockageId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
     
     match /cashierSessions/{sessionId} {
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
 
-    // SERVIÇOS E PROFISSIONAIS (Públicos para Agendamento, Protegidos na Escrita)
     match /services/{serviceId} {
-      allow get: if true;
-      allow list: if true; // Necessário para catálogo público
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow get, list: if true;
+      allow write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
     
     match /professionals/{professionalId} {
-      allow get: if true;
-      allow list: if true;
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-      allow update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow get, list: if true;
+      allow write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
     }
 
-    // --- AUDITORIA ---
     match /audit_logs/{logId} {
       allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
       allow read: if isOwner(resource.data.establishmentId);
       allow update, delete: if false;
     }
     
-    // --- FINANCEIRO ---
-    match /financial_natures/{docId} { 
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    
-    match /financial_cost_centers/{docId} { 
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    
-    match /financial_payables/{docId} { 
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-    
-    match /financial_receivables/{docId} { 
-      allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
-      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
-    }
-// Regra para Parceiros de Negócio / Fornecedores
-    match /suppliers/{supplierId} {
-      // Permite ler se o utilizador estiver logado
-      allow read: if request.auth != null;
-      
-      // Permite criar, editar e apagar se o utilizador estiver logado e pertencer a uma empresa
-      allow create, update, delete: if request.auth != null;
-    }
+    match /financial_natures/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
+    match /financial_cost_centers/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
+    match /financial_payables/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
+    match /financial_receivables/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
   }
 }

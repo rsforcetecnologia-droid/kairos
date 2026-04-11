@@ -7,9 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
 <body class="bg-gray-900 flex items-center justify-center h-screen text-gray-200">
@@ -20,80 +18,118 @@
             <p class="text-gray-400 mt-2">Painel de Super-Administrador</p>
         </header>
 
-        <form id="loginForm" class="bg-gray-800 rounded-lg shadow-xl p-8">
-            <div class="mb-4">
-                <label for="email" class="block mb-2 text-sm font-medium">E-mail</label>
-                <input type="email" id="email" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
-            </div>
-            <div class="mb-6">
-                <label for="password" class="block mb-2 text-sm font-medium">Senha</label>
-                <input type="password" id="password" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+        <div class="bg-gray-800 rounded-lg shadow-xl p-8">
+            <form id="loginForm">
+                <div class="mb-4">
+                    <label for="email" class="block mb-2 text-sm font-medium">E-mail</label>
+                    <input type="email" id="email" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="password" class="text-sm font-medium">Senha</label>
+                        <a href="#" id="forgotPasswordLink" class="text-sm text-indigo-400 hover:text-indigo-300">Esqueci a senha</a>
+                    </div>
+                    <input type="password" id="password" class="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
+                </div>
+
+                <div id="errorMessage" class="hidden text-center text-red-400 text-sm mb-4"></div>
+                <div id="successMessage" class="hidden text-center text-green-400 text-sm mb-4"></div>
+
+                <button type="submit" id="loginButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 disabled:bg-indigo-400">
+                    <span>Entrar</span>
+                </button>
+            </form>
+
+            <div class="relative flex py-5 items-center">
+                <div class="flex-grow border-t border-gray-600"></div>
+                <span class="flex-shrink mx-4 text-gray-400 text-xs uppercase">Ou</span>
+                <div class="flex-grow border-t border-gray-600"></div>
             </div>
 
-            <div id="errorMessage" class="hidden text-center text-red-400 text-sm mb-4 h-5"></div>
-
-            <button type="submit" id="loginButton" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 disabled:bg-indigo-400">
-                <span>Entrar</span>
+            <button id="googleLoginButton" class="w-full bg-white text-gray-900 font-bold py-3 px-4 rounded-lg hover:bg-gray-200 transition duration-300 flex items-center justify-center gap-3">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-5 h-5">
+                <span>Entrar com Google</span>
             </button>
-        </form>
+        </div>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // ADICIONADO: GoogleAuthProvider e signInWithPopup
+        import { getAuth, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // CONFIGURAÇÃO ATUALIZADA PARA 'kairos-agenda-us'
         const firebaseConfig = {
-            apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk", // Chave do projeto 'kairos-agenda-us'
-            authDomain: "kairos-agenda-us.firebaseapp.com", // Domínio atualizado
-            projectId: "kairos-agenda-us", // ID do projeto atualizado
-            storageBucket: "kairos-agenda-us.firebasestorage.app", // Bucket atualizado
-            messagingSenderId: "407358446276", // Sender ID atualizado
-            appId: "1:407358446276:web:c6229ea999b56701558791" // App ID atualizado
-            // Nota: measurementId foi removido por ser opcional e não crítico para o login.
+            apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk", 
+            authDomain: "kairos-agenda-us.firebaseapp.com", 
+            projectId: "kairos-agenda-us", 
+            storageBucket: "kairos-agenda-us.firebasestorage.app", 
+            messagingSenderId: "407358446276", 
+            appId: "1:407358446276:web:c6229ea999b56701558791" 
         };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
 
         const loginForm = document.getElementById('loginForm');
-        const loginButton = document.getElementById('loginButton');
-        const loginButtonText = loginButton.querySelector('span');
         const errorMessageDiv = document.getElementById('errorMessage');
+        const googleLoginButton = document.getElementById('googleLoginButton');
 
+        // Função reutilizável para verificar permissão no Firestore
+        async function checkAdminPrivileges(user) {
+            const userDocRef = doc(db, 'admin_users', user.uid);
+            const userDocSnap = await getDoc(userDocRef);
+
+            if (userDocSnap.exists() && userDocSnap.data().role === 'super_admin') {
+                window.location.href = 'admin.html'; 
+            } else {
+                errorMessageDiv.textContent = 'Acesso negado. Esta conta não é um Super Admin.';
+                errorMessageDiv.classList.remove('hidden');
+                await signOut(auth);
+            }
+        }
+
+        // --- LOGIN COM GOOGLE ---
+        googleLoginButton.addEventListener('click', async () => {
+            errorMessageDiv.classList.add('hidden');
+            try {
+                const result = await signInWithPopup(auth, provider);
+                await checkAdminPrivileges(result.user);
+            } catch (error) {
+                console.error("Erro Google Login:", error);
+                errorMessageDiv.textContent = 'Erro ao entrar com o Google.';
+                errorMessageDiv.classList.remove('hidden');
+            }
+        });
+
+        // --- LOGIN TRADICIONAL ---
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-
-            loginButton.disabled = true;
-            loginButtonText.textContent = 'A entrar...';
             errorMessageDiv.classList.add('hidden');
 
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                const user = userCredential.user;
-                // Busca o token para verificar se é super-admin
-                const idTokenResult = await user.getIdTokenResult(true);
-
-                if (idTokenResult.claims.role === 'super-admin') {
-                    window.location.href = '/admin'; 
-                } else {
-                    errorMessageDiv.textContent = 'Acesso negado. Permissões insuficientes.';
-                    errorMessageDiv.classList.remove('hidden');
-                    auth.signOut();
-                }
-
+                await checkAdminPrivileges(userCredential.user);
             } catch (error) {
-                console.error(error); // Bom para debug, mostra o erro no console
                 errorMessageDiv.textContent = 'E-mail ou senha inválidos.';
                 errorMessageDiv.classList.remove('hidden');
-            } finally {
-                loginButton.disabled = false;
-                loginButtonText.textContent = 'Entrar';
             }
         });
+
+        // --- RECUPERAÇÃO DE SENHA ---
+        document.getElementById('forgotPasswordLink').addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            if (!email) { alert("Digite seu e-mail primeiro."); return; }
+            try {
+                await sendPasswordResetEmail(auth, email);
+                alert("E-mail de recuperação enviado!");
+            } catch (error) { alert("Erro ao enviar e-mail."); }
+        });
     </script>
-    </body>
+</body>
 </html>
