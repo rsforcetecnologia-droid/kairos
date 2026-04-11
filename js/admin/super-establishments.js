@@ -1,7 +1,7 @@
 // Arquivo: js/admin/super-establishments.js
 
-import { db } from '../firebase-config.js'; 
-import { collection, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// 1. IMPORTAÇÃO CORRIGIDA: Puxamos TUDO do nosso ficheiro central (versão 11.6.1 unificada)
+import { db, collection, getDocs, doc, updateDoc } from '../firebase-config.js'; 
 
 // Função principal que renderiza a tela
 export async function loadEstablishments(container) {
@@ -15,7 +15,7 @@ export async function loadEstablishments(container) {
 
         <div style="background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden;">
             <div style="padding: 20px;">
-                <p id="loading-msg" style="color: #6b7280; font-style: italic;">Buscando clientes no banco de dados...</p>
+                <p id="loading-msg" style="color: #6b7280; font-style: italic;">A buscar clientes no banco de dados...</p>
                 
                 <div style="overflow-x: auto;">
                     <table id="clients-table" style="width: 100%; border-collapse: collapse; display: none;">
@@ -108,7 +108,7 @@ export async function loadEstablishments(container) {
 
     } catch (error) {
         console.error("Erro ao carregar clientes:", error);
-        container.innerHTML = `<div style="background: #fee2e2; color: #991b1b; padding: 20px; border-radius: 8px;">Erro ao carregar lista de clientes. Verifique o console.</div>`;
+        container.innerHTML = `<div style="background: #fee2e2; color: #991b1b; padding: 20px; border-radius: 8px;">Erro ao carregar lista de clientes. Verifique a consola.</div>`;
     }
 }
 

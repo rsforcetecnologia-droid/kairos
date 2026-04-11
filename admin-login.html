@@ -54,38 +54,37 @@
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        // ADICIONADO: GoogleAuthProvider e signInWithPopup
-        import { getAuth, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // 1. IMPORTAÇÃO CENTRALIZADA DO FIREBASE
+        // Vamos usar a mesma instância que o resto do teu sistema utiliza!
+        import { auth } from './js/firebase-config.js';
+        import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyBmeKlOJ_kMshsuintO0j8CXOvM9ywBMnk", 
-            authDomain: "kairos-agenda-us.firebaseapp.com", 
-            projectId: "kairos-agenda-us", 
-            storageBucket: "kairos-agenda-us.firebasestorage.app", 
-            messagingSenderId: "407358446276", 
-            appId: "1:407358446276:web:c6229ea999b56701558791" 
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
         const provider = new GoogleAuthProvider();
 
         const loginForm = document.getElementById('loginForm');
         const errorMessageDiv = document.getElementById('errorMessage');
         const googleLoginButton = document.getElementById('googleLoginButton');
 
-        // Função reutilizável para verificar permissão no Firestore
+        // 2. VERIFICAÇÃO DE SEGURANÇA BASEADA NO TOKEN
         async function checkAdminPrivileges(user) {
-            const userDocRef = doc(db, 'admin_users', user.uid);
-            const userDocSnap = await getDoc(userDocRef);
+            try {
+                // O "true" força a ir buscar o token mais atualizado ao servidor
+                const idTokenResult = await user.getIdTokenResult(true);
+                const role = idTokenResult.claims.role;
 
-            if (userDocSnap.exists() && userDocSnap.data().role === 'super_admin') {
-                window.location.href = 'admin.html'; 
-            } else {
-                errorMessageDiv.textContent = 'Acesso negado. Esta conta não é um Super Admin.';
+                // Verificamos se o utilizador tem a claim de administrador
+                if (role === 'super-admin' || role === 'super_admin') {
+                    // Login com sucesso! Vai para o painel
+                    window.location.href = 'admin.html'; 
+                } else {
+                    // Tem conta, mas não é administrador.
+                    errorMessageDiv.textContent = 'Acesso negado. Esta conta não é um Super Admin.';
+                    errorMessageDiv.classList.remove('hidden');
+                    await signOut(auth); // Expulsa o intruso
+                }
+            } catch (error) {
+                console.error("Erro ao ler segurança:", error);
+                errorMessageDiv.textContent = 'Erro ao validar permissões.';
                 errorMessageDiv.classList.remove('hidden');
                 await signOut(auth);
             }
@@ -115,6 +114,7 @@
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 await checkAdminPrivileges(userCredential.user);
             } catch (error) {
+                console.error("Erro Login:", error);
                 errorMessageDiv.textContent = 'E-mail ou senha inválidos.';
                 errorMessageDiv.classList.remove('hidden');
             }
@@ -128,7 +128,9 @@
             try {
                 await sendPasswordResetEmail(auth, email);
                 alert("E-mail de recuperação enviado!");
-            } catch (error) { alert("Erro ao enviar e-mail."); }
+            } catch (error) { 
+                alert("Erro ao enviar e-mail."); 
+            }
         });
     </script>
 </body>

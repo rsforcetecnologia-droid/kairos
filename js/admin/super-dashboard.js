@@ -1,17 +1,17 @@
 // Arquivo: js/admin/super-dashboard.js
 
-import { db } from '../firebase-config.js'; // Ajuste o caminho se necessário
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+// 1. IMPORTAÇÃO CORRIGIDA: Puxamos TUDO do nosso ficheiro central para garantir a mesma versão (11.6.1)
+import { db, collection, getDocs, query, where } from '../firebase-config.js';
 
-// Função principal que será chamada quando o usuário clicar no menu "Dashboard"
+// Função principal que será chamada quando o utilizador clicar no menu "Dashboard"
 export async function loadDashboard(container) {
     
-    // 1. Mostra a tela de carregamento estruturada com CSS inline para facilitar
+    // 1. Mostra o ecrã de carregamento estruturado com CSS inline para facilitar
     container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 20px;">
             <h3 style="color: #374151; font-size: 1.5rem; font-weight: 600; margin-bottom: 10px;">📊 Visão Geral do Negócio</h3>
             <div id="dashboard-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
-                <p style="color: #6b7280;">Buscando métricas no banco de dados...</p>
+                <p style="color: #6b7280;">A procurar métricas no banco de dados...</p>
             </div>
         </div>
     `;
@@ -39,8 +39,8 @@ export async function loadDashboard(container) {
         let estimatedMRR = 0;
         activeEstabSnapshot.forEach(doc => {
             const data = doc.data();
-            // SUPOSIÇÃO: Assumindo que você salva o valor do plano no campo 'planPrice'. 
-            // Se o campo for outro (ex: 'valorMensalidade'), altere a linha abaixo.
+            // SUPOSIÇÃO: Assumindo que guardas o valor do plano no campo 'planPrice'. 
+            // Se o campo for outro (ex: 'valorMensalidade'), altera a linha abaixo.
             const valorPlano = parseFloat(data.planPrice) || 0; 
             estimatedMRR += valorPlano;
         });
@@ -48,7 +48,7 @@ export async function loadDashboard(container) {
         // Formata o MRR para Moeda Brasileira (BRL)
         const formatadoMRR = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(estimatedMRR);
 
-        // 5. Renderizando os Cards na tela com os dados reais
+        // 5. Renderizando os Cards no ecrã com os dados reais
         metricsContainer.innerHTML = `
             <div style="background: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 5px solid #6b7280;">
                 <h4 style="font-size: 0.85rem; color: #6b7280; text-transform: uppercase; margin: 0;">Total Cadastrados</h4>

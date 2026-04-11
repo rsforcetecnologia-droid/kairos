@@ -8,27 +8,33 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Verifica se o usuário logado é um Super Administrador do sistema
+    // Verifica se o usuário logado é um Super Administrador do sistema no Banco de Dados
     function isSuperAdmin() {
       return isSignedIn() && 
         exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/admin_users/$(request.auth.uid)).data.role == 'super_admin';
     }
 
+    // Verifica a Claim (Token)
     function getRole() {
       return request.auth.token.role;
     }
 
+    // Função combinada para Super Admin (Aceita tanto o Banco de Dados quanto o Token)
+    function isPlatformAdmin() {
+      return isSuperAdmin() || (isSignedIn() && (getRole() == 'super_admin' || getRole() == 'super-admin'));
+    }
+
     function isMemberOf(establishmentId) {
       return isSignedIn() && (
-        isSuperAdmin() || 
+        isPlatformAdmin() || 
         request.auth.token.establishmentId == establishmentId || 
         get(/databases/$(database)/documents/establishments/$(establishmentId)).data.ownerId == request.auth.uid
       );
     }
 
     function isOwner(establishmentId) {
-      return isSuperAdmin() || (isMemberOf(establishmentId) && getRole() == 'owner');
+      return isPlatformAdmin() || (isMemberOf(establishmentId) && getRole() == 'owner');
     }
 
     function isNotChangingSensitiveFields() {
@@ -40,38 +46,46 @@ service cloud.firestore {
 
     // Permite que admins loguem e usuários consultem seu próprio perfil de acesso
     match /admin_users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
-      allow write: if isSuperAdmin();
+      allow read: if isSignedIn() && (request.auth.uid == userId || isPlatformAdmin());
+      allow write: if isPlatformAdmin();
     }
 
-    // Gerenciamento de Planos/Pacotes
+    // Gerenciamento de Pacotes antigos
     match /packages/{packageId} {
       allow read: if true; // Público para o registro, mas escrita só Super Admin
-      allow write: if isSuperAdmin();
+      allow write: if isPlatformAdmin();
     }
+
+    // 👇 --- REGRA DOS PLANOS ADICIONADA AQUI --- 👇
+    // Gerenciamento de Planos de Assinatura e Módulos (Painel Financeiro)
+    match /plans/{planId} {
+      allow read: if true; // Público para que a tela de cadastro e admin consigam ler os planos
+      allow write: if isPlatformAdmin(); // Apenas o Super Admin pode criar/editar/excluir
+    }
+    // 👆 ---------------------------------------- 👆
 
     // --- COLEÇÕES DE CLIENTES (TENANTS) ---
 
     match /users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isMemberOf(resource.data.establishmentId));
-      allow create: if isSignedIn() && (isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner') || isSuperAdmin();
-      allow delete: if isSignedIn() && (isMemberOf(resource.data.establishmentId) && getRole() == 'owner') || isSuperAdmin();
+      allow create: if isSignedIn() && (isMemberOf(request.resource.data.establishmentId) && getRole() == 'owner') || isPlatformAdmin();
+      allow delete: if isSignedIn() && (isMemberOf(resource.data.establishmentId) && getRole() == 'owner') || isPlatformAdmin();
       allow update: if isSignedIn() && (
         (request.auth.uid == userId && isNotChangingSensitiveFields()) || 
         (isMemberOf(resource.data.establishmentId) && getRole() == 'owner') ||
-        isSuperAdmin()
+        isPlatformAdmin()
       );
     }
 
     match /establishments/{establishmentId} {
       allow get: if true; 
-      allow list, create, delete: if isSuperAdmin();
+      allow list, create, delete: if isPlatformAdmin();
       allow update: if isOwner(establishmentId) 
-                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']) || isSuperAdmin());
+                    && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']) || isPlatformAdmin());
 
       match /notifications/{notificationId} {
         allow read: if isMemberOf(establishmentId);
-        allow write: if isSuperAdmin(); 
+        allow write: if isPlatformAdmin(); 
       }
     }
 

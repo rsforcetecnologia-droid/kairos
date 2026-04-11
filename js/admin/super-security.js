@@ -1,12 +1,10 @@
 // Arquivo: js/admin/super-security.js
 
-import { auth, db } from '../firebase-config.js'; // Ajuste o caminho se necessário
-
-// ✅ CORREÇÃO 1: Atualizado para a versão 11.6.1 para bater com o admin-login.html
+// 1. Importamos a configuração centralizada do Firebase
+import { auth } from '../firebase-config.js'; 
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// 1. Definição da Matriz de Permissões (Quem pode acessar quais módulos)
+// 2. Definição da Matriz de Permissões
 const PERMISSIONS = {
     'super_admin': ['dashboard', 'establishments', 'whatsapp', 'financial', 'team', 'settings'],
     'support': ['establishments', 'whatsapp'],
@@ -14,41 +12,39 @@ const PERMISSIONS = {
     'developer': ['whatsapp', 'settings']
 };
 
-// Variável global que guardará o cargo do usuário logado para usarmos em outras telas
 export let currentUserRole = null;
 
-// 2. Função Principal que inicializa a segurança da página
+// 3. Função Principal de Inicialização e Segurança
 export function initializeSecurity() {
-    // Escondemos o corpo inteiro da página até termos certeza de quem é o usuário
+    // Esconde a página até confirmarmos a identidade e permissões
     document.body.style.display = 'none';
 
-    // Fica escutando se existe alguém logado no Firebase
     onAuthStateChanged(auth, async (user) => {
         if (user) {
-            // O usuário tem um login válido, mas qual é o cargo dele?
             try {
-                // Buscamos o documento do usuário na coleção 'admin_users'
-                const userDocRef = doc(db, 'admin_users', user.uid); 
-                const userDocSnap = await getDoc(userDocRef);
+                // Lê o Token do utilizador (Custom Claims)
+                const idTokenResult = await user.getIdTokenResult();
+                let role = idTokenResult.claims.role;
 
-                if (userDocSnap.exists()) {
-                    const userData = userDocSnap.data();
-                    // Pegamos a role. Se por algum erro não tiver, setamos como 'support' por segurança
-                    currentUserRole = userData.role || 'support'; 
+                // Normaliza o nome do cargo (converte hífen para underscore se necessário)
+                if (role === 'super-admin') {
+                    role = 'super_admin';
+                }
 
-                    console.log("🛡️ Acesso concedido. Perfil:", currentUserRole);
+                // Verifica se o cargo existe na nossa matriz de permissões
+                if (role && PERMISSIONS[role]) {
+                    currentUserRole = role; 
+                    console.log("🛡️ Acesso Seguro Concedido! Perfil:", currentUserRole);
 
-                    // Executa a limpeza da interface baseada no cargo
+                    // Aplica as restrições visuais na tela
                     applyUIPermissions(currentUserRole);
 
-                    // Agora que a tela está limpa e segura, mostramos ela
+                    // Revela a tela
                     document.body.style.display = 'flex';
                 } else {
-                    // CUIDADO: O usuário tem login, mas não está na tabela de administradores!
-                    console.error("🚨 Intruso detectado: Usuário sem registro de Admin.");
-                    await signOut(auth); // Desloga o intruso à força
-                    
-                    // ✅ CORREÇÃO 2: Removida a barra inicial para caminho relativo
+                    // Utilizador autenticado mas sem permissões de painel
+                    console.error("🚨 Intruso detectado: Conta sem cargo de gestão.");
+                    await signOut(auth); 
                     window.location.href = 'admin-login.html';
                 }
             } catch (error) {
@@ -56,37 +52,31 @@ export function initializeSecurity() {
                 window.location.href = 'admin-login.html';
             }
         } else {
-            // Não há ninguém logado, redireciona para a tela de login
+            // Ninguém logado, redireciona para o login
             window.location.href = 'admin-login.html';
         }
     });
 }
 
-// 3. Função que destrói elementos HTML não autorizados
+// 4. Função que destrói elementos HTML não autorizados
 function applyUIPermissions(role) {
-    // Pega a lista de módulos que este cargo pode ver
     const allowedModules = PERMISSIONS[role] || [];
-
-    // Busca no HTML todos os elementos que possuem o atributo "data-module"
     const protectedElements = document.querySelectorAll('[data-module]');
 
     protectedElements.forEach(element => {
         const moduleName = element.getAttribute('data-module');
-
-        // Se o módulo deste elemento HTML NÃO estiver na lista de permitidos...
         if (!allowedModules.includes(moduleName)) {
-            // Removemos o elemento completamente do código fonte da página
             element.remove(); 
         }
     });
 }
 
-// 4. Função auxiliar para deslogar (você usará isso no botão de Sair do menu)
+// 5. Função auxiliar para deslogar
 export async function logoutAdmin() {
     try {
         await signOut(auth);
         window.location.href = 'admin-login.html';
     } catch (error) {
-        console.error("Erro ao sair:", error);
+        console.error("Erro ao sair do sistema:", error);
     }
 }
