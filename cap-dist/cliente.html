@@ -5,88 +5,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Agendamento Online</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
     <style>
         :root {
-            --theme-main: #4f46e5;
-            --theme-contrast: #ffffff;
-            --content-text-color: #111827; 
+            /* Variáveis que serão sobrescritas pelo JS baseadas no template */
+            --theme-primary: #4f46e5;
+            --theme-bg: #f9fafb;
+            --theme-text: #4b5563;
+            --theme-title-color: #111827;
+            --theme-font: 'Inter', sans-serif;
+            --theme-btn-radius: 0.75rem;
+            --theme-card-bg: #ffffff;
+            --theme-card-border: rgba(0,0,0,0.05);
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            background-repeat: no-repeat;
+            font-family: var(--theme-font);
+            background-color: var(--theme-bg);
+            color: var(--theme-text);
             min-height: 100vh;
-            position: relative;
+            transition: background-color 0.5s ease;
         }
 
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.40); 
-            backdrop-filter: blur(3px); 
-            z-index: 0; 
-            pointer-events: none; 
-        }
-
-        #booking-view, #branch-selector-view {
-            position: relative;
-            z-index: 1;
-        }
-
-        .theme-bg { background-color: var(--theme-main); color: var(--theme-contrast); }
-        .theme-text { color: var(--theme-main); }
-        .theme-border { border-color: var(--theme-main); }
-        .theme-ring:focus { --tw-ring-color: var(--theme-main); }
-        .custom-text-color { color: var(--content-text-color); }
-
-        .glass-panel {
-            background-color: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-        }
+        /* Classes utilitárias do tema */
+        .title-text { color: var(--theme-title-color); }
+        .theme-bg-color { background-color: var(--theme-primary); color: #ffffff; }
+        .theme-text-color { color: var(--theme-primary); }
+        .theme-border-color { border-color: var(--theme-primary); }
+        .theme-ring:focus { --tw-ring-color: var(--theme-primary); border-color: var(--theme-primary); }
         
-        .glass-panel-dark {
-            background-color: rgba(17, 24, 39, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        .theme-card {
+            background-color: var(--theme-card-bg);
+            border: 1px solid var(--theme-card-border);
+            border-radius: var(--theme-btn-radius);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s ease;
         }
 
-        .service-card, .professional-card, .time-slot-btn, .branch-card { transition: all 0.2s ease; }
-        
+        .radius-dynamic { border-radius: var(--theme-btn-radius); }
+
         .service-card.selected, .professional-card.selected {
-            border-color: var(--theme-main);
-            background-color: #f8fafc;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-        
-        .service-card.selected .check-icon, .professional-card.selected .check-icon { 
-            opacity: 1; transform: scale(1); 
+            border-color: var(--theme-primary);
+            box-shadow: 0 0 0 1px var(--theme-primary);
         }
         
         .time-slot-selected { 
-            background-color: var(--theme-main) !important; 
-            color: var(--theme-contrast) !important; 
+            background-color: var(--theme-primary) !important; 
+            color: #ffffff !important; 
             font-weight: 600; 
-            transform: scale(1.05); 
+            border-color: var(--theme-primary) !important;
         }
+
+        /* Oculta scrollbar na secção horizontal de comentários */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         
         .loader {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid var(--theme-main);
+            border: 3px solid rgba(0,0,0,0.1);
+            border-top: 3px solid var(--theme-primary);
             border-radius: 50%;
             width: 24px; height: 24px;
             animation: spin 1s linear infinite;
@@ -94,183 +80,223 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
-<body class="antialiased text-gray-800">
+<body class="antialiased">
 
-    <div class="fixed top-0 left-0 right-0 z-40 px-4 py-3">
-        <div class="glass-panel-dark rounded-full px-4 py-2 flex justify-between items-center max-w-2xl mx-auto">
-             <a href="/index.html" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                <img src="/assets/logo_kairos-Cl8ouf1y.png" alt="Kairos" class="h-9 w-auto opacity-90">
-            </a>
-            
-            <button id="myAppointmentsBtn" class="text-xs font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Meus Agendamentos
-            </button>
-        </div>
+    <div class="fixed top-4 right-4 z-40">
+        <button id="myAppointmentsBtn" class="text-xs font-semibold shadow-md px-4 py-2 rounded-full transition-transform hover:scale-105 flex items-center gap-2 theme-card" style="color: var(--theme-title-color);">
+            <i class="bi bi-calendar2-check theme-text-color"></i> Minhas Reservas
+        </button>
     </div>
 
     <div id="branch-selector-view" class="pt-24 pb-10 px-4 min-h-screen flex-col items-center justify-center hidden">
-        <div class="w-full max-w-2xl glass-panel rounded-3xl p-6 sm:p-10 shadow-2xl text-center fade-in">
-            <div id="network-logo-container" class="h-24 w-24 rounded-full bg-white p-1.5 shadow-lg mx-auto overflow-hidden mb-6 hidden">
+        <div class="w-full max-w-2xl theme-card p-6 sm:p-10 text-center fade-in">
+            <div id="network-logo-container" class="h-24 w-24 rounded-full bg-white p-1.5 shadow-lg mx-auto overflow-hidden mb-6 hidden border-4 border-gray-100">
                 <img id="networkLogo" src="" alt="Logo da Rede" class="h-full w-full rounded-full object-cover">
             </div>
             
-            <h1 id="networkName" class="text-3xl font-bold text-gray-900 mb-2">Bem-vindo(a)</h1>
-            <p class="text-gray-600 font-medium mb-8">Por favor, escolha em qual das nossas unidades deseja ser atendido hoje:</p>
+            <h1 id="networkName" class="text-3xl font-bold title-text mb-2">Bem-vindo(a)</h1>
+            <p class="font-medium mb-8 opacity-80">Por favor, escolha em qual das nossas unidades deseja ser atendido hoje:</p>
             
             <div id="branches-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
                 </div>
         </div>
     </div>
 
-    <div id="booking-view" class="pt-20 pb-10 px-3 min-h-screen flex flex-col items-center justify-start hidden">
+    <div id="booking-view" class="pb-10 min-h-screen flex flex-col items-center justify-start hidden">
         
-        <header class="w-full max-w-lg mb-6 text-center fade-in"> 
-            <div class="relative inline-block mb-3">
-                <div id="logo-container" class="h-20 w-20 rounded-full bg-white p-1 shadow-lg mx-auto overflow-hidden">
-                    <img id="establishmentLogo" src="" alt="Logo" class="h-full w-full rounded-full object-cover opacity-0 transition-opacity duration-500">
+        <div class="relative h-48 sm:h-56 w-full max-w-2xl mx-auto overflow-hidden sm:rounded-b-[2.5rem] shadow-sm">
+             <img id="establishmentBanner" src="" class="w-full h-full object-cover hidden transition-opacity duration-300">
+             <div id="bannerPlaceholder" class="w-full h-full flex items-center justify-center bg-gray-300 opacity-20"></div>
+             <div class="absolute inset-0 bg-gradient-to-t from-[var(--theme-bg)] to-transparent opacity-95"></div>
+        </div>
+
+        <main class="w-full max-w-xl mx-auto relative -mt-20 z-10 flex flex-col items-center text-center px-4">
+            
+            <div class="w-28 h-28 rounded-full mx-auto border-[6px] shadow-md overflow-hidden flex items-center justify-center transition-all duration-500 bg-white" style="border-color: var(--theme-bg);">
+                <img id="establishmentLogo" src="" alt="Logo" class="w-full h-full object-contain hidden">
+            </div>
+
+            <div class="mt-4 mb-5 w-full">
+                <h1 id="establishmentName" class="text-2xl font-bold truncate leading-tight title-text"></h1>
+                <p id="establishmentWelcomeMessage" class="text-sm mt-2 opacity-80 leading-relaxed max-w-sm mx-auto"></p>
+                
+                <div id="establishmentAddressContainer" class="flex items-center justify-center gap-1.5 mt-3 text-xs font-medium opacity-70 hidden title-text bg-gray-500/10 inline-flex px-3 py-1.5 rounded-full mx-auto">
+                    <i class="bi bi-geo-alt-fill text-red-500"></i>
+                    <span id="establishmentAddressText">Morada não definida</span>
                 </div>
             </div>
-            <h1 id="establishmentName" class="text-2xl font-bold custom-text-color drop-shadow-sm mb-1 leading-tight">
-                <div class="h-8 bg-gray-200/50 rounded w-48 mx-auto animate-pulse"></div>
-            </h1>
-            <p id="establishmentWelcomeMessage" class="text-sm custom-text-color font-medium px-4 opacity-90">
-                <div class="h-4 bg-gray-200/50 rounded w-32 mx-auto animate-pulse mt-2"></div>
-            </p>
-        </header>
 
-        <main class="w-full max-w-lg glass-panel rounded-2xl p-4 sm:p-6 shadow-xl relative min-h-[400px]">
-            
-            <div class="absolute top-0 left-0 right-0 h-1 bg-gray-100 rounded-t-2xl overflow-hidden">
-                <div id="progress-bar" class="h-full theme-bg transition-all duration-500 w-1/4"></div>
-            </div>
+            <div class="flex justify-center gap-3 mb-6 w-full hidden" id="social-links-container">
+                </div>
 
-            <section id="services-section" class="fade-in">
-                <h2 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
-                    <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">1</span>
-                    Qual serviço deseja?
-                </h2>
-                <div id="services-container" class="space-y-2">
+            <section id="services-section" class="w-full text-left fade-in">
+                <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 mb-3 ml-2 title-text">Serviços Disponíveis</h2>
+                <div id="services-container" class="space-y-3 pb-8">
                     <div class="flex justify-center py-10"><div class="loader"></div></div>
                 </div>
             </section>
 
-            <section id="professionals-section" class="hidden">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">2</span>
-                        Com quem?
-                    </h2>
-                    <button id="professionals-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+            <section id="professionals-section" class="w-full text-left hidden">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Escolha o Profissional</h2>
+                    <button id="professionals-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
                 </div>
-                <div id="professionals-container" class="grid grid-cols-3 gap-2"></div>
+                <div id="professionals-container" class="grid grid-cols-3 gap-3 pb-8"></div>
             </section>
 
-            <section id="schedule-section" class="hidden">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">3</span>
-                        Quando?
-                    </h2>
-                    <button id="schedule-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+            <section id="schedule-section" class="w-full text-left hidden">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Data e Hora</h2>
+                    <button id="schedule-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
                 </div>
                 
-                <div class="bg-gray-50/80 rounded-xl p-3 mb-4 border border-gray-100">
-                    <div class="flex justify-between items-center mb-3">
-                        <button id="prev-week-btn" class="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition">
-                            <i class="bi bi-chevron-left"></i>
-                        </button>
-                        <h3 id="month-year-display" class="text-sm font-bold text-gray-700 capitalize"></h3>
-                        <button id="next-week-btn" class="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition">
-                            <i class="bi bi-chevron-right"></i>
-                        </button>
+                <div class="theme-card p-4 mb-5">
+                    <div class="flex justify-between items-center mb-4">
+                        <button id="prev-week-btn" class="p-1.5 opacity-60 hover:opacity-100 transition"><i class="bi bi-chevron-left text-lg title-text"></i></button>
+                        <h3 id="month-year-display" class="text-sm font-bold title-text capitalize"></h3>
+                        <button id="next-week-btn" class="p-1.5 opacity-60 hover:opacity-100 transition"><i class="bi bi-chevron-right text-lg title-text"></i></button>
                     </div>
-                    <div id="week-container" class="grid grid-cols-7 gap-1"></div>
+                    <div id="week-container" class="grid grid-cols-7 gap-1.5"></div>
                 </div>
 
-                <div id="time-slots-container" class="space-y-4">
+                <div id="time-slots-container" class="space-y-5 pb-8">
                     <div>
-                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Manhã</h4>
-                        <div id="morning-slots" class="grid grid-cols-4 gap-2"></div>
+                        <h4 class="text-[11px] font-bold opacity-50 uppercase tracking-widest mb-3 title-text">Manhã</h4>
+                        <div id="morning-slots" class="grid grid-cols-4 gap-2.5"></div>
                     </div>
                     <div>
-                        <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tarde / Noite</h4>
-                        <div id="afternoon-slots" class="grid grid-cols-4 gap-2"></div>
+                        <h4 class="text-[11px] font-bold opacity-50 uppercase tracking-widest mb-3 title-text">Tarde / Noite</h4>
+                        <div id="afternoon-slots" class="grid grid-cols-4 gap-2.5"></div>
                     </div>
                 </div>
             </section>
 
-            <section id="confirmation-section" class="hidden">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <span class="flex items-center justify-center w-6 h-6 theme-bg text-xs rounded-full theme-text-contrast">4</span>
-                        Finalizar
-                    </h2>
-                    <button id="confirmation-back-btn" class="text-xs text-gray-500 hover:text-gray-800 underline">Voltar</button>
+            <section id="confirmation-section" class="w-full text-left hidden">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Finalizar Agendamento</h2>
+                    <button id="confirmation-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
                 </div>
 
-                <div class="bg-gray-50/80 rounded-xl p-4 mb-5 border border-gray-100 shadow-inner">
-                    <div class="flex items-start gap-4">
+                <div class="theme-card p-5 mb-6">
+                    <h4 class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-3 title-text border-b border-[var(--theme-card-border)] pb-2">Resumo</h4>
+                    <div class="flex items-center gap-4">
                         <div id="summary-service-images" class="flex-shrink-0"></div>
                         <div>
-                            <p class="font-bold text-gray-900 text-base" id="summary-service"></p>
-                            <p class="text-gray-600 text-sm mt-0.5">com <span id="summary-professional" class="font-bold text-gray-800"></span></p>
-                            <div class="mt-2 inline-flex items-center gap-1.5 bg-white border border-gray-200 px-2.5 py-1 rounded-md">
-                                <i class="bi bi-calendar-event theme-text text-sm"></i>
-                                <p class="theme-text font-bold text-sm" id="summary-datetime"></p>
+                            <p class="font-bold text-base title-text" id="summary-service"></p>
+                            <p class="text-sm opacity-80 mt-0.5">com <span id="summary-professional" class="font-bold"></span></p>
+                            <div class="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-md theme-border-color border theme-text-color font-bold text-xs" style="background-color: var(--theme-card-bg);">
+                                <i class="bi bi-calendar-event"></i> <span id="summary-datetime"></span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <form id="confirmation-form" class="space-y-4">
+                <form id="confirmation-form" class="space-y-4 pb-8">
                     <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Como se chama?</label>
-                        <input type="text" id="clientName" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 theme-ring focus:border-transparent outline-none shadow-sm transition-all" placeholder="Ex: João Silva" required>
+                        <label class="block text-[11px] font-bold opacity-60 uppercase tracking-widest mb-2 title-text">Seu Nome Completo</label>
+                        <input type="text" id="clientName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Ex: João Silva" required>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">WhatsApp</label>
-                        <input type="tel" id="clientPhone" maxlength="15" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 theme-ring focus:border-transparent outline-none shadow-sm transition-all" placeholder="(00) 00000-0000" required>
+                        <label class="block text-[11px] font-bold opacity-60 uppercase tracking-widest mb-2 title-text">Seu WhatsApp</label>
+                        <input type="tel" id="clientPhone" maxlength="15" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="(00) 00000-0000" required>
                     </div>
-                    <button type="submit" id="btn-confirm" class="w-full theme-bg text-white font-bold text-lg py-3.5 rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2">
-                        <i class="bi bi-check2-circle"></i> Confirmar Horário
+                    <button type="submit" id="btn-confirm" class="w-full theme-bg-color font-bold text-base py-4 radius-dynamic shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2">
+                        <i class="bi bi-check2-circle text-lg"></i> Confirmar Horário
                     </button>
                 </form>
             </section>
+
+            <section id="reviews-section" class="w-full text-left mt-8 mb-6 fade-in pt-8 border-t border-gray-200 border-opacity-30">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">O que dizem sobre nós</h2>
+                    <div class="flex items-center gap-1 text-yellow-500 text-sm bg-yellow-500/10 px-2 py-0.5 rounded-lg">
+                        <i class="bi bi-star-fill"></i>
+                        <span class="font-bold title-text">4.9</span>
+                        <span class="text-xs opacity-50 title-text">(128)</span>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4 overflow-x-auto pb-4 pt-1 snap-x no-scrollbar items-stretch" id="reviews-container">
+                    <div class="theme-card p-5 min-w-[260px] max-w-[280px] sm:min-w-[300px] sm:max-w-[320px] snap-center shrink-0 flex flex-col whitespace-normal">
+                        <div class="flex gap-1 text-yellow-400 text-xs mb-3">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i>
+                        </div>
+                        <p class="text-sm italic opacity-80 mb-4 title-text flex-grow text-left leading-relaxed">"Excelente atendimento e um ambiente super agradável. O serviço ficou perfeito, recomendo muito!"</p>
+                        <div class="flex items-center gap-3 mt-auto pt-3 border-t border-gray-200 border-opacity-20">
+                            <div class="w-8 h-8 rounded-full theme-bg-color flex items-center justify-center text-xs font-bold text-white shadow-sm">MS</div>
+                            <span class="text-xs font-bold title-text">Marcos Silva</span>
+                        </div>
+                    </div>
+
+                    <div class="theme-card p-5 min-w-[260px] max-w-[280px] sm:min-w-[300px] sm:max-w-[320px] snap-center shrink-0 flex flex-col whitespace-normal">
+                        <div class="flex gap-1 text-yellow-400 text-xs mb-3">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i>
+                        </div>
+                        <p class="text-sm italic opacity-80 mb-4 title-text flex-grow text-left leading-relaxed">"Sou cliente há anos e não troco por nada. Agendamento fácil e pontualidade sempre! O melhor da região."</p>
+                        <div class="flex items-center gap-3 mt-auto pt-3 border-t border-gray-200 border-opacity-20">
+                            <div class="w-8 h-8 rounded-full theme-bg-color flex items-center justify-center text-xs font-bold text-white shadow-sm">RC</div>
+                            <span class="text-xs font-bold title-text">Rafael Costa</span>
+                        </div>
+                    </div>
+                    
+                    <div class="theme-card p-5 min-w-[260px] max-w-[280px] sm:min-w-[300px] sm:max-w-[320px] snap-center shrink-0 flex flex-col whitespace-normal">
+                        <div class="flex gap-1 text-yellow-400 text-xs mb-3">
+                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-half"></i>
+                        </div>
+                        <p class="text-sm italic opacity-80 mb-4 title-text flex-grow text-left leading-relaxed">"Profissionais super qualificados. O resultado final superou as minhas expectativas. O ambiente também é ótimo."</p>
+                        <div class="flex items-center gap-3 mt-auto pt-3 border-t border-gray-200 border-opacity-20">
+                            <div class="w-8 h-8 rounded-full theme-bg-color flex items-center justify-center text-xs font-bold text-white shadow-sm">LA</div>
+                            <span class="text-xs font-bold title-text">Lucas Almeida</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
         
-        <footer class="mt-8 text-center opacity-70">
-            <p class="text-xs custom-text-color font-medium">Powered by <a href="#" class="font-bold hover:underline">Kairos System</a></p>
+        <footer class="mt-4 pb-8 text-center opacity-50">
+            <p class="text-[10px] font-medium">Powered by <a href="#" class="font-bold hover:underline">Kairos System</a></p>
         </footer>
     </div>
     
-    <div id="my-appointments-view" class="hidden fixed inset-0 z-50 bg-gray-100 flex flex-col fade-in">
-        <div class="bg-white shadow-sm p-4 flex items-center gap-3">
-            <button data-action="close-appointments-view" class="p-1 rounded-full hover:bg-gray-100">
-                <i class="bi bi-arrow-left text-xl text-gray-600"></i>
+    <div id="my-appointments-view" class="hidden fixed inset-0 z-50 flex flex-col fade-in" style="background-color: var(--theme-bg);">
+        <div class="theme-card rounded-none shadow-sm p-4 flex items-center gap-3">
+            <button data-action="close-appointments-view" class="p-1.5 rounded-full hover:bg-gray-100/10">
+                <i class="bi bi-arrow-left text-xl title-text"></i>
             </button>
-            <h2 class="text-lg font-bold text-gray-800">Meus Agendamentos</h2>
+            <h2 class="text-lg font-bold title-text">Minhas Reservas</h2>
         </div>
         <div id="appointments-content" class="flex-grow p-4 overflow-y-auto"></div>
     </div>
     
-    <div id="notificationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-6 hidden backdrop-blur-sm">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
-          <h3 id="modal-title" class="text-lg font-bold text-gray-900 mb-2"></h3>
-          <p id="modal-message" class="text-sm text-gray-600 mb-6"></p>
-          <button id="modal-ok-btn" class="w-full py-3 theme-bg text-white font-bold rounded-xl shadow hover:opacity-90 transition-opacity">Entendi</button>
+    <div id="notificationModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-6 hidden backdrop-blur-sm">
+        <div class="theme-card p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
+          <h3 id="modal-title" class="text-lg font-bold title-text mb-2"></h3>
+          <p id="modal-message" class="text-sm opacity-80 mb-6"></p>
+          <button id="modal-ok-btn" class="w-full py-3 theme-bg-color font-bold radius-dynamic shadow hover:opacity-90 transition-opacity">Entendi</button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             
+            // --- TEMPLATES PREDEFINIDOS (10 OPÇÕES) ---
+            const designTemplates = [
+                { id: 'clean-modern', name: 'Clean Moderno', bg: '#f8fafc', text: '#4b5563', titleColor: '#0f172a', primary: '#2563eb', font: 'Inter', btn: 'rounded', cardBg: '#ffffff', cardBorder: '#e2e8f0' },
+                { id: 'dark-premium', name: 'Dark Premium', bg: '#0f172a', text: '#9ca3af', titleColor: '#f8fafc', primary: '#f59e0b', font: "'Playfair Display'", btn: 'square', cardBg: '#1e293b', cardBorder: '#334155' },
+                { id: 'spa-zen', name: 'Spa & Wellness', bg: '#f0fdf4', text: '#166534', titleColor: '#064e3b', primary: '#10b981', font: 'Poppins', btn: 'pill', cardBg: '#ffffff', cardBorder: '#d1fae5' },
+                { id: 'neo-brutalism', name: 'Neobrutalismo', bg: '#ffffff', text: '#000000', titleColor: '#000000', primary: '#ef4444', font: 'Inter', btn: 'square', cardBg: '#ffffff', cardBorder: '#000000' },
+                { id: 'tech-cyan', name: 'Tech Night', bg: '#020617', text: '#94a3b8', titleColor: '#f1f5f9', primary: '#06b6d4', font: 'Roboto', btn: 'rounded', cardBg: '#0f172a', cardBorder: '#1e293b' },
+                { id: 'sunset-glam', name: 'Sunset Glam', bg: '#fff7ed', text: '#831843', titleColor: '#4c0519', primary: '#f43f5e', font: 'Poppins', btn: 'pill', cardBg: '#ffffff', cardBorder: '#fce7f3' },
+                { id: 'luxury-mono', name: 'Luxo Minimal', bg: '#fafafa', text: '#525252', titleColor: '#171717', primary: '#404040', font: "'Playfair Display'", btn: 'square', cardBg: '#ffffff', cardBorder: '#e5e5e5' },
+                { id: 'deep-ocean', name: 'Oceano Profundo', bg: '#172554', text: '#bfdbfe', titleColor: '#eff6ff', primary: '#3b82f6', font: 'Montserrat', btn: 'pill', cardBg: '#1e3a8a', cardBorder: '#1e40af' },
+                { id: 'rustic-vintage', name: 'Rústico Vintage', bg: '#1c1917', text: '#a8a29e', titleColor: '#fafaf9', primary: '#ea580c', font: 'Montserrat', btn: 'rounded', cardBg: '#292524', cardBorder: '#44403c' },
+                { id: 'vibrant-purple', name: 'Estúdio Criativo', bg: '#fdf4ff', text: '#701a75', titleColor: '#4a044e', primary: '#c026d3', font: 'Inter', btn: 'rounded', cardBg: '#ffffff', cardBorder: '#fae8ff' }
+            ];
+
             function setupPhoneMask(inputId) {
                 const input = document.getElementById(inputId);
                 if (!input) return;
-
                 input.addEventListener('input', (e) => {
                     let value = e.target.value.replace(/\D/g, ""); 
                     if (value.length > 11) value = value.substring(0, 11);
@@ -284,25 +310,81 @@
 
             setupPhoneMask('clientPhone');
 
+            // --- APLICAÇÃO DO TEMA E LAYOUT ---
             function applyCustomization(data) {
                 const root = document.documentElement;
-                const primaryColor = data.primaryColor || data.themeColor || '#4f46e5'; 
-                root.style.setProperty('--theme-main', primaryColor);
-                if (data.textColor) root.style.setProperty('--content-text-color', data.textColor);
 
+                // Identificar o template
+                let currentTemplateIndex = data.templateId ? designTemplates.findIndex(t => t.id === data.templateId) : 0;
+                if(currentTemplateIndex === -1) currentTemplateIndex = 0;
+                const t = designTemplates[currentTemplateIndex];
+
+                // Mistura entre o escolhido manualmente e o template base
+                const primaryColor = data.primaryColor || data.themeColor || t.primary;
+                const bgColor = data.backgroundColor || t.bg;
+                const textColor = data.textColor || t.text;
+                const titleColor = data.titleColor || t.titleColor || t.text;
+                const typography = data.typography || t.font;
+                const btnStyle = data.buttonStyle || t.btn;
+                
+                const getBtnRadius = (style) => {
+                    if(style === 'pill') return '9999px';
+                    if(style === 'square') return '0.25rem';
+                    return '0.75rem';
+                };
+
+                // Aplica as variáveis CSS globais
+                root.style.setProperty('--theme-primary', primaryColor);
+                root.style.setProperty('--theme-bg', bgColor);
+                root.style.setProperty('--theme-text', textColor);
+                root.style.setProperty('--theme-title-color', titleColor);
+                root.style.setProperty('--theme-font', typography);
+                root.style.setProperty('--theme-btn-radius', getBtnRadius(btnStyle));
+                root.style.setProperty('--theme-card-bg', t.cardBg);
+                root.style.setProperty('--theme-card-border', t.cardBorder);
+
+                // Aplica Imagem de Fundo (Banner)
                 if (data.backgroundImage) {
-                    document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
-                } else {
-                    document.body.style.backgroundImage = 'none';
-                    document.body.style.backgroundColor = '#f3f4f6';
+                    const bannerImg = document.getElementById('establishmentBanner');
+                    bannerImg.src = data.backgroundImage;
+                    bannerImg.classList.remove('hidden');
+                    document.getElementById('bannerPlaceholder').classList.add('hidden');
                 }
+
+                // Aplica Endereço
+                if (data.address) {
+                    document.getElementById('establishmentAddressText').textContent = data.address;
+                    document.getElementById('establishmentAddressContainer').classList.remove('hidden');
+                }
+
+                // Redes Sociais (Link na Bio)
+                const socialContainer = document.getElementById('social-links-container');
+                const socialData = data.socialLinks || {};
+                socialContainer.innerHTML = '';
+                let hasSocial = false;
+                
+                const createSocialIcon = (url, iconClass) => {
+                    let finalUrl = url.trim();
+                    if(iconClass.includes('whatsapp') && !url.includes('wa.me')) {
+                        finalUrl = `https://wa.me/${url.replace(/\D/g, '')}`;
+                    } else if(iconClass.includes('instagram') && !url.includes('instagram.com')) {
+                        finalUrl = `https://instagram.com/${url.replace('@', '')}`;
+                    } else if(iconClass.includes('facebook') && !url.includes('http')) {
+                        finalUrl = `https://${url}`;
+                    }
+                    return `<a href="${finalUrl}" target="_blank" class="w-10 h-10 flex items-center justify-center text-lg shadow-sm transition-transform hover:scale-110 radius-dynamic theme-text-color theme-card"><i class="bi ${iconClass}"></i></a>`;
+                };
+
+                if(socialData.instagram) { socialContainer.innerHTML += createSocialIcon(socialData.instagram, 'bi-instagram'); hasSocial = true; }
+                if(socialData.whatsapp) { socialContainer.innerHTML += createSocialIcon(socialData.whatsapp, 'bi-whatsapp'); hasSocial = true; }
+                if(socialData.facebook) { socialContainer.innerHTML += createSocialIcon(socialData.facebook, 'bi-facebook'); hasSocial = true; }
+
+                if(hasSocial) socialContainer.classList.remove('hidden');
             }
 
             const API_BASE_URL = window.location.origin;
             const urlParams = new URLSearchParams(window.location.search);
             const URL_ID = urlParams.get('id'); 
-            
-            // 🔥 A NOVA BANDEIRA (Força abrir a agenda em vez do menu de filiais)
             const FORCE_DIRECT = urlParams.get('direct') === 'true';
             
             let REAL_ESTABLISHMENT_ID = null; 
@@ -314,10 +396,8 @@
 
             const bookingView = document.getElementById('booking-view');
             const branchSelectorView = document.getElementById('branch-selector-view');
-            
             const myAppointmentsView = document.getElementById('my-appointments-view');
             const myAppointmentsContent = document.getElementById('appointments-content');
-            const myAppointmentsBtn = document.getElementById('myAppointmentsBtn');
             
             const servicesContainer = document.getElementById('services-container');
             const professionalsContainer = document.getElementById('professionals-container');
@@ -346,10 +426,6 @@
                 confirmation: document.getElementById('confirmation-section') 
             };
 
-            function updateProgress(step) {
-                document.getElementById('progress-bar').style.width = `${step * 25}%`;
-            }
-
             function showNotificationModal(title, message) {
                 document.getElementById('modal-title').textContent = title;
                 document.getElementById('modal-message').textContent = message;
@@ -368,9 +444,6 @@
                 Object.keys(sections).forEach(key => sections[key].classList.add('hidden'));
                 sections[sectionName].classList.remove('hidden');
                 sections[sectionName].classList.add('fade-in');
-                
-                const steps = { services: 1, professionals: 2, schedule: 3, confirmation: 4 };
-                updateProgress(steps[sectionName]);
 
                 if (sectionName === 'schedule' && booking.date) {
                     morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
@@ -379,7 +452,7 @@
                 }
             };
 
-            // 🔥 LÓGICA MULTI-TENANT: VERIFICA SE O LINK É MATRIZ COM FILIAIS E SE DEVE SALTAR O MENU
+            // VERIFICAÇÃO MULTI-TENANT E LOAD INICIAL
             const checkNetworkAndLoad = async () => {
                 try {
                     const estRes = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}`);
@@ -390,11 +463,11 @@
 
                     if (establishmentData.publicBookingEnabled === false) {
                         document.body.innerHTML = `
-                            <div class="bg-gray-100 h-screen flex items-center justify-center p-4">
-                                <div class="bg-white p-8 rounded-2xl shadow-xl text-center max-w-sm w-full">
+                            <div class="h-screen flex items-center justify-center p-4" style="background-color: var(--theme-bg);">
+                                <div class="theme-card p-8 text-center max-w-sm w-full">
                                     <i class="bi bi-calendar-x text-5xl text-red-500 mb-4 block"></i>
-                                    <h2 class="text-xl font-bold text-gray-900 mb-2">Agenda Temporariamente Fechada</h2>
-                                    <p class="text-gray-600 text-sm">O agendamento online para <strong class="text-gray-800">${establishmentData.name}</strong> está desativado no momento.</p>
+                                    <h2 class="text-xl font-bold title-text mb-2">Agenda Fechada</h2>
+                                    <p class="opacity-80 text-sm">O agendamento online para <strong class="title-text">${establishmentData.name}</strong> está desativado no momento.</p>
                                 </div>
                             </div>
                         `;
@@ -404,8 +477,8 @@
                     const branchesRes = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}/branches`);
                     const branches = branchesRes.ok ? await branchesRes.json() : [];
 
-                    // 🔥 SE TEM FILIAIS E NÃO TEM A BANDEIRA DE "DIRETO", MOSTRA O MENU
                     if (branches && branches.length > 0 && !FORCE_DIRECT) {
+                        // MENU DE FILIAIS
                         document.getElementById('booking-view').classList.add('hidden');
                         branchSelectorView.classList.remove('hidden');
                         branchSelectorView.classList.add('flex');
@@ -422,41 +495,43 @@
                         ];
 
                         document.getElementById('branches-list').innerHTML = todasUnidades.map(unidade => {
-                            // Se ele clicar na matriz novamente, adicionamos &direct=true na URL
                             const destinationUrl = unidade.id === URL_ID ? `?id=${unidade.id}&direct=true` : `?id=${unidade.id}`;
-                            
                             return `
-                            <button onclick="window.location.href='${destinationUrl}'" class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm hover:shadow-md hover:border-[color:var(--theme-main)] hover:bg-gray-50 transition-all text-left flex items-start gap-4 group">
-                                <div class="w-12 h-12 theme-bg rounded-full flex items-center justify-center flex-shrink-0 text-white shadow-inner group-hover:scale-105 transition-transform">
-                                    <i class="bi bi-geo-alt-fill text-xl"></i>
+                            <button onclick="window.location.href='${destinationUrl}'" class="theme-card p-4 text-left flex items-center gap-4 group hover:border-[color:var(--theme-primary)] hover:shadow-md">
+                                <div class="w-12 h-12 theme-bg-color rounded-full flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform">
+                                    <i class="bi bi-geo-alt-fill text-xl text-white"></i>
                                 </div>
                                 <div>
-                                    <h3 class="font-bold text-gray-800 group-hover:theme-text">${unidade.name}</h3>
-                                    <p class="text-xs text-gray-500 mt-1 line-clamp-2">${unidade.address || 'Localização principal'}</p>
+                                    <h3 class="font-bold title-text group-hover:theme-text-color transition-colors">${unidade.name}</h3>
+                                    <p class="text-xs mt-1 opacity-60 line-clamp-2">${unidade.address || 'Localização principal'}</p>
                                 </div>
                             </button>
                             `;
                         }).join('');
 
                     } else {
-                        // NÃO TEM FILIAIS (OU FOI FORÇADO A ENTRAR DIRETO) -> Abre a agenda!
+                        // AGENDA DIRETA
                         branchSelectorView.classList.add('hidden');
                         bookingView.classList.remove('hidden');
 
                         REAL_ESTABLISHMENT_ID = establishmentData.id;
                         document.getElementById('establishmentName').innerHTML = establishmentData.name;
-                        document.getElementById('establishmentWelcomeMessage').textContent = establishmentData.welcomeMessage || 'Selecione um serviço abaixo para começar.';
+                        
+                        // Atualiza as mensagens se existirem
+                        if (establishmentData.welcomeMessage) {
+                            document.getElementById('establishmentWelcomeMessage').textContent = establishmentData.welcomeMessage;
+                        }
                         
                         if (establishmentData.logo) {
                             document.getElementById('establishmentLogo').src = establishmentData.logo;
-                            document.getElementById('establishmentLogo').classList.remove('opacity-0');
+                            document.getElementById('establishmentLogo').classList.remove('hidden');
                         }
                         
                         loadServices(); 
                     }
 
                 } catch(error) {
-                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen bg-gray-50 font-bold text-gray-600">Erro: ${error.message}</div>`;
+                    document.body.innerHTML = `<div class="flex items-center justify-center h-screen font-bold" style="background-color: var(--theme-bg); color: var(--theme-text);">Erro: ${error.message}</div>`;
                 }
             };
             
@@ -470,7 +545,7 @@
                     servicesContainer.innerHTML = '';
                     
                     if (services.length === 0) {
-                        servicesContainer.innerHTML = '<div class="text-center py-10 bg-white/50 rounded-xl"><i class="bi bi-box-seam text-3xl text-gray-400"></i><p class="mt-2 text-sm font-medium text-gray-600">Nenhum serviço partilhado com esta unidade ainda.</p></div>';
+                        servicesContainer.innerHTML = '<div class="text-center py-10 theme-card"><i class="bi bi-box-seam text-3xl opacity-30"></i><p class="mt-2 text-sm font-medium opacity-70">Nenhum serviço disponível ainda.</p></div>';
                         return;
                     }
 
@@ -478,44 +553,30 @@
                         if(serv.active === false) return; 
 
                         const card = document.createElement('div');
-                        card.className = 'service-card group flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-gray-300';
+                        card.className = 'service-card group flex items-center justify-between p-3 theme-card cursor-pointer hover:border-[color:var(--theme-primary)]';
                         
-                        const duration = serv.duration ? `<span class="text-xs text-gray-400 font-medium ml-2 bg-gray-100 px-2 py-0.5 rounded-md"><i class="bi bi-clock"></i> ${serv.duration} min</span>` : '';
                         const photoSrc = serv.photo || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(serv.name.charAt(0))}`;
                         
                         card.innerHTML = `
                             <div class="flex items-center gap-4 w-full">
-                                <img src="${photoSrc}" alt="${serv.name}" class="w-16 h-16 rounded-xl object-cover border border-gray-100 flex-shrink-0 shadow-sm">
+                                <img src="${photoSrc}" alt="${serv.name}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0 shadow-sm border border-gray-100" style="border-color: var(--theme-card-border);">
                                 <div class="flex-grow min-w-0">
-                                    <h3 class="font-bold text-gray-800 text-sm leading-tight truncate">${serv.name}</h3>
-                                    <div class="flex items-center mt-1.5">
-                                        <p class="text-sm font-bold theme-text">R$ ${serv.price.toFixed(2)}</p>
-                                        ${duration}
+                                    <h3 class="font-bold text-[13px] leading-tight truncate title-text">${serv.name}</h3>
+                                    <div class="flex items-center mt-1 gap-2">
+                                        <p class="text-[11px] opacity-70"><i class="bi bi-clock"></i> ${serv.duration ? serv.duration + ' min' : '--'}</p>
+                                        <p class="text-[11px] font-bold title-text">• R$ ${serv.price.toFixed(2)}</p>
                                     </div>
                                 </div>
-                                <div class="w-6 h-6 rounded-full border-2 border-gray-300 flex-shrink-0 flex items-center justify-center check-icon transition-all duration-200 ml-2">
-                                    <div class="w-3 h-3 rounded-full theme-bg opacity-0 transition-opacity"></div>
+                                <div class="w-8 h-8 radius-dynamic flex-shrink-0 flex items-center justify-center transition-all duration-200 ml-2 shadow-sm theme-bg-color group-hover:scale-105">
+                                    <i class="bi bi-plus text-xl"></i>
                                 </div>
                             </div>
                         `;
                         
                         card.addEventListener('click', () => {
-                            const isSelected = card.classList.contains('selected');
-                            document.querySelectorAll('.service-card').forEach(c => {
-                                c.classList.remove('selected');
-                                c.querySelector('.check-icon').classList.remove('border-[color:var(--theme-main)]');
-                                c.querySelector('.check-icon div').classList.add('opacity-0');
-                            });
-
-                            if (!isSelected) {
-                                card.classList.add('selected');
-                                card.querySelector('.check-icon').classList.add('border-[color:var(--theme-main)]');
-                                card.querySelector('.check-icon div').classList.remove('opacity-0');
-                                
-                                booking.services = [{ id: serv.id, name: serv.name, duration: serv.duration, price: serv.price, bufferTime: serv.bufferTime || 0, photo: serv.photo }];
-                                loadProfessionalsForService();
-                                setTimeout(() => showSection('professionals'), 300); 
-                            }
+                            booking.services = [{ id: serv.id, name: serv.name, duration: serv.duration, price: serv.price, bufferTime: serv.bufferTime || 0, photo: serv.photo }];
+                            loadProfessionalsForService();
+                            showSection('professionals');
                         });
                         servicesContainer.appendChild(card);
                     });
@@ -538,27 +599,22 @@
                     
                     professionalsContainer.innerHTML = '';
                     if (professionals.length === 0) {
-                        professionalsContainer.innerHTML = '<div class="col-span-full text-center py-10 bg-white/50 rounded-xl"><i class="bi bi-person-x text-3xl text-gray-400"></i><p class="mt-2 text-sm font-medium text-gray-600">Nenhum profissional realiza este serviço.</p></div>';
+                        professionalsContainer.innerHTML = '<div class="col-span-full text-center py-10 theme-card"><i class="bi bi-person-x text-3xl opacity-30"></i><p class="mt-2 text-sm font-medium opacity-70">Nenhum profissional realiza este serviço.</p></div>';
                         return;
                     }
 
                     professionals.forEach(prof => {
                         const card = document.createElement('div');
-                        card.className = 'professional-card flex flex-col items-center justify-center p-3 bg-white border border-gray-200 rounded-2xl cursor-pointer aspect-square hover:shadow-md';
+                        card.className = 'professional-card flex flex-col items-center justify-center py-4 px-2 theme-card cursor-pointer hover:border-[color:var(--theme-primary)] hover:-translate-y-1 transition-transform';
                         const photoSrc = prof.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(prof.name)}&background=random&color=fff`;
                         
                         card.innerHTML = `
                             <div class="relative mb-2">
-                                <img src="${photoSrc}" class="w-16 h-16 rounded-full object-cover border-2 border-gray-100 shadow-sm">
-                                <div class="absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center check-icon transition-all scale-0 opacity-0">
-                                    <i class="bi bi-check-circle-fill text-green-500 text-lg leading-none bg-white rounded-full"></i>
-                                </div>
+                                <img src="${photoSrc}" class="w-16 h-16 rounded-full object-cover border-2 shadow-sm" style="border-color: var(--theme-bg);">
                             </div>
-                            <h4 class="font-bold text-xs text-gray-800 text-center leading-tight line-clamp-2">${prof.name.split(' ')[0]}</h4>
+                            <h4 class="font-bold text-xs text-center leading-tight line-clamp-2 title-text">${prof.name.split(' ')[0]}</h4>
                         `;
                         card.addEventListener('click', () => {
-                            document.querySelectorAll('.professional-card').forEach(c => c.classList.remove('selected'));
-                            card.classList.add('selected');
                             booking.professionalId = prof.id;
                             booking.professionalName = prof.name;
                             renderWeek();
@@ -582,7 +638,7 @@
                     const slots = await response.json();
                     
                     if (slots.length === 0) {
-                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs text-gray-500 text-center py-4 bg-gray-100 rounded-lg">Totalmente Ocupado</p>';
+                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs opacity-50 text-center py-4 theme-card">Totalmente Ocupado</p>';
                         return;
                     }
 
@@ -600,7 +656,7 @@
                         }
 
                         const btn = document.createElement('button');
-                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold bg-white text-gray-700 border border-gray-200 rounded-xl hover:border-[color:var(--theme-main)] hover:text-[color:var(--theme-main)] transition shadow-sm';
+                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text';
                         btn.textContent = slot;
                         btn.onclick = () => {
                             document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
@@ -614,8 +670,8 @@
                         else afternoonSlotsContainer.appendChild(btn);
                     });
                     
-                    if (!morningSlotsContainer.hasChildNodes()) morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic bg-white p-2 rounded">Indisponível</span>';
-                    if (!afternoonSlotsContainer.hasChildNodes()) afternoonSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] text-gray-400 text-center italic bg-white p-2 rounded">Indisponível</span>';
+                    if (!morningSlotsContainer.hasChildNodes()) morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] opacity-40 text-center italic p-2 rounded">Indisponível</span>';
+                    if (!afternoonSlotsContainer.hasChildNodes()) afternoonSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] opacity-40 text-center italic p-2 rounded">Indisponível</span>';
 
                 } catch {
                     morningSlotsContainer.innerHTML = '<p class="text-red-500 text-xs col-span-4">Erro</p>';
@@ -632,40 +688,30 @@
                     day.setDate(day.getDate() + i);
                     
                     const btn = document.createElement('button');
-                    btn.className = 'day-button flex flex-col items-center justify-center p-2 rounded-xl transition-all border border-transparent';
+                    btn.className = 'day-button flex flex-col items-center justify-center p-2 radius-dynamic transition-all border border-transparent';
                     const isSelected = booking.date === day.toISOString().split('T')[0];
                     
                     if(isSelected) {
-                        btn.classList.add('theme-bg', 'shadow-md');
+                        btn.classList.add('theme-bg-color', 'shadow-md');
+                        btn.innerHTML = `
+                            <span class="text-[10px] uppercase font-bold text-white opacity-90">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                            <span class="text-base font-bold text-white mt-0.5">${day.getDate()}</span>
+                        `;
                     } else {
-                        btn.classList.add('bg-white', 'hover:border-gray-300');
+                        btn.classList.add('theme-card', 'hover:border-gray-300');
+                        btn.innerHTML = `
+                            <span class="text-[10px] uppercase font-bold opacity-50">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                            <span class="text-base font-bold title-text mt-0.5">${day.getDate()}</span>
+                        `;
                     }
 
-                    const dayColorClass = isSelected ? 'theme-text-contrast opacity-90' : 'text-gray-400';
-                    const numColorClass = isSelected ? 'theme-text-contrast' : 'text-gray-800';
-
-                    btn.innerHTML = `
-                        <span class="text-[10px] uppercase font-bold ${dayColorClass}">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                        <span class="text-base font-bold ${numColorClass} mt-0.5">${day.getDate()}</span>
-                    `;
-
                     if (day < today) {
-                        btn.classList.add('opacity-30', 'cursor-not-allowed', 'bg-gray-100');
-                        btn.classList.remove('bg-white');
+                        btn.classList.add('opacity-30', 'cursor-not-allowed');
                     } else {
                         btn.onclick = () => {
-                            document.querySelectorAll('.day-button').forEach(b => {
-                                b.classList.remove('theme-bg', 'shadow-md');
-                                b.classList.add('bg-white');
-                                b.querySelectorAll('span')[0].className = 'text-[10px] uppercase font-bold text-gray-400';
-                                b.querySelectorAll('span')[1].className = 'text-base font-bold text-gray-800 mt-0.5';
-                            });
-                            btn.classList.remove('bg-white');
-                            btn.classList.add('theme-bg', 'shadow-md');
-                            btn.querySelectorAll('span')[0].className = 'text-[10px] uppercase font-bold theme-text-contrast opacity-90';
-                            btn.querySelectorAll('span')[1].className = 'text-base font-bold theme-text-contrast mt-0.5';
-                            
                             const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+                            booking.date = dateStr;
+                            renderWeek(); // Re-renderiza para atualizar as cores
                             loadAvailability(dateStr);
                         };
                     }
@@ -685,9 +731,9 @@
                 
                 const imgContainer = document.getElementById('summary-service-images');
                 if(s.photo) {
-                    imgContainer.innerHTML = `<img src="${s.photo}" class="w-14 h-14 rounded-xl object-cover border border-gray-200 shadow-sm">`;
+                    imgContainer.innerHTML = `<img src="${s.photo}" class="w-14 h-14 radius-dynamic object-cover border shadow-sm" style="border-color: var(--theme-card-border);">`;
                 } else {
-                    imgContainer.innerHTML = `<div class="w-14 h-14 rounded-xl theme-bg flex items-center justify-center text-white font-bold text-xl shadow-sm">${s.name[0]}</div>`;
+                    imgContainer.innerHTML = `<div class="w-14 h-14 radius-dynamic theme-bg-color flex items-center justify-center font-bold text-xl shadow-sm">${s.name[0]}</div>`;
                 }
             };
 
@@ -719,33 +765,34 @@
                             <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border-4 border-white">
                                 <i class="bi bi-check-lg text-4xl text-green-500"></i>
                             </div>
-                            <h2 class="text-2xl font-bold text-gray-800 mb-3">Tudo Certo!</h2>
-                            <p class="text-gray-600 px-4 mb-8">O seu horário foi reservado com sucesso. Lembre-se de chegar com 5 minutinhos de antecedência.</p>
-                            <button onclick="location.reload()" class="bg-gray-100 text-gray-700 font-bold py-3 px-8 rounded-xl hover:bg-gray-200 transition-colors">Voltar ao Início</button>
+                            <h2 class="text-2xl font-bold title-text mb-3">Tudo Certo!</h2>
+                            <p class="opacity-80 px-4 mb-8">O seu horário foi reservado com sucesso. Lembre-se de chegar com 5 minutinhos de antecedência.</p>
+                            <button onclick="location.reload()" class="theme-card font-bold py-3 px-8 hover:opacity-80 transition-opacity title-text">Fazer novo agendamento</button>
                         </div>
                     `;
                 } catch {
                     showNotificationModal('Erro', 'Não foi possível agendar. Verifique a sua ligação e tente novamente.');
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="bi bi-check2-circle"></i> Confirmar Horário';
+                    btn.innerHTML = '<i class="bi bi-check2-circle text-lg"></i> Confirmar Horário';
                 }
             });
 
-            const openAppointments = () => {
+            // GESTÃO DE AGENDAMENTOS DO CLIENTE
+            document.getElementById('myAppointmentsBtn').addEventListener('click', () => {
                 myAppointmentsView.classList.remove('hidden');
                 document.getElementById('booking-view').classList.add('hidden');
                 document.getElementById('branch-selector-view').classList.add('hidden');
 
                 myAppointmentsContent.innerHTML = `
                     <div class="text-center mt-10 fade-in">
-                        <div class="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <i class="bi bi-calendar2-heart text-2xl text-indigo-500"></i>
+                        <div class="w-16 h-16 theme-card rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="bi bi-calendar2-heart text-2xl theme-text-color"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-gray-800 mb-2">Seus Agendamentos</h3>
-                        <p class="text-sm text-gray-500 mb-8 px-4">Digite o seu WhatsApp para consultar os seus horários.</p>
+                        <h3 class="text-xl font-bold title-text mb-2">Seus Agendamentos</h3>
+                        <p class="text-sm opacity-70 mb-8 px-4">Digite o seu WhatsApp para consultar os seus horários.</p>
                         <form id="lookupForm" class="max-w-xs mx-auto">
-                            <input type="tel" id="lookupPhone" maxlength="15" class="w-full p-3.5 border border-gray-300 rounded-xl text-center mb-4 text-lg font-medium shadow-sm outline-none focus:ring-2 focus:ring-indigo-500" placeholder="(00) 00000-0000" required>
-                            <button type="submit" class="w-full theme-bg text-white py-3.5 rounded-xl font-bold text-lg shadow-md hover:opacity-90 transition-opacity">Buscar Horários</button>
+                            <input type="tel" id="lookupPhone" maxlength="15" class="w-full p-4 theme-card text-center mb-4 text-lg font-medium outline-none focus:ring-2 theme-ring title-text" placeholder="(00) 00000-0000" required>
+                            <button type="submit" class="w-full theme-bg-color py-4 radius-dynamic font-bold text-lg shadow-md hover:opacity-90 transition-opacity">Buscar Horários</button>
                         </form>
                     </div>
                 `;
@@ -758,7 +805,7 @@
                     myAppointmentsContent.innerHTML = '<div class="loader mx-auto mt-20"></div>';
                     
                     try {
-                        const targetId = REAL_ESTABLISHMENT_ID || URL_ID; // Se for loja mãe, busca nela
+                        const targetId = REAL_ESTABLISHMENT_ID || URL_ID; 
                         const res = await fetch(`${API_BASE_URL}/api/client-portal/appointments/${targetId}?phone=${encodeURIComponent(phone)}`);
                         if(!res.ok) throw new Error();
                         const appts = await res.json();
@@ -766,8 +813,8 @@
                         if(appts.length === 0) {
                             myAppointmentsContent.innerHTML = `
                                 <div class="text-center mt-20">
-                                    <i class="bi bi-calendar-x text-4xl text-gray-300 mb-3 block"></i>
-                                    <p class="text-gray-500 font-medium">Nenhum agendamento encontrado para este número.</p>
+                                    <i class="bi bi-calendar-x text-4xl opacity-30 mb-3 block"></i>
+                                    <p class="opacity-70 font-medium">Nenhum agendamento encontrado.</p>
                                 </div>`;
                             return;
                         }
@@ -789,21 +836,21 @@
                                 }
 
                                 return `
-                                <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex items-start gap-4">
-                                    <img src="${photoUrl}" alt="Profissional" class="w-14 h-14 rounded-full object-cover border-2 border-gray-50 flex-shrink-0">
+                                <div class="theme-card p-4 flex items-start gap-4">
+                                    <img src="${photoUrl}" alt="Profissional" class="w-14 h-14 rounded-full object-cover border flex-shrink-0" style="border-color: var(--theme-card-border);">
                                     <div class="flex-grow min-w-0">
                                         <div class="flex justify-between items-start mb-1">
-                                            <p class="font-bold text-base text-gray-900 truncate">${a.professionalName || 'Profissional'}</p>
+                                            <p class="font-bold text-base title-text truncate">${a.professionalName || 'Profissional'}</p>
                                             <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${statusClass}">
                                                 ${statusLabel}
                                             </span>
                                         </div>
-                                        <p class="text-sm text-gray-600 font-medium truncate">${a.serviceName}</p>
-                                        <p class="text-xs text-gray-500 mt-2 bg-gray-50 inline-block px-2 py-1 rounded-md border border-gray-100">
+                                        <p class="text-sm font-medium truncate opacity-80">${a.serviceName}</p>
+                                        <p class="text-xs mt-2 inline-block px-2 py-1 rounded-md" style="background-color: var(--theme-bg);">
                                             <i class="bi bi-clock mr-1"></i> ${dateFormatted}
                                         </p>
                                         ${a.status !== 'completed' && a.status !== 'cancelled' ? 
-                                            `<button onclick="cancelAppt('${a.id}', '${phone}')" class="mt-4 w-full text-sm text-red-600 border border-red-200 py-2 rounded-xl hover:bg-red-50 font-bold transition-colors">Cancelar Horário</button>` 
+                                            `<button onclick="cancelAppt('${a.id}', '${phone}')" class="mt-4 w-full text-sm text-red-600 border border-red-200 py-2 radius-dynamic hover:bg-red-50 font-bold transition-colors">Cancelar Horário</button>` 
                                             : ''}
                                     </div>
                                 </div>
@@ -814,7 +861,16 @@
                         myAppointmentsContent.innerHTML = '<p class="text-center text-red-500 mt-10">Erro na base de dados.</p>';
                     }
                 };
-            };
+            });
+
+            document.querySelector('[data-action="close-appointments-view"]').addEventListener('click', () => {
+                myAppointmentsView.classList.add('hidden');
+                if (document.getElementById('branches-list').innerHTML.trim() !== '') {
+                    branchSelectorView.classList.remove('hidden');
+                } else {
+                    document.getElementById('booking-view').classList.remove('hidden');
+                }
+            });
             
             window.cancelAppt = async (id, phone) => {
                 if(!confirm('Deseja realmente cancelar este horário?')) return;
@@ -832,18 +888,7 @@
                 }
             };
 
-            myAppointmentsBtn.addEventListener('click', openAppointments);
-            document.querySelector('[data-action="close-appointments-view"]').addEventListener('click', () => {
-                myAppointmentsView.classList.add('hidden');
-                
-                if (document.getElementById('branches-list').innerHTML.trim() !== '') {
-                    branchSelectorView.classList.remove('hidden');
-                } else {
-                    document.getElementById('booking-view').classList.remove('hidden');
-                }
-            });
-
-            // --- INICIA A VERIFICAÇÃO MULTI-TENANT ---
+            // START!
             checkNetworkAndLoad();
             
             prevWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() - 7); renderWeek(); };

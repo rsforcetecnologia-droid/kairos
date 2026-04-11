@@ -15,29 +15,42 @@ import { escapeHTML } from '../utils.js';
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
 
-const colorThemes = {
-    indigo: { name: 'Padrão (Índigo)', main: '#4f46e5' },
-    blue:   { name: 'Azul', main: '#2563eb' },
-    sky:    { name: 'Céu', main: '#0284c7' },
-    teal:   { name: 'Verde Água', main: '#0d9488' },
-    emerald:{ name: 'Esmeralda', main: '#059669' },
-    green:  { name: 'Verde', main: '#16a34a' },
-    lime:   { name: 'Lima', main: '#65a30d' },
-    amber:  { name: 'Âmbar', main: '#d97706' },
-    orange: { name: 'Laranja', main: '#ea580c' },
-    red:    { name: 'Vermelho', main: '#dc2626' },
-    rose:   { name: 'Rosa', main: '#e11d48' },
-    pink:   { name: 'Pink', main: '#db2777' },
-    fuchsia:{ name: 'Fúcsia', main: '#c026d3' },
-    purple: { name: 'Roxo', main: '#7c3aed' },
-    violet: { name: 'Violeta', main: '#8b5cf6' },
-    gray:   { name: 'Cinza', main: '#4b5563' },
-    black:  { name: 'Preto', main: '#111827' },
-};
+// --- DEFINIÇÃO DOS TEMPLATES VISUAIS MODERNOS (10 OPÇÕES) ---
+const designTemplates = [
+    // 1. Clean & Moderno (O Padrão perfeito, fundos brancos, azul confiança)
+    { id: 'clean-modern', name: 'Clean Moderno', bg: '#f8fafc', text: '#4b5563', titleColor: '#0f172a', primary: '#2563eb', font: 'Inter', btn: 'rounded', cardBg: '#ffffff', cardBorder: '#e2e8f0' },
+    
+    // 2. Dark Premium (Foco em Barbearias, Estúdios Noturnos - Fundo grafite, detalhes em âmbar/dourado)
+    { id: 'dark-premium', name: 'Dark Premium', bg: '#0f172a', text: '#9ca3af', titleColor: '#f8fafc', primary: '#f59e0b', font: "'Playfair Display'", btn: 'square', cardBg: '#1e293b', cardBorder: '#334155' },
+    
+    // 3. Spa Zen (Para estúdios de beleza, clínicas - Tons de verde menta suaves)
+    { id: 'spa-zen', name: 'Spa & Wellness', bg: '#f0fdf4', text: '#166534', titleColor: '#064e3b', primary: '#10b981', font: 'Poppins', btn: 'pill', cardBg: '#ffffff', cardBorder: '#d1fae5' },
+    
+    // 4. Neobrutalismo (Design arrojado, muito contraste, bordas fortes, chamativo)
+    { id: 'neo-brutalism', name: 'Neobrutalismo', bg: '#ffffff', text: '#000000', titleColor: '#000000', primary: '#ef4444', font: 'Inter', btn: 'square', cardBg: '#ffffff', cardBorder: '#000000' },
+    
+    // 5. Tech Cyan (Dark mode com toques cibernéticos em Ciano, ótimo para barbearias modernas)
+    { id: 'tech-cyan', name: 'Tech Night', bg: '#020617', text: '#94a3b8', titleColor: '#f1f5f9', primary: '#06b6d4', font: 'Roboto', btn: 'rounded', cardBg: '#0f172a', cardBorder: '#1e293b' },
+    
+    // 6. Sunset Glam (Tons quentes, blush/pêssego, para estética, unhas, salões)
+    { id: 'sunset-glam', name: 'Sunset Glam', bg: '#fff7ed', text: '#831843', titleColor: '#4c0519', primary: '#f43f5e', font: 'Poppins', btn: 'pill', cardBg: '#ffffff', cardBorder: '#fce7f3' },
+    
+    // 7. Luxo Minimalista (Monocromático suave, cinzas elegantes)
+    { id: 'luxury-mono', name: 'Luxo Minimal', bg: '#fafafa', text: '#525252', titleColor: '#171717', primary: '#404040', font: "'Playfair Display'", btn: 'square', cardBg: '#ffffff', cardBorder: '#e5e5e5' },
+    
+    // 8. Oceano Profundo (Tons de azul profundo, transmite muita calma e profissionalismo)
+    { id: 'deep-ocean', name: 'Oceano Profundo', bg: '#172554', text: '#bfdbfe', titleColor: '#eff6ff', primary: '#3b82f6', font: 'Montserrat', btn: 'pill', cardBg: '#1e3a8a', cardBorder: '#1e40af' },
+    
+    // 9. Rústico Vintage (Fundo escuro acastanhado, detalhes em laranja queimado/cobre)
+    { id: 'rustic-vintage', name: 'Rústico Vintage', bg: '#1c1917', text: '#a8a29e', titleColor: '#fafaf9', primary: '#ea580c', font: 'Montserrat', btn: 'rounded', cardBg: '#292524', cardBorder: '#44403c' },
+    
+    // 10. Violeta Vibrante (Criativo, arrojado, ótimo para estúdios de tatuagem, maquilhadoras)
+    { id: 'vibrant-purple', name: 'Estúdio Criativo', bg: '#fdf4ff', text: '#701a75', titleColor: '#4a044e', primary: '#c026d3', font: 'Inter', btn: 'rounded', cardBg: '#ffffff', cardBorder: '#fae8ff' }
+];
 
 // Variáveis de Controlo Dinâmico
 let establishmentData = null; 
-let currentEditingId = null; // Guarda o ID da loja que estamos a editar no momento
+let currentEditingId = null; 
 
 function getMenuItems() {
     return [
@@ -255,7 +268,7 @@ function renderChangePasswordSection(data, container) {
                 showNotification('Sucesso', 'Senha alterada com sucesso!', 'success');
                 e.target.reset();
             } else {
-                throw new Error("Nenhum usuário logado encontrado.");
+                throw new Error("Nenhum utilizador logado encontrado.");
             }
         } catch (error) {
             showNotification('Erro', `Não foi possível alterar a senha: ${error.message}`, 'error');
@@ -274,7 +287,7 @@ function renderChangeEmailSection(data, container) {
                 <button type="submit" form="change-email-form" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700">Salvar Novo E-mail</button>
             </div>
             <form id="change-email-form" class="space-y-4">
-                <p class="text-sm text-gray-600">Para alterar seu e-mail, confirme a sua senha atual. Um link será enviado para o **novo** endereço.</p>
+                <p class="text-sm text-gray-600">Para alterar o seu e-mail, confirme a sua senha atual. Um link será enviado para o **novo** endereço.</p>
                 <div>
                     <label for="newEmail" class="block text-sm font-medium text-gray-700">Novo E-mail</label>
                     <input type="email" id="newEmail" class="mt-1 w-full p-2.5 border border-gray-300 rounded-md" required>
@@ -311,127 +324,463 @@ function renderChangeEmailSection(data, container) {
     });
 }
 
+// ============================================================================
+// MODAL DE IDENTIDADE VISUAL COM TEMPLATES MODERNOS
+// ============================================================================
 function renderBrandingSection(data, container) {
-    const safeWelcome = escapeHTML(data.welcomeMessage || '');
+    const safeWelcome = escapeHTML(data.welcomeMessage || 'Agende o seu horário de forma rápida e fácil.');
     
+    // Dados das Redes Sociais
+    const socialData = data.socialLinks || {};
+    const safeInsta = escapeHTML(socialData.instagram || '');
+    const safeFace = escapeHTML(socialData.facebook || '');
+    const safeWhats = escapeHTML(socialData.whatsapp || '');
+
+    // Valores Atuais Visuais
+    let currentPrimaryColor = data.primaryColor || data.themeColor || designTemplates[0].primary;
+    let currentBgColor = data.backgroundColor || designTemplates[0].bg;
+    let currentTextColor = data.textColor || designTemplates[0].text;
+    let currentTitleColor = data.titleColor || designTemplates[0].titleColor; 
+    let currentBtnStyle = data.buttonStyle || designTemplates[0].btn; 
+    let currentTypography = data.typography || designTemplates[0].font;
+    let currentTemplateIndex = data.templateId ? designTemplates.findIndex(t => t.id === data.templateId) : 0;
+    if(currentTemplateIndex === -1) currentTemplateIndex = 0;
+
+    const getBtnRadius = (style) => {
+        if(style === 'pill') return '9999px';
+        if(style === 'square') return '0.25rem';
+        return '0.75rem'; // rounded default
+    };
+
     container.innerHTML = `
-        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md border border-gray-100">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-gray-800">Identidade Visual</h3>
-                <button type="submit" form="branding-form" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700">Salvar Identidade</button>
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 flex-wrap gap-4">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">Layout e Link na Bio</h3>
+                    <p class="text-sm text-gray-500 mt-1">Personalize a vitrine digital para o seu cliente.</p>
+                </div>
+                <button type="submit" form="branding-form" class="bg-indigo-600 text-white font-semibold py-2.5 px-6 rounded-xl hover:bg-indigo-700 shadow-md transition-all active:scale-95 flex items-center gap-2">
+                    <i class="bi bi-save"></i> Publicar Alterações
+                </button>
             </div>
-            <form id="branding-form" class="space-y-8">
-                <input type="hidden" id="establishmentLogoBase64">
-                <input type="hidden" id="establishmentBackgroundImageBase64">
-                <input type="hidden" id="establishmentThemeColor">
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 h-full">
                 
-                <div class="flex flex-col md:flex-row items-center gap-6">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Logotipo da Unidade</label>
-                        <img id="establishmentLogoPreview" src="${data.logo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Logo'}" class="mt-2 h-24 w-24 rounded-lg object-contain border p-1 bg-gray-50">
-                    </div>
-                    <div class="flex-grow">
-                        <input type="file" id="establishmentLogoInput" class="hidden" accept="image/*">
-                        <button type="button" id="establishmentLogoButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50">Alterar Logotipo</button>
-                    </div>
+                <div class="lg:col-span-7 p-6 border-r border-gray-100 overflow-y-auto max-h-[850px] bg-white">
+                    <form id="branding-form" class="space-y-8">
+                        <input type="hidden" id="establishmentLogoBase64" value="${data.logo || ''}">
+                        <input type="hidden" id="establishmentBackgroundImageBase64" value="${data.backgroundImage || ''}">
+                        <input type="hidden" id="selectedTemplateId" value="${designTemplates[currentTemplateIndex].id}">
+                        
+                        <div class="bg-indigo-50 p-5 rounded-2xl border border-indigo-100">
+                            <h4 class="text-sm font-bold text-indigo-900 uppercase tracking-wider mb-3 text-center">1. Escolha um Tema Base</h4>
+                            <div class="flex items-center justify-center gap-4">
+                                <button type="button" id="prevTemplate" class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-colors cursor-pointer border border-indigo-200">
+                                    <i class="bi bi-chevron-left text-lg"></i>
+                                </button>
+                                <div class="text-center min-w-[160px]">
+                                    <span id="templateNameDisplay" class="text-lg font-bold text-indigo-950">${designTemplates[currentTemplateIndex].name}</span>
+                                </div>
+                                <button type="button" id="nextTemplate" class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm transition-colors cursor-pointer border border-indigo-200">
+                                    <i class="bi bi-chevron-right text-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4">
+                            <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                <i class="bi bi-image text-indigo-500"></i> 2. Logótipo e Capa
+                            </h4>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:bg-gray-50 transition relative group" id="triggerBannerUpload">
+                                    <input type="file" id="establishmentBgInput" class="hidden" accept="image/*">
+                                    <div class="absolute inset-0 z-10 hidden group-hover:flex items-center justify-center bg-black bg-opacity-40 rounded-xl transition pointer-events-none">
+                                        <span class="text-white font-semibold text-sm">Mudar Capa</span>
+                                    </div>
+                                    <div class="h-24 w-full bg-gray-100 rounded-lg overflow-hidden mb-3 flex items-center justify-center relative pointer-events-none">
+                                        <img id="establishmentBgPreview" src="${data.backgroundImage || ''}" class="w-full h-full object-cover ${!data.backgroundImage ? 'hidden' : ''}">
+                                        <i class="bi bi-image text-3xl text-gray-300 ${data.backgroundImage ? 'hidden' : ''}" id="establishmentBgPlaceholder"></i>
+                                    </div>
+                                    <p class="text-xs font-semibold text-gray-700 pointer-events-none">Imagem de Capa (Fundo)</p>
+                                </div>
+
+                                <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center cursor-pointer hover:bg-gray-50 transition relative group" id="triggerLogoUpload">
+                                    <input type="file" id="establishmentLogoInput" class="hidden" accept="image/*">
+                                    <div class="absolute inset-0 z-10 hidden group-hover:flex items-center justify-center bg-black bg-opacity-40 rounded-xl transition pointer-events-none">
+                                        <span class="text-white font-semibold text-sm">Mudar Logo</span>
+                                    </div>
+                                    <div class="h-24 w-24 bg-gray-100 rounded-full mx-auto overflow-hidden mb-3 flex items-center justify-center border-4 border-white shadow-sm relative pointer-events-none">
+                                        <img id="establishmentLogoPreview" src="${data.logo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Logo'}" class="w-full h-full object-contain bg-white">
+                                    </div>
+                                    <p class="text-xs font-semibold text-gray-700 pointer-events-none">Logótipo</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-gray-100">
+
+                        <div class="space-y-4">
+                            <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                <i class="bi bi-card-text text-indigo-500"></i> 3. Informações e Contactos
+                            </h4>
+                            <div>
+                                <label for="establishmentWelcomeMessage" class="block text-xs font-semibold text-gray-600 mb-1">Descrição Curta</label>
+                                <textarea id="establishmentWelcomeMessage" rows="2" class="w-full p-3 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none" placeholder="Ex: Especialistas em cortes clássicos. Agende o seu horário!">${safeWelcome}</textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                                <div class="flex rounded-xl shadow-sm overflow-hidden border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-all">
+                                    <span class="inline-flex items-center px-3 bg-gray-50 text-gray-500 border-r border-gray-300"><i class="bi bi-instagram text-pink-600"></i></span>
+                                    <input type="text" id="socialInstagram" value="${safeInsta}" class="flex-1 p-2.5 outline-none text-xs" placeholder="Usuário (@)">
+                                </div>
+                                <div class="flex rounded-xl shadow-sm overflow-hidden border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-all">
+                                    <span class="inline-flex items-center px-3 bg-gray-50 text-gray-500 border-r border-gray-300"><i class="bi bi-whatsapp text-green-500"></i></span>
+                                    <input type="text" id="socialWhatsapp" value="${safeWhats}" class="flex-1 p-2.5 outline-none text-xs" placeholder="Número Whatsapp">
+                                </div>
+                                <div class="flex rounded-xl shadow-sm overflow-hidden border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-indigo-500 transition-all">
+                                    <span class="inline-flex items-center px-3 bg-gray-50 text-gray-500 border-r border-gray-300"><i class="bi bi-facebook text-blue-600"></i></span>
+                                    <input type="text" id="socialFacebook" value="${safeFace}" class="flex-1 p-2.5 outline-none text-xs" placeholder="Link da página">
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-gray-100">
+
+                        <div class="space-y-4 pb-4">
+                            <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                <i class="bi bi-sliders text-indigo-500"></i> 4. Ajustes Finos (Opcional)
+                            </h4>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div class="bg-gray-50 p-2 rounded-xl border border-gray-200">
+                                    <label class="block text-[10px] font-semibold text-gray-500 mb-1 text-center">Botões</label>
+                                    <div class="flex flex-col items-center gap-1">
+                                        <input type="color" id="previewPrimaryColorInput" value="${currentPrimaryColor}" class="w-8 h-8 p-0 border-0 rounded cursor-pointer bg-transparent">
+                                    </div>
+                                </div>
+
+                                <div class="bg-gray-50 p-2 rounded-xl border border-gray-200">
+                                    <label class="block text-[10px] font-semibold text-gray-500 mb-1 text-center">Fundo</label>
+                                    <div class="flex flex-col items-center gap-1">
+                                        <input type="color" id="previewBgColorInput" value="${currentBgColor}" class="w-8 h-8 p-0 border-0 rounded cursor-pointer bg-transparent">
+                                    </div>
+                                </div>
+
+                                <div class="bg-gray-50 p-2 rounded-xl border border-gray-200">
+                                    <label class="block text-[10px] font-semibold text-gray-500 mb-1 text-center">Nome</label>
+                                    <div class="flex flex-col items-center gap-1">
+                                        <input type="color" id="previewTitleColorInput" value="${currentTitleColor}" class="w-8 h-8 p-0 border-0 rounded cursor-pointer bg-transparent">
+                                    </div>
+                                </div>
+
+                                <div class="bg-gray-50 p-2 rounded-xl border border-gray-200">
+                                    <label class="block text-[10px] font-semibold text-gray-500 mb-1 text-center">Texto</label>
+                                    <div class="flex flex-col items-center gap-1">
+                                        <input type="color" id="previewTextColorInput" value="${currentTextColor}" class="w-8 h-8 p-0 border-0 rounded cursor-pointer bg-transparent">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Tipografia</label>
+                                    <select id="typographyInput" class="w-full p-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 bg-white">
+                                        <option value="Inter" ${currentTypography === 'Inter' ? 'selected' : ''}>Inter (Moderna)</option>
+                                        <option value="Roboto" ${currentTypography === 'Roboto' ? 'selected' : ''}>Roboto (Clássica)</option>
+                                        <option value="'Playfair Display'" ${currentTypography === "'Playfair Display'" ? 'selected' : ''}>Playfair (Elegante)</option>
+                                        <option value="Montserrat" ${currentTypography === 'Montserrat' ? 'selected' : ''}>Montserrat (Forte)</option>
+                                        <option value="Poppins" ${currentTypography === 'Poppins' ? 'selected' : ''}>Poppins (Suave)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Botões</label>
+                                    <div class="flex bg-gray-100 p-1 rounded-xl">
+                                        <label class="flex-1 text-center cursor-pointer">
+                                            <input type="radio" name="buttonStyle" value="square" class="hidden peer" ${currentBtnStyle === 'square' ? 'checked' : ''}>
+                                            <div class="py-1.5 px-2 text-xs font-semibold text-gray-500 rounded-lg peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition">Reto</div>
+                                        </label>
+                                        <label class="flex-1 text-center cursor-pointer">
+                                            <input type="radio" name="buttonStyle" value="rounded" class="hidden peer" ${currentBtnStyle === 'rounded' ? 'checked' : ''}>
+                                            <div class="py-1.5 px-2 text-xs font-semibold text-gray-500 rounded-lg peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition">Suave</div>
+                                        </label>
+                                        <label class="flex-1 text-center cursor-pointer">
+                                            <input type="radio" name="buttonStyle" value="pill" class="hidden peer" ${currentBtnStyle === 'pill' ? 'checked' : ''}>
+                                            <div class="py-1.5 px-2 text-xs font-semibold text-gray-500 rounded-lg peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition">Pílula</div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
 
-                <div class="border-t pt-4 mt-4">
-                    <h4 class="text-lg font-semibold text-gray-800 mb-4">Página de Agendamento</h4>
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700">Imagem de Fundo</label>
-                        <div class="mt-2 flex items-center gap-4">
-                            <div class="h-32 w-20 bg-gray-100 border rounded-lg overflow-hidden relative">
-                                 <img id="establishmentBgPreview" src="${data.backgroundImage || ''}" class="w-full h-full object-cover ${!data.backgroundImage ? 'hidden' : ''}">
-                                 <div id="establishmentBgPlaceholder" class="${data.backgroundImage ? 'hidden' : 'flex'} w-full h-full items-center justify-center text-gray-400 text-xs text-center p-1">Sem Imagem</div>
-                            </div>
-                            <div class="flex-grow">
-                                <input type="file" id="establishmentBgInput" class="hidden" accept="image/*">
-                                <button type="button" id="establishmentBgButton" class="bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50">Carregar Fundo</button>
-                                <button type="button" id="establishmentBgRemoveBtn" class="ml-2 text-red-600 text-sm hover:underline">Remover</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Cor Principal (Botões)</label>
-                            <input type="color" id="establishmentPrimaryColorInput" value="${data.primaryColor || data.themeColor || '#4f46e5'}" class="h-10 w-20 p-1 rounded border border-gray-300 cursor-pointer">
-                        </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Cor do Texto Fundo</label>
-                            <input type="color" id="establishmentTextColorInput" value="${data.textColor || '#111827'}" class="h-10 w-20 p-1 rounded border border-gray-300 cursor-pointer">
-                        </div>
-                    </div>
+                <div class="lg:col-span-5 bg-gradient-to-br from-gray-100 to-gray-300 p-6 flex flex-col items-center justify-center relative overflow-hidden">
                     
-                    <div>
-                        <label for="establishmentWelcomeMessage" class="block text-sm font-medium text-gray-700">Mensagem de Boas-Vindas</label>
-                        <input type="text" id="establishmentWelcomeMessage" class="mt-1 block w-full rounded-md border-gray-300 p-2.5 shadow-sm" value="${safeWelcome}">
-                    </div>
-                </div>
+                    <div class="relative w-[320px] h-[640px] bg-black rounded-[3rem] border-[10px] border-gray-900 shadow-2xl overflow-hidden shrink-0">
+                        
+                        <div class="absolute top-0 inset-x-0 h-6 bg-gray-900 rounded-b-xl w-32 mx-auto z-50"></div>
 
-                <div class="border-t pt-4 mt-4">
-                    <h4 class="text-lg font-semibold text-gray-800 mb-2">Tema do Painel Administrativo</h4>
-                    <p class="text-sm text-gray-600 mb-4">Escolha a cor base do sistema para esta unidade.</p>
-                    <div id="color-palette-container" class="flex flex-wrap gap-4"></div>
-                </div>
-            </form>
+                        <div id="mockup-screen-wrapper" class="w-full h-full bg-white transition-all duration-300 transform scale-100 opacity-100 relative">
+                            <div id="mockup-screen" class="w-full h-full overflow-y-auto no-scrollbar" style="
+                                background-color: var(--preview-bg, ${currentBgColor}); 
+                                color: var(--preview-text, ${currentTextColor}); 
+                                font-family: var(--preview-font, ${currentTypography});
+                                --preview-title-color: ${currentTitleColor};
+                                --preview-primary: ${currentPrimaryColor};
+                                --preview-btn-radius: ${getBtnRadius(currentBtnStyle)};
+                                --preview-card-bg: ${designTemplates[currentTemplateIndex].cardBg};
+                                --preview-card-border: ${designTemplates[currentTemplateIndex].cardBorder};
+                            ">
+                                
+                                <div class="relative h-36 w-full bg-gray-200 overflow-hidden">
+                                    <img id="mockup-banner" src="${data.backgroundImage || ''}" class="w-full h-full object-cover transition-opacity duration-300 ${!data.backgroundImage ? 'hidden' : ''}">
+                                    <div id="mockup-banner-placeholder" class="w-full h-full flex items-center justify-center bg-gray-300 opacity-50 ${data.backgroundImage ? 'hidden' : ''}"></div>
+                                    <div class="absolute inset-0 bg-gradient-to-t from-[var(--preview-bg)] to-transparent opacity-90"></div>
+                                </div>
+
+                                <div class="px-4 relative -mt-12 z-10 flex flex-col items-center text-center">
+                                    
+                                    <div class="w-24 h-24 bg-white rounded-full mx-auto border-[5px] shadow-sm overflow-hidden flex items-center justify-center transition-all duration-500" style="border-color: var(--preview-bg); background-color: var(--preview-bg);">
+                                        <img id="mockup-logo" src="${data.logo || 'https://placehold.co/128x128/E2E8F0/4A5568?text=Logo'}" class="w-full h-full object-contain">
+                                    </div>
+
+                                    <div class="mt-2 w-full">
+                                        <h1 class="text-xl font-bold truncate leading-tight" style="color: var(--preview-title-color);">${escapeHTML(data.name || 'Sua Empresa')}</h1>
+                                        <p id="mockup-welcome" class="text-[11px] mt-1 opacity-70 leading-relaxed max-w-[260px] mx-auto">${safeWelcome}</p>
+                                    </div>
+
+                                    <div class="flex justify-center gap-2 mt-3 w-full" id="mockup-social-row">
+                                        <div id="mockup-insta-icon" class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm transition-transform ${!safeInsta ? 'hidden' : ''}" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); color: var(--preview-primary)"><i class="bi bi-instagram"></i></div>
+                                        <div id="mockup-whats-icon" class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm transition-transform ${!safeWhats ? 'hidden' : ''}" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); color: var(--preview-primary)"><i class="bi bi-whatsapp"></i></div>
+                                        <div id="mockup-face-icon" class="w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-sm transition-transform ${!safeFace ? 'hidden' : ''}" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); color: var(--preview-primary)"><i class="bi bi-facebook"></i></div>
+                                    </div>
+                                </div>
+
+                                <div class="flex border-b border-gray-200 border-opacity-30 mt-4 px-4 gap-5">
+                                    <div class="py-2 border-b-2 font-bold text-[13px]" style="border-color: var(--preview-primary); color: var(--preview-primary);">Serviços</div>
+                                    <div class="py-2 text-[13px] opacity-50 font-semibold" style="color: var(--preview-title-color);">Profissionais</div>
+                                </div>
+
+                                <div class="w-full text-left p-4 space-y-3">
+                                    <div class="p-3 transition-all flex justify-between items-center shadow-sm" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); border-radius: var(--preview-btn-radius);">
+                                        <div>
+                                            <p class="font-bold text-[13px]" style="color: var(--preview-title-color);">Corte Clássico</p>
+                                            <p class="text-[11px] opacity-70 mt-0.5">30 min • R$ 40,00</p>
+                                        </div>
+                                        <div class="px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition-all" style="background-color: var(--preview-primary); border-radius: var(--preview-btn-radius);">+ Adicionar</div>
+                                    </div>
+                                    
+                                    <div class="p-3 transition-all flex justify-between items-center shadow-sm" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); border-radius: var(--preview-btn-radius);">
+                                        <div>
+                                            <p class="font-bold text-[13px]" style="color: var(--preview-title-color);">Corte + Barba</p>
+                                            <p class="text-[11px] opacity-70 mt-0.5">60 min • R$ 70,00</p>
+                                        </div>
+                                        <div class="px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition-all" style="background-color: var(--preview-primary); border-radius: var(--preview-btn-radius);">+ Adicionar</div>
+                                    </div>
+                                </div>
+
+                                <div class="w-full text-left pt-2 pb-24 border-t border-gray-200 border-opacity-20 mt-2">
+                                    <div class="px-4 flex items-center justify-between mb-3">
+                                        <h2 class="text-[11px] font-bold uppercase tracking-wider opacity-60" style="color: var(--preview-title-color);">Avaliações</h2>
+                                        <div class="flex items-center gap-1 text-yellow-500 text-[10px] bg-yellow-500/10 px-1.5 py-0.5 rounded-md">
+                                            <i class="bi bi-star-fill"></i><span class="font-bold" style="color: var(--preview-title-color);">4.9</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 overflow-x-auto px-4 pb-4 snap-x no-scrollbar">
+                                        <div class="p-3 shadow-sm min-w-[200px] snap-center shrink-0 flex flex-col" style="background-color: var(--preview-card-bg); border: 1px solid var(--preview-card-border); border-radius: var(--preview-btn-radius);">
+                                            <div class="flex gap-1 text-yellow-400 text-[8px] mb-2"><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i></div>
+                                            <p class="text-[10px] italic opacity-80 mb-3 flex-grow leading-relaxed" style="color: var(--preview-title-color);">"Atendimento impecável! O ambiente é ótimo e o serviço perfeito."</p>
+                                            <div class="flex items-center gap-2 mt-auto pt-2 border-t border-gray-200 border-opacity-20">
+                                                <div class="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white" style="background-color: var(--preview-primary);">MS</div>
+                                                <span class="text-[10px] font-bold" style="color: var(--preview-title-color);">M. Silva</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            
+                            <div class="absolute bottom-4 left-4 right-4 py-3 px-4 shadow-lg flex justify-between items-center z-20" style="background-color: var(--preview-primary); color: white; border-radius: var(--preview-btn-radius);">
+                                <span class="text-xs font-semibold">1 serviço</span>
+                                <span class="text-sm font-bold flex items-center gap-1">Continuar <i class="bi bi-arrow-right"></i></span>
+                            </div>
+
+                        </div>
+                    </div>
+                    </div>
+            </div>
         </div>
     `;
+
+    // --- LÓGICA DE INTERAÇÃO E ANIMAÇÃO ---
+    const mockupScreenWrapper = container.querySelector('#mockup-screen-wrapper');
+    const mockupScreen = container.querySelector('#mockup-screen');
     
-    container.querySelector('#establishmentLogoBase64').value = data.logo || '';
-    container.querySelector('#establishmentBackgroundImageBase64').value = data.backgroundImage || '';
+    // Inputs manuais
+    const primaryInput = container.querySelector('#previewPrimaryColorInput');
+    const bgInput = container.querySelector('#previewBgColorInput');
+    const textInput = container.querySelector('#previewTextColorInput');
+    const titleColorInput = container.querySelector('#previewTitleColorInput');
+    const typographyInput = container.querySelector('#typographyInput');
+    
+    // Outros campos
+    const welcomeInput = container.querySelector('#establishmentWelcomeMessage');
+    const mockupWelcome = container.querySelector('#mockup-welcome');
+    const instaInput = container.querySelector('#socialInstagram');
+    const whatsInput = container.querySelector('#socialWhatsapp');
+    const faceInput = container.querySelector('#socialFacebook');
 
-    renderColorPalette(data.themeColor || 'indigo', container);
+    // Navegação de templates
+    const btnPrev = container.querySelector('#prevTemplate');
+    const btnNext = container.querySelector('#nextTemplate');
+    const templateNameDisplay = container.querySelector('#templateNameDisplay');
+    const hiddenTemplateId = container.querySelector('#selectedTemplateId');
 
-    container.querySelector('#establishmentLogoButton').onclick = () => container.querySelector('#establishmentLogoInput').click();
-    container.querySelector('#establishmentLogoInput').onchange = async (e) => {
+    // Função para aplicar template COM ANIMAÇÃO
+    const applyTemplate = (index) => {
+        const t = designTemplates[index];
+        
+        // 1. Efeito visual de Fade Out / Scale Down
+        mockupScreenWrapper.style.opacity = '0.3';
+        mockupScreenWrapper.style.transform = 'scale(0.96)';
+
+        setTimeout(() => {
+            // 2. Atualizar Valores UI (Esquerda)
+            primaryInput.value = t.primary;
+            bgInput.value = t.bg;
+            textInput.value = t.text;
+            titleColorInput.value = t.titleColor || t.text; // Garante fallback
+            typographyInput.value = t.font;
+            container.querySelectorAll('input[name="buttonStyle"]').forEach(radio => {
+                radio.checked = (radio.value === t.btn);
+            });
+            
+            hiddenTemplateId.value = t.id;
+            templateNameDisplay.textContent = t.name;
+
+            // 3. Atualizar Variáveis CSS do Mockup (Direita)
+            mockupScreen.style.setProperty('--preview-primary', t.primary);
+            mockupScreen.style.setProperty('--preview-bg', t.bg);
+            mockupScreen.style.setProperty('--preview-text', t.text);
+            mockupScreen.style.setProperty('--preview-title-color', t.titleColor || t.text);
+            mockupScreen.style.setProperty('--preview-font', t.font);
+            mockupScreen.style.setProperty('--preview-btn-radius', getBtnRadius(t.btn));
+            mockupScreen.style.setProperty('--preview-card-bg', t.cardBg);
+            mockupScreen.style.setProperty('--preview-card-border', t.cardBorder);
+
+            // 4. Efeito visual de Fade In / Scale Up
+            mockupScreenWrapper.style.opacity = '1';
+            mockupScreenWrapper.style.transform = 'scale(1)';
+        }, 300); // 300ms combina com o duration-300 do tailwind
+    };
+
+    // Listeners de Navegação
+    btnPrev.addEventListener('click', () => {
+        currentTemplateIndex = (currentTemplateIndex - 1 + designTemplates.length) % designTemplates.length;
+        applyTemplate(currentTemplateIndex);
+    });
+
+    btnNext.addEventListener('click', () => {
+        currentTemplateIndex = (currentTemplateIndex + 1) % designTemplates.length;
+        applyTemplate(currentTemplateIndex);
+    });
+
+    // Atualização Manual Dinâmica (Sem animação para feedback instantâneo)
+    primaryInput.addEventListener('input', e => mockupScreen.style.setProperty('--preview-primary', e.target.value));
+    bgInput.addEventListener('input', e => mockupScreen.style.setProperty('--preview-bg', e.target.value));
+    textInput.addEventListener('input', e => mockupScreen.style.setProperty('--preview-text', e.target.value));
+    titleColorInput.addEventListener('input', e => mockupScreen.style.setProperty('--preview-title-color', e.target.value));
+    
+    typographyInput.addEventListener('change', e => mockupScreen.style.setProperty('--preview-font', e.target.value));
+    container.querySelectorAll('input[name="buttonStyle"]').forEach(radio => {
+        radio.addEventListener('change', e => {
+            if(e.target.checked) mockupScreen.style.setProperty('--preview-btn-radius', getBtnRadius(e.target.value));
+        });
+    });
+
+    // Atualizar Textos e Redes em Tempo Real
+    welcomeInput.addEventListener('input', e => mockupWelcome.textContent = e.target.value || 'Mensagem...');
+    const updateSocialMockup = () => {
+        container.querySelector('#mockup-insta-icon').classList.toggle('hidden', !instaInput.value.trim());
+        container.querySelector('#mockup-whats-icon').classList.toggle('hidden', !whatsInput.value.trim());
+        container.querySelector('#mockup-face-icon').classList.toggle('hidden', !faceInput.value.trim());
+    };
+    [instaInput, whatsInput, faceInput].forEach(el => el.addEventListener('input', updateSocialMockup));
+
+    // UPLOAD DE IMAGENS - CORRIGIDO O EVENTO DE CLIQUE
+    const logoInput = container.querySelector('#establishmentLogoInput');
+    const bgImageInput = container.querySelector('#establishmentBgInput');
+    const logoBase64 = container.querySelector('#establishmentLogoBase64');
+    const bgBase64 = container.querySelector('#establishmentBackgroundImageBase64');
+
+    // Ao clicar na div do Logo (garantindo que não causa loop se clicar no próprio input)
+    container.querySelector('#triggerLogoUpload').addEventListener('click', (e) => {
+        if(e.target.id !== 'establishmentLogoInput') {
+            logoInput.click();
+        }
+    });
+
+    logoInput.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
             const resizedBase64 = await compressImage(file, 300, 0.9);
             container.querySelector('#establishmentLogoPreview').src = resizedBase64;
-            container.querySelector('#establishmentLogoBase64').value = resizedBase64;
+            container.querySelector('#mockup-logo').src = resizedBase64;
+            logoBase64.value = resizedBase64;
         }
     };
 
-    container.querySelector('#establishmentBgButton').onclick = () => container.querySelector('#establishmentBgInput').click();
-    container.querySelector('#establishmentBgInput').onchange = async (e) => {
+    // Ao clicar na div do Banner
+    container.querySelector('#triggerBannerUpload').addEventListener('click', (e) => {
+        if(e.target.id !== 'establishmentBgInput') {
+            bgImageInput.click();
+        }
+    });
+    
+    bgImageInput.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const btn = container.querySelector('#establishmentBgButton');
-            btn.textContent = 'A processar...'; btn.disabled = true;
-            try {
-                const resizedBase64 = await compressImage(file, 1280, 0.7);
-                container.querySelector('#establishmentBgPreview').src = resizedBase64;
-                container.querySelector('#establishmentBgPreview').classList.remove('hidden');
-                container.querySelector('#establishmentBgPlaceholder').classList.add('hidden');
-                container.querySelector('#establishmentBackgroundImageBase64').value = resizedBase64;
-            } finally {
-                btn.textContent = 'Carregar Fundo'; btn.disabled = false;
-            }
+            const resizedBase64 = await compressImage(file, 1280, 0.8);
+            container.querySelector('#establishmentBgPreview').src = resizedBase64;
+            container.querySelector('#establishmentBgPreview').classList.remove('hidden');
+            container.querySelector('#establishmentBgPlaceholder').classList.add('hidden');
+            bgBase64.value = resizedBase64;
+
+            container.querySelector('#mockup-banner').src = resizedBase64;
+            container.querySelector('#mockup-banner').classList.remove('hidden');
+            container.querySelector('#mockup-banner-placeholder').classList.add('hidden');
         }
     };
-    
-    container.querySelector('#establishmentBgRemoveBtn').onclick = () => {
-        container.querySelector('#establishmentBgPreview').src = '';
-        container.querySelector('#establishmentBgPreview').classList.add('hidden');
-        container.querySelector('#establishmentBgPlaceholder').classList.remove('hidden');
-        container.querySelector('#establishmentBackgroundImageBase64').value = '';
-    };
 
+    // SUBMETER DADOS
     container.querySelector('#branding-form').addEventListener('submit', (e) => {
         e.preventDefault();
+        let selectedBtnStyle = 'rounded';
+        container.querySelectorAll('input[name="buttonStyle"]').forEach(r => { if(r.checked) selectedBtnStyle = r.value; });
+
         const formData = {
-            logo: container.querySelector('#establishmentLogoBase64').value,
-            welcomeMessage: container.querySelector('#establishmentWelcomeMessage').value,
-            backgroundImage: container.querySelector('#establishmentBackgroundImageBase64').value,
-            primaryColor: container.querySelector('#establishmentPrimaryColorInput').value,
-            textColor: container.querySelector('#establishmentTextColorInput').value, 
-            themeColor: container.querySelector('#establishmentThemeColor').value 
+            logo: logoBase64.value,
+            backgroundImage: bgBase64.value,
+            welcomeMessage: welcomeInput.value,
+            templateId: hiddenTemplateId.value,
+            primaryColor: primaryInput.value, 
+            backgroundColor: bgInput.value,   
+            textColor: textInput.value, 
+            titleColor: titleColorInput.value,
+            typography: typographyInput.value,
+            buttonStyle: selectedBtnStyle,
+            socialLinks: {
+                instagram: instaInput.value.trim(),
+                whatsapp: whatsInput.value.trim(),
+                facebook: faceInput.value.trim()
+            }
         };
         handleSave(formData, e);
     });
 }
+// ============================================================================
+
 
 function renderBookingSection(data, container) {
     const linkId = data.urlId || currentEditingId;
@@ -619,7 +968,7 @@ function renderWhatsAppSection(data, container) {
                         <i class="bi bi-qr-code-scan text-4xl text-gray-700"></i>
                     </div>
                     <h4 class="text-lg font-bold text-gray-800 mb-2">Ligar o Bot a esta Unidade</h4>
-                    <p class="text-sm text-gray-600 mb-6 max-w-md mx-auto">Clique no botão abaixo para gerar um QR Code. Escaneie-o com o celular da sua barbearia (em Aparelhos Conectados).</p>
+                    <p class="text-sm text-gray-600 mb-6 max-w-md mx-auto">Clique no botão abaixo para gerar um QR Code. Escaneie-o com o telemóvel do estabelecimento (em Aparelhos Conectados).</p>
                     
                     <button type="button" id="btnGenerateQr" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 flex items-center gap-2 mx-auto">
                         <i class="bi bi-phone-vibrate"></i> Gerar QR Code
@@ -668,11 +1017,9 @@ function renderWhatsAppSection(data, container) {
             btnGenerate.disabled = true;
             btnGenerate.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Gerando...';
 
-            // Apontando para o SEU backend (ajuste a URL se sua API rodar em outro subdomínio)
             const LOCAL_API_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp";
 
             try {
-                // 1. Pede para o seu backend criar a instância e devolver o QR Code
                 const response = await fetch(`${LOCAL_API_URL}/connect`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -685,11 +1032,9 @@ function renderWhatsAppSection(data, container) {
                     container.querySelector('#whatsappStatusArea').classList.add('hidden');
                     container.querySelector('#qrCodeDisplayArea').classList.remove('hidden');
                     
-                    // Tratamento caso a base64 não venha com o prefixo da imagem
                     const qrSrc = apiData.qrcode.includes('data:image') ? apiData.qrcode : `data:image/png;base64,${apiData.qrcode}`;
                     container.querySelector('#qrCodeImage').src = qrSrc;
 
-                    // 2. Fica perguntando pro backend se o cliente já escaneou (Polling)
                     pollingInterval = setInterval(async () => {
                         try {
                             const statusRes = await fetch(`${LOCAL_API_URL}/status/${currentEditingId}`);
@@ -706,14 +1051,14 @@ function renderWhatsAppSection(data, container) {
                         } catch (err) {
                             console.error("Erro ao verificar status do WhatsApp", err);
                         }
-                    }, 5000); // Verifica a cada 5 segundos
+                    }, 5000); 
 
                 } else {
                     showNotification('Erro na API', apiData.error || "Erro desconhecido", 'error');
                 }
             } catch (error) {
                 console.error(error);
-                showNotification('Erro de Conexão', 'Não foi possível acessar o servidor Kairós.', 'error');
+                showNotification('Erro de Conexão', 'Não foi possível aceder ao servidor Kairós.', 'error');
             } finally {
                 btnGenerate.disabled = false;
                 btnGenerate.innerHTML = '<i class="bi bi-phone-vibrate"></i> Gerar QR Code';
@@ -844,7 +1189,7 @@ async function renderLoyaltySection(data, container) {
             <div>
                 <label class="text-xs font-bold text-gray-500 mb-1 block">Tipo de Recompensa</label>
                 <select data-field="type" class="type-select w-full p-2 border border-gray-300 rounded-md bg-white text-sm">
-                    <option value="money" ${currentType === 'money' ? 'selected' : ''}>Desconto (R$)</option>
+                    <option value="money" ${currentType === 'money' ? 'selected' : ''}>Desconto (€/R$)</option>
                     <option value="service" ${currentType === 'service' ? 'selected' : ''}>Serviço Grátis</option>
                     <option value="product" ${currentType === 'product' ? 'selected' : ''}>Produto Grátis</option>
                     <option value="package" ${currentType === 'package' ? 'selected' : ''}>Pacote Grátis</option>
@@ -862,7 +1207,7 @@ async function renderLoyaltySection(data, container) {
                     </select>
 
                     <div class="w-24 relative">
-                        <span class="absolute left-2 top-2 text-gray-500 text-sm">R$</span>
+                        <span class="absolute left-2 top-2 text-gray-500 text-sm">$</span>
                         <input type="number" placeholder="Valor" data-field="discount" value="${currentDiscount}" step="0.01" class="discount-input w-full p-2 pl-7 border border-gray-300 rounded-md" title="Valor do desconto">
                     </div>
                 </div>
@@ -1084,7 +1429,7 @@ function renderSupportSection(data, container) {
         <div class="bg-white p-6 rounded-lg shadow-md border border-gray-100 text-center">
             <div class="mb-6">
                 <h3 class="text-2xl font-bold text-gray-800">Precisa de Ajuda?</h3>
-                <p class="text-gray-600 mt-2">Estamos aqui para garantir que você tenha a melhor experiência possível.</p>
+                <p class="text-gray-600 mt-2">Estamos aqui para garantir que tenha a melhor experiência possível.</p>
             </div>
             <div class="bg-green-50 border border-green-100 rounded-xl p-8 inline-block max-w-lg mx-auto w-full">
                 <i class="bi bi-whatsapp text-6xl text-green-500 mb-4 inline-block"></i>
@@ -1103,7 +1448,7 @@ function renderCancellationSection(data, container) {
     container.innerHTML = `
         <div class="bg-white p-6 rounded-lg shadow-md border border-red-100">
             <h3 class="text-xl font-bold text-red-600 mb-4">Cancelamento de Assinatura</h3>
-            <p class="text-gray-700 mb-6">Lamentamos ver você partir. Para solicitar o cancelamento e exclusão dos dados desta unidade, por favor entre em contato com a nossa equipe financeira.</p>
+            <p class="text-gray-700 mb-6">Lamentamos ver-te partir. Para solicitar o cancelamento e exclusão dos dados desta unidade, por favor entre em contacto com a nossa equipa financeira.</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="border border-gray-200 rounded-lg p-6 bg-gray-50 flex flex-col items-center text-center">
                     <i class="bi bi-envelope-paper text-3xl text-gray-400 mb-3"></i>
@@ -1118,31 +1463,6 @@ function renderCancellationSection(data, container) {
             </div>
         </div>
     `;
-}
-
-function renderColorPalette(currentThemeKey = 'indigo', container) {
-    const paletteContainer = container.querySelector('#color-palette-container');
-    const themeInput = container.querySelector('#establishmentThemeColor');
-    if (!paletteContainer || !themeInput) return;
-    
-    paletteContainer.innerHTML = '';
-    Object.entries(colorThemes).forEach(([key, theme]) => {
-        const isSelected = key === currentThemeKey;
-        const swatch = document.createElement('div');
-        swatch.className = `w-24 text-center cursor-pointer mb-4`;
-        swatch.innerHTML = `
-            <div class="w-16 h-16 mx-auto rounded-full border-4 ${isSelected ? 'border-gray-800 scale-110 shadow-lg' : 'border-transparent'} p-1 transition-all">
-                <div class="w-full h-full rounded-full" style="background-color: ${theme.main};"></div>
-            </div>
-            <p class="text-xs mt-2 font-medium ${isSelected ? 'text-gray-900 font-bold' : 'text-gray-500'}">${theme.name}</p>
-        `;
-        swatch.addEventListener('click', () => {
-            themeInput.value = key;
-            renderColorPalette(key, container); 
-        });
-        paletteContainer.appendChild(swatch);
-    });
-    themeInput.value = currentThemeKey;
 }
 
 function renderSlotIntervalSelector(currentValue, container) {
@@ -1186,20 +1506,21 @@ async function showSettingsDetailView(sectionId) {
     
     if (!menuItem) return;
 
+    // Cabeçalho modificado: Sem fundo branco, sem sticky, design limpo
     contentDiv.innerHTML = `
-        <div class="bg-white p-4 shadow-sm border-b mb-6 flex items-center justify-between sticky top-0 z-10">
+        <div class="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-gray-200 border-opacity-50">
             <div class="flex items-center gap-3">
-                <button data-action="back-to-menu" class="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-gray-700">
+                <button data-action="back-to-menu" class="p-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors text-gray-700 shadow-sm flex items-center gap-2 text-sm font-semibold">
                     <i class="bi bi-arrow-left"></i> Voltar
                 </button>
-                <h2 class="text-lg font-bold text-gray-800">${menuItem.label}</h2>
+                <h2 class="text-2xl font-bold text-gray-800">${menuItem.label}</h2>
             </div>
-            <div class="text-sm font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+            <div class="text-sm font-bold text-indigo-600 bg-indigo-50 px-4 py-1.5 rounded-full border border-indigo-100">
                 ${escapeHTML(establishmentData?.name || '')}
             </div>
         </div>
         
-        <div id="settings-content-detail" class="pb-20 max-w-5xl mx-auto w-full">
+        <div id="settings-content-detail" class="pb-20 max-w-6xl mx-auto w-full">
             <div class="flex justify-center items-center py-10"><div class="spinner-border text-indigo-600" role="status"></div></div>
         </div>
     `;
