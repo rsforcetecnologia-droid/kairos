@@ -52,8 +52,9 @@ const createHierarchicalEntry = (collectionName) => async (req, res) => {
     
     try {
         const estDoc = await req.db.collection('establishments').doc(estId).get();
-        const groupId = estDoc.exists ? estDoc.data().groupId : null;
-        const companyId = estDoc.exists ? estDoc.data().companyId : null;
+        // Proteção contra undefined (Firestore não aceita undefined)
+        const groupId = estDoc.exists ? (estDoc.data().groupId || null) : null;
+        const companyId = estDoc.exists ? (estDoc.data().companyId || null) : null;
 
         const newEntry = { 
             establishmentId: estId, 
@@ -73,7 +74,6 @@ const createHierarchicalEntry = (collectionName) => async (req, res) => {
 const getHierarchicalEntries = (collectionName) => async (req, res) => {
     const { contextId } = req.params;
     try {
-        // Usa o motor seguro para ler as naturezas das lojas selecionadas
         const validEstIds = getAccessibleEstablishmentIds(req, contextId);
         
         let query = req.db.collection(collectionName);
@@ -115,7 +115,13 @@ router.delete('/cost-centers/:id', deleteHierarchicalEntry('financial_cost_cente
 
 const createEntry = (collectionName) => async (req, res) => {
     const estId = req.body.establishmentId || req.user.establishmentId;
-    const { description, amount, dueDate, naturezaId, centroDeCustoId, notes, status, paymentDate, installments, recurrenceId } = req.body;
+    
+    // Agora capturamos entity, paymentMethod, documentNumber e origin
+    const { 
+        description, amount, dueDate, naturezaId, centroDeCustoId, 
+        notes, status, paymentDate, installments, recurrenceId,
+        entity, paymentMethod, documentNumber, origin
+    } = req.body;
     
     if (!description || amount === undefined || !dueDate) {
         return res.status(400).json({ message: 'Descrição, valor e data de vencimento são obrigatórios.' });
@@ -123,8 +129,10 @@ const createEntry = (collectionName) => async (req, res) => {
 
     try {
         const estDoc = await req.db.collection('establishments').doc(estId).get();
-        const groupId = estDoc.exists ? estDoc.data().groupId : null;
-        const companyId = estDoc.exists ? estDoc.data().companyId : null;
+        
+        // Proteção essencial contra "undefined" (Gera erro 500 no Firestore)
+        const groupId = estDoc.exists ? (estDoc.data().groupId || null) : null;
+        const companyId = estDoc.exists ? (estDoc.data().companyId || null) : null;
 
         const batch = req.db.batch();
         const installmentCount = installments && installments > 1 ? installments : 1;
@@ -143,19 +151,37 @@ const createEntry = (collectionName) => async (req, res) => {
                 batch.set(docRef, {
                     establishmentId: estId, groupId, companyId,
                     description: `${description} (Parcela ${i}/${installmentCount})`,
-                    amount: currentInstallmentValue, dueDate: dueDateString,
-                    naturezaId: naturezaId || null, centroDeCustoId: centroDeCustoId || null,
-                    notes: notes || null, status: 'pending', paymentDate: null,
-                    recurrenceId: recurrenceId || null, // Garante gravação da recorrência
+                    amount: currentInstallmentValue, 
+                    dueDate: dueDateString,
+                    naturezaId: naturezaId || null, 
+                    centroDeCustoId: centroDeCustoId || null,
+                    entity: entity || null,
+                    paymentMethod: paymentMethod || null,
+                    documentNumber: documentNumber || null,
+                    origin: origin || 'manual',
+                    notes: notes || null, 
+                    status: 'pending', 
+                    paymentDate: null,
+                    recurrenceId: recurrenceId || null, 
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             }
         } else {
             const newEntry = {
-                establishmentId: estId, groupId, companyId,
-                description, amount: Number(amount), dueDate,
-                naturezaId: naturezaId || null, centroDeCustoId: centroDeCustoId || null,
-                notes: notes || null, status: status || 'pending',
+                establishmentId: estId, 
+                groupId, 
+                companyId,
+                description, 
+                amount: Number(amount), 
+                dueDate,
+                naturezaId: naturezaId || null, 
+                centroDeCustoId: centroDeCustoId || null,
+                entity: entity || null,
+                paymentMethod: paymentMethod || null,
+                documentNumber: documentNumber || null,
+                origin: origin || 'manual',
+                notes: notes || null, 
+                status: status || 'pending',
                 paymentDate: status === 'paid' ? paymentDate : null,
                 recurrenceId: recurrenceId || null,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
@@ -172,7 +198,6 @@ const createEntry = (collectionName) => async (req, res) => {
 };
 
 const getEntries = (collectionName) => async (req, res) => {
-    // Agora aceita a string de IDs do filtro da nova interface
     const { startDate, endDate, natureId, costCenterId, establishmentId } = req.query; 
     const fallbackId = req.query.contextId || req.user.establishmentId;
     const db = req.db;
@@ -181,7 +206,6 @@ const getEntries = (collectionName) => async (req, res) => {
     let previousBalance = 0; 
 
     try {
-        // Converte IDs solicitados num array seguro
         const validEstIds = getAccessibleEstablishmentIds(req, establishmentId || fallbackId);
 
         // --- 1. Calcular Saldo Anterior com Aggregation Otimizada ---
@@ -236,6 +260,12 @@ const updateEntry = (collectionName) => async (req, res) => {
     const data = req.body;
     try {
         const docRef = req.db.collection(collectionName).doc(id);
+        
+        // Remove valores undefined para não quebrar o firestore
+        Object.keys(data).forEach(key => {
+            if (data[key] === undefined) delete data[key];
+        });
+
         await docRef.update({ ...data, amount: Number(data.amount) });
         res.status(200).json({ message: 'Lançamento atualizado com sucesso.' });
     } catch (error) { handleFirestoreError(res, error, 'atualizar lançamentos'); }
@@ -285,7 +315,6 @@ router.get('/cash-flow', async (req, res) => {
         const start = new Date(startDate);
         const end = new Date(endDate + 'T23:59:59.999Z');
 
-        // 🔥 Aplica o filtro de múltiplas lojas no Dashboard Principal
         const validEstIds = getAccessibleEstablishmentIds(req, contextId);
 
         let payQuery = db.collection('financial_payables').where('dueDate', '>=', startDate).where('dueDate', '<=', endDate);

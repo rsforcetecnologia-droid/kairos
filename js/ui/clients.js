@@ -118,18 +118,18 @@ export async function loadClientsPage() {
 
 function renderBaseLayout() {
     const estCheckboxes = localState.establishments.map(est => `
-        <label class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-lg cursor-pointer hover:bg-slate-50 transition-all shadow-sm est-label select-none">
-            <input type="checkbox" class="est-filter-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
-            <span class="text-[10px] font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
+        <label class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-gray-200 text-gray-600'} rounded-lg cursor-pointer hover:bg-gray-50 transition-all shadow-sm est-label select-none">
+            <input type="checkbox" class="est-filter-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
+            <span class="text-xs font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
         </label>
     `).join('');
 
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative bg-slate-50">
+        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
             
-            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
+            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-gray-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
                 <div class="flex items-center gap-3">
-                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white">
+                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-gray-700 rounded-full transition-colors text-gray-300 hover:text-white">
                         <i class="bi bi-x-lg text-lg"></i>
                     </button>
                     <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
@@ -139,12 +139,12 @@ function renderBaseLayout() {
                 </button>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-end items-start md:items-center mb-3 gap-3 w-full animate-fade-in">
-                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                    <button id="export-excel-btn" class="py-1.5 px-3 bg-white border border-slate-300 text-emerald-700 font-bold rounded-lg hover:bg-emerald-50 transition shadow-sm flex items-center gap-2 text-xs">
-                        <i class="bi bi-file-earmark-excel-fill"></i> Excel
+            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full animate-fade-in">
+                <div></div> <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                    <button id="export-excel-btn" class="py-1.5 px-3 bg-white border border-gray-300 text-green-700 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-2 text-xs" title="Exportar para Excel">
+                        <i class="bi bi-file-earmark-excel-fill text-green-600"></i> Excel
                     </button>
-                    <button data-action="new-client" class="flex-1 md:flex-none py-1.5 px-4 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-sm flex items-center justify-center gap-2 text-xs">
+                    <button data-action="new-client" class="py-1.5 px-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-2 text-xs flex-1 md:flex-none justify-center">
                         <i class="bi bi-person-plus-fill"></i> Novo Cliente
                     </button>
                 </div>
@@ -158,52 +158,48 @@ function renderBaseLayout() {
             </div>
             ` : ''}
 
-            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 animate-fade-in">
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="all">
-                    <div class="absolute right-[-10px] top-[-10px] opacity-5 group-hover:opacity-10 transition-opacity"><i class="bi bi-people-fill text-5xl"></i></div>
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">Total de Clientes</span>
-                    <span id="kpi-total" class="text-base md:text-xl font-black text-slate-800 mt-0.5 z-10">0</span>
+            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 animate-fade-in">
+                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="all">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Total de Clientes</span>
+                    <span id="kpi-total" class="text-xl font-black text-gray-800 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-emerald-300 transition-colors" data-filter="novos">
-                    <div class="absolute right-[-10px] top-[-10px] opacity-10 group-hover:opacity-20 transition-opacity"><i class="bi bi-stars text-emerald-500 text-5xl"></i></div>
-                    <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest z-10">Novos (Este Mês)</span>
-                    <span id="kpi-novos" class="text-base md:text-xl font-black text-emerald-700 mt-0.5 z-10">0</span>
+                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-emerald-300 transition-colors" data-filter="novos">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Novos (Este Mês)</span>
+                    <span id="kpi-novos" class="text-xl font-black text-emerald-600 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-red-50 p-3 rounded-xl border border-red-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-red-300 transition-colors" data-filter="devendo">
-                    <div class="absolute right-[-10px] top-[-10px] opacity-10 group-hover:opacity-20 transition-opacity"><i class="bi bi-exclamation-triangle-fill text-red-500 text-5xl"></i></div>
-                    <span class="text-[9px] font-bold text-red-600 uppercase tracking-widest z-10">Com Débitos (Fiado)</span>
-                    <span id="kpi-devendo" class="text-base md:text-xl font-black text-red-700 mt-0.5 z-10">0</span>
+                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-red-300 transition-colors" data-filter="devendo">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Com Débitos (Fiado)</span>
+                    <span id="kpi-devendo" class="text-xl font-black text-red-600 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="aniversariantes">
-                    <div class="absolute right-[-10px] top-[-10px] opacity-10 group-hover:opacity-20 transition-opacity"><i class="bi bi-gift-fill text-indigo-500 text-5xl"></i></div>
-                    <span class="text-[9px] font-bold text-indigo-600 uppercase tracking-widest z-10">Aniversariantes (Mês)</span>
-                    <span id="kpi-niver" class="text-base md:text-xl font-black text-indigo-700 mt-0.5 z-10">0</span>
+                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="aniversariantes">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Aniversariantes (Mês)</span>
+                    <span id="kpi-niver" class="text-xl font-black text-indigo-600 mt-0.5 z-10">0</span>
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-fade-in">
-                <div class="relative w-full md:w-1/3">
-                    <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-xs"></i>
-                    <input type="text" id="search-input" placeholder="Buscar por nome, telefone ou CPF..." class="w-full pl-8 py-1.5 pr-3 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-400 font-semibold text-slate-700 transition-colors">
-                </div>
-                
-                <div class="flex flex-1 justify-center items-center gap-2 w-full overflow-x-auto custom-scrollbar pb-1 md:pb-0">
-                    <label class="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg cursor-pointer hover:bg-amber-100 transition-all shadow-sm select-none flex-shrink-0">
-                        <input type="checkbox" id="filter-loyalty" class="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-3 h-3">
-                        <span class="text-[10px] font-bold whitespace-nowrap"><i class="bi bi-star-fill mr-1"></i>Com Pontos</span>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2 w-full animate-fade-in">
+                <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
+                    <label class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer transition-all shadow-sm select-none flex-shrink-0 text-xs font-semibold">
+                        <input type="checkbox" id="filter-loyalty" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
+                        <i class="bi bi-star-fill text-amber-500"></i> Com Pontos
                     </label>
-                    <div class="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 shadow-inner flex-shrink-0">
-                        <span class="text-[10px] font-bold text-slate-500 mr-2">Ausente ></span>
-                        <input type="number" id="filter-inactive" placeholder="Dias" class="w-12 py-1 bg-transparent text-xs outline-none font-bold text-indigo-600 text-center">
+                    <div class="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm flex-shrink-0 gap-2">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ausente ></span>
+                        <input type="number" id="filter-inactive" placeholder="Dias" class="w-12 bg-gray-50 border border-gray-200 rounded text-xs outline-none font-bold text-indigo-600 text-center py-0.5">
                     </div>
                 </div>
 
-                <div class="hidden md:block w-1/3"></div>
+                <div class="flex items-center gap-2 w-full md:w-auto">
+                    <div class="relative flex-shrink-0 w-full md:w-72">
+                        <i class="bi bi-search absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="text" id="search-input" placeholder="Buscar por nome, telefone ou CPF..." class="w-full pl-8 p-1.5 bg-white border border-gray-200 shadow-sm rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    </div>
+                </div>
             </div>
 
-            <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
+            <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
                 <div id="table-header-container"></div>
-                <div id="list-container" class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-0">
+                <div id="list-container" class="flex-1 overflow-y-auto custom-scrollbar pb-24 md:pb-2">
                     <div class="flex justify-center py-20"><div class="loader"></div></div>
                 </div>
             </div>
@@ -216,26 +212,26 @@ function renderTableHeaders() {
     if (!headerContainer) return;
 
     const getIcon = (key) => {
-        if (localState.sortConfig.key !== key) return '<i class="bi bi-arrow-down-up opacity-30"></i>';
-        return localState.sortConfig.direction === 'asc' ? '<i class="bi bi-arrow-up text-indigo-600 font-black"></i>' : '<i class="bi bi-arrow-down text-indigo-600 font-black"></i>';
+        if (localState.sortConfig.key !== key) return '<i class="bi bi-arrow-down-up ml-1 opacity-40 text-xs"></i>';
+        return localState.sortConfig.direction === 'asc' ? '<i class="bi bi-arrow-up ml-1 text-indigo-600"></i>' : '<i class="bi bi-arrow-down ml-1 text-indigo-600"></i>';
     };
 
     headerContainer.innerHTML = `
-        <div class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest items-center bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+        <div class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest items-center bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
             <div class="col-span-4 pl-2 flex items-center gap-3">
-                <input type="checkbox" id="select-all-toggle" class="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" ${localState.selectedIds.size > 0 && localState.selectedIds.size === localState.clients.length ? 'checked' : ''}>
-                <div class="cursor-pointer flex items-center gap-1 hover:text-indigo-600 transition-colors select-none" data-sort="name">
+                <input type="checkbox" id="select-all-toggle" class="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" ${localState.selectedIds.size > 0 && localState.selectedIds.size === localState.clients.length ? 'checked' : ''}>
+                <div class="cursor-pointer flex items-center hover:text-indigo-700 transition-colors select-none" data-sort="name">
                     Cliente ${getIcon('name')}
                 </div>
             </div>
-            <div class="col-span-3 cursor-pointer flex items-center gap-1 hover:text-indigo-600 transition-colors select-none" data-sort="contact">
+            <div class="col-span-3 cursor-pointer flex items-center hover:text-indigo-700 transition-colors select-none" data-sort="contact">
                 Contato ${getIcon('contact')}
             </div>
-            <div class="col-span-2 text-center cursor-pointer flex items-center justify-center gap-1 hover:text-indigo-600 transition-colors select-none" data-sort="lastVisit">
+            <div class="col-span-2 text-center cursor-pointer flex items-center justify-center hover:text-indigo-700 transition-colors select-none" data-sort="lastVisit">
                 Última Visita ${getIcon('lastVisit')}
             </div>
-            <div class="col-span-2 text-center cursor-pointer flex items-center justify-center gap-1 hover:text-indigo-600 transition-colors select-none" data-sort="financial">
-                Situação Financeira ${getIcon('financial')}
+            <div class="col-span-2 text-center cursor-pointer flex items-center justify-center hover:text-indigo-700 transition-colors select-none" data-sort="financial">
+                Situação ${getIcon('financial')}
             </div>
             <div class="col-span-1 text-center">Ações</div>
         </div>
@@ -247,7 +243,7 @@ function renderTableHeaders() {
 async function fetchClients() {
     localState.loading = true;
     const container = document.getElementById('list-container');
-    if(container) container.innerHTML = '<div class="flex justify-center py-20"><div class="loader"></div></div>';
+    if(container) container.innerHTML = '<div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-4 text-gray-500 font-medium text-xs">Carregando clientes...</p></div>';
     
     try {
         const estIds = Array.from(localState.filterEstablishmentIds);
@@ -347,7 +343,7 @@ function renderList() {
         });
     }
 
-    // Ordenação (Sorting)
+    // Ordenação
     filteredList.sort((a, b) => {
         let valA, valB;
         switch(localState.sortConfig.key) {
@@ -374,12 +370,12 @@ function renderList() {
 
     if (filteredList.length === 0) {
         container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-20 text-center">
-                <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-3">
-                    <i class="bi bi-people text-xl text-slate-300"></i>
+            <div class="flex flex-col items-center justify-center py-16">
+                <div class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                    <i class="bi bi-people text-xl text-gray-300"></i>
                 </div>
-                <h3 class="text-sm font-bold text-slate-700 mb-1">Nenhum cliente encontrado</h3>
-                <p class="text-[10px] text-slate-400 max-w-xs">Tente ajustar a busca ou os filtros ativos.</p>
+                <h3 class="text-sm font-bold text-gray-600 mb-1">Nenhum cliente encontrado</h3>
+                <p class="text-[10px] text-gray-400 max-w-xs text-center">Tente ajustar a busca ou os filtros ativos.</p>
             </div>`;
         return;
     }
@@ -393,65 +389,65 @@ function renderList() {
         const isSelected = localState.selectedIds.has(client.id);
 
         let tagsHTML = '';
-        if (isBirthday) tagsHTML += `<span class="bg-indigo-100 text-indigo-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">🎂 Aniversariante</span> `;
-        if (client.loyaltyPoints > 0) tagsHTML += `<span class="bg-amber-100 text-amber-700 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"><i class="bi bi-star-fill"></i> ${client.loyaltyPoints} pts</span> `;
+        if (isBirthday) tagsHTML += `<span class="bg-indigo-50 text-indigo-600 text-[8px] font-bold px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-wider">🎂 Niver</span> `;
+        if (client.loyaltyPoints > 0) tagsHTML += `<span class="bg-amber-50 text-amber-600 text-[8px] font-bold px-1.5 py-0.5 rounded border border-amber-100 uppercase tracking-wider"><i class="bi bi-star-fill"></i> ${client.loyaltyPoints} pts</span> `;
 
         return `
-        <div class="border-b border-slate-100 hover:bg-slate-50/80 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-3 md:px-3 md:py-2 mb-2 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none border md:border-b ${hasDebt ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-transparent hover:border-l-indigo-400'} ${isSelected ? 'bg-indigo-50/50' : ''} cursor-pointer" data-action="open-modal" data-id="${client.id}">
+        <div class="border-b border-gray-100 hover:bg-gray-50 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-2.5 md:p-2 mb-2 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none border md:border-b ${hasDebt ? 'border-l-4 border-l-red-400' : 'border-l-4 border-l-transparent hover:border-l-indigo-300'} ${isSelected ? 'bg-indigo-50/40' : ''} cursor-pointer" data-action="open-modal" data-id="${client.id}">
             
             <div class="flex justify-between items-start md:hidden mb-2 relative">
                 <div class="absolute -top-1 -right-1 z-20">
-                    <input type="checkbox" value="${client.id}" class="item-checkbox w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
+                    <input type="checkbox" value="${client.id}" class="item-checkbox w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
                 </div>
                 <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'} flex items-center justify-center font-bold text-xs flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-gray-100 text-gray-600 border border-gray-200'} flex items-center justify-center font-bold text-xs flex-shrink-0">
                         ${getInitials(client.name)}
                     </div>
                     <div class="pr-6">
-                        <p class="font-bold text-xs text-slate-800 truncate max-w-[180px]">${escapeHTML(client.name)}</p>
-                        <p class="text-[9px] text-slate-400 font-medium">${escapeHTML(client.phone || 'Sem contato')}</p>
+                        <p class="font-bold text-xs text-gray-800 truncate max-w-[180px]">${escapeHTML(client.name)}</p>
+                        <p class="text-[9px] text-gray-500 font-medium">${escapeHTML(client.phone || 'Sem contato')}</p>
                     </div>
                 </div>
-                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-7 h-7 mt-5 bg-[#25D366]/10 text-[#25D366] rounded-full flex items-center justify-center hover:bg-[#25D366] hover:text-white transition-colors"><i class="bi bi-whatsapp text-xs"></i></button>` : ''}
+                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-7 h-7 mt-5 bg-[#25D366]/10 text-[#25D366] rounded flex items-center justify-center hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20"><i class="bi bi-whatsapp text-[10px]"></i></button>` : ''}
             </div>
 
-            <div class="hidden md:flex md:col-span-4 items-center gap-3 pl-1">
-                <input type="checkbox" value="${client.id}" class="item-checkbox w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm z-20 flex-shrink-0" ${isSelected ? 'checked' : ''}>
-                <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'} flex items-center justify-center font-bold text-xs flex-shrink-0">
+            <div class="hidden md:flex md:col-span-4 items-center gap-2 pl-1">
+                <input type="checkbox" value="${client.id}" class="item-checkbox w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm z-20 flex-shrink-0" ${isSelected ? 'checked' : ''}>
+                <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-gray-100 text-gray-600 border border-gray-200'} flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
                     ${getInitials(client.name)}
                 </div>
                 <div class="min-w-0">
-                    <p class="font-bold text-xs text-slate-800 truncate" title="${escapeHTML(client.name)}">${escapeHTML(client.name)}</p>
+                    <p class="font-bold text-xs text-gray-800 truncate" title="${escapeHTML(client.name)}">${escapeHTML(client.name)}</p>
                     <div class="flex gap-1 mt-0.5">${tagsHTML}</div>
                 </div>
             </div>
 
             <div class="hidden md:block md:col-span-3">
-                <p class="text-[10px] font-bold text-slate-600">${escapeHTML(client.phone || '--')}</p>
-                <p class="text-[9px] text-slate-400 truncate w-full" title="${escapeHTML(client.email || '')}">${escapeHTML(client.email || '--')}</p>
+                <p class="text-[10px] font-bold text-gray-700">${escapeHTML(client.phone || '--')}</p>
+                <p class="text-[9px] text-gray-400 truncate w-full" title="${escapeHTML(client.email || '')}">${escapeHTML(client.email || '--')}</p>
             </div>
 
             <div class="md:col-span-2 md:text-center flex justify-between md:block items-center mb-1 md:mb-0">
-                <span class="md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-widest">Última Visita:</span>
-                <span class="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                <span class="md:hidden text-[9px] font-bold text-gray-400 uppercase tracking-widest">Última Visita:</span>
+                <span class="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 uppercase tracking-wider">
                     <i class="bi bi-calendar-check opacity-50 mr-1"></i> ${lastVisit}
                 </span>
             </div>
 
             <div class="md:col-span-2 md:text-center flex justify-between md:block items-center mb-1 md:mb-0">
-                <span class="md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação:</span>
+                <span class="md:hidden text-[9px] font-bold text-gray-400 uppercase tracking-widest">Situação:</span>
                 ${hasDebt 
-                    ? `<span class="text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-md border border-red-100">Débito: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>`
-                    : `<span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Em dia</span>`
+                    ? `<span class="text-[9px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100 uppercase tracking-wider">Débito: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>`
+                    : `<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase tracking-wider">Em dia</span>`
                 }
             </div>
 
-            <div class="hidden md:flex md:col-span-1 justify-center gap-1">
-                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-7 h-7 rounded-md flex items-center justify-center text-[#25D366] bg-[#25D366]/10 hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20 shadow-sm z-20" title="WhatsApp"><i class="bi bi-whatsapp text-[10px]"></i></button>` : ''}
-                <button class="w-7 h-7 rounded-md flex items-center justify-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm" title="Perfil Completo"><i class="bi bi-arrow-right-short"></i></button>
+            <div class="hidden md:flex md:col-span-1 justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-6 h-6 rounded flex items-center justify-center text-[#25D366] bg-[#25D366]/10 hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20 shadow-sm z-20" title="WhatsApp"><i class="bi bi-whatsapp text-[10px]"></i></button>` : ''}
+                <button class="w-6 h-6 rounded flex items-center justify-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm" title="Editar / Ver Perfil"><i class="bi bi-pencil-fill text-[10px]"></i></button>
             </div>
             
-            <div class="md:hidden flex gap-1 mt-2 border-t border-slate-50 pt-2">
+            <div class="md:hidden flex gap-1 mt-2 border-t border-gray-50 pt-2">
                 ${tagsHTML}
             </div>
         </div>
@@ -467,17 +463,17 @@ function setupEventListeners() {
     pageEventListener = (e) => {
         const target = e.target;
 
-        // Checkbox individual da lista
+        // Checkbox individual
         if (target.classList.contains('item-checkbox')) {
             const id = target.value;
             if(target.checked) localState.selectedIds.add(id);
             else localState.selectedIds.delete(id);
             updateBatchActionBar();
-            e.stopPropagation(); // Impede abrir o modal
+            e.stopPropagation(); 
             return;
         }
 
-        // Checkbox de Select All (Topo da tabela)
+        // Checkbox de Select All
         if (target.id === 'select-all-toggle') {
             const isChecked = target.checked;
             const allCheckboxes = document.querySelectorAll('.item-checkbox');
@@ -491,7 +487,7 @@ function setupEventListeners() {
             return;
         }
 
-        // Ordenação pelas Colunas
+        // Ordenação
         const sortEl = target.closest('[data-sort]');
         if (sortEl) {
             const key = sortEl.dataset.sort;
@@ -505,7 +501,7 @@ function setupEventListeners() {
             return;
         }
 
-        // Ações Rápidas (Cards / Botões)
+        // Ações Rápidas
         const actionEl = target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
@@ -531,11 +527,11 @@ function setupEventListeners() {
             }
         }
 
-        // Filtros Rápidos (KPIs)
+        // Filtros (KPIs)
         const filterKpi = target.closest('[data-filter]');
         if (filterKpi) {
-            document.querySelectorAll('[data-filter]').forEach(el => el.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-400'));
-            filterKpi.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-400');
+            document.querySelectorAll('[data-filter]').forEach(el => el.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-400', 'border-indigo-300'));
+            filterKpi.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-400', 'border-indigo-300');
             localState.filters.status = filterKpi.dataset.filter;
             renderList();
         }
@@ -543,7 +539,6 @@ function setupEventListeners() {
 
     contentDiv.addEventListener('click', pageEventListener);
 
-    // Botão Cancelar Lote
     const cancelBtn = document.getElementById('cancel-selection-btn');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
@@ -555,7 +550,6 @@ function setupEventListeners() {
         });
     }
 
-    // Botão Excluir em Lote
     const batchDeleteBtn = document.getElementById('batch-delete-btn');
     if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', handleBatchDelete);
 
@@ -565,11 +559,11 @@ function setupEventListeners() {
             if (e.target.checked) {
                 localState.filterEstablishmentIds.add(e.target.value);
                 label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.remove('border-slate-200', 'text-slate-600');
+                label.classList.remove('border-gray-200', 'text-gray-600');
             } else {
                 localState.filterEstablishmentIds.delete(e.target.value);
                 label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.add('border-slate-200', 'text-slate-600');
+                label.classList.add('border-gray-200', 'text-gray-600');
             }
             fetchClients(); 
         });
@@ -625,7 +619,7 @@ async function handleBatchDelete() {
     }
 }
 
-// --- 6. O MODAL UNIFICADO LAGO E OFICIAL ---
+// --- 6. O MODAL DE CLIENTE PADRONIZADO ---
 
 function openUnifiedModal(clientId = null) {
     if (clientId) {
@@ -646,8 +640,8 @@ function openUnifiedModal(clientId = null) {
     if (!modalOverlay) {
         modalOverlay = document.createElement('div');
         modalOverlay.id = 'client-details-modal-overlay';
-        modalOverlay.className = 'fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm sm:p-4 animate-fade-in';
-        modalOverlay.innerHTML = `<div class="bg-white w-full sm:w-[90vw] h-[90vh] sm:h-auto sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-slide-up sm:animate-scale-in rounded-t-2xl" id="client-modal-content"></div>`;
+        modalOverlay.className = 'fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-gray-900/60 backdrop-blur-sm sm:p-4 animate-fade-in';
+        modalOverlay.innerHTML = `<div class="bg-gray-50 w-full sm:w-[90vw] h-[90vh] sm:h-auto sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-slide-up sm:animate-scale-in rounded-t-2xl" id="client-modal-content"></div>`;
         modalOverlay.onclick = (e) => { if(e.target === modalOverlay) closeClientModal(); };
         document.body.appendChild(modalOverlay);
         document.body.classList.add('overflow-hidden');
@@ -671,12 +665,12 @@ function getClientDetailsHTML(client) {
     const isNew = client.isNew;
 
     const tabsHTML = `
-        <div class="bg-white border-b border-slate-200 sticky top-0 z-10 w-full flex overflow-x-auto custom-scrollbar gap-2 px-4 sm:px-6 py-3">
-            <button class="tab-btn ${localState.activeTab === 'profile' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="profile">👤 Perfil e Dados</button>
+        <div class="bg-white border-b border-gray-200 sticky top-0 z-10 w-full flex overflow-x-auto custom-scrollbar gap-2 px-4 sm:px-6 py-2.5">
+            <button class="tab-btn ${localState.activeTab === 'profile' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="profile">👤 Perfil e Dados</button>
             ${!isNew ? `
-            <button class="tab-btn ${localState.activeTab === 'appointments' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="appointments">📅 Agendamentos</button>
-            <button class="tab-btn ${localState.activeTab === 'history' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="history">💰 Finanças</button>
-            <button class="tab-btn ${localState.activeTab === 'loyalty' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="loyalty">⭐ Fidelidade</button>
+            <button class="tab-btn ${localState.activeTab === 'appointments' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="appointments">📅 Agendamentos</button>
+            <button class="tab-btn ${localState.activeTab === 'history' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="history">💰 Finanças</button>
+            <button class="tab-btn ${localState.activeTab === 'loyalty' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="loyalty">⭐ Fidelidade</button>
             ` : ''}
         </div>
     `;
@@ -688,29 +682,29 @@ function getClientDetailsHTML(client) {
     else if (localState.activeTab === 'loyalty') contentHTML = renderLoyaltyTab(client);
 
     return `
-        <div class="w-full bg-slate-50 min-h-full flex flex-col overflow-hidden">
-            <div class="bg-indigo-600 px-4 py-5 sm:px-6 sm:py-6 text-white relative flex-shrink-0 w-full shadow-md z-20">
+        <div class="w-full bg-gray-50 min-h-full flex flex-col overflow-hidden">
+            <div class="bg-indigo-600 px-4 py-4 sm:px-6 sm:py-5 text-white relative flex-shrink-0 w-full shadow-md z-20">
                 <button id="btn-close-modal" class="absolute top-4 right-4 text-indigo-200 hover:text-white transition z-50">
                     <i class="bi bi-x-lg text-xl sm:text-2xl"></i>
                 </button>
 
-                <div class="flex items-center gap-4 sm:gap-6">
-                    <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white text-indigo-600 flex items-center justify-center text-3xl font-black shadow-lg flex-shrink-0">
+                <div class="flex items-center gap-4 sm:gap-5">
+                    <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-indigo-600 flex items-center justify-center text-2xl font-black shadow-lg flex-shrink-0">
                         ${isNew ? '<i class="bi bi-person-plus-fill"></i>' : getInitials(client.name)}
                     </div>
                     <div class="flex-grow min-w-0 pr-8">
-                        <h2 class="text-xl sm:text-2xl font-black leading-tight truncate">${isNew ? 'Novo Cliente' : escapeHTML(client.name)}</h2>
-                        <p class="text-xs sm:text-sm text-indigo-200 mt-1 truncate">
+                        <h2 class="text-lg sm:text-xl font-black leading-tight truncate">${isNew ? 'Novo Cliente' : escapeHTML(client.name)}</h2>
+                        <p class="text-xs text-indigo-200 mt-0.5 truncate">
                             ${isNew ? 'Preencha as informações do novo registo' : `<i class="bi bi-whatsapp mr-1"></i>${client.phone || 'Sem telefone'}`}
                         </p>
-                        ${(!isNew && client.totalDebt && client.totalDebt > 0) ? `<span class="inline-block mt-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-red-400 shadow-sm">Dívida Ativa: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
+                        ${(!isNew && client.totalDebt && client.totalDebt > 0) ? `<span class="inline-block mt-1.5 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-red-400 shadow-sm">Dívida: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
                     </div>
                 </div>
             </div>
             
             ${tabsHTML}
             
-            <div class="p-4 sm:p-6 flex-grow overflow-y-auto custom-scrollbar relative bg-slate-50 w-full">
+            <div class="p-4 sm:p-5 flex-grow overflow-y-auto custom-scrollbar relative bg-gray-50 w-full">
                 ${localState.historyLoading ? '<div class="absolute inset-0 bg-white/80 flex items-center justify-center z-20"><div class="loader"></div></div>' : ''}
                 <div class="animate-fade-in w-full pb-10">${contentHTML}</div>
             </div>
@@ -720,53 +714,53 @@ function getClientDetailsHTML(client) {
 
 function renderProfileTab(client) {
     return `
-        <form id="form-edit-client" class="space-y-6">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <form id="form-edit-client" class="space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4 border-b border-slate-100 pb-2"><i class="bi bi-person-vcard text-indigo-500 mr-2"></i> Dados Pessoais</h3>
+                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
+                    <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-3 border-b border-gray-100 pb-2"><i class="bi bi-person-vcard text-indigo-500 mr-2"></i> Dados Pessoais</h3>
                     
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nome Completo *</label>
-                        <input type="text" name="name" value="${escapeHTML(client.name)}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Nome Completo *</label>
+                        <input type="text" name="name" value="${escapeHTML(client.name)}" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">WhatsApp *</label>
-                            <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">WhatsApp *</label>
+                            <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">CPF</label>
-                            <input type="text" name="cpf" value="${escapeHTML(client.cpf || '')}" placeholder="000.000.000-00" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">CPF</label>
+                            <input type="text" name="cpf" value="${escapeHTML(client.cpf || '')}" placeholder="000.000.000-00" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">E-mail</label>
-                        <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">E-mail</label>
+                        <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                     </div>
                 </div>
 
-                <div class="space-y-6">
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4 border-b border-slate-100 pb-2"><i class="bi bi-info-circle text-indigo-500 mr-2"></i> Informações Adicionais</h3>
+                <div class="space-y-4">
+                    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-3 border-b border-gray-100 pb-2"><i class="bi bi-info-circle text-indigo-500 mr-2"></i> Adicionais</h3>
                         
-                        <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="grid grid-cols-2 gap-3 mb-3">
                             <div>
-                                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dia Nasc.</label>
-                                <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white text-center transition-colors">
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Dia Nasc.</label>
+                                <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 text-center transition-shadow">
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Mês Nasc.</label>
-                                <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white text-center transition-colors">
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Mês Nasc.</label>
+                                <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 text-center transition-shadow">
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Gênero</label>
-                                <select name="gender" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Gênero</label>
+                                <select name="gender" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                                     <option value="">Não informar</option>
                                     <option value="F" ${client.gender === 'F' ? 'selected' : ''}>Feminino</option>
                                     <option value="M" ${client.gender === 'M' ? 'selected' : ''}>Masculino</option>
@@ -774,12 +768,12 @@ function renderProfileTab(client) {
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Captação</label>
-                                <select name="source" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors">
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Captação</label>
+                                <select name="source" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
                                     <option value="">Como conheceu?</option>
-                                    <option value="Instagram" ${client.source === 'Instagram' ? 'selected' : ''}>Instagram / Redes Sociais</option>
-                                    <option value="Indicacao" ${client.source === 'Indicacao' ? 'selected' : ''}>Indicação (Amigo)</option>
-                                    <option value="Passagem" ${client.source === 'Passagem' ? 'selected' : ''}>Fachada / Passagem</option>
+                                    <option value="Instagram" ${client.source === 'Instagram' ? 'selected' : ''}>Instagram</option>
+                                    <option value="Indicacao" ${client.source === 'Indicacao' ? 'selected' : ''}>Indicação</option>
+                                    <option value="Passagem" ${client.source === 'Passagem' ? 'selected' : ''}>Fachada</option>
                                     <option value="Google" ${client.source === 'Google' ? 'selected' : ''}>Google</option>
                                     <option value="Outros" ${client.source === 'Outros' ? 'selected' : ''}>Outros</option>
                                 </select>
@@ -787,17 +781,16 @@ function renderProfileTab(client) {
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide mb-3 border-b border-slate-100 pb-2"><i class="bi bi-journal-text text-indigo-500 mr-2"></i> Anotações Internas</h3>
-                        <textarea name="notes" rows="3" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:bg-white transition-colors" placeholder="Preferências, histórico de alergias, como gosta do serviço...">${escapeHTML(client.notes || '')}</textarea>
+                    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-2 border-b border-gray-100 pb-2"><i class="bi bi-journal-text text-indigo-500 mr-2"></i> Anotações Internas</h3>
+                        <textarea name="notes" rows="2" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow resize-none" placeholder="Histórico de alergias, preferências...">${escapeHTML(client.notes || '')}</textarea>
                     </div>
                 </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-slate-200">
-                
-                <button type="submit" class="w-full sm:w-auto bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold shadow-md hover:bg-indigo-700 transition flex items-center justify-center gap-2 text-sm">
-                    <i class="bi bi-check2-circle text-xl"></i> ${client.isNew ? 'Cadastrar Cliente' : 'Salvar Alterações'}
+            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-3 border-t border-gray-200 mt-2">
+                <button type="submit" class="w-full sm:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-bold shadow hover:bg-indigo-700 transition flex items-center justify-center gap-2 text-xs">
+                    <i class="bi bi-check2-circle text-sm"></i> ${client.isNew ? 'Cadastrar Cliente' : 'Salvar Alterações'}
                 </button>
             </div>
         </form>
@@ -813,24 +806,24 @@ function renderAppointmentsTab(client) {
             ${appointments.length ? appointments.map(appt => {
                 const date = new Date(appt.startTime);
                 const isPast = date < new Date();
-                let statusBadge = isPast ? '<span class="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-slate-200">Concluído</span>' : '<span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-emerald-200">Agendado</span>';
+                let statusBadge = isPast ? '<span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-gray-200">Concluído</span>' : '<span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-emerald-200">Agendado</span>';
                 if (appt.status === 'cancelled') statusBadge = '<span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-red-200">Cancelado</span>';
 
                 return `
-                <div class="bg-white border border-slate-200 rounded-xl p-3 flex gap-3 shadow-sm items-center cursor-pointer hover:bg-slate-50 transition-colors" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
-                    <div class="flex-shrink-0 text-center w-12 border-r border-slate-100 pr-2">
-                        <span class="block text-[9px] font-bold text-slate-400 uppercase">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
-                        <span class="block text-lg font-black text-slate-800 leading-none">${date.getDate()}</span>
+                <div class="bg-white border border-gray-200 rounded-xl p-3 flex gap-3 shadow-sm items-center cursor-pointer hover:bg-gray-50 transition-colors" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
+                    <div class="flex-shrink-0 text-center w-10 border-r border-gray-100 pr-2">
+                        <span class="block text-[8px] font-bold text-gray-400 uppercase">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
+                        <span class="block text-base font-black text-gray-800 leading-none mt-0.5">${date.getDate()}</span>
                     </div>
                     <div class="flex-grow min-w-0">
-                        <p class="font-bold text-xs text-slate-800 truncate">${escapeHTML(appt.serviceName || 'Serviço')}</p>
-                        <p class="text-[9px] text-slate-400 truncate">Com: ${escapeHTML(appt.professionalName || 'N/A')} às ${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
+                        <p class="font-bold text-xs text-gray-800 truncate">${escapeHTML(appt.serviceName || 'Serviço')}</p>
+                        <p class="text-[9px] text-gray-500 truncate mt-0.5"><i class="bi bi-person mr-1"></i>${escapeHTML(appt.professionalName || 'N/A')} <span class="mx-1">•</span> <i class="bi bi-clock mr-1"></i>${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
                     </div>
                     <div class="flex-shrink-0 text-right">
                         ${statusBadge}
                     </div>
                 </div>`;
-            }).join('') : '<div class="text-center py-10 bg-white rounded-xl border border-slate-200"><p class="text-[11px] text-slate-400 font-medium">Nenhum agendamento encontrado.</p></div>'}
+            }).join('') : '<div class="text-center py-10 bg-white rounded-xl border border-gray-200"><p class="text-[10px] text-gray-400 font-medium">Nenhum agendamento encontrado.</p></div>'}
         </div>
     `;
 }
@@ -845,32 +838,32 @@ function renderHistoryTab(client) {
     return `
         <div class="space-y-4">
             <div class="grid grid-cols-2 gap-3 mb-2">
-                <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 shadow-sm flex flex-col text-center">
-                    <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Valor Vitalício (LTV)</span>
-                    <span class="text-xl sm:text-2xl font-black text-emerald-700 mt-1">${formatCurrency(totalLTV)}</span>
+                <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100 shadow-sm flex flex-col text-center">
+                    <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">LTV (V. Vitalício)</span>
+                    <span class="text-lg font-black text-emerald-700 mt-0.5">${formatCurrency(totalLTV)}</span>
                 </div>
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col text-center">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ticket Médio</span>
-                    <span class="text-xl sm:text-2xl font-black text-slate-800 mt-1">${formatCurrency(ticketMedio)}</span>
+                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col text-center">
+                    <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Ticket Médio</span>
+                    <span class="text-lg font-black text-gray-800 mt-0.5">${formatCurrency(ticketMedio)}</span>
                 </div>
             </div>
 
             <div class="space-y-2">
-                <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 pl-1">Histórico de Recibos</h4>
+                <h4 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 pl-1">Histórico de Vendas</h4>
                 ${sales.length ? sales.map(sale => `
-                <div class="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center shadow-sm hover:bg-slate-50 cursor-pointer transition-colors" data-go-comanda="true" data-id="${sale.id}">
+                <div class="bg-white border border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm hover:bg-gray-50 cursor-pointer transition-colors" data-go-comanda="true" data-id="${sale.id}">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-sm"><i class="bi bi-receipt"></i></div>
+                        <div class="w-8 h-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-500 text-xs"><i class="bi bi-receipt"></i></div>
                         <div>
-                            <p class="font-bold text-slate-800 text-[11px] sm:text-xs">Venda #${sale.id.slice(-5).toUpperCase()}</p>
-                            <p class="text-[9px] text-slate-400">${new Date(sale.date).toLocaleDateString()}</p>
+                            <p class="font-bold text-gray-800 text-[10px] sm:text-xs">Venda #${sale.id.slice(-5).toUpperCase()}</p>
+                            <p class="text-[9px] text-gray-400 mt-0.5">${new Date(sale.date).toLocaleDateString()}</p>
                         </div>
                     </div>
                     <div class="text-right">
-                        <p class="font-black text-emerald-600 text-xs sm:text-sm">${formatCurrency(sale.totalAmount)}</p>
-                        <p class="text-[8px] sm:text-[9px] text-indigo-500 font-bold uppercase mt-0.5">Ver Comanda <i class="bi bi-chevron-right"></i></p>
+                        <p class="font-black text-emerald-600 text-xs">${formatCurrency(sale.totalAmount)}</p>
+                        <p class="text-[8px] text-indigo-500 font-bold uppercase mt-0.5 hover:underline">Ver Comanda <i class="bi bi-chevron-right"></i></p>
                     </div>
-                </div>`).join('') : '<div class="text-center py-8 bg-white rounded-xl border border-slate-200"><p class="text-[10px] text-slate-400">Nenhum histórico financeiro.</p></div>'}
+                </div>`).join('') : '<div class="text-center py-8 bg-white rounded-xl border border-gray-200"><p class="text-[10px] text-gray-400">Nenhum histórico financeiro.</p></div>'}
             </div>
         </div>
     `;
@@ -882,32 +875,32 @@ function renderLoyaltyTab(client) {
 
     return `
         <div class="space-y-4">
-            <div class="bg-amber-400 rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center">
+            <div class="bg-amber-400 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center">
                 <div class="absolute right-[-20px] top-[-20px] opacity-20"><i class="bi bi-star-fill text-9xl"></i></div>
-                <p class="text-amber-100 font-bold uppercase tracking-wider text-[10px] sm:text-xs mb-1 z-10">Saldo de Pontos</p>
-                <h1 class="text-6xl sm:text-7xl font-black z-10 drop-shadow-md">${client.loyaltyPoints || 0}</h1>
+                <p class="text-amber-100 font-bold uppercase tracking-wider text-[10px] mb-1 z-10">Saldo de Pontos</p>
+                <h1 class="text-5xl font-black z-10 drop-shadow-md">${client.loyaltyPoints || 0}</h1>
                 
-                <button id="btn-manual-redeem" type="button" class="mt-6 bg-white/20 hover:bg-white/30 text-white text-[10px] sm:text-xs font-bold uppercase tracking-wider py-2 px-6 rounded-lg backdrop-blur-sm transition border border-white/30 flex items-center gap-2 z-10 shadow-sm">
-                    <i class="bi bi-sliders"></i> Ajustar Manualmente
+                <button id="btn-manual-redeem" type="button" class="mt-4 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold uppercase tracking-wider py-1.5 px-4 rounded-lg backdrop-blur-sm transition border border-white/30 flex items-center gap-2 z-10 shadow-sm">
+                    <i class="bi bi-sliders"></i> Ajuste Manual
                 </button>
             </div>
 
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div class="bg-slate-50 p-3 border-b border-slate-200"><h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Extrato de Pontos</h4></div>
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div class="bg-gray-50 p-2.5 border-b border-gray-200"><h4 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">Extrato de Pontos</h4></div>
                 <div class="p-2 space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
                     ${log.length > 0 ? log.map(entry => {
                         const isRedemption = entry.type === 'redemption';
                         return `
-                        <div class="flex justify-between items-center py-2 px-3 border-b border-slate-50 last:border-0">
+                        <div class="flex justify-between items-center py-2 px-3 border-b border-gray-100 last:border-0">
                             <div>
-                                <p class="text-[11px] font-bold text-slate-700">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
-                                <p class="text-[9px] text-slate-400">${new Date(entry.date).toLocaleDateString()}</p>
+                                <p class="text-[10px] font-bold text-gray-800">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
+                                <p class="text-[9px] text-gray-400 mt-0.5">${new Date(entry.date).toLocaleDateString()}</p>
                             </div>
                             <span class="font-black text-xs ${isRedemption ? 'text-red-500' : 'text-amber-500'}">
                                 ${isRedemption ? '-' : '+'}${entry.points}
                             </span>
                         </div>`;
-                    }).join('') : '<p class="text-center text-slate-400 py-6 text-[10px]">Sem movimentações.</p>'}
+                    }).join('') : '<p class="text-center text-gray-400 py-6 text-[10px]">Sem movimentações.</p>'}
                 </div>
             </div>
         </div>
@@ -1029,7 +1022,6 @@ async function handleSaveClient(e) {
             if (idx !== -1) localState.clients[idx] = localState.selectedClient;
             showNotification('Sucesso', 'Dados salvos com sucesso!', 'success');
             
-            // Re-render modal silently
             const modalDOM = document.getElementById('client-modal-content');
             if(modalDOM) {
                 modalDOM.innerHTML = getClientDetailsHTML(localState.selectedClient);
@@ -1058,24 +1050,24 @@ function openManualRedemptionModal(client) {
     const currentPoints = client.loyaltyPoints || 0;
     const contentHTML = `
         <div class="text-center mb-4">
-            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Saldo Atual</p>
+            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Saldo Atual</p>
             <h2 class="text-3xl font-black text-amber-500">${currentPoints}</h2>
         </div>
         <form id="manual-redeem-form" class="space-y-3">
             <div>
-                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ação</label>
-                <select id="redeem-action" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400">
-                    <option value="debit">Remover Pontos (Resgate / Uso)</option>
-                    <option value="credit">Adicionar Pontos (Bônus / Correção)</option>
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Ação</label>
+                <select id="redeem-action" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50">
+                    <option value="debit">Remover Pontos (Resgate)</option>
+                    <option value="credit">Adicionar Pontos (Bônus)</option>
                 </select>
             </div>
             <div>
-                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quantidade</label>
-                <input type="number" id="redeem-points" min="1" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-black text-slate-800 text-center outline-none focus:border-indigo-400" placeholder="Ex: 50">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Quantidade</label>
+                <input type="number" id="redeem-points" min="1" required class="w-full p-2 border border-gray-300 rounded-lg text-sm font-black text-gray-900 text-center outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50" placeholder="Ex: 50">
             </div>
             <div>
-                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Motivo/Obs</label>
-                <input type="text" id="redeem-reason" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400" placeholder="Ex: Brinde especial">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Motivo/Obs</label>
+                <input type="text" id="redeem-reason" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50" placeholder="Ex: Brinde especial">
             </div>
             <div class="pt-2">
                 <button type="submit" class="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-bold shadow-sm hover:bg-indigo-700 active:scale-95 transition text-xs">Confirmar Ajuste</button>

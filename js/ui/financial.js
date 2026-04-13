@@ -2,8 +2,12 @@
 
 import * as financialApi from '../api/financial.js';
 import { getHierarchy } from '../api/establishments.js';
+import * as suppliersApi from '../api/suppliers.js';
+import * as clientsApi from '../api/clients.js';
+import * as professionalsApi from '../api/professionals.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
+import { escapeHTML } from '../utils.js';
 
 const contentDiv = document.getElementById('content');
 
@@ -16,6 +20,9 @@ let localState = {
     natures: [], 
     costCenters: [],
     establishments: [], 
+    suppliers: [],
+    clients: [],
+    professionals: [],
     
     currentTab: 'receivables', 
     statusFilter: 'all', 
@@ -446,7 +453,7 @@ function handleExportExcel() {
         const estObj = estMap.get(item.establishmentId);
         const estName = estObj ? estObj.name : 'Atual';
 
-        const originStr = (item.saleId || item.appointmentId || item.origin === 'comanda') ? 'Comanda / PDV' : 'Manual';
+        const originStr = (item.saleId || item.appointmentId || item.origin === 'comanda') ? 'Comanda / PDV' : (item.origin === 'commission' ? 'Comissões' : 'Manual');
 
         return {
             "Data de Vencimento": new Date(item.dueDate).toLocaleDateString('pt-BR'),
@@ -524,7 +531,6 @@ function setupEventListeners() {
         }
     });
 
-    // Filtros de Unidade
     document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
         cb.addEventListener('change', (e) => {
             const label = e.target.closest('label');
@@ -540,7 +546,6 @@ function setupEventListeners() {
         });
     });
 
-    // Ordenação pelas Colunas
     document.querySelectorAll('.sort-header').forEach(header => {
         header.addEventListener('click', (e) => {
             const col = e.currentTarget.dataset.sort;
@@ -789,12 +794,18 @@ async function fetchAndDisplayData() {
 
     try {
         if (localState.natures.length === 0) {
-            const [natures, costCenters] = await Promise.all([
+            const [natures, costCenters, supps, clis, profs] = await Promise.all([
                 financialApi.getNatures(state.establishmentId),
-                financialApi.getCostCenters(state.establishmentId)
+                financialApi.getCostCenters(state.establishmentId),
+                suppliersApi.getAll(state.establishmentId).catch(() => []),
+                clientsApi.getClients(state.establishmentId, '', 1000).catch(() => []),
+                professionalsApi.getProfessionals(state.establishmentId).catch(() => [])
             ]);
-            localState.natures = natures;
-            localState.costCenters = costCenters;
+            localState.natures = natures || [];
+            localState.costCenters = costCenters || [];
+            localState.suppliers = supps || [];
+            localState.clients = clis || [];
+            localState.professionals = profs || [];
             populateFilterSelects();
         }
 
@@ -939,7 +950,6 @@ function renderLists() {
         );
     }
 
-    // Ordenação Dinâmica
     filteredList.sort((a, b) => {
         let valA = a[localState.sortCol];
         let valB = b[localState.sortCol];
@@ -995,7 +1005,7 @@ function renderLists() {
         const isFromSystem = item.saleId || item.appointmentId || item.origin === 'comanda';
         const originLabel = isFromSystem 
             ? '<span class="text-[8px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100"><i class="bi bi-receipt mr-1"></i>Comanda</span>' 
-            : '<span class="text-[8px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200"><i class="bi bi-keyboard mr-1"></i>Manual</span>';
+            : (item.origin === 'commission' ? '<span class="text-[8px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100"><i class="bi bi-cash-stack mr-1"></i>Comissões</span>' : '<span class="text-[8px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200"><i class="bi bi-keyboard mr-1"></i>Manual</span>');
 
         const docNfs = item.documentNumber 
             ? `<span class="text-[8px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded ml-2" title="NFS / Documento">NFS: ${item.documentNumber}</span>` 
@@ -1281,7 +1291,6 @@ function openFinancialModal(type, item = null) {
     const themeColor = isPayable ? 'red' : 'emerald';
     const title = item ? `Editar Lançamento` : `Novo Lançamento`;
 
-    // Opções Dinâmicas das Empresas
     const estOptions = localState.establishments.map(est => {
         const isSelected = item 
             ? item.establishmentId === est.id 
@@ -1315,9 +1324,20 @@ function openFinancialModal(type, item = null) {
         `<option value="${pm.value}" ${item?.paymentMethod === pm.value ? 'selected' : ''}>${pm.label}</option>`
     ).join('');
 
+    // Datalist de Fornecedores, Clientes e Profissionais
+    const datalistHTML = `
+        <datalist id="entity-suggestions">
+            ${isPayable 
+                ? localState.suppliers.map(s => `<option value="${escapeHTML(s.name)}">Fornecedor</option>`).join('') +
+                  localState.professionals.map(p => `<option value="${escapeHTML(p.name)}">Profissional</option>`).join('')
+                : localState.clients.map(c => `<option value="${escapeHTML(c.name)} ${c.phone ? '- ' + escapeHTML(c.phone) : ''}">Cliente</option>`).join('')
+            }
+        </datalist>
+    `;
+
     modal.innerHTML = `
         <div class="modal-content max-w-3xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden m-4 flex flex-col max-h-[90vh]">
-            
+            ${datalistHTML}
             <div class="bg-${themeColor}-600 px-5 py-4 flex justify-between items-center flex-shrink-0 relative overflow-hidden">
                 <div class="absolute right-0 top-0 opacity-10 pointer-events-none">
                     <svg width="120" height="120" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="40" stroke="white" stroke-width="20"/></svg>
@@ -1386,9 +1406,9 @@ function openFinancialModal(type, item = null) {
                             <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">${isPayable ? 'Fornecedor / Favorecido' : 'Cliente / Pagador'}</label>
                             <div class="relative">
                                 <i class="bi bi-person absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                                <input type="text" name="entity" 
+                                <input type="text" name="entity" list="entity-suggestions" 
                                     class="w-full pl-8 pr-3 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-${themeColor}-500 outline-none text-xs text-gray-800 transition-shadow" 
-                                    value="${item?.entity || ''}" placeholder="Nome de quem paga ou recebe...">
+                                    value="${item?.entity || ''}" placeholder="Nome ou Selecione na lista..." autocomplete="off">
                             </div>
                         </div>
                     </div>
@@ -1481,7 +1501,6 @@ function openFinancialModal(type, item = null) {
     
     modal.style.display = 'flex';
 
-    // --- LÓGICA DO FORMULÁRIO COM EVENT DELEGATION BLINDADA ---
     const form = modal.querySelector('#financial-form');
     let currentMode = 'single'; 
     let installmentsCount = 2;
@@ -1526,10 +1545,7 @@ function openFinancialModal(type, item = null) {
         }
     };
 
-    // Delegação de Eventos para as Abas e Botões +/-
     form.addEventListener('click', (e) => {
-        
-        // Abas Único / Parcelado / Recorrente
         const btnMode = e.target.closest('.mode-btn');
         if (btnMode && !item) {
             e.preventDefault(); 
@@ -1556,7 +1572,6 @@ function openFinancialModal(type, item = null) {
             }
         }
 
-        // Botões Menos e Mais
         const minusBtn = e.target.closest('#btn-minus');
         if (minusBtn && installmentsInput) {
             e.preventDefault();

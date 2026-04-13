@@ -22,7 +22,8 @@ service cloud.firestore {
 
     // Função combinada para Super Admin (Aceita tanto o Banco de Dados quanto o Token)
     function isPlatformAdmin() {
-      return isSuperAdmin() || (isSignedIn() && (getRole() == 'super_admin' || getRole() == 'super-admin'));
+      return isSuperAdmin() ||
+        (isSignedIn() && (getRole() == 'super_admin' || getRole() == 'super-admin'));
     }
 
     function isMemberOf(establishmentId) {
@@ -44,25 +45,20 @@ service cloud.firestore {
 
     // --- COLEÇÕES DO SISTEMA (KAIROS CORE) ---
 
-    // Permite que admins loguem e usuários consultem seu próprio perfil de acesso
     match /admin_users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isPlatformAdmin());
       allow write: if isPlatformAdmin();
     }
 
-    // Gerenciamento de Pacotes antigos
     match /packages/{packageId} {
-      allow read: if true; // Público para o registro, mas escrita só Super Admin
+      allow read: if true;
       allow write: if isPlatformAdmin();
     }
 
-    // 👇 --- REGRA DOS PLANOS ADICIONADA AQUI --- 👇
-    // Gerenciamento de Planos de Assinatura e Módulos (Painel Financeiro)
     match /plans/{planId} {
-      allow read: if true; // Público para que a tela de cadastro e admin consigam ler os planos
-      allow write: if isPlatformAdmin(); // Apenas o Super Admin pode criar/editar/excluir
+      allow read: if true;
+      allow write: if isPlatformAdmin();
     }
-    // 👆 ---------------------------------------- 👆
 
     // --- COLEÇÕES DE CLIENTES (TENANTS) ---
 
@@ -78,29 +74,35 @@ service cloud.firestore {
     }
 
     match /establishments/{establishmentId} {
-      allow get: if true; 
+      allow get: if true;
       allow list, create, delete: if isPlatformAdmin();
       allow update: if isOwner(establishmentId) 
                     && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['subscription']) || isPlatformAdmin());
-
+      
       match /notifications/{notificationId} {
         allow read: if isMemberOf(establishmentId);
-        allow write: if isPlatformAdmin(); 
+        allow write: if isPlatformAdmin();
       }
     }
 
     // --- COLEÇÕES DE NEGÓCIO ---
 
     match /suppliers/{supplierId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
 
     match /purchases/{purchaseId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
 
     match /clients/{clientId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
       
       match /loyaltyHistory/{historyId} {
         allow read, create: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/clients/$(clientId)).data.establishmentId);
@@ -108,13 +110,15 @@ service cloud.firestore {
     }
 
     match /appointments/{appointmentId} {
-      allow create: if true; 
+      allow create: if true;
       allow read, update, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
     }
 
     match /products/{productId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
-
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
+      
       match /stockHistory/{historyId} {
         allow read: if isSignedIn() && isMemberOf(get(/databases/$(database)/documents/products/$(productId)).data.establishmentId);
         allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
@@ -122,29 +126,41 @@ service cloud.firestore {
     }
     
     match /productCategories/{categoryId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
 
     match /sales/{saleId} {
-       allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
     
     match /blockages/{blockageId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
     
     match /cashierSessions/{sessionId} {
-      allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
 
     match /services/{serviceId} {
       allow get, list: if true;
-      allow write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
     
     match /professionals/{professionalId} {
       allow get, list: if true;
-      allow write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId);
+      allow delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
     }
 
     match /audit_logs/{logId} {
@@ -153,9 +169,28 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     
-    match /financial_natures/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
-    match /financial_cost_centers/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
-    match /financial_payables/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
-    match /financial_receivables/{docId} { allow read, write: if isSignedIn() && isMemberOf(request.resource.data.establishmentId || resource.data.establishmentId); }
+    match /financial_natures/{docId} { 
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
+    }
+    
+    match /financial_cost_centers/{docId} { 
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
+    }
+    
+    match /financial_payables/{docId} { 
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
+    }
+    
+    match /financial_receivables/{docId} { 
+      allow read, delete: if isSignedIn() && isMemberOf(resource.data.establishmentId);
+      allow create: if isSignedIn() && isMemberOf(request.resource.data.establishmentId);
+      allow update: if isSignedIn() && isMemberOf(resource.data.establishmentId) && isMemberOf(request.resource.data.establishmentId);
+    }
   }
 }
