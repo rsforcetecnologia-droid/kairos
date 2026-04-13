@@ -5,20 +5,30 @@ import { authenticatedFetch } from './apiService.js';
 /**
  * Busca todas as comandas (agendamentos e vendas avulsas) de um estabelecimento.
  * @param {string} establishmentId - O ID do estabelecimento.
- * @param {string|null} date - Data para filtro (YYYY-MM-DD). Se null, busca ativas.
+ * @param {string|object|null} dateParams - Objeto com { startDate, endDate } ou string de data (YYYY-MM-DD). Se null, busca ativas.
  * @param {number} page - Número da página.
  * @param {number} limit - Itens por página.
  * @returns {Promise<Array>} - Uma promessa que resolve com a lista de comandas.
  */
-export const getComandas = (establishmentId, date = null, page = 1, limit = 12) => {
+export const getComandas = (establishmentId, dateParams = null, page = 1, limit = 12) => {
     // Constrói a URL base
     let url = `/api/comandas/${establishmentId}?page=${page}&limit=${limit}`;
     
-    // Se houver data selecionada (filtro de finalizadas), adiciona à URL
-    if (date) {
-        url += `&date=${date}`;
-        // Opcional: Se o backend precisar explicitar o status para datas passadas
-        // url += `&status=completed`; 
+    // Se houver parâmetros de data, processa e adiciona à URL
+    if (dateParams) {
+        // Nova arquitetura: O UI envia um objeto com Início e Fim
+        if (typeof dateParams === 'object') {
+            if (dateParams.startDate) {
+                url += `&startDate=${dateParams.startDate}`;
+            }
+            if (dateParams.endDate) {
+                url += `&endDate=${dateParams.endDate}`;
+            }
+        } 
+        // Retrocompatibilidade: Se o sistema passar apenas uma string de data
+        else if (typeof dateParams === 'string') {
+            url += `&date=${dateParams}`;
+        }
     }
 
     return authenticatedFetch(url);
@@ -32,7 +42,6 @@ export const getComandas = (establishmentId, date = null, page = 1, limit = 12) 
 export const getComandaById = (comandaId) => {
     return authenticatedFetch(`/api/comandas/${comandaId}`);
 };
-
 
 /**
  * Adiciona ou atualiza a lista de itens de uma comanda de agendamento.

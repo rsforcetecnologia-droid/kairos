@@ -24,6 +24,7 @@ let localState = {
     activeFilter: 'abertas', 
     selectedComandaId: null,
     viewMode: 'items', 
+    selectedCatalogItem: null, 
     isCashierOpen: false,
     activeCashierSessionId: null,
     loyaltySettings: null,
@@ -43,7 +44,10 @@ let localState = {
         discountReason: ''
     },
     isProcessing: false,
-    showHistoryDate: false 
+    showHistoryPanel: false, 
+    filterStartDate: '',
+    filterEndDate: '',
+    filterPreset: 'hoje' 
 };
 
 let pageEventListener = null;
@@ -57,6 +61,34 @@ function debounce(func, wait) {
         clearTimeout(searchDebounceTimeout);
         searchDebounceTimeout = setTimeout(() => func.apply(this, args), wait);
     };
+}
+
+// Retorna as datas formatadas consoante o botão de período selecionado
+function getDatesForPreset(preset) {
+    const today = new Date();
+    let start, end;
+    
+    if (preset === 'hoje') {
+        start = new Date();
+        end = new Date();
+    } else if (preset === 'este_mes') {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+        end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    } else if (preset === 'mes_passado') {
+        start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        end = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else {
+        start = new Date(); 
+        end = new Date();
+    }
+
+    // Corrige problema de fuso horário para garantir YYYY-MM-DD local
+    const toYMD = (d) => {
+        const tzOffset = d.getTimezoneOffset() * 60000;
+        return new Date(d - tzOffset).toISOString().split('T')[0];
+    };
+
+    return { start: toYMD(start), end: toYMD(end) };
 }
 
 async function executeSaveAction(comanda, nextStep = 'stay') {
@@ -84,11 +116,11 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
 
     const loadingOverlay = document.createElement('div');
     loadingOverlay.id = 'saving-overlay';
-    loadingOverlay.className = 'fixed inset-0 bg-gray-900/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.className = 'fixed inset-0 bg-gray-900/60 z-[999999] flex items-center justify-center backdrop-blur-sm';
     loadingOverlay.innerHTML = `
-        <div class="bg-white p-5 rounded-2xl shadow-xl flex flex-col items-center animate-fade-in">
-            <div class="loader mb-3"></div>
-            <p class="text-gray-800 font-bold text-sm">Sincronizando...</p>
+        <div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center animate-fade-in border border-gray-100">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-800 font-black text-sm uppercase tracking-widest">Sincronizando...</p>
         </div>
     `;
     document.body.appendChild(loadingOverlay);
@@ -124,7 +156,7 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
         if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
 
         if (nextStep !== 'checkout') {
-            showNotification('Sucesso', 'Comanda atualizada!', 'success');
+            showNotification('Sucesso', 'Comanda atualizada e salva!', 'success');
             renderComandaDetail();
         }
 
@@ -180,20 +212,19 @@ function getSafeAllItems(comanda) {
     return comanda._cachedItems;
 }
 
+// --- LÓGICA DE SCREEN SWAP 100% NATIVA ---
 function showMobileDetail() {
     const layout = document.getElementById('comandas-layout');
-    if (layout) {
-        layout.classList.add('detail-view-active');
-        const detailContainer = document.getElementById('comanda-detail-container');
-        if(detailContainer) detailContainer.scrollTop = 0;
-    }
+    if (layout) layout.classList.add('mobile-detail-open');
+    const bottomNav = document.getElementById('mobile-bottom-nav');
+    if (bottomNav) bottomNav.style.display = 'none';
 }
 
 function hideMobileDetail() {
     const layout = document.getElementById('comandas-layout');
-    if (layout) {
-        layout.classList.remove('detail-view-active');
-    }
+    if (layout) layout.classList.remove('mobile-detail-open');
+    const bottomNav = document.getElementById('mobile-bottom-nav');
+    if (bottomNav) bottomNav.style.display = '';
 }
 
 function updateKPIs() {
@@ -223,69 +254,109 @@ function updateKPIs() {
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
 function renderPageLayout() {
-    const todayStr = new Date().toISOString().split('T')[0];
-    
+    // Injeção de CSS CORRIGIDA para garantir que TODO e qualquer modal (como o de confirmação) fique por cima!
     contentDiv.innerHTML = `
+        <style id="comandas-mobile-css">
+            @media (max-width: 767px) {
+                .mobile-detail-open #comandas-list-column {
+                    display: none !important;
+                }
+                #comandas-layout:not(.mobile-detail-open) #comanda-detail-container {
+                    display: none !important;
+                }
+                .mobile-detail-open #comanda-detail-container {
+                    display: flex !important;
+                    position: fixed !important;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    height: 100dvh !important;
+                    width: 100vw !important;
+                    z-index: 99999 !important;
+                    background-color: #f8fafc !important;
+                    flex-direction: column !important;
+                }
+            }
+            /* Super correção de Z-index global para as Notificações de Sucesso/Erro e Modais de Confirmação */
+            #toast-container, .toast-notification, .modal, .modal-backdrop, .modal-dialog, [id*="modal"], [id*="Modal"] {
+                z-index: 9999999 !important; 
+            }
+        </style>
         <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
             
-            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full animate-fade-in">
-                <div id="cashier-controls" class="flex items-center gap-2">
-                    <div class="loader-sm"></div>
-                </div>
-                
-                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                    <button data-action="toggle-history" class="py-1.5 px-3 bg-white border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-2 text-xs">
-                        <i class="bi bi-clock-history"></i> Histórico
-                    </button>
-                    <button id="btn-new-sale" data-action="new-sale" class="py-1.5 px-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-2 text-xs flex-1 md:flex-none justify-center">
-                        <i class="bi bi-plus-lg"></i> Nova Venda
-                    </button>
-                </div>
+            <div id="cashier-controls" class="flex items-center gap-2 mb-2">
+                <div class="loader-sm"></div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 mb-2 animate-fade-in w-full">
+                <button id="btn-new-sale" data-action="new-sale" class="bg-indigo-600 text-white rounded-xl p-2.5 flex items-center justify-center shadow-md active:scale-95 transition-transform border border-indigo-700 gap-2">
+                    <i class="bi bi-cart-plus text-lg drop-shadow-md"></i>
+                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Nova Venda</span>
+                </button>
+                <button data-action="toggle-history" class="bg-white text-gray-700 rounded-xl p-2.5 flex items-center justify-center shadow-sm border border-gray-200 active:scale-95 transition-transform hover:bg-gray-50 gap-2">
+                    <i class="bi bi-clock-history text-lg text-indigo-500"></i>
+                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Histórico</span>
+                </button>
             </div>
 
             <div id="cashier-alert-box"></div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 animate-fade-in">
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Abertas</span>
-                    <span id="kpi-abertas" class="text-xl font-black text-indigo-600 mt-0.5 z-10">0</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Vendas Hoje</span>
-                    <span id="kpi-vendas" class="text-xl font-black text-green-600 mt-0.5 z-10">R$ 0,00</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Pagas</span>
-                    <span id="kpi-pagas" class="text-xl font-black text-gray-800 mt-0.5 z-10">0</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Ticket Médio</span>
-                    <span id="kpi-ticket" class="text-xl font-black text-blue-600 mt-0.5 z-10">R$ 0,00</span>
-                </div>
-            </div>
-
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2 w-full animate-fade-in">
-                <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-                    <button data-filter="todas" class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap shadow-sm">Todas</button>
-                    <button data-filter="abertas" class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap shadow-sm">Abertas</button>
-                    <button data-filter="pagas" class="filter-btn px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition whitespace-nowrap shadow-sm">Fechadas / Pagas</button>
+            <div id="history-panel" class="${localState.showHistoryPanel ? 'block' : 'hidden'} bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-2 animate-fade-in">
+                <h4 class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Período de Busca</h4>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
+                    <button data-action="set-period" data-period="hoje" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'hoje' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Hoje</button>
+                    <button data-action="set-period" data-period="este_mes" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'este_mes' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Este Mês</button>
+                    <button data-action="set-period" data-period="mes_passado" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'mes_passado' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Mês Passado</button>
+                    <button data-action="set-period" data-period="custom" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'custom' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Personalizado</button>
                 </div>
                 
-                <div id="finalizadas-datepicker" class="hidden flex items-center gap-2 bg-white p-1.5 rounded-lg border border-gray-200 shadow-sm w-full md:w-auto">
-                    <label for="filter-date" class="text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-2">Data:</label>
-                    <input type="date" id="filter-date" value="${todayStr}" class="w-full md:w-auto p-1 border-0 rounded bg-gray-50 text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500">
+                <div id="custom-date-fields" class="${localState.filterPreset === 'custom' ? 'flex' : 'hidden'} gap-2 items-end p-2 bg-gray-50 rounded-lg border border-gray-100 flex-wrap sm:flex-nowrap">
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 ml-1">Início</label>
+                        <input type="date" id="filter-start-date" value="${localState.filterStartDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-[10px] font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+                    </div>
+                    <div class="flex-1 min-w-[100px]">
+                        <label class="block text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 ml-1">Fim</label>
+                        <input type="date" id="filter-end-date" value="${localState.filterEndDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-[10px] font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+                    </div>
+                    <button data-action="apply-custom-dates" class="h-[34px] w-full sm:w-auto px-4 bg-indigo-600 text-white font-black text-[10px] rounded-lg hover:bg-indigo-700 shadow-sm active:scale-95 transition-transform uppercase tracking-wider flex items-center justify-center gap-1.5 mt-1 sm:mt-0">
+                        <i class="bi bi-search"></i> Buscar
+                    </button>
                 </div>
             </div>
 
-            <div id="comandas-layout" class="flex-1 flex gap-3 min-h-0 w-full animate-fade-in">
-                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm h-full w-full md:w-80 lg:w-96 flex-shrink-0 transition-all duration-300">
+            <div class="grid grid-cols-4 gap-1.5 md:gap-3 mb-2 animate-fade-in w-full">
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Abertas</span>
+                    <span id="kpi-abertas" class="text-xs md:text-sm font-black text-indigo-600 mt-0.5 w-full truncate">0</span>
+                </div>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Vendas</span>
+                    <span id="kpi-vendas" class="text-xs md:text-sm font-black text-green-600 mt-0.5 w-full truncate">R$ 0,00</span>
+                </div>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Pagas</span>
+                    <span id="kpi-pagas" class="text-xs md:text-sm font-black text-gray-800 mt-0.5 w-full truncate">0</span>
+                </div>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Ticket</span>
+                    <span id="kpi-ticket" class="text-xs md:text-sm font-black text-blue-600 mt-0.5 w-full truncate">R$ 0,00</span>
+                </div>
+            </div>
+
+            <div class="flex gap-1.5 overflow-x-auto pb-1 w-full custom-scrollbar mb-2 animate-fade-in flex-shrink-0">
+                <button data-filter="todas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Todas</button>
+                <button data-filter="abertas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Abertas</button>
+                <button data-filter="pagas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Fechadas</button>
+            </div>
+
+            <div id="comandas-layout" class="flex-1 flex gap-3 min-h-0 w-full animate-fade-in relative overflow-hidden">
+                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm h-full w-full md:w-80 lg:w-96 flex-shrink-0 transition-all duration-300 z-10">
                     <div id="comandas-list" class="p-2 space-y-1.5 overflow-y-auto custom-scrollbar flex-1">
                         <div class="loader mx-auto mt-10"></div>
                     </div>
-                    <div id="pagination-container" class="p-2 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 min-h-[40px] flex justify-center items-center rounded-b-xl"></div>
+                    <div id="pagination-container" class="p-1 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 min-h-[36px] flex justify-center items-center rounded-b-xl"></div>
                 </div>
 
-                <div id="comanda-detail-container" class="bg-white border border-gray-200 rounded-xl shadow-sm h-full flex-col relative overflow-hidden hidden md:flex flex-1 min-w-0 transition-all duration-300">
+                <div id="comanda-detail-container" class="bg-gray-50 md:bg-white border-0 md:border md:border-gray-200 md:rounded-xl shadow-sm flex-col overflow-hidden hidden md:flex flex-1 min-w-0 transition-all duration-300 h-full z-20">
                     <div class="flex flex-col items-center justify-center h-full text-center text-gray-400">
                         <i class="bi bi-receipt text-4xl opacity-20 mb-2"></i>
                         <p class="text-sm font-medium">Selecione uma venda</p>
@@ -300,18 +371,13 @@ function renderPageLayout() {
 
 function updateFilterStyles() {
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+        btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
         btn.classList.add('bg-white', 'text-gray-600', 'border-gray-200');
     });
     const activeBtn = document.querySelector(`[data-filter="${localState.activeFilter}"]`);
     if(activeBtn) {
         activeBtn.classList.remove('bg-white', 'text-gray-600', 'border-gray-200');
-        activeBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
-    }
-
-    const datePicker = document.getElementById('finalizadas-datepicker');
-    if(datePicker) {
-        datePicker.classList.toggle('hidden', !localState.showHistoryDate);
+        activeBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
     }
 }
 
@@ -321,11 +387,11 @@ function updateCashierUIState() {
 
     if (!localState.isCashierOpen) {
         if (alertBox) alertBox.innerHTML = `
-            <div class="bg-amber-50 border-l-4 border-amber-400 p-3 mb-3 rounded-r-lg animate-fade-in mx-1 shadow-sm">
+            <div class="bg-amber-50 border-l-4 border-amber-400 p-2 mb-2 rounded-r-lg animate-fade-in mx-1 shadow-sm">
                 <div class="flex items-center">
-                    <i class="bi bi-exclamation-triangle text-amber-500 mr-3 text-lg"></i>
-                    <p class="text-xs text-amber-800">
-                        <strong>Caixa Fechado!</strong> Abra o caixa para realizar operações e novas vendas.
+                    <i class="bi bi-exclamation-triangle text-amber-500 mr-2 text-base"></i>
+                    <p class="text-[10px] md:text-xs text-amber-800 leading-tight">
+                        <strong>Caixa Fechado!</strong> Abra o caixa para operações.
                     </p>
                 </div>
             </div>
@@ -351,12 +417,12 @@ function renderCashierControls() {
     if (localState.isCashierOpen) {
         container.innerHTML = `
             <span class="hidden sm:inline-block text-[10px] font-bold text-green-700 bg-green-100 py-1.5 px-2.5 rounded-lg border border-green-200 uppercase tracking-widest shadow-sm"><i class="bi bi-unlock-fill"></i> Caixa Aberto</span>
-            <button data-action="close-cashier" class="py-1.5 px-3 bg-red-50 text-red-700 border border-red-200 font-bold rounded-lg hover:bg-red-100 text-xs transition shadow-sm">Fechar Caixa</button>
+            <button data-action="close-cashier" class="py-1 px-3 bg-red-50 text-red-700 border border-red-200 font-bold rounded-lg hover:bg-red-100 text-[10px] transition shadow-sm">Fechar Caixa</button>
         `;
     } else {
         container.innerHTML = `
             <span class="hidden sm:inline-block text-[10px] font-bold text-red-700 bg-red-100 py-1.5 px-2.5 rounded-lg border border-red-200 uppercase tracking-widest shadow-sm"><i class="bi bi-lock-fill"></i> Caixa Fechado</span>
-            <button data-action="open-cashier" class="py-1.5 px-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 text-xs shadow-sm transition">Abrir Caixa</button>
+            <button data-action="open-cashier" class="py-1 px-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 text-[10px] shadow-sm transition">Abrir Caixa</button>
         `;
     }
 }
@@ -389,7 +455,7 @@ function renderComandaList() {
     updateKPIs(); 
 
     if (filteredComandas.length === 0) {
-        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-xs font-medium">Nenhuma venda encontrada para este filtro.</p>`;
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-xs font-medium">Nenhuma venda encontrada para este filtro e período.</p>`;
         renderPaginationControls(paginationContainer);
         return;
     }
@@ -411,10 +477,11 @@ function renderComandaList() {
             ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-4 h-4 ml-1 text-[10px]" title="Prémio Resgatado">🎁</span>` 
             : '';
 
-        const isSelected = comanda.id === localState.selectedComandaId;
+        const isSelected = String(comanda.id) === String(localState.selectedComandaId);
         
         const dateObj = new Date(comanda.startTime);
         const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
         const isWalkIn = comanda.type === 'walk-in' || (typeof comanda.id === 'string' && comanda.id.startsWith('temp-'));
         const isCompleted = comanda.status === 'completed';
@@ -437,9 +504,9 @@ function renderComandaList() {
         div.dataset.comandaId = comanda.id;
         div.innerHTML = `
             <div class="flex justify-between items-start mb-1.5 pointer-events-none">
-                <p class="font-bold text-gray-800 truncate flex-1 min-w-0 pr-2 text-xs">${safeClientName}</p>
+                <p class="font-bold text-gray-800 truncate flex-1 min-w-0 pr-2 text-sm">${safeClientName}</p>
                 <div class="flex items-center flex-shrink-0">
-                    <p class="font-black ${isCompleted ? 'text-green-600' : 'text-gray-800'} text-xs">R$ ${displayTotal.toFixed(2)}</p>
+                    <p class="font-black ${isCompleted ? 'text-green-600' : 'text-gray-800'} text-sm">R$ ${displayTotal.toFixed(2)}</p>
                     ${rewardIndicator}
                 </div>
             </div>
@@ -448,7 +515,7 @@ function renderComandaList() {
                     ${typeIndicator}
                     <p class="text-[10px] text-gray-500 truncate"><i class="bi bi-person mr-0.5 opacity-50"></i>${safeProfName}</p>
                 </div>
-                <p class="text-[10px] text-gray-500 font-bold flex-shrink-0"><i class="bi bi-clock mr-0.5 opacity-50"></i>${timeStr}</p> 
+                <p class="text-[10px] text-gray-500 font-bold flex-shrink-0"><i class="bi bi-calendar-event mr-0.5 opacity-50"></i>${dateStr} <span class="text-gray-300 mx-0.5">|</span> ${timeStr}</p> 
             </div>
         `;
         fragment.appendChild(div);
@@ -488,23 +555,155 @@ function renderPaginationControls(container) {
     });
 }
 
+// --- NOVA TELA: CATÁLOGO DE ITENS ---
+function renderAddItemView(comanda, container) {
+    const mobileHeaderHTML = `
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="back-to-items" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
+                <i class="bi bi-arrow-left text-lg"></i>
+            </button>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Catálogo</h3>
+        </div>
+    `;
+
+    container.innerHTML = `
+        ${mobileHeaderHTML}
+        <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-gray-50/50 relative flex flex-col">
+            <div class="relative mb-5 flex-shrink-0">
+                <i class="bi bi-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                <input type="search" id="item-search-input" placeholder="Pesquisar produto ou serviço..." class="w-full pl-12 p-3.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white transition-colors shadow-sm font-bold text-gray-700">
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 flex-grow overflow-y-auto pb-8">
+                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-indigo-600 bg-indigo-100 py-2 rounded-lg"><i class="bi bi-scissors mr-1"></i> Serviços</h4><div id="catalog-service-list" class="space-y-2"></div></div>
+                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-emerald-600 bg-emerald-100 py-2 rounded-lg"><i class="bi bi-box-seam mr-1"></i> Produtos</h4><div id="catalog-product-list" class="space-y-2"></div></div>
+                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-purple-600 bg-purple-100 py-2 rounded-lg"><i class="bi bi-boxes mr-1"></i> Pacotes</h4><div id="catalog-package-list" class="space-y-2"></div></div>
+            </div>
+        </div>
+    `;
+
+    const filterAndRender = (term = '') => {
+        const lowerTerm = term.toLowerCase();
+        const icons = {
+            service: '<i class="bi bi-scissors text-indigo-600"></i>',
+            product: '<i class="bi bi-box-seam text-emerald-600"></i>',
+            package: '<i class="bi bi-boxes text-purple-600"></i>'
+        };
+        const lists = {
+            'catalog-service-list': { items: localState.catalog.services, type: 'service' },
+            'catalog-product-list': { items: localState.catalog.products, type: 'product' },
+            'catalog-package-list': { items: localState.catalog.packages, type: 'package' }
+        };
+        Object.entries(lists).forEach(([id, { items, type }]) => {
+            const el = container.querySelector('#' + id);
+            if (!el) return;
+            const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
+            el.innerHTML = filtered.map(item => {
+                if (!item.id) return '';
+                
+                return `
+                <button data-action="select-catalog-item" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-400 shadow-sm transition-all text-left group active:scale-95">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-lg border border-gray-100 group-hover:bg-indigo-50 group-hover:border-indigo-200">${icons[type]}</div>
+                    <span class="flex-grow text-sm font-bold text-gray-800 line-clamp-2 leading-tight group-hover:text-indigo-700">${escapeHTML(item.name)}</span>
+                    <span class="font-black text-sm text-gray-900 bg-gray-100 px-2 py-1 rounded-md border border-gray-200 whitespace-nowrap group-hover:bg-white group-hover:text-indigo-700">R$ ${item.price.toFixed(2)}</span>
+                </button>
+            `}).join('') || `<p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center py-6 border border-dashed border-gray-300 rounded-xl">Vazio</p>`;
+        });
+    };
+
+    filterAndRender(); 
+    const searchInput = container.querySelector('#item-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce((e) => { filterAndRender(e.target.value); }, 300));
+    }
+}
+
+// --- NOVA TELA: QUANTIDADE DO ITEM ---
+function renderQuantityView(comanda, container) {
+    const item = localState.selectedCatalogItem;
+    if (!item) {
+        localState.viewMode = 'add-item';
+        renderComandaDetail();
+        return;
+    }
+
+    let quantity = 1;
+    
+    const mobileHeaderHTML = `
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="back-to-add-item" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
+                <i class="bi bi-arrow-left text-lg"></i>
+            </button>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Quantidade</h3>
+        </div>
+    `;
+
+    container.innerHTML = `
+        ${mobileHeaderHTML}
+        <div class="flex-grow flex flex-col items-center justify-center p-6 bg-gray-50/50">
+            <div class="text-center bg-white p-8 rounded-3xl shadow-sm border border-gray-200 w-full max-w-sm">
+                <div class="w-20 h-20 bg-indigo-50 text-indigo-500 rounded-full mx-auto flex items-center justify-center text-4xl mb-6 border border-indigo-100 shadow-inner">
+                    ${item.type === 'service' ? '<i class="bi bi-scissors"></i>' : (item.type === 'product' ? '<i class="bi bi-box-seam"></i>' : '<i class="bi bi-boxes"></i>')}
+                </div>
+                <h3 class="font-black text-2xl text-gray-900 leading-tight mb-3">${escapeHTML(item.name)}</h3>
+                <p class="text-base text-gray-600 font-bold bg-gray-100 inline-block px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">R$ ${item.price.toFixed(2)} / unidade</p>
+                
+                <div class="my-10 flex items-center justify-center gap-6">
+                    <button id="quantity-minus-btn" class="w-16 h-16 rounded-full bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:hover:bg-white"><i class="bi bi-dash"></i></button>
+                    <span id="quantity-display" class="text-6xl font-black w-24 text-center text-indigo-600 bg-indigo-50 rounded-3xl py-2 border border-indigo-100 shadow-inner">${quantity}</span>
+                    <button id="quantity-plus-btn" class="w-16 h-16 rounded-full bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-green-50 hover:text-green-600 hover:border-green-200 shadow-md transition-all active:scale-90"><i class="bi bi-plus"></i></button>
+                </div>
+            </div>
+        </div>
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-8">
+            <button id="confirm-add-qty-btn" class="w-full py-4 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all shadow-lg uppercase tracking-widest active:scale-95 flex justify-center items-center gap-2">
+                <i class="bi bi-cart-plus text-xl"></i> Confirmar Adição
+            </button>
+        </footer>
+    `;
+
+    const updateDisplay = () => {
+        container.querySelector('#quantity-display').textContent = quantity;
+        container.querySelector('#quantity-minus-btn').disabled = quantity <= 1;
+    };
+
+    container.querySelector('#quantity-minus-btn').onclick = () => { if (quantity > 1) { quantity--; updateDisplay(); } };
+    container.querySelector('#quantity-plus-btn').onclick = () => { quantity++; updateDisplay(); };
+    
+    container.querySelector('#confirm-add-qty-btn').onclick = async () => { 
+        await handleAddItemToComanda(item, quantity);
+        localState.viewMode = 'items';
+        localState.selectedCatalogItem = null;
+        renderComandaDetail();
+    };
+    updateDisplay();
+}
+
 function renderComandaDetail() {
     const detailContainer = document.getElementById('comanda-detail-container');
     if (!detailContainer) return;
     
-    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+    const comanda = localState.allComandas.find(c => String(c.id) === String(localState.selectedComandaId));
 
+    // Roteamento interno de Telas 
     if (localState.viewMode === 'checkout' && comanda) {
         renderCheckoutView(comanda, detailContainer);
         return;
     }
+    if (localState.viewMode === 'add-item' && comanda) {
+        renderAddItemView(comanda, detailContainer);
+        return;
+    }
+    if (localState.viewMode === 'add-item-qty' && comanda) {
+        renderQuantityView(comanda, detailContainer);
+        return;
+    }
     
     const mobileHeaderHTML = `
-        <div class="mobile-only-header p-3 border-b border-gray-200 bg-gray-50 flex items-center shadow-sm">
-            <button data-action="back-to-list" class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-100 shadow-sm">
-                <i class="bi bi-arrow-left text-sm"></i>
+        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="back-to-list" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner">
+                <i class="bi bi-arrow-left text-lg"></i>
             </button>
-            <h3 class="font-bold text-sm text-gray-800 ml-3 uppercase tracking-wider">Detalhes</h3>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Detalhes da Comanda</h3>
         </div>
     `;
 
@@ -556,124 +755,135 @@ function renderComandaDetail() {
     const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
     const hasUnsaved = comanda._hasUnsavedChanges;
-    const saveBtnClass = hasUnsaved 
-        ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md animate-pulse border-transparent" 
-        : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 shadow-sm"; 
     
-    const saveBtnText = hasUnsaved ? "Salvar*" : "Salvar";
-
     const desktopButtons = `
-        <div class="grid grid-cols-3 gap-2 mobile-hidden pt-1">
-            <button data-action="add-item" class="col-span-1 py-2 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition border border-indigo-200 text-xs shadow-sm">
-                + Item
+        <div class="hidden md:grid grid-cols-3 gap-2 pt-1">
+            <button data-action="add-item" class="col-span-1 py-2.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition border border-indigo-200 text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-1">
+                <i class="bi bi-plus-lg"></i> Incluir
             </button>
-            <button data-action="save-comanda" class="col-span-1 py-2 font-bold rounded-lg transition text-xs ${saveBtnClass}">
-                ${saveBtnText}
+            <button data-action="save-comanda" class="col-span-1 py-2.5 font-bold rounded-lg transition text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-1 ${hasUnsaved ? "bg-amber-500 text-white hover:bg-amber-600 animate-pulse" : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"}">
+                <i class="bi bi-save2"></i> ${hasUnsaved ? "Salvar*" : "Salvar"}
             </button>
-            <button data-action="go-to-checkout" class="col-span-1 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-sm text-xs">
-                Receber
+            <button data-action="go-to-checkout" class="col-span-1 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-sm text-xs uppercase tracking-wider flex justify-center items-center gap-1">
+                <i class="bi bi-currency-dollar text-sm"></i> Pagamento
             </button>
         </div>
     `;
 
-    const mobileFABs = `
-        <div class="mobile-fabs-container">
-            <button data-action="add-item" class="fab-btn-secondary" title="Adicionar Item">
-                <i class="bi bi-plus-lg text-lg"></i>
-            </button>
-            <button data-action="save-comanda" class="fab-btn-secondary ${hasUnsaved ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-700 text-white hover:bg-gray-800'}" title="Salvar Alterações">
-                <i class="bi bi-save2 text-lg"></i>
-            </button>
-            <button data-action="go-to-checkout" class="fab-btn-primary" title="Receber / Pagar">
-                <i class="bi bi-currency-dollar text-xl"></i>
-            </button>
-        </div>
+    const desktopFooter = `
+        <footer class="hidden md:block mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] w-full flex-shrink-0 z-20">
+            <div class="flex justify-between items-end mb-3">
+                <span class="text-xs text-gray-500 font-bold uppercase tracking-widest">Total a Pagar</span>
+                <span class="text-3xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
+            </div>
+            ${!isCompleted ? desktopButtons : `
+                <div class="bg-green-50 text-green-700 text-center py-2.5 rounded-lg font-bold border border-green-200 flex items-center justify-center gap-2 text-sm shadow-sm">
+                    <i class="bi bi-check-circle-fill"></i> Comanda Paga
+                </div>
+            `}
+        </footer>
+    `;
+
+    // Adaptação Mobile: Rodapé totalmente fixo com os 3 botões limpos
+    const mobileFooter = `
+        <footer class="md:hidden mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-8">
+            <div class="flex justify-between items-end mb-3 px-1">
+                <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total da Comanda</span>
+                <span class="text-2xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
+            </div>
+            ${!isCompleted ? `
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <button data-action="add-item" class="py-3.5 bg-indigo-50 text-indigo-700 font-black rounded-xl border border-indigo-200 text-xs shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                        <i class="bi bi-plus-lg text-lg"></i> Incluir
+                    </button>
+                    <button data-action="save-comanda" class="py-3.5 font-black rounded-xl text-xs shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-transform ${hasUnsaved ? "bg-amber-500 text-white animate-pulse border-transparent" : "bg-white border border-gray-200 text-gray-700"}">
+                        <i class="bi bi-save2 text-lg"></i> ${hasUnsaved ? "Salvar*" : "Salvar"}
+                    </button>
+                </div>
+                <button data-action="go-to-checkout" class="w-full py-4 bg-green-600 text-white font-black text-sm rounded-xl hover:bg-green-700 transition shadow-md uppercase tracking-wider flex justify-center items-center gap-2 active:scale-95">
+                    PAGAMENTO <i class="bi bi-arrow-right text-xl"></i>
+                </button>
+            ` : `
+                <div class="w-full bg-green-50 text-green-700 text-center py-4 rounded-xl font-bold border border-green-200 flex items-center justify-center gap-2 text-sm shadow-sm mt-2">
+                    <i class="bi bi-check-circle-fill"></i> Comanda Paga
+                </div>
+            `}
+        </footer>
     `;
 
     detailContainer.innerHTML = `
         ${mobileHeaderHTML} 
-        <div class="flex-grow overflow-y-auto p-3 pb-24 custom-scrollbar bg-gray-50/30"> 
-            <div class="flex justify-between items-start mb-4 border-b border-gray-100 pb-3">
+        <div class="flex-grow overflow-y-auto p-4 pb-6 custom-scrollbar bg-gray-50/50 relative"> 
+            <div class="flex justify-between items-start mb-4 border-b border-gray-200 pb-4 bg-white p-3 rounded-xl shadow-sm">
                 <div>
-                    <h3 class="text-base font-black text-gray-800 truncate max-w-[200px]">${safeClientName}</h3>
-                    <p class="text-xs text-gray-500 flex items-center gap-1 mt-0.5 font-medium">
+                    <h3 class="text-base font-black text-gray-800 truncate max-w-[200px] md:max-w-xs">${safeClientName}</h3>
+                    <p class="text-xs text-gray-500 flex items-center gap-1 mt-1 font-medium">
                         <i class="bi bi-person opacity-50"></i> ${safeProfName}
                     </p>
                     ${!isWalkIn ? 
-                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-[10px] font-bold uppercase tracking-widest hover:underline flex items-center gap-1 mt-1.5">
+                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-[10px] font-bold uppercase tracking-widest hover:underline flex items-center gap-1 mt-2">
                              Ver na Agenda <i class="bi bi-arrow-right-short"></i>
                          </button>` 
-                         : `<span class="mt-1.5 inline-block px-1.5 py-0.5 text-[9px] font-bold bg-blue-100 text-blue-700 rounded uppercase tracking-widest">Venda Avulsa</span>`}
+                         : `<span class="mt-2 inline-block px-1.5 py-0.5 text-[9px] font-bold bg-blue-100 text-blue-700 rounded uppercase tracking-widest">Venda Avulsa</span>`}
                 </div>
                 <div class="flex gap-1.5">
                     ${isCompleted ? 
-                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="w-7 h-7 bg-yellow-100 text-yellow-700 rounded-md hover:bg-yellow-200 flex items-center justify-center border border-yellow-200 shadow-sm" title="Reabrir"><i class="bi bi-arrow-counterclockwise text-xs"></i></button>` 
+                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="w-8 h-8 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 flex items-center justify-center border border-yellow-200 shadow-sm" title="Reabrir"><i class="bi bi-arrow-counterclockwise text-sm"></i></button>` 
                         : ''}
                     ${isWalkIn && !isCompleted ? 
-                        `<button data-action="delete-walk-in" data-id="${comanda.id}" class="w-7 h-7 bg-red-100 text-red-700 rounded-md hover:bg-red-200 flex items-center justify-center border border-red-200 shadow-sm" title="Excluir"><i class="bi bi-trash3 text-xs"></i></button>` 
+                        `<button data-action="delete-walk-in" data-id="${comanda.id}" class="w-8 h-8 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 flex items-center justify-center border border-red-200 shadow-sm" title="Excluir"><i class="bi bi-trash3 text-sm"></i></button>` 
                         : ''}
                 </div>
             </div>
 
-            <div id="loyalty-container" class="mb-3"></div>
+            <div id="loyalty-container" class="mb-4"></div>
 
-            <div class="space-y-2">
-                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 px-1">Itens do Pedido</h4>
+            <div class="space-y-2.5">
+                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 pl-1">Resumo dos Itens</h4>
                 ${Object.values(groupedItems).map(item => {
                     const isOriginal = item.sources && item.sources.includes('original_service');
                     const isRedeemedItem = localState.pendingRedemption && String(localState.pendingRedemption.appliedToItemId) === String(item.id);
                     const showRewardTag = item.isReward || isRedeemedItem;
 
                     return `
-                    <div class="flex items-center justify-between bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm ${showRewardTag ? 'border-yellow-400 bg-yellow-50 ring-1 ring-yellow-200' : ''}">
-                        <div class="flex flex-col w-full gap-2">
+                    <div class="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200 shadow-sm ${showRewardTag ? 'border-yellow-400 bg-yellow-50 ring-1 ring-yellow-200' : ''}">
+                        <div class="flex flex-col w-full gap-2.5">
                             <div class="flex justify-between items-start">
-                                <div class="min-w-0 flex-1 pr-2">
-                                    <p class="text-xs font-bold text-gray-800 line-clamp-1 leading-tight">
+                                <div class="min-w-0 flex-1 pr-3">
+                                    <p class="text-sm font-bold text-gray-800 line-clamp-2 leading-tight">
                                         ${showRewardTag ? '🎁 ' : ''}
                                         ${escapeHTML(item.name)}
                                     </p>
-                                    <div class="flex items-center mt-1">
-                                        ${isOriginal ? '<span class="text-[8px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded border border-indigo-100 mr-2">Original</span>' : ''}
-                                        <p class="text-[10px] text-gray-500 font-medium">${showRewardTag ? '<span class="text-yellow-700 font-bold bg-yellow-100 px-1 py-0.5 rounded border border-yellow-200">Prémio</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
+                                    <div class="flex items-center mt-1.5">
+                                        ${isOriginal ? '<span class="text-[8px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 mr-2">Original</span>' : ''}
+                                        <p class="text-[11px] text-gray-500 font-semibold">${showRewardTag ? '<span class="text-yellow-700 font-bold bg-yellow-100 px-1.5 py-0.5 rounded border border-yellow-200">Prémio</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
                                     </div>
                                 </div>
-                                <span class="font-black text-sm text-gray-900 whitespace-nowrap">R$ ${(item.price * item.quantity).toFixed(2)}</span>
+                                <span class="font-black text-base text-gray-900 whitespace-nowrap">R$ ${(item.price * item.quantity).toFixed(2)}</span>
                             </div>
                             
-                            <div class="flex justify-end">
+                            <div class="flex justify-end pt-1">
                                 ${!isCompleted ? `
-                                    <div class="flex items-center bg-gray-50 rounded-md border border-gray-200 shadow-inner">
+                                    <div class="flex items-center bg-gray-50 rounded-lg border border-gray-200 shadow-inner">
                                         ${isOriginal ? 
-                                            `<span class="text-[10px] font-bold text-gray-500 px-3 py-1 bg-gray-100 rounded-md uppercase tracking-wider">Fixo: ${item.quantity}</span>` 
+                                            `<span class="text-[10px] font-bold text-gray-500 px-4 py-1.5 bg-gray-100 rounded-lg uppercase tracking-wider">Fixo: ${item.quantity}</span>` 
                                             : 
-                                            `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-7 h-7 flex items-center justify-center rounded-l-md bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 border-r border-gray-200"><i class="bi bi-dash"></i></button>
-                                             <span class="text-xs font-black text-gray-800 w-6 text-center">${item.quantity}</span>
-                                             <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-7 h-7 flex items-center justify-center rounded-r-md bg-white text-gray-600 hover:bg-green-50 hover:text-green-600 border-l border-gray-200"><i class="bi bi-plus"></i></button>`
+                                            `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-9 h-9 flex items-center justify-center rounded-l-lg bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 border-r border-gray-200"><i class="bi bi-dash text-lg"></i></button>
+                                             <span class="text-sm font-black text-gray-800 w-10 text-center">${item.quantity}</span>
+                                             <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-9 h-9 flex items-center justify-center rounded-r-lg bg-white text-gray-600 hover:bg-green-50 hover:text-green-600 border-l border-gray-200"><i class="bi bi-plus text-lg"></i></button>`
                                         }
                                     </div>
-                                ` : `<span class="flex items-center justify-center px-2.5 py-1 bg-gray-100 border border-gray-200 text-gray-600 font-bold text-[10px] uppercase tracking-widest rounded-md">${item.quantity} Qtd</span>`}
+                                ` : `<span class="flex items-center justify-center px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-widest rounded-lg">${item.quantity} Qtd</span>`}
                             </div>
                         </div>
                     </div>
                 `}).join('')}
-                ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-6 text-gray-400 border border-dashed border-gray-300 bg-gray-50 rounded-lg text-xs font-medium">Nenhum item adicionado</div>' : ''}
+                ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-8 text-gray-400 border border-dashed border-gray-300 bg-gray-50 rounded-xl text-sm font-medium">Nenhum item adicionado</div>' : ''}
             </div>
         </div>
 
-        <footer class="p-3 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 relative">
-            <div class="flex justify-between items-end mb-3 px-1">
-                <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total a Pagar</span>
-                <span class="text-2xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
-            </div>
-            ${!isCompleted ? desktopButtons : `
-                <div class="bg-green-50 text-green-700 text-center py-2 rounded-lg font-bold border border-green-200 flex items-center justify-center gap-1.5 text-xs shadow-sm">
-                    <i class="bi bi-check-circle-fill"></i> Venda Finalizada
-                </div>
-            `}
-        </footer>
-
-        ${!isCompleted ? mobileFABs : ''}
+        ${desktopFooter}
+        ${mobileFooter}
     `;
 
     if (!isCompleted && (comanda.clientId || comanda.clientName)) {
@@ -704,57 +914,64 @@ function renderCheckoutView(comanda, container) {
     }
 
     const mobileHeaderHTML = `
-        <div class="mobile-only-header p-3 border-b border-gray-200 bg-gray-50 flex items-center shadow-sm">
-            <button data-action="back-to-items" class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-100 shadow-sm">
-                <i class="bi bi-arrow-left text-sm"></i>
+        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="back-to-items" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
+                <i class="bi bi-arrow-left text-lg"></i>
             </button>
-            <h3 class="font-bold text-sm text-gray-800 ml-3 uppercase tracking-wider">Pagamento</h3>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Pagamento</h3>
         </div>
+    `;
+
+    const checkoutFooter = `
+        <footer class="mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] grid grid-cols-2 gap-3 w-full flex-shrink-0 z-50 pb-8">
+            <button data-action="back-to-items" class="py-4 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-xl hover:bg-gray-50 transition shadow-sm uppercase tracking-wider active:scale-95">Voltar</button>
+            <button data-action="finalize-checkout" class="py-4 bg-green-600 text-white font-black text-sm rounded-xl hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2 uppercase tracking-wider active:scale-95"><i class="bi bi-check2-circle text-lg"></i> Confirmar</button>
+        </footer>
     `;
 
     container.innerHTML = `
         ${mobileHeaderHTML}
-        <div class="flex-grow overflow-y-auto p-4 pb-24 custom-scrollbar bg-gray-50/50">
+        <div class="flex-grow overflow-y-auto p-4 pb-6 custom-scrollbar bg-gray-50/50">
             
             <div class="text-center mb-5 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                 <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Subtotal: <span id="checkout-subtotal-display" class="text-gray-600">R$ ${subtotal.toFixed(2)}</span></p>
                 
-                <div class="flex flex-col items-center justify-center gap-2 mt-3 mb-2">
+                <div class="flex flex-col items-center justify-center gap-3 mt-3 mb-2">
                      <div class="flex items-center gap-2">
                          <span class="text-[10px] font-bold text-red-400 uppercase tracking-widest"><i class="bi bi-tag-fill mr-1"></i>Desc:</span>
-                         <div class="flex border border-gray-300 rounded-lg bg-white overflow-hidden shadow-inner w-32">
-                             <input type="number" id="discount-value" value="${discount.value}" class="w-16 p-1.5 text-center text-xs font-black text-red-500 outline-none bg-transparent" placeholder="0">
-                             <select id="discount-type" class="bg-gray-50 text-[10px] font-bold text-gray-600 border-l border-gray-200 p-1.5 outline-none">
+                         <div class="flex border border-gray-300 rounded-lg bg-white overflow-hidden shadow-inner w-36 h-10">
+                             <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-2 text-center text-sm font-black text-red-500 outline-none bg-transparent" placeholder="0">
+                             <select id="discount-type" class="bg-gray-50 text-xs font-bold text-gray-600 border-l border-gray-200 p-2 outline-none w-16 text-center">
                                  <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
                                  <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
                              </select>
                          </div>
                      </div>
-                     <input type="text" id="discount-reason" class="w-48 p-1.5 text-[10px] border border-gray-200 rounded-md text-center focus:border-indigo-400 outline-none text-gray-600 bg-gray-50" placeholder="Motivo do desconto" value="${checkoutState.discountReason || ''}">
+                     <input type="text" id="discount-reason" class="w-full max-w-[250px] p-2 text-xs border border-gray-200 rounded-lg text-center focus:border-indigo-400 outline-none text-gray-600 bg-gray-50" placeholder="Motivo do desconto" value="${checkoutState.discountReason || ''}">
                 </div>
 
-                <p class="text-3xl font-black text-gray-900 mt-2" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
+                <p class="text-4xl font-black text-gray-900 mt-4 mb-2" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
                 
-                <div id="checkout-status-msg" class="mt-1.5">
+                <div id="checkout-status-msg" class="mt-1.5 bg-gray-50 py-2 rounded-lg border border-gray-100">
                     ${remaining <= 0.01 
-                        ? '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle"></i> Pago</p>' 
-                        : `<p class="text-red-500 font-bold text-xs">Faltam: <span id="checkout-remaining-display">R$ ${remaining.toFixed(2)}</span></p>`
+                        ? '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle text-lg mr-1"></i> Pago</p>' 
+                        : `<p class="text-red-500 font-bold text-sm">Faltam: <span id="checkout-remaining-display" class="font-black text-lg">R$ ${remaining.toFixed(2)}</span></p>`
                     }
                 </div>
             </div>
 
             <div class="space-y-2 mb-5">
                 ${checkoutState.payments.map((p, index) => `
-                    <div class="flex justify-between items-center bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm animate-fade-in-fast">
-                        <div class="flex items-center gap-2">
-                             <div class="bg-gray-100 px-2 py-1 rounded border border-gray-200">
-                                <span class="font-bold text-[10px] uppercase tracking-widest text-gray-600">${p.method}</span>
+                    <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in-fast">
+                        <div class="flex items-center gap-2.5">
+                             <div class="bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
+                                <span class="font-bold text-xs uppercase tracking-widest text-gray-600">${p.method}</span>
                              </div>
-                             ${p.installments > 1 ? `<span class="text-[9px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">${p.installments}x</span>` : ''}
+                             ${p.installments > 1 ? `<span class="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded border border-purple-200">${p.installments}x</span>` : ''}
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-black text-sm text-gray-800">R$ ${p.value.toFixed(2)}</span>
-                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-gray-400 hover:text-red-500 hover:bg-red-50 w-6 h-6 rounded flex items-center justify-center transition-colors"><i class="bi bi-trash3 text-[10px]"></i></button>
+                        <div class="flex items-center gap-3">
+                            <span class="font-black text-lg text-gray-800">R$ ${p.value.toFixed(2)}</span>
+                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-gray-400 hover:text-red-500 hover:bg-red-50 w-8 h-8 rounded-lg flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><i class="bi bi-trash3 text-sm"></i></button>
                         </div>
                     </div>
                 `).join('')}
@@ -762,40 +979,37 @@ function renderCheckoutView(comanda, container) {
 
             ${remaining > 0.01 ? `
             <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 border-b border-gray-100 pb-1.5">Adicionar Pagamento</label>
-                <div class="grid grid-cols-3 gap-1.5 mb-3">
+                <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Adicionar Pagamento</label>
+                <div class="grid grid-cols-3 gap-2 mb-4">
                     ${['dinheiro', 'pix', 'debito', 'credito', 'crediario'].map(m => `
-                        <button data-action="select-method" data-method="${m}" class="p-1.5 rounded-md border text-[9px] font-bold uppercase tracking-wider transition-colors ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">
+                        <button data-action="select-method" data-method="${m}" class="p-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">
                             ${m}
                         </button>
                     `).join('')}
                 </div>
                 
                 ${['credito', 'crediario'].includes(checkoutState.selectedMethod) ? `
-                    <div class="mb-3">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parcelas</label>
-                        <select id="checkout-installments" class="w-full mt-0.5 p-1.5 border border-gray-200 rounded-md text-xs font-bold text-gray-700 bg-gray-50 outline-none focus:border-indigo-400">
+                    <div class="mb-4">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Número de Parcelas</label>
+                        <select id="checkout-installments" class="w-full p-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 bg-gray-50 outline-none focus:border-indigo-400">
                             ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${checkoutState.installments === i+1 ? 'selected' : ''}>${i+1}x</option>`).join('')}
                         </select>
                     </div>
                 ` : ''}
 
-                <div class="flex items-end gap-2">
+                <div class="flex items-end gap-3">
                     <div class="flex-grow relative">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Valor</label>
-                        <span class="absolute left-2.5 bottom-2 text-gray-400 font-bold text-sm">R$</span>
-                        <input type="number" id="checkout-amount" step="0.01" class="w-full p-1.5 pl-8 border border-gray-300 rounded-lg text-sm font-black text-gray-800 outline-none focus:border-indigo-500 shadow-inner mt-0.5" value="${remaining.toFixed(2)}">
+                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Valor do Pagamento</label>
+                        <span class="absolute left-3 bottom-2.5 text-gray-400 font-black text-lg">R$</span>
+                        <input type="number" id="checkout-amount" step="0.01" class="w-full p-2 pl-10 border border-gray-300 rounded-lg text-xl font-black text-gray-800 outline-none focus:border-indigo-500 shadow-inner" value="${remaining.toFixed(2)}">
                     </div>
-                    <button data-action="add-payment-checkout" class="h-[34px] px-4 bg-gray-800 text-white font-bold text-xs rounded-lg hover:bg-gray-900 transition shadow-sm uppercase tracking-wider">OK</button>
+                    <button data-action="add-payment-checkout" class="h-[46px] px-6 bg-gray-800 text-white font-black text-sm rounded-lg hover:bg-gray-900 transition shadow-md uppercase tracking-wider active:scale-95">OK</button>
                 </div>
             </div>
             ` : ''}
         </div>
 
-        <footer class="p-3 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] grid grid-cols-2 gap-2 z-10 relative">
-            <button data-action="back-to-items" class="py-2.5 bg-white border border-gray-300 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-50 transition shadow-sm">Voltar</button>
-            <button data-action="finalize-checkout" class="py-2.5 bg-green-600 text-white font-bold text-xs rounded-lg hover:bg-green-700 transition shadow-sm flex items-center justify-center gap-1.5"><i class="bi bi-check2-circle"></i> Finalizar</button>
-        </footer>
+        ${checkoutFooter}
     `;
 
     const updateCheckoutUI = () => {
@@ -814,9 +1028,9 @@ function renderCheckoutView(comanda, container) {
         const elStatus = container.querySelector('#checkout-status-msg');
         if (elStatus) {
             if (cRemaining <= 0.01) {
-                elStatus.innerHTML = '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle"></i> Pago</p>';
+                elStatus.innerHTML = '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle text-lg mr-1"></i> Pago</p>';
             } else {
-                elStatus.innerHTML = `<p class="text-red-500 font-bold text-xs">Faltam: <span id="checkout-remaining-display">R$ ${cRemaining.toFixed(2)}</span></p>`;
+                elStatus.innerHTML = `<p class="text-red-500 font-bold text-sm">Faltam: <span id="checkout-remaining-display" class="font-black text-lg">R$ ${cRemaining.toFixed(2)}</span></p>`;
             }
         }
         
@@ -881,18 +1095,18 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
         rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-3 shadow-sm flex justify-between items-center animate-fade-in";
         rewardDiv.innerHTML = `
             <div class="flex items-center gap-2">
-                <div class="bg-white p-1.5 rounded-lg text-yellow-500 shadow-sm border border-yellow-100">
-                    <i class="bi bi-star-fill text-lg"></i>
+                <div class="bg-white p-2 rounded-lg text-yellow-500 shadow-sm border border-yellow-100 flex items-center justify-center">
+                    <i class="bi bi-star-fill text-xl"></i>
                 </div>
                 <div>
-                    <p class="text-[10px] font-black uppercase tracking-widest text-yellow-800">Prémio Disponível!</p>
-                    <p class="text-[9px] text-yellow-700 font-bold">Saldo: ${currentPoints} pts</p>
+                    <p class="text-xs font-black uppercase tracking-widest text-yellow-800">Prémio Disponível!</p>
+                    <p class="text-[10px] text-yellow-700 font-bold">Saldo Atual: ${currentPoints} pts</p>
                 </div>
             </div>
         `;
         const btn = document.createElement('button');
         btn.innerHTML = "<i class='bi bi-gift mr-1'></i> Resgatar";
-        btn.className = "text-[9px] font-black uppercase tracking-wider bg-yellow-500 text-white px-2.5 py-1.5 rounded shadow-sm hover:bg-yellow-600 transition-colors";
+        btn.className = "text-[10px] font-black uppercase tracking-wider bg-yellow-500 text-white px-3 py-2 rounded-lg shadow-md hover:bg-yellow-600 transition-colors";
         btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
         rewardDiv.appendChild(btn);
         containerElement.innerHTML = '';
@@ -903,8 +1117,8 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
 function openRewardSelectionModal(rewards, comanda) {
     const contentHTML = `
         <div class="space-y-3">
-            <p class="text-xs text-gray-500 mb-3 font-medium">O cliente possui pontos suficientes para resgatar os seguintes itens:</p>
-            <div class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+            <p class="text-sm text-gray-500 mb-4 font-medium text-center">Pontos suficientes para resgatar:</p>
+            <div class="space-y-3 max-h-72 overflow-y-auto custom-scrollbar">
                 ${rewards.map(r => {
                     const cost = r.costPoints || r.points || 0;
                     const name = r.name || r.reward;
@@ -921,16 +1135,16 @@ function openRewardSelectionModal(rewards, comanda) {
                     }
 
                     return `
-                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group shadow-sm">
-                        <div class="text-left flex-1 min-w-0 pr-2">
-                            <div class="flex items-center gap-1.5 mb-1">
-                                <span class="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border border-white/0 group-hover:border-yellow-200 ${typeColor}">${typeLabel}</span>
-                                <p class="font-bold text-gray-800 group-hover:text-yellow-700 text-xs truncate">${escapeHTML(name)}</p>
+                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-3.5 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group shadow-sm text-left">
+                        <div class="flex-1 min-w-0 pr-2">
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <span class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border border-white/0 group-hover:border-yellow-200 ${typeColor}">${typeLabel}</span>
+                                <p class="font-black text-gray-800 group-hover:text-yellow-700 text-sm truncate">${escapeHTML(name)}</p>
                             </div>
-                            <p class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Custo: ${cost} pts</p>
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Custo: ${cost} pontos</p>
                         </div>
-                        <div class="text-right flex-shrink-0">
-                            <span class="block text-xs font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">Desc. R$ ${discountValue}</span>
+                        <div class="flex-shrink-0">
+                            <span class="block text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 shadow-inner">Desc. R$ ${discountValue}</span>
                         </div>
                     </button>
                 `}).join('')}
@@ -1007,104 +1221,6 @@ async function addRewardToComanda(reward, comanda) {
     }
 }
 
-function openAddItemModal() {
-    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de adicionar itens.', 'error');
-    const { modalElement, close } = showGenericModal({ title: "Adicionar Item", contentHTML: '<div id="add-item-content"></div>', maxWidth: 'max-w-3xl' });
-
-    const renderCatalogView = () => {
-        const contentContainer = modalElement.querySelector('#add-item-content');
-        contentContainer.innerHTML = `
-            <div class="relative mb-4">
-                <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
-                <input type="search" id="item-search-input" placeholder="Pesquisar por nome..." class="w-full pl-8 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-indigo-500 outline-none text-xs bg-gray-50 focus:bg-white transition-colors">
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div class="bg-gray-50 p-2 rounded-xl border border-gray-100"><h4 class="font-black mb-2 text-center text-[10px] uppercase tracking-widest text-indigo-500">Serviços</h4><div id="modal-service-list" class="space-y-1.5 max-h-60 overflow-y-auto custom-scrollbar"></div></div>
-                <div class="bg-gray-50 p-2 rounded-xl border border-gray-100"><h4 class="font-black mb-2 text-center text-[10px] uppercase tracking-widest text-emerald-500">Produtos</h4><div id="modal-product-list" class="space-y-1.5 max-h-60 overflow-y-auto custom-scrollbar"></div></div>
-                <div class="bg-gray-50 p-2 rounded-xl border border-gray-100"><h4 class="font-black mb-2 text-center text-[10px] uppercase tracking-widest text-purple-500">Pacotes</h4><div id="modal-package-list" class="space-y-1.5 max-h-60 overflow-y-auto custom-scrollbar"></div></div>
-            </div>`;
-
-        const filterAndRender = (term = '') => {
-            const lowerTerm = term.toLowerCase();
-            const icons = {
-                service: '<i class="bi bi-scissors text-indigo-500"></i>',
-                product: '<i class="bi bi-box-seam text-emerald-500"></i>',
-                package: '<i class="bi bi-boxes text-purple-500"></i>'
-            };
-            const lists = {
-                'modal-service-list': { items: localState.catalog.services, type: 'service' },
-                'modal-product-list': { items: localState.catalog.products, type: 'product' },
-                'modal-package-list': { items: localState.catalog.packages, type: 'package' }
-            };
-            Object.entries(lists).forEach(([id, { items, type }]) => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                const filtered = items.filter(i => i.name.toLowerCase().includes(lowerTerm)).slice(0, 50);
-                el.innerHTML = filtered.map(item => {
-                    if (!item.id) return '';
-                    
-                    return `
-                    <button data-action="select-item-for-quantity" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-2 w-full p-2 bg-white border border-gray-200 rounded hover:border-indigo-300 shadow-sm transition-all text-left group">
-                        <div class="flex-shrink-0 w-6 h-6 rounded bg-gray-50 flex items-center justify-center text-xs group-hover:bg-indigo-50">${icons[type]}</div>
-                        <span class="flex-grow text-[10px] font-bold text-gray-700 truncate group-hover:text-indigo-700">${escapeHTML(item.name)}</span>
-                        <span class="font-black text-[10px] text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap">R$ ${item.price.toFixed(2)}</span>
-                    </button>
-                `}).join('') || `<p class="text-[9px] font-bold uppercase tracking-widest text-gray-400 text-center py-4 border border-dashed border-gray-300 rounded-lg">Vazio</p>`;
-            });
-        };
-
-        filterAndRender(); 
-        const searchInput = document.getElementById('item-search-input');
-        searchInput.addEventListener('input', debounce((e) => { filterAndRender(e.target.value); }, 300));
-        setTimeout(() => searchInput.focus(), 100);
-    };
-
-    const renderQuantityView = (item) => {
-        let quantity = 1;
-        const contentContainer = modalElement.querySelector('#add-item-content');
-        const updateDisplay = () => {
-            document.getElementById('quantity-display').textContent = quantity;
-            document.getElementById('quantity-minus-btn').disabled = quantity <= 1;
-        };
-        contentContainer.innerHTML = `
-            <div class="text-center p-4 relative">
-                <button data-action="back-to-catalog" class="absolute top-2 left-0 text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:text-gray-800 bg-gray-100 px-2 py-1 rounded border border-gray-200 transition-colors flex items-center gap-1">
-                    <i class="bi bi-arrow-left"></i> Voltar
-                </button>
-                <div class="mt-8 mb-4">
-                    <h3 class="font-black text-lg text-gray-800 leading-tight">${escapeHTML(item.name)}</h3>
-                    <p class="text-xs text-gray-500 font-bold mt-1 bg-gray-100 inline-block px-2 py-0.5 rounded-full border border-gray-200">R$ ${item.price.toFixed(2)} / un</p>
-                </div>
-                <div class="my-6 flex items-center justify-center gap-4">
-                    <button id="quantity-minus-btn" class="w-10 h-10 rounded-lg bg-white border border-gray-300 text-lg font-black text-gray-600 hover:bg-gray-100 shadow-sm transition disabled:opacity-30"><i class="bi bi-dash"></i></button>
-                    <span id="quantity-display" class="text-3xl font-black w-16 text-center text-indigo-600 bg-indigo-50 rounded-lg py-1 border border-indigo-100 shadow-inner">${quantity}</span>
-                    <button id="quantity-plus-btn" class="w-10 h-10 rounded-lg bg-white border border-gray-300 text-lg font-black text-gray-600 hover:bg-gray-100 shadow-sm transition"><i class="bi bi-plus"></i></button>
-                </div>
-                <button data-action="confirm-add-item" class="w-full py-3 bg-indigo-600 text-white font-bold text-xs rounded-xl hover:bg-indigo-700 transition shadow-sm uppercase tracking-widest">Adicionar Item</button>
-            </div>
-        `;
-        document.getElementById('quantity-minus-btn').onclick = () => { if (quantity > 1) { quantity--; updateDisplay(); } };
-        document.getElementById('quantity-plus-btn').onclick = () => { quantity++; updateDisplay(); };
-        
-        document.querySelector('[data-action="confirm-add-item"]').onclick = async () => { 
-            await handleAddItemToComanda(item, quantity);
-            close(); 
-        };
-    };
-
-    modalElement.addEventListener('click', (e) => {
-        const selectBtn = e.target.closest('[data-action="select-item-for-quantity"]');
-        const backBtn = e.target.closest('[data-action="back-to-catalog"]');
-        if (selectBtn) {
-            const { itemType, itemId } = selectBtn.dataset;
-            const catalog = localState.catalog[itemType + 's'] || [];
-            const item = catalog.find(i => i.id === itemId);
-            if (item) renderQuantityView({...item, type: itemType});
-        } else if (backBtn) renderCatalogView();
-    });
-    renderCatalogView();
-}
-
 async function openNewSaleModal(preSelectedClient = null) {
     if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
     if (!state.professionals || state.professionals.length === 0) {
@@ -1115,23 +1231,23 @@ async function openNewSaleModal(preSelectedClient = null) {
     const contentHTML = `
         <form id="new-sale-form" class="space-y-4">
             <div class="relative">
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Cliente</label>
-                <i class="bi bi-search absolute left-3 top-[28px] text-gray-400 text-xs"></i>
-                <input type="text" id="client-search" class="w-full pl-8 p-2 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none text-xs font-semibold text-gray-800 transition-colors" placeholder="Digite nome ou telefone..." autocomplete="off">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Buscar Cliente</label>
+                <i class="bi bi-search absolute left-4 top-[32px] text-gray-400 text-sm"></i>
+                <input type="text" id="client-search" class="w-full pl-10 p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-800 transition-colors shadow-inner" placeholder="Digite nome ou telefone..." autocomplete="off">
                 <input type="hidden" id="selected-client-id" required>
-                <ul id="client-suggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1 custom-scrollbar"></ul>
-                <button type="button" data-action="new-client-from-sale" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest mt-1.5 flex items-center gap-1 transition-colors"><i class="bi bi-person-plus-fill"></i> Cadastrar Novo Cliente</button>
+                <ul id="client-suggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto mt-2 custom-scrollbar"></ul>
+                <button type="button" data-action="new-client-from-sale" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest mt-3 flex items-center justify-center w-full gap-1.5 transition-colors bg-indigo-50 py-2 rounded-lg"><i class="bi bi-person-plus-fill text-lg"></i> Cadastrar Novo Cliente Rápido</button>
             </div>
-            <div>
-                <label for="new-sale-professional" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Profissional Atendente</label>
-                <select id="new-sale-professional" required class="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 focus:bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors">
-                    <option value="">-- Selecione --</option>
+            <div class="pt-2 border-t border-gray-100">
+                <label for="new-sale-professional" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Profissional Atendente</label>
+                <select id="new-sale-professional" required class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-inner">
+                    <option value="">-- Selecione o profissional --</option>
                     ${professionalsOptions}
                 </select>
             </div>
-            <div class="pt-2">
-                <button type="submit" id="btn-start-sale" class="w-full bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest py-2.5 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 transition shadow-sm flex items-center justify-center gap-1.5">
-                    <i class="bi bi-cart-plus"></i> Iniciar Venda
+            <div class="pt-4">
+                <button type="submit" id="btn-start-sale" class="w-full bg-indigo-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 transition shadow-md flex items-center justify-center gap-2">
+                    <i class="bi bi-cart-plus text-lg"></i> Iniciar Venda
                 </button>
             </div>
         </form>
@@ -1152,12 +1268,12 @@ async function openNewSaleModal(preSelectedClient = null) {
         hiddenIdInput.value = ''; searchInput.classList.remove('bg-green-50', 'border-green-300', 'text-green-800');
         if (term.length < 2) { suggestionsList.classList.add('hidden'); return; }
         try {
-            suggestionsList.innerHTML = '<li class="p-2 text-xs text-gray-500 text-center"><div class="loader-small mx-auto"></div></li>';
+            suggestionsList.innerHTML = '<li class="p-3 text-sm text-gray-500 text-center"><div class="loader-small mx-auto"></div></li>';
             suggestionsList.classList.remove('hidden');
             const results = await clientsApi.getClients(state.establishmentId, term, 10);
-            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-3 text-xs font-bold text-gray-400 text-center uppercase tracking-widest">Nenhum cliente</li>';
+            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-4 text-xs font-bold text-gray-400 text-center uppercase tracking-widest">Nenhum cliente encontrado</li>';
             else {
-                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-2 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors"><div class="font-bold text-xs text-gray-800">${escapeHTML(c.name)}</div><div class="text-[10px] font-medium text-gray-500"><i class="bi bi-telephone opacity-50 mr-1"></i>${c.phone || 'Sem telefone'}</div></li>`).join('');
+                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-3 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors flex flex-col justify-center"><div class="font-bold text-sm text-gray-800">${escapeHTML(c.name)}</div><div class="text-xs font-medium text-gray-500 mt-0.5"><i class="bi bi-telephone opacity-50 mr-1"></i>${c.phone || 'Sem telefone'}</div></li>`).join('');
             }
         } catch (err) { suggestionsList.classList.add('hidden'); }
     }, 400));
@@ -1181,23 +1297,23 @@ async function openNewSaleModal(preSelectedClient = null) {
 
 function _comandas_renderClientRegistrationModal() {
     const modalContent = `
-        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full bg-gray-50 p-4 rounded-xl border border-gray-200">
-            <div class="grid grid-cols-1 gap-3 mb-4">
+        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <div class="grid grid-cols-1 gap-4 mb-5">
                 <div>
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Nome Completo *</label>
-                    <input type="text" id="regClientName" required class="w-full p-2 rounded-lg border border-gray-300 text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner bg-white">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Nome Completo *</label>
+                    <input type="text" id="regClientName" required class="w-full p-3 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">WhatsApp (ID) *</label>
-                    <input type="tel" id="regClientPhone" required class="w-full p-2 rounded-lg border border-gray-300 text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner bg-white" placeholder="Apenas números">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">WhatsApp (Apenas números) *</label>
+                    <input type="tel" id="regClientPhone" required class="w-full p-3 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white" placeholder="Ex: 912345678">
                 </div>
             </div>
-            <button type="submit" class="w-full py-2.5 bg-green-600 text-white font-bold text-xs uppercase tracking-widest rounded-lg hover:bg-green-700 transition shadow-sm flex items-center justify-center gap-1.5">
-                <i class="bi bi-save2"></i> Salvar Cliente
+            <button type="submit" class="w-full py-3.5 bg-green-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2">
+                <i class="bi bi-save2 text-lg"></i> Salvar e Selecionar
             </button>
         </form>
     `;
-    showGenericModal({ title: 'Cadastrar Novo Cliente', contentHTML: modalContent, maxWidth: 'max-w-sm' });
+    showGenericModal({ title: 'Cadastrar Cliente Rápido', contentHTML: modalContent, maxWidth: 'max-w-sm' });
     const form = document.getElementById('comandas_clientRegistrationForm');
     if (form) form.addEventListener('submit', _comandas_handleClientRegistration);
 }
@@ -1229,15 +1345,15 @@ async function _comandas_handleClientRegistration(e) {
 
 async function openCashierModal() {
     const contentHTML = `
-        <form id="open-cashier-form" class="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+        <form id="open-cashier-form" class="space-y-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
             <div>
-                <label for="initial-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 text-center">Fundo de Caixa (Troco Inicial)</label>
+                <label for="initial-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 text-center">Fundo de Caixa Inicial (Troco)</label>
                 <div class="relative max-w-xs mx-auto">
-                    <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-sm">R$</span>
-                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-2 pl-9 border border-gray-300 rounded-lg text-lg font-black text-gray-900 bg-white focus:ring-2 focus:ring-green-500 outline-none shadow-inner text-center" placeholder="0.00" value="0.00">
+                    <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-xl">R$</span>
+                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-3 pl-12 border border-gray-300 rounded-xl text-2xl font-black text-gray-900 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 outline-none shadow-inner text-center transition-colors" placeholder="0.00" value="0.00">
                 </div>
             </div>
-            <button type="submit" class="w-full bg-green-600 text-white font-bold text-xs uppercase tracking-widest py-2.5 rounded-lg hover:bg-green-700 transition shadow-sm mt-4 flex items-center justify-center gap-1.5"><i class="bi bi-unlock-fill"></i> Confirmar Abertura</button>
+            <button type="submit" class="w-full bg-green-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-green-700 transition shadow-md mt-4 flex items-center justify-center gap-2"><i class="bi bi-unlock-fill text-lg"></i> Confirmar Abertura</button>
         </form>
     `;
     const { modalElement } = showGenericModal({ title: "Abrir Caixa", contentHTML, maxWidth: 'max-w-xs' });
@@ -1258,24 +1374,24 @@ async function handleOpenCloseCashierModal() {
     try {
         const report = await cashierApi.getCloseCashierReport(sessionId);
         const contentHTML = `
-            <form id="close-cashier-form" class="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                <div class="grid grid-cols-2 gap-2 text-center mb-1">
-                    <div class="bg-blue-50 p-2 rounded-lg border border-blue-100 shadow-sm"><p class="text-[9px] text-blue-500 uppercase font-bold tracking-widest mb-0.5">Abertura</p><p class="text-sm font-black text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
-                    <div class="bg-green-50 p-2 rounded-lg border border-green-100 shadow-sm"><p class="text-[9px] text-green-500 uppercase font-bold tracking-widest mb-0.5">Vendas Dinheiro</p><p class="text-sm font-black text-green-700">R$ ${report.cashSales.toFixed(2)}</p></div>
+            <form id="close-cashier-form" class="space-y-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                <div class="grid grid-cols-2 gap-3 text-center mb-2">
+                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 shadow-inner"><p class="text-[10px] text-blue-500 uppercase font-black tracking-widest mb-1">Abertura</p><p class="text-base font-black text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
+                    <div class="bg-green-50 p-3 rounded-xl border border-green-100 shadow-inner"><p class="text-[10px] text-green-500 uppercase font-black tracking-widest mb-1">Vendas Dinheiro</p><p class="text-base font-black text-green-700">R$ ${report.cashSales.toFixed(2)}</p></div>
                 </div>
-                <div class="bg-gray-900 text-white p-3 rounded-xl text-center shadow-md mb-4 border border-gray-700">
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Esperado em Gaveta</p>
-                    <p class="text-3xl font-black tracking-tight text-white drop-shadow">R$ ${report.expectedAmount.toFixed(2)}</p>
+                <div class="bg-gray-900 text-white p-4 rounded-2xl text-center shadow-lg mb-5 border border-gray-700">
+                    <p class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Esperado em Gaveta</p>
+                    <p class="text-4xl font-black tracking-tight text-white drop-shadow">R$ ${report.expectedAmount.toFixed(2)}</p>
                 </div>
                 
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                    <label for="final-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 text-center">Contagem Final (Gaveta)</label>
+                <div class="bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-inner">
+                    <label for="final-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 text-center">Informar Contagem Final Real (Gaveta)</label>
                     <div class="relative max-w-xs mx-auto">
-                        <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-sm">R$</span>
-                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-2 pl-9 border border-gray-300 rounded-lg text-lg font-black text-gray-900 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-red-500 outline-none shadow-inner text-center transition-colors" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
+                        <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-xl">R$</span>
+                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-3 pl-12 border border-gray-300 rounded-xl text-2xl font-black text-gray-900 bg-white focus:ring-2 focus:ring-red-500 outline-none shadow-sm text-center transition-colors" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
                     </div>
                 </div>
-                <button type="submit" class="w-full bg-red-600 text-white font-bold text-xs uppercase tracking-widest py-2.5 rounded-lg hover:bg-red-700 transition shadow-sm mt-2 flex items-center justify-center gap-1.5"><i class="bi bi-lock-fill"></i> Confirmar Fecho</button>
+                <button type="submit" class="w-full bg-red-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-red-700 transition shadow-md mt-2 flex items-center justify-center gap-2"><i class="bi bi-lock-fill text-lg"></i> Confirmar Fecho</button>
             </form>
         `;
         const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-sm' });
@@ -1308,7 +1424,7 @@ async function handleFilterClick(filter) {
 }
 
 function handleComandaClick(comandaId) {
-    localState.selectedComandaId = comandaId;
+    localState.selectedComandaId = String(comandaId);
     localState.viewMode = 'items';
     localState.pendingRedemption = null;
     localState.checkoutState.discount = { type: 'real', value: 0 };
@@ -1320,7 +1436,7 @@ function handleComandaClick(comandaId) {
 }
 
 async function handleAddItemToComanda(itemData, quantity) {
-    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+    const comanda = localState.allComandas.find(c => String(c.id) === String(localState.selectedComandaId));
     if (!comanda) return;
 
     if (!itemData.id || String(itemData.id) === 'undefined') {
@@ -1360,11 +1476,11 @@ async function handleAddItemToComanda(itemData, quantity) {
 }
 
 async function handleRemoveItemFromComanda(itemId, itemType) {
-    const comanda = localState.allComandas.find(c => c.id === localState.selectedComandaId);
+    const comanda = localState.allComandas.find(c => String(c.id) === String(localState.selectedComandaId));
     if (!comanda) return;
 
     let modified = false;
-    let extraIndex = (comanda.comandaItems || []).findIndex(item => item.id == itemId && item.type === itemType);
+    let extraIndex = (comanda.comandaItems || []).findIndex(item => String(item.id) === String(itemId) && item.type === itemType);
     
     if (extraIndex > -1) {
         comanda.comandaItems.splice(extraIndex, 1);
@@ -1436,8 +1552,8 @@ async function handleFinalizeCheckout(comanda) {
     };
 
     const loadingOverlay = document.createElement('div');
-    loadingOverlay.className = 'fixed inset-0 bg-gray-900/50 z-[9999] flex items-center justify-center backdrop-blur-sm';
-    loadingOverlay.innerHTML = '<div class="bg-white p-5 rounded-2xl shadow-xl flex flex-col items-center"><div class="loader mb-3"></div><p class="text-sm font-bold text-gray-800">Finalizando venda...</p></div>';
+    loadingOverlay.className = 'fixed inset-0 bg-gray-900/60 z-[999999] flex items-center justify-center backdrop-blur-sm';
+    loadingOverlay.innerHTML = '<div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center"><div class="loader mb-4"></div><p class="text-sm font-black text-gray-800 uppercase tracking-widest mt-2">Finalizando...</p></div>';
     document.body.appendChild(loadingOverlay);
 
     try {
@@ -1453,7 +1569,6 @@ async function handleFinalizeCheckout(comanda) {
         try {
             const clientEntity = comanda.clientName ? `${comanda.clientName} ${comanda.clientPhone ? '- ' + comanda.clientPhone : ''}`.trim() : 'Cliente Avulso';
             
-            // Busca o config que deixámos no LocalState para pegar a Natureza
             const config = localState.establishmentConfig || {};
             const defNature = config.defaultReceitaNaturezaId || config.financeConfig?.receitaNaturezaId || null;
             const defCostCenter = config.defaultReceitaCentroCustoId || config.financeConfig?.receitaCentroCustoId || null;
@@ -1523,7 +1638,7 @@ async function handleCreateNewSale(e) {
     };
 
     localState.allComandas.unshift(newComanda);
-    localState.selectedComandaId = newComanda.id;
+    localState.selectedComandaId = String(newComanda.id);
     localState.viewMode = 'items';
     document.getElementById('genericModal').style.display = 'none';
     
@@ -1540,11 +1655,21 @@ async function fetchAndDisplayData() {
         listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     }
     
-    const filterDate = localState.showHistoryDate ? document.getElementById('filter-date').value : null;
+    let sDate = localState.filterStartDate;
+    let eDate = localState.filterEndDate;
+    
+    // Objeto formatado de maneira a suportar tanto as APIs antigas como as atualizadas
+    let dateParams;
+    if (sDate && eDate && sDate !== eDate) {
+         dateParams = { startDate: sDate, endDate: eDate };
+    } else {
+         // Se for o mesmo dia, mandamos o objeto para as APis novas e uma string para compatibilidade
+         dateParams = { startDate: sDate, endDate: eDate, date: sDate };
+    }
 
     try {
         const sessionPromise = cashierApi.getActiveSession();
-        const comandasPromise = comandasApi.getComandas(state.establishmentId, filterDate, localState.paging.page, localState.paging.limit);
+        const comandasPromise = comandasApi.getComandas(state.establishmentId, dateParams, localState.paging.page, localState.paging.limit);
         const loyaltyPromise = establishmentsApi.getEstablishmentDetails(state.establishmentId);
 
         const [activeSession, response, establishmentData] = await Promise.all([
@@ -1553,7 +1678,6 @@ async function fetchAndDisplayData() {
             loyaltyPromise
         ]);
 
-        // Grava as configurações gerais do estabelecimento para integrar Natureza e Centro de Custo no Financeiro
         localState.establishmentConfig = establishmentData || {}; 
 
         localState.isCashierOpen = !!activeSession;
@@ -1588,8 +1712,15 @@ async function fetchAndDisplayData() {
 
 export async function loadComandasPage(params = {}) {
     contentDiv = document.getElementById('content');
-    localState.selectedComandaId = params.selectedAppointmentId || null;
+    localState.selectedComandaId = params.selectedAppointmentId ? String(params.selectedAppointmentId) : null;
     localState.viewMode = 'items';
+    localState.selectedCatalogItem = null;
+    
+    const initDates = getDatesForPreset('hoje');
+    localState.filterStartDate = initDates.start;
+    localState.filterEndDate = initDates.end;
+    localState.filterPreset = 'hoje';
+    localState.showHistoryPanel = false;
     
     renderPageLayout();
 
@@ -1600,52 +1731,116 @@ export async function loadComandasPage(params = {}) {
 
     pageEventListener = async (e) => {
         const target = e.target.closest('[data-action], [data-filter], [data-comanda-id]');
-        const dateInput = e.target.id === 'filter-date';
-
-        if (dateInput) {
-             localState.paging.page = 1;
-             await fetchAndDisplayData();
-             return;
-        }
 
         if (!target) return;
         
         if (target.matches('[data-filter]')) {
+            e.preventDefault();
             handleFilterClick(target.dataset.filter);
         } else if (target.matches('[data-comanda-id]')) {
+            e.preventDefault();
             if (e.target.closest('[data-action="go-to-appointment"]')) { e.stopPropagation(); return; }
             handleComandaClick(target.dataset.comandaId);
         } else if (target.matches('[data-action]')) {
+            e.preventDefault();
             const action = target.dataset.action;
-            const comandaId = target.dataset.id || localState.selectedComandaId;
-            const comanda = localState.allComandas.find(c => c.id === comandaId);
+            const comandaId = String(target.dataset.id || localState.selectedComandaId);
+            const comanda = localState.allComandas.find(c => String(c.id) === comandaId);
 
             switch (action) {
                 case 'toggle-history':
-                    localState.showHistoryDate = !localState.showHistoryDate;
-                    if(localState.showHistoryDate && localState.activeFilter === 'abertas') {
+                    localState.showHistoryPanel = !localState.showHistoryPanel;
+                    if(localState.showHistoryPanel && localState.activeFilter === 'abertas') {
                         localState.activeFilter = 'todas';
                     }
-                    updateFilterStyles();
-                    if(!localState.showHistoryDate) {
+                    renderPageLayout();
+                    
+                    if(!localState.showHistoryPanel) {
+                        localState.filterPreset = 'hoje';
+                        const dates = getDatesForPreset('hoje');
+                        localState.filterStartDate = dates.start;
+                        localState.filterEndDate = dates.end;
                         await fetchAndDisplayData();
                     }
                     break;
+
+                case 'set-period':
+                    const period = target.dataset.period;
+                    localState.filterPreset = period;
                     
-                case 'back-to-list': hideMobileDetail(); localState.selectedComandaId = null; document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('selected', 'ring-2', 'ring-indigo-500', 'bg-indigo-50/50')); document.querySelectorAll('.comanda-card').forEach(el => el.classList.add('bg-white')); renderComandaDetail(); break;
+                    if (period !== 'custom') {
+                        const dates = getDatesForPreset(period);
+                        localState.filterStartDate = dates.start;
+                        localState.filterEndDate = dates.end;
+                        renderPageLayout(); 
+                        localState.paging.page = 1;
+                        
+                        showNotification('Buscando...', `Período: ${dates.start.split('-').reverse().join('/')} a ${dates.end.split('-').reverse().join('/')}`, 'info');
+                        await fetchAndDisplayData();
+                    } else {
+                        renderPageLayout(); 
+                    }
+                    break;
+
+                case 'apply-custom-dates':
+                    const sDate = document.getElementById('filter-start-date').value;
+                    const eDate = document.getElementById('filter-end-date').value;
+                    if (sDate && eDate) {
+                        localState.filterStartDate = sDate;
+                        localState.filterEndDate = eDate;
+                        localState.paging.page = 1;
+                        showNotification('Buscando...', `Período personalizado aplicado.`, 'info');
+                        await fetchAndDisplayData();
+                    } else {
+                        showNotification('Atenção', 'Preencha a data inicial e final.', 'warning');
+                    }
+                    break;
+                    
+                case 'back-to-list': 
+                    hideMobileDetail(); 
+                    localState.selectedComandaId = null; 
+                    localState.selectedCatalogItem = null;
+                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50/50')); 
+                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.add('bg-white')); 
+                    renderComandaDetail(); 
+                    break;
+                    
                 case 'new-sale': openNewSaleModal(); break;
-                case 'add-item': openAddItemModal(); break;
+                
+                case 'add-item': 
+                    if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa primeiro.', 'error');
+                    localState.viewMode = 'add-item';
+                    renderComandaDetail();
+                    break;
+                    
+                case 'back-to-items':
+                    localState.viewMode = 'items';
+                    renderComandaDetail();
+                    break;
+                    
+                case 'back-to-add-item':
+                    localState.viewMode = 'add-item';
+                    localState.selectedCatalogItem = null;
+                    renderComandaDetail();
+                    break;
+                    
+                case 'select-catalog-item':
+                    const { itemType, itemId } = target.dataset;
+                    const catalog = localState.catalog[itemType + 's'] || [];
+                    const itemToSelect = catalog.find(i => String(i.id) === String(itemId));
+                    if (itemToSelect) {
+                        localState.selectedCatalogItem = { ...itemToSelect, type: itemType };
+                        localState.viewMode = 'add-item-qty';
+                        renderComandaDetail();
+                    }
+                    break;
+
                 case 'open-cashier': openCashierModal(); break;
                 case 'close-cashier': await handleOpenCloseCashierModal(); break;
                 case 'view-sales-report': navigateTo('sales-report-section'); break;
                 
                 case 'go-to-checkout':
                     await executeSaveAction(comanda, 'checkout');
-                    break;
-                    
-                case 'back-to-items':
-                    localState.viewMode = 'items';
-                    renderComandaDetail();
                     break;
 
                 case 'save-comanda':
@@ -1698,25 +1893,25 @@ export async function loadComandasPage(params = {}) {
                     break;
 
                 case 'increase-qty': {
-                    const itemId = target.dataset.itemId;
-                    const itemType = target.dataset.itemType;
+                    const iId = target.dataset.itemId;
+                    const iType = target.dataset.itemType;
                     
-                    if (!itemId || itemId === 'undefined' || itemId === 'null') {
+                    if (!iId || iId === 'undefined' || iId === 'null') {
                         showNotification('Erro', 'Item inválido.', 'error');
                         return;
                     }
                     
                     const existingItems = getSafeAllItems(comanda);
-                    let itemToClone = existingItems.find(i => i.id == itemId && i.type === itemType);
+                    let itemToClone = existingItems.find(i => String(i.id) === String(iId) && i.type === iType);
 
                     if (!itemToClone) {
-                        const catalog = localState.catalog[itemType + 's'] || [];
-                        itemToClone = catalog.find(i => i.id == itemId);
+                        const cat = localState.catalog[iType + 's'] || [];
+                        itemToClone = cat.find(i => String(i.id) === String(iId));
                     }
 
                     const safeItem = itemToClone 
                         ? { id: itemToClone.id, name: itemToClone.name, price: Number(itemToClone.price), type: itemToClone.type } 
-                        : { id: itemId, name: 'Item', price: 0, type: itemType };
+                        : { id: iId, name: 'Item', price: 0, type: iType };
 
                     await handleAddItemToComanda(safeItem, 1);
                     break;
@@ -1729,7 +1924,7 @@ export async function loadComandasPage(params = {}) {
                     if (confirmed) {
                         try {
                             await appointmentsApi.reopenAppointment(comandaId);
-                            const idx = localState.allComandas.findIndex(c => c.id === comandaId);
+                            const idx = localState.allComandas.findIndex(c => String(c.id) === comandaId);
                             if (idx !== -1) { localState.allComandas[idx].status = 'confirmed'; delete localState.allComandas[idx].transaction; }
                             localState.selectedComandaId = null; hideMobileDetail(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Comanda reaberta.', 'success');
                         } catch (error) { showNotification('Erro', error.message, 'error'); }
@@ -1744,7 +1939,7 @@ export async function loadComandasPage(params = {}) {
                     const confirmed = await showConfirmation('Excluir Venda', 'Confirma a exclusão desta venda avulsa?');
                     if (confirmed) {
                         if (comandaId.startsWith('temp-')) {
-                            localState.allComandas = localState.allComandas.filter(c => c.id !== comandaId);
+                            localState.allComandas = localState.allComandas.filter(c => String(c.id) !== comandaId);
                             localState.selectedComandaId = null; renderComandaList(); renderComandaDetail(); hideMobileDetail();
                         } else {
                             try {
@@ -1768,10 +1963,15 @@ export async function loadComandasPage(params = {}) {
         else localState.activeFilter = 'abertas';
     }
     
-    if (params.selectedAppointmentId) localState.selectedComandaId = params.selectedAppointmentId;
+    if (params.selectedAppointmentId) localState.selectedComandaId = String(params.selectedAppointmentId);
+    
+    // Suporte para datas vindas de navegação externa
     if (params.filterDate) {
-        document.getElementById('filter-date').value = new Date(params.filterDate).toISOString().split('T')[0];
-        localState.showHistoryDate = true;
+        const extDate = new Date(params.filterDate).toISOString().split('T')[0];
+        localState.filterStartDate = extDate;
+        localState.filterEndDate = extDate;
+        localState.filterPreset = 'custom';
+        localState.showHistoryPanel = true;
     }
 
     await fetchAndDisplayData();
