@@ -3,9 +3,9 @@
 import * as commissionsApi from '../api/commissions.js';
 import * as professionalsApi from '../api/professionals.js';
 import * as financialApi from '../api/financial.js'; 
-import * as establishmentsApi from '../api/establishments.js'; // API para buscar as configurações
+import * as establishmentsApi from '../api/establishments.js';
 import { state } from '../state.js';
-import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
+import { showNotification, showConfirmation } from '../components/modal.js';
 
 // ============================================================================
 // 📊 ESTADO LOCAL
@@ -19,34 +19,33 @@ let localState = {
     calculationResult: null, 
     periodString: '',
     
-    // Suporte a Multi-Unidades
     establishments: [],
     filterEstablishmentIds: new Set(),
-    establishmentConfig: null, // Guarda as configurações de integração financeira do estabelecimento
+    establishmentConfig: null, 
     
-    // Seleção em Lote
     selectedIds: new Set(),
 
-    // Filtros da Lista Principal
     startDate: firstDay.toISOString().split('T')[0],
     endDate: today.toISOString().split('T')[0],
     professionalId: 'all',
     searchQuery: '',
 
-    // KPIs
     stats: { 
         revenue: 0, 
         commissions: 0,
         margin: 0,
         netPaid: 0
-    }
+    },
+    
+    viewMode: 'list' // 'list', 'new-calc', 'preview-calc', 'report-details'
 };
 
 let pageEventListener = null;
 const contentDiv = document.getElementById('content');
+let searchDebounceTimeout = null;
 
 // ============================================================================
-// 🛠️ FUNÇÕES AUXILIARES
+// 🛠️ FUNÇÕES AUXILIARES E TROCA DE ECRÃS
 // ============================================================================
 
 function formatCurrency(value) {
@@ -64,6 +63,35 @@ function getInitials(name) {
     const parts = name.trim().split(' ');
     if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     return name.substring(0, 2).toUpperCase();
+}
+
+// Oculta a lista e mostra o ecrã de detalhes ocupando tudo (Screen Swap)
+function openDetailScreen() {
+    const main = document.getElementById('commissions-layout-main');
+    const detail = document.getElementById('commissions-layout-detail');
+    const nav = document.getElementById('mobile-bottom-nav');
+    
+    if(main) main.style.display = 'none';
+    if(detail) {
+        detail.classList.remove('hidden');
+        detail.classList.add('flex');
+    }
+    if(nav && window.innerWidth < 768) nav.style.display = 'none';
+}
+
+// Volta para a lista principal
+function closeDetailScreen() {
+    const main = document.getElementById('commissions-layout-main');
+    const detail = document.getElementById('commissions-layout-detail');
+    const nav = document.getElementById('mobile-bottom-nav');
+    
+    if(main) main.style.display = 'flex';
+    if(detail) {
+        detail.classList.add('hidden');
+        detail.classList.remove('flex');
+    }
+    if(nav && window.innerWidth < 768) nav.style.display = '';
+    localState.viewMode = 'list';
 }
 
 // ============================================================================
@@ -98,6 +126,7 @@ export async function loadCommissionsPage() {
         console.error("Erro na inicialização de comissões", e);
     }
 
+    localState.viewMode = 'list';
     renderBaseLayout();
     setupEventListeners(); 
     await fetchAndDisplayData();
@@ -109,14 +138,18 @@ function renderBaseLayout() {
     ).join('');
 
     const estCheckboxes = localState.establishments.map(est => `
-        <label class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-gray-200 text-gray-600'} rounded-lg cursor-pointer hover:bg-gray-50 transition-all shadow-sm est-label select-none">
+        <label class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-gray-200 text-gray-600'} rounded-lg cursor-pointer hover:bg-gray-50 transition-all shadow-sm est-label select-none flex-shrink-0">
             <input type="checkbox" class="est-filter-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
             <span class="text-[10px] font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
         </label>
     `).join('');
 
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
+        <style>
+            #toast-container, .toast-notification, .modal, .modal-backdrop { z-index: 9999999 !important; }
+        </style>
+        
+        <section id="commissions-layout-main" class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative overflow-hidden">
             
             <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-gray-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
                 <div class="flex items-center gap-3">
@@ -126,71 +159,68 @@ function renderBaseLayout() {
                     <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
                 </div>
                 <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm">
-                    <i class="bi bi-trash3"></i> Excluir Recibos
+                    <i class="bi bi-trash3"></i> Excluir
                 </button>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full animate-fade-in">
-                <div></div> <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                    <button id="export-excel-btn" class="py-1.5 px-3 bg-white border border-gray-300 text-emerald-700 font-semibold rounded-lg hover:bg-emerald-50 transition shadow-sm flex items-center gap-2 text-xs" title="Exportar para Excel">
-                        <i class="bi bi-file-earmark-excel-fill text-emerald-600"></i> Excel
-                    </button>
-                    <button data-action="new-calculation" class="py-1.5 px-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-2 text-xs flex-1 md:flex-none justify-center">
-                        <i class="bi bi-calculator"></i> Nova Apuração
-                    </button>
-                </div>
+            <div class="grid grid-cols-2 gap-2 mb-2 animate-fade-in w-full">
+                <button data-action="new-calculation" class="bg-indigo-600 text-white rounded-xl p-2.5 flex items-center justify-center shadow-md active:scale-95 transition-transform border border-indigo-700 gap-2">
+                    <i class="bi bi-calculator text-lg drop-shadow-md"></i>
+                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Nova Apuração</span>
+                </button>
+                <button id="export-excel-btn" class="bg-white text-emerald-700 rounded-xl p-2.5 flex items-center justify-center shadow-sm border border-gray-200 active:scale-95 transition-transform hover:bg-gray-50 gap-2">
+                    <i class="bi bi-file-earmark-excel-fill text-lg"></i>
+                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Exportar Excel</span>
+                </button>
             </div>
 
             ${localState.establishments.length > 1 ? `
-            <div class="mb-3 animate-fade-in">
-                <div class="flex flex-wrap gap-2" id="establishment-filters-container">
-                    ${estCheckboxes}
-                </div>
+            <div class="mb-2 animate-fade-in flex gap-1.5 overflow-x-auto custom-scrollbar pb-1" id="establishment-filters-container">
+                ${estCheckboxes}
             </div>
             ` : ''}
 
-            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 animate-fade-in">
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Faturamento Base</span>
-                    <span id="kpi-revenue" class="text-xl font-black text-gray-800 mt-0.5 z-10">R$ 0,00</span>
+            <div id="kpi-section" class="grid grid-cols-4 gap-1.5 md:gap-3 mb-2 animate-fade-in w-full">
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Faturamento</span>
+                    <span id="kpi-revenue" class="text-xs md:text-sm font-black text-gray-800 mt-0.5 w-full truncate">R$ 0,00</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Comissões (Bruto)</span>
-                    <span id="kpi-commissions" class="text-xl font-bold text-amber-600 mt-0.5 z-10">R$ 0,00</span>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Comissões</span>
+                    <span id="kpi-commissions" class="text-xs md:text-sm font-bold text-amber-600 mt-0.5 w-full truncate">R$ 0,00</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Retenção (Lucro)</span>
-                    <span id="kpi-margin" class="text-xl font-bold text-blue-600 mt-0.5 z-10">0%</span>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Retenção</span>
+                    <span id="kpi-margin" class="text-xs md:text-sm font-bold text-blue-600 mt-0.5 w-full truncate">0%</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Líquido Pago</span>
-                    <span id="kpi-net" class="text-xl font-bold text-emerald-600 mt-0.5 z-10">R$ 0,00</span>
+                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Pago</span>
+                    <span id="kpi-net" class="text-xs md:text-sm font-bold text-emerald-600 mt-0.5 w-full truncate">R$ 0,00</span>
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-2 w-full animate-fade-in bg-white p-2 rounded-xl border border-gray-200 shadow-sm">
-                <div class="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-                    <div class="flex items-center gap-1.5 w-full md:w-auto bg-gray-50 border border-gray-200 rounded-lg px-2 shadow-sm">
-                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mr-1 hidden md:block">De:</span>
-                        <input type="date" id="filter-start" value="${localState.startDate}" class="py-1.5 bg-transparent text-xs font-semibold text-gray-700 outline-none focus:text-indigo-600">
-                        <span class="text-gray-400 text-xs font-bold">até</span>
-                        <input type="date" id="filter-end" value="${localState.endDate}" class="py-1.5 bg-transparent text-xs font-semibold text-gray-700 outline-none focus:text-indigo-600">
-                    </div>
-                    
-                    <select id="filter-prof" class="py-1.5 px-3 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 outline-none focus:border-indigo-400 w-full md:w-48 shadow-sm">
-                        <option value="all">Todos os Profissionais</option>
+            <div class="flex flex-col md:flex-row gap-2 mb-2 bg-white p-2 rounded-xl border border-gray-200 shadow-sm animate-fade-in w-full">
+                <div class="flex items-center gap-1.5 w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 shadow-sm flex-1">
+                    <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">De</span>
+                    <input type="date" id="filter-start" value="${localState.startDate}" class="w-full bg-transparent text-[10px] font-bold text-gray-700 outline-none">
+                    <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Até</span>
+                    <input type="date" id="filter-end" value="${localState.endDate}" class="w-full bg-transparent text-[10px] font-bold text-gray-700 outline-none">
+                </div>
+                
+                <div class="flex gap-2 w-full md:w-auto">
+                    <select id="filter-prof" class="flex-1 py-1.5 px-2 bg-gray-50 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-700 outline-none shadow-sm">
+                        <option value="all">Todos Profissionais</option>
                         ${profOptions}
                     </select>
-
-                    <button data-action="apply-filters" class="w-full md:w-auto py-1.5 px-4 bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold rounded-lg hover:bg-indigo-100 transition shadow-sm text-xs">
+                    <button data-action="apply-filters" class="py-1.5 px-3 bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider rounded-lg hover:bg-indigo-700 shadow-sm active:scale-95 transition-transform">
                         Filtrar
                     </button>
                 </div>
-
-                <div class="relative w-full md:w-64 mt-2 md:mt-0 flex-shrink-0">
-                    <i class="bi bi-search absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
-                    <input type="text" id="search-input" placeholder="Buscar relatório..." class="w-full pl-8 p-1.5 bg-gray-50 border border-gray-200 shadow-sm rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-gray-700 transition-all">
-                </div>
+            </div>
+            
+            <div class="relative w-full mb-2 flex-shrink-0 animate-fade-in">
+                <i class="bi bi-search absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
+                <input type="text" id="search-input" placeholder="Buscar relatórios gerados..." class="w-full pl-8 p-2 bg-white border border-gray-200 shadow-sm rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-gray-700 transition-all">
             </div>
 
             <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
@@ -211,6 +241,9 @@ function renderBaseLayout() {
                 </div>
             </div>
         </section>
+
+        <div id="commissions-layout-detail" class="hidden fixed inset-0 z-[99999] bg-gray-50 flex-col overflow-hidden w-full h-[100dvh]">
+            </div>
     `;
 }
 
@@ -220,7 +253,7 @@ function renderBaseLayout() {
 
 async function fetchAndDisplayData() {
     const container = document.getElementById('list-container');
-    container.innerHTML = '<div class="flex justify-center py-20"><div class="loader"></div></div>';
+    if(container) container.innerHTML = '<div class="flex justify-center py-20"><div class="loader"></div></div>';
 
     const selectedEstsString = Array.from(localState.filterEstablishmentIds).join(',');
 
@@ -255,7 +288,7 @@ async function fetchAndDisplayData() {
 
     } catch (error) {
         console.error(error);
-        container.innerHTML = `
+        if(container) container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-16">
                 <i class="bi bi-exclamation-octagon text-3xl text-red-400 mb-2"></i>
                 <p class="text-gray-600 text-xs font-medium">Erro ao carregar dados.</p>
@@ -264,14 +297,20 @@ async function fetchAndDisplayData() {
 }
 
 function renderKPIs() {
-    document.getElementById('kpi-revenue').textContent = formatCurrency(localState.stats.revenue);
-    document.getElementById('kpi-commissions').textContent = formatCurrency(localState.stats.commissions);
-    document.getElementById('kpi-margin').textContent = `${localState.stats.margin}%`;
-    document.getElementById('kpi-net').textContent = formatCurrency(localState.stats.netPaid);
+    const r = document.getElementById('kpi-revenue');
+    const c = document.getElementById('kpi-commissions');
+    const m = document.getElementById('kpi-margin');
+    const n = document.getElementById('kpi-net');
+    
+    if(r) r.textContent = formatCurrency(localState.stats.revenue);
+    if(c) c.textContent = formatCurrency(localState.stats.commissions);
+    if(m) m.textContent = `${localState.stats.margin}%`;
+    if(n) n.textContent = formatCurrency(localState.stats.netPaid);
 }
 
 function renderList() {
     const container = document.getElementById('list-container');
+    if(!container) return;
     let filteredList = localState.reports;
 
     if (localState.searchQuery) {
@@ -310,7 +349,7 @@ function renderList() {
         else ajustesStr = `<span class="text-gray-300">--</span>`;
 
         return `
-        <div class="border-b border-gray-100 hover:bg-gray-50 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-2.5 md:px-3 md:py-2 mb-2 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none border md:border-b ${isSelected ? 'bg-indigo-50/40' : ''}">
+        <div class="border-b border-gray-100 hover:bg-gray-50 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-3 md:px-3 md:py-2 mb-2 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none border md:border-b ${isSelected ? 'bg-indigo-50/40' : ''}">
             
             <div class="absolute right-2 top-2 md:relative md:right-auto md:top-auto md:col-span-3 md:flex md:items-center md:gap-2 z-10">
                 <input type="checkbox" value="${report.id}" class="item-checkbox w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
@@ -357,15 +396,15 @@ function renderList() {
                 <span class="text-xs font-black text-emerald-600">${formatCurrency(finalVal)}</span>
             </div>
 
-            <div class="md:col-span-1 flex justify-end gap-1 mt-2 md:mt-0 ml-10 md:ml-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                <button data-action="view-report-details" data-id="${report.id}" class="w-6 h-6 rounded flex items-center justify-center text-gray-500 hover:text-indigo-600 bg-white hover:bg-gray-100 transition-colors border border-gray-200 shadow-sm" title="Ver Detalhes">
-                    <i class="bi bi-eye text-[10px]"></i>
+            <div class="md:col-span-1 flex justify-end gap-1.5 mt-3 md:mt-0 ml-10 md:ml-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button data-action="view-report-details" data-id="${report.id}" class="w-8 h-8 md:w-6 md:h-6 rounded-lg md:rounded flex items-center justify-center text-indigo-500 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors shadow-sm" title="Ver Detalhes">
+                    <i class="bi bi-eye text-sm md:text-[10px]"></i>
                 </button>
-                <button data-action="print-receipt" data-id="${report.id}" class="w-6 h-6 rounded flex items-center justify-center text-gray-500 hover:text-indigo-600 bg-white hover:bg-gray-100 transition-colors border border-gray-200 shadow-sm" title="Imprimir Recibo">
-                    <i class="bi bi-printer text-[10px]"></i>
+                <button data-action="print-receipt" data-id="${report.id}" class="w-8 h-8 md:w-6 md:h-6 rounded-lg md:rounded flex items-center justify-center text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition-colors shadow-sm" title="Imprimir Recibo">
+                    <i class="bi bi-printer text-sm md:text-[10px]"></i>
                 </button>
-                <button data-action="delete-report" data-id="${report.id}" class="w-6 h-6 rounded flex items-center justify-center text-gray-500 hover:text-red-600 bg-white hover:bg-red-50 transition-colors border border-gray-200 shadow-sm" title="Excluir e Estornar">
-                    <i class="bi bi-trash3 text-[10px]"></i>
+                <button data-action="delete-report" data-id="${report.id}" class="w-8 h-8 md:w-6 md:h-6 rounded-lg md:rounded flex items-center justify-center text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 transition-colors shadow-sm" title="Excluir e Estornar">
+                    <i class="bi bi-trash3 text-sm md:text-[10px]"></i>
                 </button>
             </div>
         </div>
@@ -394,6 +433,7 @@ function setupEventListeners() {
 
         const actionBtn = target.closest('button[data-action]');
         if (actionBtn) {
+            e.preventDefault();
             const action = actionBtn.dataset.action;
             const id = actionBtn.dataset.id;
 
@@ -405,7 +445,7 @@ function setupEventListeners() {
                     fetchAndDisplayData();
                     break;
                 case 'new-calculation':
-                    openNewCalculationModal();
+                    renderNewCalculationView();
                     break;
                 case 'print-receipt':
                     handlePrintReceipt(id);
@@ -414,10 +454,13 @@ function setupEventListeners() {
                     handleDeleteReport(id);
                     break;
                 case 'view-report-details':
-                    openReportDetailsModal(id);
+                    renderReportDetailsView(id);
+                    break;
+                case 'close-detail-screen':
+                    closeDetailScreen();
                     break;
                 
-                // --- Modal Actions ---
+                // --- In-Screen Actions ---
                 case 'toggle-all-profs':
                     const checkboxes = document.querySelectorAll('.prof-checkbox');
                     const allChecked = Array.from(checkboxes).every(c => c.checked);
@@ -449,10 +492,13 @@ function setupEventListeners() {
 
     document.body.addEventListener('click', pageEventListener);
 
-    document.getElementById('search-input').addEventListener('input', (e) => {
-        localState.searchQuery = e.target.value;
-        renderList();
-    });
+    const searchInput = document.getElementById('search-input');
+    if(searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            localState.searchQuery = e.target.value;
+            renderList();
+        });
+    }
 
     document.body.addEventListener('input', (e) => {
         if (e.target.classList.contains('input-debit') || 
@@ -489,21 +535,24 @@ function setupEventListeners() {
     const batchDeleteBtn = document.getElementById('batch-delete-btn');
     if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', handleBatchDelete);
 
-    document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-            const label = e.target.closest('label');
-            if (e.target.checked) {
-                localState.filterEstablishmentIds.add(e.target.value);
-                label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.remove('border-gray-200', 'text-gray-600');
-            } else {
-                localState.filterEstablishmentIds.delete(e.target.value);
-                label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.add('border-gray-200', 'text-gray-600');
+    const filtersContainer = document.getElementById('establishment-filters-container');
+    if (filtersContainer) {
+        filtersContainer.addEventListener('change', (e) => {
+            if(e.target.classList.contains('est-filter-checkbox')) {
+                const label = e.target.closest('label');
+                if (e.target.checked) {
+                    localState.filterEstablishmentIds.add(e.target.value);
+                    label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                    label.classList.remove('border-gray-200', 'text-gray-600');
+                } else {
+                    localState.filterEstablishmentIds.delete(e.target.value);
+                    label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
+                    label.classList.add('border-gray-200', 'text-gray-600');
+                }
+                fetchAndDisplayData(); 
             }
-            fetchAndDisplayData(); 
         });
-    });
+    }
 
     const exportBtn = document.getElementById('export-excel-btn');
     if (exportBtn) exportBtn.addEventListener('click', handleExportExcel);
@@ -528,86 +577,95 @@ function updateBatchActionBar() {
 }
 
 // ============================================================================
-// 🧮 MODAL DE APURAÇÃO E CÁLCULO
+// 🧮 NOVA TELA: APURAÇÃO E CÁLCULO (SCREEN SWAP)
 // ============================================================================
 
-function openNewCalculationModal() {
+function renderNewCalculationView() {
+    localState.viewMode = 'new-calc';
+    const detailContainer = document.getElementById('commissions-layout-detail');
+    if(!detailContainer) return;
+
     const todayStr = new Date().toISOString().split('T')[0];
     const firstDayStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     
     const profsHtml = localState.professionals.map(p => `
-        <label class="flex items-center p-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-indigo-300 transition-all cursor-pointer group">
-            <input type="checkbox" value="${p.id}" class="prof-checkbox w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-            <div class="ml-2 flex items-center gap-2">
-                <div class="w-6 h-6 rounded border border-gray-100 bg-gray-50 text-gray-500 flex items-center justify-center text-[9px] font-bold group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">${getInitials(p.name)}</div>
-                <span class="font-semibold text-xs text-gray-800">${p.name}</span>
+        <label class="flex items-center p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all cursor-pointer group mb-1.5">
+            <input type="checkbox" value="${p.id}" class="prof-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+            <div class="ml-3 flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 text-gray-500 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors shadow-sm">${getInitials(p.name)}</div>
+                <span class="font-bold text-sm text-gray-800">${p.name}</span>
             </div>
         </label>`).join('');
 
-    const contentHTML = `
-        <div id="calc-flow-container" class="flex flex-col h-[70vh] md:h-auto max-h-[85vh] overflow-hidden">
+    const mobileHeaderHTML = `
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner transition-transform active:scale-95">
+                <i class="bi bi-arrow-left text-lg"></i>
+            </button>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Nova Apuração</h3>
+        </div>
+    `;
+
+    detailContainer.innerHTML = `
+        ${mobileHeaderHTML}
+        <div id="calc-flow-container" class="flex flex-col flex-1 overflow-hidden relative">
             
-            <div id="calc-step-1" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50">
-                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                    <h3 class="text-xs font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="bi bi-calendar-range text-indigo-500"></i> Período</h3>
+            <div id="calc-step-1" class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gray-50/50 pb-28">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="bi bi-calendar-range text-indigo-500"></i> Período</h3>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Início</label>
-                            <input type="date" id="calc-start-date" value="${firstDayStr}" class="w-full mt-1 p-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Início</label>
+                            <input type="date" id="calc-start-date" value="${firstDayStr}" class="w-full mt-1.5 p-3 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner">
                         </div>
                         <div>
-                            <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Fim</label>
-                            <input type="date" id="calc-end-date" value="${todayStr}" class="w-full mt-1 p-2 bg-gray-50 border border-gray-300 rounded-lg text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500">
+                            <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fim</label>
+                            <input type="date" id="calc-end-date" value="${todayStr}" class="w-full mt-1.5 p-3 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner">
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                    <h3 class="text-xs font-bold text-gray-800 mb-2 flex items-center gap-2"><i class="bi bi-tags text-indigo-500"></i> Considerar nas vendas</h3>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="bi bi-tags text-indigo-500"></i> Considerar nas vendas</h3>
                     <div class="grid grid-cols-3 gap-2">
-                        <label class="flex items-center justify-center p-2 border border-gray-200 rounded-lg bg-gray-50 cursor-pointer hover:bg-white transition-colors">
-                            <input type="checkbox" id="calc-type-services" checked class="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-1.5 text-[10px] font-bold text-gray-700 uppercase tracking-wider">Serviços</span>
+                        <label class="flex items-center justify-center p-3 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95">
+                            <input type="checkbox" id="calc-type-services" checked class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                            <span class="ml-2 text-xs font-bold text-gray-700 uppercase tracking-wider">Serviços</span>
                         </label>
-                        <label class="flex items-center justify-center p-2 border border-gray-200 rounded-lg bg-gray-50 cursor-pointer hover:bg-white transition-colors">
-                            <input type="checkbox" id="calc-type-products" checked class="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-1.5 text-[10px] font-bold text-gray-700 uppercase tracking-wider">Produtos</span>
+                        <label class="flex items-center justify-center p-3 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95">
+                            <input type="checkbox" id="calc-type-products" checked class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                            <span class="ml-2 text-xs font-bold text-gray-700 uppercase tracking-wider">Produtos</span>
                         </label>
-                        <label class="flex items-center justify-center p-2 border border-gray-200 rounded-lg bg-gray-50 cursor-pointer hover:bg-white transition-colors">
-                            <input type="checkbox" id="calc-type-packages" class="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-1.5 text-[10px] font-bold text-gray-700 uppercase tracking-wider">Pacotes</span>
+                        <label class="flex items-center justify-center p-3 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95">
+                            <input type="checkbox" id="calc-type-packages" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                            <span class="ml-2 text-xs font-bold text-gray-700 uppercase tracking-wider">Pacotes</span>
                         </label>
                     </div>
                 </div>
 
-                <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="text-xs font-bold text-gray-800 flex items-center gap-2"><i class="bi bi-people text-indigo-500"></i> Equipe</h3>
-                        <button type="button" data-action="toggle-all-profs" class="text-[9px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100 hover:bg-indigo-100 transition-colors">Inverter Sel.</button>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2"><i class="bi bi-people text-indigo-500"></i> Equipe</h3>
+                        <button type="button" data-action="toggle-all-profs" class="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors shadow-sm active:scale-95">Inverter Sel.</button>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-3 max-h-64 overflow-y-auto custom-scrollbar pr-1">
                         ${profsHtml}
                     </div>
                 </div>
             </div>
 
-            <div id="calc-step-2" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 custom-scrollbar bg-gray-50">
-                </div>
+            <div id="calc-step-2" class="hidden flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-gray-50/50 pb-28"></div>
 
-            <footer class="p-3 border-t border-gray-200 bg-white flex justify-end gap-2 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <button type="button" data-action="close-modal" class="py-2 px-4 bg-white border border-gray-300 text-gray-700 font-bold text-xs rounded-lg hover:bg-gray-50 transition-colors shadow-sm">Cancelar</button>
-                <button type="button" data-action="calculate-preview" id="btn-calc-action" class="py-2 px-5 bg-indigo-600 text-white font-bold text-xs rounded-lg hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-2">
-                    <i class="bi bi-calculator"></i> Calcular Vendas
+            <footer class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-white flex justify-end gap-3 z-50 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)]">
+                <button type="button" data-action="close-detail-screen" class="hidden md:block py-3.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-xl hover:bg-gray-50 transition-colors shadow-sm uppercase tracking-wider">Cancelar</button>
+                <button type="button" data-action="calculate-preview" id="btn-calc-action" class="w-full md:w-auto py-3.5 px-8 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
+                    <i class="bi bi-calculator text-lg"></i> Calcular Vendas
                 </button>
             </footer>
         </div>
     `;
 
-    showGenericModal({
-        title: "Nova Apuração",
-        contentHTML: contentHTML,
-        maxWidth: 'max-w-2xl'
-    });
+    openDetailScreen();
 }
 
 async function handleCalculatePreview() {
@@ -641,7 +699,7 @@ async function handleCalculatePreview() {
 
     const btn = document.getElementById('btn-calc-action');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<div class="loader-small border-white mr-1"></div> Processando...';
+    btn.innerHTML = '<div class="loader-small border-white mr-2"></div> Processando...';
     btn.disabled = true;
 
     try {
@@ -664,12 +722,13 @@ async function handleCalculatePreview() {
 }
 
 function renderCalculationPreview() {
+    localState.viewMode = 'preview-calc';
     const results = localState.calculationResult;
     
     if (!results || results.length === 0 || results.every(r => r.summary.totalCommission === 0)) {
         showNotification('Aviso', 'Nenhuma comissão encontrada para os filtros selecionados.', 'info');
         const btn = document.getElementById('btn-calc-action');
-        btn.innerHTML = '<i class="bi bi-calculator"></i> Calcular Vendas';
+        btn.innerHTML = '<i class="bi bi-calculator text-lg"></i> Calcular Vendas';
         btn.disabled = false;
         return;
     }
@@ -683,8 +742,8 @@ function renderCalculationPreview() {
 
     if (btn) {
         btn.dataset.action = "save-final-reports";
-        btn.className = "py-2 px-5 bg-emerald-600 text-white font-bold text-xs rounded-lg hover:bg-emerald-700 shadow-sm transition-all flex items-center gap-2";
-        btn.innerHTML = '<i class="bi bi-check2-circle text-sm"></i> Confirmar Pagtos.';
+        btn.className = "w-full md:w-auto py-3.5 px-8 bg-emerald-600 text-white font-black text-sm rounded-xl hover:bg-emerald-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider";
+        btn.innerHTML = '<i class="bi bi-check2-circle text-lg"></i> Confirmar Pagtos.';
         btn.disabled = false;
     }
 
@@ -694,79 +753,79 @@ function renderCalculationPreview() {
         if (r.summary.totalCommission === 0) return ''; 
         
         const itemsHtml = (r.items || []).map(item => `
-            <tr class="border-b border-gray-100 last:border-0">
-                <td class="py-1.5 truncate max-w-[120px] text-gray-700 font-medium" title="${item.item}">${item.item}</td>
-                <td class="py-1.5 text-gray-500">${item.client || '--'}</td>
-                <td class="py-1.5 text-right text-gray-600">R$ ${(item.value || 0).toFixed(2)}</td>
-                <td class="py-1.5 text-center text-gray-600">${item.commissionRate}%</td>
-                <td class="py-1.5 text-right font-bold text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
+            <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+                <td class="py-2.5 truncate max-w-[120px] text-gray-800 font-bold" title="${item.item}">${item.item}</td>
+                <td class="py-2.5 text-gray-500 font-medium">${item.client || '--'}</td>
+                <td class="py-2.5 text-right text-gray-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
+                <td class="py-2.5 text-center text-gray-600 font-bold">${item.commissionRate}%</td>
+                <td class="py-2.5 text-right font-black text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
             </tr>
         `).join('');
 
         const detailsDiv = `
-            <div id="preview-details-${idx}" class="hidden mt-3 pt-3 border-t border-gray-100">
-                <h5 class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Itens Processados</h5>
-                <div class="overflow-x-auto">
+            <div id="preview-details-${idx}" class="hidden mt-4 pt-4 border-t border-gray-100">
+                <h5 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Itens Processados</h5>
+                <div class="overflow-x-auto border border-gray-200 rounded-xl shadow-sm">
                     <table class="w-full text-left text-[10px]">
-                        <thead class="text-gray-500 bg-gray-50">
+                        <thead class="text-gray-500 bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <th class="p-1 font-bold uppercase tracking-wider">Serviço/Produto</th>
-                                <th class="p-1 font-bold uppercase tracking-wider">Cliente</th>
-                                <th class="p-1 font-bold uppercase tracking-wider text-right">Base</th>
-                                <th class="p-1 font-bold uppercase tracking-wider text-center">%</th>
-                                <th class="p-1 font-bold uppercase tracking-wider text-right">Comissão</th>
+                                <th class="p-2.5 font-bold uppercase tracking-wider">Serviço/Produto</th>
+                                <th class="p-2.5 font-bold uppercase tracking-wider">Cliente</th>
+                                <th class="p-2.5 font-bold uppercase tracking-wider text-right">Base</th>
+                                <th class="p-2.5 font-bold uppercase tracking-wider text-center">%</th>
+                                <th class="p-2.5 font-bold uppercase tracking-wider text-right">Comissão</th>
                             </tr>
                         </thead>
-                        <tbody>${itemsHtml || '<tr><td colspan="5" class="py-2 text-center text-gray-400">Nenhum item</td></tr>'}</tbody>
+                        <tbody class="bg-white">${itemsHtml || '<tr><td colspan="5" class="py-4 text-center text-gray-400">Nenhum item</td></tr>'}</tbody>
                     </table>
                 </div>
             </div>
         `;
         
         return `
-        <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-200 mb-2 relative overflow-hidden">
-            <div class="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 mb-3 relative overflow-hidden">
+            <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
             
-            <div class="flex justify-between items-start mb-3 border-b border-gray-100 pb-2 pl-2">
+            <div class="flex justify-between items-start mb-4 border-b border-gray-100 pb-3 pl-3">
                 <div>
-                    <h4 class="font-black text-gray-800 text-xs uppercase tracking-wider">${r.professionalName}</h4>
-                    <p class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">${r.summary.totalItems} itens calculados</p>
+                    <h4 class="font-black text-gray-800 text-sm uppercase tracking-wider">${r.professionalName}</h4>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">${r.summary.totalItems} itens calculados</p>
                 </div>
-                <div class="text-right bg-gray-50 px-2 py-1 rounded-lg border border-gray-200 shadow-inner">
-                    <p class="text-[8px] font-bold text-gray-500 uppercase tracking-widest">Valor Bruto</p>
-                    <p class="font-black text-gray-800 text-xs">R$ ${r.summary.totalCommission.toFixed(2)}</p>
+                <div class="text-right bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200 shadow-inner">
+                    <p class="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Valor Bruto</p>
+                    <p class="font-black text-gray-800 text-sm">R$ ${r.summary.totalCommission.toFixed(2)}</p>
                 </div>
             </div>
             
-            <div class="grid grid-cols-2 gap-2 pl-2 mb-2">
+            <div class="grid grid-cols-2 gap-3 pl-3 mb-3">
                 <div>
-                    <label class="text-[9px] font-bold text-red-500 uppercase tracking-widest"><i class="bi bi-dash-circle mr-1"></i>Descontos/Vales</label>
-                    <div class="relative mt-1">
-                        <span class="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-red-400 font-bold text-[10px]">R$</span>
-                        <input type="number" step="0.01" data-idx="${idx}" class="input-debit w-full pl-7 p-1.5 border border-red-200 rounded-lg bg-white shadow-inner font-black text-xs text-red-600 outline-none focus:ring-1 focus:ring-red-500" placeholder="0.00">
+                    <label class="text-[10px] font-bold text-red-500 uppercase tracking-widest block mb-1.5"><i class="bi bi-dash-circle mr-1"></i>Descontos/Vales</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-red-400 font-black text-xs">R$</span>
+                        <input type="number" step="0.01" data-idx="${idx}" class="input-debit w-full pl-8 p-2.5 border border-red-200 rounded-xl bg-white shadow-inner font-black text-sm text-red-600 outline-none focus:ring-2 focus:ring-red-500" placeholder="0.00">
                     </div>
                 </div>
                 <div>
-                    <label class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest"><i class="bi bi-plus-circle mr-1"></i>Bônus Extras</label>
-                    <div class="relative mt-1">
-                        <span class="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-emerald-400 font-bold text-[10px]">R$</span>
-                        <input type="number" step="0.01" data-idx="${idx}" class="input-credit w-full pl-7 p-1.5 border border-emerald-200 rounded-lg bg-white shadow-inner font-black text-xs text-emerald-600 outline-none focus:ring-1 focus:ring-emerald-500" placeholder="0.00">
+                    <label class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest block mb-1.5"><i class="bi bi-plus-circle mr-1"></i>Bônus Extras</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-emerald-400 font-black text-xs">R$</span>
+                        <input type="number" step="0.01" data-idx="${idx}" class="input-credit w-full pl-8 p-2.5 border border-emerald-200 rounded-xl bg-white shadow-inner font-black text-sm text-emerald-600 outline-none focus:ring-2 focus:ring-emerald-500" placeholder="0.00">
                     </div>
                 </div>
             </div>
 
-            <div class="pl-2 mb-3">
-                <input type="text" data-idx="${idx}" class="input-notes w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-gray-700" placeholder="Motivo dos ajustes (Opcional)">
+            <div class="pl-3 mb-4">
+                <input type="text" data-idx="${idx}" class="input-notes w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-gray-700 shadow-inner" placeholder="Motivo dos ajustes (Opcional)">
             </div>
             
-            <div class="flex justify-between items-center bg-indigo-50 border border-indigo-200 p-2.5 rounded-lg pl-3 ml-2 shadow-sm">
+            <div class="flex justify-between items-center bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl pl-4 ml-3 shadow-sm">
                 <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-widest">Líquido a Pagar</span>
-                <span class="text-base font-black text-indigo-800 final-value-display drop-shadow-sm" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</span>
+                <span class="text-xl font-black text-indigo-800 final-value-display drop-shadow-sm" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</span>
             </div>
 
-            <div class="pl-2 mt-2 border-t border-gray-50 pt-2">
-                <button type="button" data-action="toggle-preview-details" data-idx="${idx}" class="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest flex items-center gap-1 transition-colors">
-                    <i class="bi bi-chevron-down"></i> Detalhar Itens
+            <div class="pl-3 mt-4 border-t border-gray-50 pt-3">
+                <button type="button" data-action="toggle-preview-details" data-idx="${idx}" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest flex items-center gap-1.5 transition-colors bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100">
+                    <i class="bi bi-list-check text-sm"></i> Detalhar Itens <i class="bi bi-chevron-down ml-1 text-xs"></i>
                 </button>
                 ${detailsDiv}
             </div>
@@ -775,15 +834,15 @@ function renderCalculationPreview() {
     }).join('');
 
     if (step2) step2.innerHTML = `
-        <div class="bg-indigo-700 p-3 rounded-xl shadow-md text-white mb-3 flex justify-between items-center relative overflow-hidden">
-            <div class="absolute right-[-10px] top-[-20px] opacity-10"><i class="bi bi-cash-coin text-6xl"></i></div>
-            <div class="bg-indigo-900/30 p-2 px-3 rounded-lg backdrop-blur-sm border border-indigo-400/20 z-10">
-                <span class="block text-[9px] font-bold text-indigo-200 uppercase tracking-widest mb-0.5">Soma Total Equipe</span>
-                <span id="grand-total-preview" class="text-xl font-black drop-shadow-md">R$ ${totalGeral.toFixed(2)}</span>
+        <div class="bg-gradient-to-r from-indigo-700 to-indigo-800 p-4 rounded-2xl shadow-lg text-white mb-4 flex justify-between items-center relative overflow-hidden border border-indigo-600">
+            <div class="absolute right-[-10px] top-[-10px] opacity-10"><i class="bi bi-cash-coin text-8xl"></i></div>
+            <div class="bg-indigo-900/40 p-3 px-4 rounded-xl backdrop-blur-sm border border-indigo-400/30 z-10">
+                <span class="block text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-1">Soma Total Equipe</span>
+                <span id="grand-total-preview" class="text-2xl font-black drop-shadow-md">R$ ${totalGeral.toFixed(2)}</span>
             </div>
-            <div class="text-right z-10">
-                <span class="block text-[9px] font-bold text-indigo-200 uppercase tracking-widest mb-1">Período</span>
-                <span class="text-[10px] font-bold bg-white/20 px-2 py-1 rounded border border-white/20 shadow-sm">${localState.periodString}</span>
+            <div class="text-right z-10 flex flex-col items-end">
+                <span class="block text-[9px] font-bold text-indigo-200 uppercase tracking-widest mb-1.5">Período Selecionado</span>
+                <span class="text-[10px] font-black bg-white/20 px-2.5 py-1.5 rounded-lg border border-white/30 shadow-sm flex items-center gap-1"><i class="bi bi-calendar3"></i> ${localState.periodString}</span>
             </div>
         </div>
         ${cardsHtml}
@@ -829,7 +888,7 @@ async function handleSaveReports() {
     if (!confirmed) return;
     
     const btn = document.getElementById('btn-calc-action');
-    btn.innerHTML = '<div class="loader-small border-white mr-1"></div> Finalizando...';
+    btn.innerHTML = '<div class="loader-small border-white mr-2"></div> Finalizando...';
     btn.disabled = true;
 
     try {
@@ -838,7 +897,6 @@ async function handleSaveReports() {
                 .map(item => item.originalSaleId)
                 .filter(id => id !== undefined && id !== null);
 
-            // Salva o recibo no modulo de comissões
             await commissionsApi.saveCommissionReport({
                 professionalId: result.professionalId,
                 professionalName: result.professionalName,
@@ -861,7 +919,6 @@ async function handleSaveReports() {
             try {
                 if (result.finalValue > 0) {
                     const config = localState.establishmentConfig || {};
-                    // Tenta capturar as configurações padrão se existirem
                     const defNature = config.defaultDespesaNaturezaId || config.financeConfig?.despesaNaturezaId || null;
                     const defCostCenter = config.defaultDespesaCentroCustoId || config.financeConfig?.despesaCentroCustoId || null;
 
@@ -872,9 +929,9 @@ async function handleSaveReports() {
                         dueDate: new Date().toISOString().split('T')[0],
                         naturezaId: defNature,
                         centroDeCustoId: defCostCenter,
-                        entity: result.professionalName, // Lança com o nome do funcionário
+                        entity: result.professionalName, 
                         paymentMethod: 'dinheiro', 
-                        status: 'paid', // Como o relatório diz "Confirmar Pagamentos", marcamos como pago
+                        status: 'paid', 
                         paymentDate: new Date().toISOString().split('T')[0],
                         origin: 'commission'
                     });
@@ -888,22 +945,26 @@ async function handleSaveReports() {
         showNotification('Sucesso', 'Pagamentos registrados e integrados ao financeiro!', 'success');
         
         localState.calculationResult = null;
-        document.getElementById('genericModal').style.display = 'none';
+        closeDetailScreen();
         
         await fetchAndDisplayData(); 
 
     } catch (error) { 
         showNotification('Erro ao Salvar', error.message, 'error'); 
-        btn.innerHTML = '<i class="bi bi-check2-circle text-sm"></i> Confirmar Pagtos.';
+        btn.innerHTML = '<i class="bi bi-check2-circle text-lg"></i> Confirmar Pagtos.';
         btn.disabled = false;
     }
 }
 
 // ============================================================================
-// 🔍 VISUALIZAR DETALHES DOS RECIBOS SALVOS
+// 🔍 NOVA TELA: DETALHES DO RECIBO (SCREEN SWAP)
 // ============================================================================
 
-function openReportDetailsModal(reportId) {
+function renderReportDetailsView(reportId) {
+    localState.viewMode = 'report-details';
+    const detailContainer = document.getElementById('commissions-layout-detail');
+    if(!detailContainer) return;
+    
     const report = localState.reports.find(r => r.id === reportId);
     if (!report) return;
 
@@ -913,84 +974,102 @@ function openReportDetailsModal(reportId) {
     const credit = rData.extraCredit || 0;
     const notes = rData.notes || '';
 
+    const mobileHeaderHTML = `
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner transition-transform active:scale-95">
+                <i class="bi bi-arrow-left text-lg"></i>
+            </button>
+            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Detalhes do Recibo</h3>
+        </div>
+    `;
+
     const itemsHtml = items.map(item => `
         <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
-            <td class="py-2.5 px-3 text-gray-800 font-bold whitespace-normal min-w-[150px]">${item.item}</td>
-            <td class="py-2.5 px-3 text-gray-500">${item.client || '--'}</td>
-            <td class="py-2.5 px-3 text-right text-gray-600">R$ ${(item.value || 0).toFixed(2)}</td>
-            <td class="py-2.5 px-3 text-center text-gray-600 font-bold">${item.commissionRate}%</td>
-            <td class="py-2.5 px-3 text-right font-black text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
+            <td class="py-3 px-3 text-gray-800 font-bold whitespace-normal min-w-[150px]">${item.item}</td>
+            <td class="py-3 px-3 text-gray-500 font-medium">${item.client || '--'}</td>
+            <td class="py-3 px-3 text-right text-gray-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
+            <td class="py-3 px-3 text-center text-gray-600 font-black">${item.commissionRate}%</td>
+            <td class="py-3 px-3 text-right font-black text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
         </tr>
     `).join('');
 
     let adjustmentsHtml = '';
     if (debit > 0 || credit > 0 || notes) {
         adjustmentsHtml = `
-            <div class="mt-4 bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
-                <h5 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3"><i class="bi bi-sliders mr-1"></i> Ajustes Aplicados</h5>
+            <div class="mt-4 bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <h5 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3"><i class="bi bi-sliders mr-1 text-indigo-500"></i> Ajustes Aplicados</h5>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    ${debit > 0 ? `<div class="bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold">Descontos/Vales:</span> <span class="font-black text-red-500">-R$ ${debit.toFixed(2)}</span></div>` : ''}
-                    ${credit > 0 ? `<div class="bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold">Bônus Extras:</span> <span class="font-black text-emerald-500">+R$ ${credit.toFixed(2)}</span></div>` : ''}
+                    ${debit > 0 ? `<div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Descontos/Vales</span> <span class="font-black text-red-500 text-lg leading-none">-R$ ${debit.toFixed(2)}</span></div>` : ''}
+                    ${credit > 0 ? `<div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Bônus Extras</span> <span class="font-black text-emerald-500 text-lg leading-none">+R$ ${credit.toFixed(2)}</span></div>` : ''}
                 </div>
-                ${notes ? `<div class="text-xs text-gray-600 bg-white p-3 rounded-lg border border-gray-200 shadow-sm"><strong class="block text-[9px] uppercase tracking-widest text-gray-400 mb-1">Motivo do Ajuste:</strong> ${notes}</div>` : ''}
+                ${notes ? `<div class="text-xs font-bold text-gray-600 bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm"><strong class="block text-[9px] uppercase tracking-widest text-indigo-400 mb-1.5"><i class="bi bi-card-text"></i> Motivo do Ajuste</strong> ${notes}</div>` : ''}
             </div>
         `;
     }
 
-    const contentHTML = `
-        <div class="max-h-[75vh] overflow-y-auto custom-scrollbar p-1">
-            <div class="flex flex-col md:flex-row justify-between md:items-center bg-indigo-50 p-4 rounded-xl border border-indigo-200 mb-4 gap-3 shadow-sm">
-                <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-lg bg-white text-indigo-600 flex items-center justify-center font-bold text-base flex-shrink-0 shadow-sm border border-indigo-100">
+    detailContainer.innerHTML = `
+        ${mobileHeaderHTML}
+        <div class="flex-grow overflow-y-auto p-4 pb-28 custom-scrollbar bg-gray-50/50">
+            <div class="flex flex-col md:flex-row justify-between md:items-center bg-indigo-50 p-5 rounded-2xl border border-indigo-200 mb-4 gap-4 shadow-sm relative overflow-hidden">
+                <div class="absolute right-0 top-0 bottom-0 w-2 bg-indigo-500"></div>
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 rounded-xl bg-white text-indigo-600 flex items-center justify-center font-black text-xl flex-shrink-0 shadow-sm border border-indigo-100">
                         ${getInitials(report.professionalName)}
                     </div>
                     <div>
-                        <p class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Profissional</p>
-                        <p class="font-black text-indigo-900 text-lg leading-tight uppercase tracking-wider">${report.professionalName}</p>
+                        <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-0.5">Profissional</p>
+                        <p class="font-black text-indigo-900 text-xl leading-tight uppercase tracking-wider">${report.professionalName}</p>
                     </div>
                 </div>
-                <div class="md:text-right border-t md:border-t-0 md:border-l border-indigo-200 pt-3 md:pt-0 md:pl-4">
-                    <p class="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Período de Vendas</p>
-                    <p class="font-bold text-indigo-700 text-xs bg-white px-2 py-1 rounded shadow-sm border border-indigo-100 mt-1 flex items-center gap-1.5"><i class="bi bi-calendar3 opacity-50"></i> ${report.period}</p>
+                <div class="md:text-right border-t md:border-t-0 md:border-l border-indigo-200 pt-4 md:pt-0 md:pl-5">
+                    <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Período Base</p>
+                    <p class="font-black text-indigo-700 text-sm bg-white px-3 py-1.5 rounded-lg shadow-sm border border-indigo-100 flex items-center justify-center md:justify-end gap-2"><i class="bi bi-calendar3 opacity-50 text-lg"></i> ${report.period}</p>
                 </div>
             </div>
 
-            <div class="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <div class="border border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white">
                 <div class="overflow-x-auto custom-scrollbar">
                     <table class="w-full text-left text-xs whitespace-nowrap">
                         <thead class="bg-gray-50 text-gray-500 border-b border-gray-200">
                             <tr>
-                                <th class="p-3 font-bold uppercase tracking-wider text-[9px]">Item / Serviço</th>
-                                <th class="p-3 font-bold uppercase tracking-wider text-[9px]">Cliente</th>
-                                <th class="p-3 font-bold uppercase tracking-wider text-[9px] text-right">Base Calc.</th>
-                                <th class="p-3 font-bold uppercase tracking-wider text-[9px] text-center">%</th>
-                                <th class="p-3 font-bold uppercase tracking-wider text-[9px] text-right">Comissão</th>
+                                <th class="p-3.5 font-bold uppercase tracking-wider text-[10px]">Serviço / Produto</th>
+                                <th class="p-3.5 font-bold uppercase tracking-wider text-[10px]">Cliente</th>
+                                <th class="p-3.5 font-bold uppercase tracking-wider text-[10px] text-right">Base Calc.</th>
+                                <th class="p-3.5 font-bold uppercase tracking-wider text-[10px] text-center">%</th>
+                                <th class="p-3.5 font-bold uppercase tracking-wider text-[10px] text-right">Comissão</th>
                             </tr>
                         </thead>
-                        <tbody>${itemsHtml || '<tr><td colspan="5" class="text-center py-6 text-gray-400 font-medium">Nenhum item detalhado encontrado neste recibo.</td></tr>'}</tbody>
+                        <tbody>${itemsHtml || '<tr><td colspan="5" class="text-center py-8 text-gray-400 font-bold text-sm">Nenhum item detalhado neste recibo.</td></tr>'}</tbody>
                     </table>
                 </div>
-                <div class="bg-gray-50 p-3.5 border-t border-gray-200 flex justify-between items-center shadow-inner">
-                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Bruto Apurado</span>
-                    <span class="font-black text-gray-800 text-base">R$ ${(rData.totalCommission || 0).toFixed(2)}</span>
+                <div class="bg-gray-50 p-4 border-t border-gray-200 flex justify-between items-center shadow-inner">
+                    <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Bruto Apurado</span>
+                    <span class="font-black text-gray-800 text-xl drop-shadow-sm">R$ ${(rData.totalCommission || 0).toFixed(2)}</span>
                 </div>
             </div>
             
             ${adjustmentsHtml}
 
-            <div class="mt-4 flex justify-between items-center bg-emerald-50 p-4 rounded-xl border border-emerald-200 shadow-sm relative overflow-hidden">
-                <div class="absolute right-[-10px] top-[-10px] opacity-10"><i class="bi bi-check-circle-fill text-6xl text-emerald-500"></i></div>
-                <span class="text-[10px] font-black text-emerald-600 uppercase tracking-widest z-10 flex items-center gap-1.5"><i class="bi bi-cash-stack"></i> Total Líquido Pago</span>
-                <span class="text-3xl font-black text-emerald-700 z-10 drop-shadow-sm">R$ ${(rData.finalValue || rData.totalCommission).toFixed(2)}</span>
+            <div class="mt-4 flex justify-between items-center bg-emerald-50 p-5 rounded-2xl border border-emerald-200 shadow-sm relative overflow-hidden">
+                <div class="absolute right-[-10px] top-[-10px] opacity-10"><i class="bi bi-check-circle-fill text-8xl text-emerald-500"></i></div>
+                <div>
+                    <span class="block text-[10px] font-black text-emerald-600 uppercase tracking-widest z-10 mb-1 flex items-center gap-1.5"><i class="bi bi-cash-stack text-sm"></i> Total Líquido Pago</span>
+                    <span class="text-3xl font-black text-emerald-700 z-10 drop-shadow-sm">R$ ${(rData.finalValue || rData.totalCommission).toFixed(2)}</span>
+                </div>
             </div>
         </div>
+
+        <footer class="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 flex gap-3">
+            <button data-action="print-receipt" data-id="${report.id}" class="flex-1 py-4 bg-indigo-50 text-indigo-700 font-black text-sm rounded-xl hover:bg-indigo-100 transition-colors shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 border border-indigo-200 active:scale-95">
+                <i class="bi bi-printer text-xl"></i> Imprimir Recibo
+            </button>
+            <button data-action="delete-report" data-id="${report.id}" class="w-14 h-auto bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-100 transition-colors border border-red-200 shadow-sm active:scale-95" title="Excluir e Estornar">
+                <i class="bi bi-trash3 text-xl"></i>
+            </button>
+        </footer>
     `;
 
-    showGenericModal({
-        title: "Detalhes do Pagamento",
-        contentHTML: contentHTML,
-        maxWidth: 'max-w-3xl'
-    });
+    openDetailScreen();
 }
 
 // ============================================================================
@@ -1183,6 +1262,7 @@ async function handleDeleteReport(reportId) {
     try {
         await commissionsApi.deleteCommissionReport(reportId);
         showNotification('Sucesso', 'Recibo cancelado com sucesso. Vendas estornadas para apuração.', 'success');
+        closeDetailScreen();
         await fetchAndDisplayData();
     } catch (error) { 
         showNotification('Erro ao Excluir', error.message, 'error'); 
