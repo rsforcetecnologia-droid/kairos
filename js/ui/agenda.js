@@ -45,7 +45,7 @@ let newAppointmentState = {
     data: {
         id: null, clientName: '', clientPhone: '', selectedServiceIds: [],
         professionalId: null, professionalName: '', date: null, time: null,
-        originalDate: null, originalTime: null, // Guardar originais para edição
+        originalDate: null, originalTime: null, 
         redeemedReward: null, clientHasRewards: false, clientLoyaltyPoints: 0
     }
 };
@@ -57,6 +57,14 @@ function getMonday(date) {
     d.setDate(diff);
     d.setHours(0, 0, 0, 0);
     return d;
+}
+
+function getLocalDateStr(dateObj) {
+    const d = dateObj || new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 // ============================================================================
@@ -754,7 +762,7 @@ function showOptionsMenu() {
 }
 
 // ============================================================================
-// MODAL DE TELA CHEIA (NATIVO) E LÓGICA DE PASSOS
+// MODAL DE TELA CHEIA E LÓGICA DE PASSOS (COM AUTO-AVANÇO)
 // ============================================================================
 
 function navigateModalStep(step) {
@@ -767,30 +775,30 @@ function renderStep1_Client(appointment) {
     return {
         title: appointment ? 'Editar Reserva' : 'Novo Cliente',
         content: `
-        <div class="p-6 space-y-6 flex-1">
-            <div class="space-y-4">
+        <div class="p-4 space-y-4 flex-1">
+            <div class="space-y-3">
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nome Completo</label>
-                    <input type="text" id="apptClientName" placeholder="Ex: João Silva" class="w-full p-4 bg-white border border-gray-300 rounded-xl text-base text-gray-900 font-semibold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all shadow-sm" value="${esc(newAppointmentState.data.clientName)}">
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nome Completo</label>
+                    <input type="text" id="apptClientName" placeholder="Ex: João Silva" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 font-semibold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all shadow-sm" value="${esc(newAppointmentState.data.clientName)}">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">WhatsApp / Telefone</label>
-                    <input type="tel" id="apptClientPhone" placeholder="(00) 00000-0000" class="w-full p-4 bg-white border border-gray-300 rounded-xl text-base text-gray-900 font-semibold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all shadow-sm" value="${esc(newAppointmentState.data.clientPhone)}">
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">WhatsApp / Telefone</label>
+                    <input type="tel" id="apptClientPhone" placeholder="(00) 00000-0000" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm text-gray-900 font-semibold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all shadow-sm" value="${esc(newAppointmentState.data.clientPhone)}">
                 </div>
             </div>
             
-            <div class="pt-6 border-t border-gray-200">
+            <div class="pt-4 border-t border-gray-200">
                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Buscar na Base de Dados</label>
                 <div class="relative">
-                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg"></i>
-                    <input type="text" id="clientSearchInput" placeholder="Procurar cliente..." class="w-full p-4 pl-12 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-900 font-medium focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
+                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                    <input type="text" id="clientSearchInput" placeholder="Procurar cliente..." class="w-full p-3 pl-11 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-900 font-medium focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                 </div>
-                <div id="clientSearchResults" class="mt-4 space-y-2"></div>
+                <div id="clientSearchResults" class="mt-3 space-y-2"></div>
             </div>
         </div>
         <div class="p-4 bg-white border-t border-gray-200 flex gap-3 pb-safe">
-            <button type="button" data-action="close-modal" class="flex-1 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors">Cancelar</button>
-            <button type="button" data-action="next-step" data-current-step="1" class="flex-1 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform">Avançar</button>
+            <button type="button" data-action="close-modal" class="flex-1 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors text-sm">Cancelar</button>
+            <button type="button" data-action="next-step" data-current-step="1" class="flex-1 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform text-sm">Avançar</button>
         </div>`
     };
 }
@@ -799,26 +807,26 @@ function renderStep2_Service() {
     return {
         title: 'Serviços',
         content: `
-        <div class="p-6 space-y-6 flex-1 flex flex-col">
+        <div class="p-4 space-y-4 flex-1 flex flex-col">
             <div class="flex items-center gap-3">
                 <div class="relative flex-1">
-                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    <input type="search" id="serviceSearchModalInput" placeholder="Buscar serviço..." class="w-full p-3.5 pl-11 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none">
+                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                    <input type="search" id="serviceSearchModalInput" placeholder="Buscar serviço..." class="w-full p-3 pl-11 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none">
                 </div>
-                <label class="flex items-center gap-2 bg-white px-4 py-3.5 rounded-xl border border-gray-200 cursor-pointer shadow-sm">
+                <label class="flex items-center gap-2 bg-white px-3 py-3 rounded-xl border border-gray-200 cursor-pointer shadow-sm">
                     <input type="checkbox" id="multiServiceToggle" class="w-5 h-5 accent-indigo-600 rounded" ${newAppointmentState.data.selectedServiceIds.length > 1 ? 'checked' : ''}>
                     <span class="text-xs font-bold text-gray-700 uppercase">Múltiplos</span>
                 </label>
             </div>
-            <div id="apptServicesContainer" class="flex-1 overflow-y-auto grid grid-cols-1 gap-3 pb-4">
+            <div id="apptServicesContainer" class="flex-1 overflow-y-auto grid grid-cols-2 gap-3 content-start pb-4">
                 ${availableServicesForModal.map(srv => {
                     const sel = newAppointmentState.data.selectedServiceIds.includes(srv.id);
-                    return `<div class="service-card p-4 bg-white rounded-2xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer flex justify-between items-center" data-service-id="${srv.id}">
+                    return `<div class="service-card p-3 bg-white rounded-xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer flex flex-col justify-between gap-2" data-service-id="${srv.id}">
                         <div>
-                            <p class="font-bold text-base text-gray-900">${esc(srv.name)}</p>
-                            <p class="text-xs font-bold text-gray-500 mt-1"><i class="bi bi-clock mr-1"></i>${srv.duration} min</p>
+                            <p class="font-bold text-[0.85rem] leading-tight text-gray-900 line-clamp-2">${esc(srv.name)}</p>
+                            <p class="text-[0.7rem] font-bold text-gray-500 mt-1"><i class="bi bi-clock mr-1"></i>${srv.duration} min</p>
                         </div>
-                        <div class="text-right">
+                        <div class="w-full text-left mt-1">
                             <p class="text-sm font-black text-indigo-600">R$ ${srv.price.toFixed(2).replace('.', ',')}</p>
                         </div>
                     </div>`;
@@ -826,8 +834,8 @@ function renderStep2_Service() {
             </div>
         </div>
         <div class="p-4 bg-white border-t border-gray-200 flex gap-3 pb-safe">
-            <button type="button" data-action="prev-step" data-current-step="2" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="2" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform">Avançar</button>
+            <button type="button" data-action="prev-step" data-current-step="2" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors text-sm">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="2" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform text-sm">Avançar</button>
         </div>`
     };
 }
@@ -836,69 +844,69 @@ function renderStep3_Professional() {
     return {
         title: 'Equipe',
         content: `
-        <div class="p-6 space-y-6 flex-1 flex flex-col">
+        <div class="p-4 space-y-4 flex-1 flex flex-col">
             <div class="relative">
-                <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="search" id="professionalSearchModalInput" placeholder="Procurar profissional..." class="w-full p-4 pl-12 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                <input type="search" id="professionalSearchModalInput" placeholder="Procurar profissional..." class="w-full p-3 pl-11 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
             </div>
-            <div id="apptProfessionalContainer" class="flex-1 overflow-y-auto grid grid-cols-2 gap-4 pb-4">
+            <div id="apptProfessionalContainer" class="flex-1 overflow-y-auto grid grid-cols-3 gap-3 content-start pb-4">
                 ${availableProfessionalsForModal.map(prof => {
                     const sel = newAppointmentState.data.professionalId === prof.id;
                     const pColor = state.professionalColors.get(prof.id) || colorPalette[0];
-                    return `<div class="professional-modal-card p-5 bg-white rounded-3xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer text-center flex flex-col items-center justify-center" data-professional-id="${prof.id}">
-                        <div class="w-16 h-16 rounded-full flex items-center justify-center font-black text-white text-xl shadow-sm mb-3" style="background-color: ${pColor.main}; ${prof.photo ? `background-image: url('${esc(prof.photo)}'); background-size: cover; background-position: center;` : ''}">
+                    return `<div class="professional-modal-card p-3 bg-white rounded-2xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer text-center flex flex-col items-center justify-center" data-professional-id="${prof.id}">
+                        <div class="w-14 h-14 rounded-full flex items-center justify-center font-black text-white text-xl shadow-sm mb-2" style="background-color: ${pColor.main}; ${prof.photo ? `background-image: url('${esc(prof.photo)}'); background-size: cover; background-position: center;` : ''}">
                             ${!prof.photo ? esc(prof.name).charAt(0) : ''}
                         </div>
-                        <p class="text-sm font-bold text-gray-900 w-full truncate">${esc(prof.name.split(' ')[0])}</p>
+                        <p class="text-[0.75rem] font-bold text-gray-900 w-full truncate">${esc(prof.name.split(' ')[0])}</p>
                     </div>`;
                 }).join('')}
             </div>
         </div>
         <div class="p-4 bg-white border-t border-gray-200 flex gap-3 pb-safe">
-            <button type="button" data-action="prev-step" data-current-step="3" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors">Voltar</button>
-            <button type="button" data-action="next-step" data-current-step="3" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform">Avançar</button>
+            <button type="button" data-action="prev-step" data-current-step="3" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors text-sm">Voltar</button>
+            <button type="button" data-action="next-step" data-current-step="3" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-md active:scale-95 transition-transform text-sm">Avançar</button>
         </div>`
     };
 }
 
 function renderStep4_Schedule() {
-    const initDate = newAppointmentState.data.date || new Date().toISOString().split('T')[0];
+    const initDate = newAppointmentState.data.date || getLocalDateStr();
     return {
         title: 'Horário',
         content: `
-        <div class="p-6 space-y-6 flex-1 flex flex-col">
+        <div class="p-4 space-y-4 flex-1 flex flex-col">
             
-            <div class="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
-                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-xl">${esc(newAppointmentState.data.clientName).charAt(0)}</div>
+            <div class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-lg">${esc(newAppointmentState.data.clientName).charAt(0)}</div>
                 <div class="flex-1 min-w-0">
-                    <p class="font-bold text-base text-gray-900 truncate">${esc(newAppointmentState.data.clientName)}</p>
-                    <p class="text-xs font-bold text-gray-500 truncate mt-1"><i class="bi bi-person-badge mr-1"></i> ${esc(newAppointmentState.data.professionalName)}</p>
+                    <p class="font-bold text-sm text-gray-900 truncate">${esc(newAppointmentState.data.clientName)}</p>
+                    <p class="text-xs font-bold text-gray-500 truncate mt-0.5"><i class="bi bi-person-badge mr-1"></i> ${esc(newAppointmentState.data.professionalName)}</p>
                 </div>
             </div>
             
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[0.65rem] font-bold text-gray-400 uppercase tracking-widest mb-2">Data da Reserva</label>
-                    <input type="date" id="apptDate" class="w-full p-3.5 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:border-indigo-500 outline-none shadow-sm" value="${initDate}">
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Data</label>
+                    <input type="date" id="apptDate" class="w-full p-3 bg-white border border-gray-300 rounded-xl text-sm font-bold text-gray-900 focus:border-indigo-500 outline-none shadow-sm" value="${initDate}">
                 </div>
                 <div>
-                    <label class="block text-[0.65rem] font-bold text-gray-400 uppercase tracking-widest mb-2">Tempo Gasto</label>
-                    <div class="w-full p-3.5 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 flex items-center justify-center gap-2 shadow-sm">
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">Duração</label>
+                    <div class="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 flex items-center justify-center gap-2 shadow-sm">
                         <i class="bi bi-stopwatch text-indigo-500"></i> <span id="apptTotalDuration">--</span>
                     </div>
                 </div>
             </div>
 
-            <div class="flex-1 flex flex-col min-h-0">
-                <label class="block text-[0.65rem] font-bold text-gray-400 uppercase tracking-widest mb-3">Horários Disponíveis</label>
-                <div id="availableTimesContainer" class="flex-1 overflow-y-auto grid grid-cols-4 gap-2 pb-4"></div>
+            <div class="flex-1 flex flex-col min-h-0 mt-2">
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Horários Disponíveis</label>
+                <div id="availableTimesContainer" class="flex-1 overflow-y-auto grid grid-cols-3 gap-2.5 content-start pb-4"></div>
             </div>
             <div id="loyaltyRewardsContainer"></div>
         </div>
         <div class="p-4 bg-white border-t border-gray-200 flex gap-3 pb-safe">
-            <button type="button" data-action="prev-step" data-current-step="4" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors">Voltar</button>
-            <button type="submit" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
-                <i class="bi bi-check-circle-fill"></i> ${newAppointmentState.data.id ? 'Salvar Edição' : 'Confirmar'}
+            <button type="button" data-action="prev-step" data-current-step="4" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors text-sm">Voltar</button>
+            <button type="button" id="btnSubmitAppointment" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 text-sm">
+                <i class="bi bi-check-circle-fill"></i> ${newAppointmentState.data.id ? 'Salvar' : 'Confirmar'}
             </button>
         </div>`
     };
@@ -917,9 +925,9 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
                 selectedServiceIds: appointment?.services?.map(s => s.id) || [],
                 professionalId: appointment?.professionalId || null,
                 professionalName: appointment?.professionalName || '',
-                date: appointment?.startTime ? new Date(appointment.startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                date: appointment?.startTime ? getLocalDateStr(new Date(appointment.startTime)) : getLocalDateStr(),
                 time: appointment?.startTime ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
-                originalDate: appointment?.startTime ? new Date(appointment.startTime).toISOString().split('T')[0] : null,
+                originalDate: appointment?.startTime ? getLocalDateStr(new Date(appointment.startTime)) : null,
                 originalTime: appointment?.startTime ? new Date(appointment.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
                 redeemedReward: appointment?.redeemedReward || null,
                 clientHasRewards: appointment?.hasRewards || false,
@@ -939,17 +947,16 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         case 4: renderResult = renderStep4_Schedule(); break;
     }
 
-    // Preparar o Modal para ser Tela Cheia
     modal.className = 'fixed inset-0 z-[10000] bg-gray-50 flex flex-col w-full h-full transform transition-transform duration-300 translate-y-full';
     
     modal.innerHTML = `
         <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between pt-safe-top shadow-sm z-20">
             <button type="button" data-action="close-modal" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 active:scale-90 transition-transform">
-                <i class="bi bi-x-lg"></i>
+                <i class="bi bi-x-lg text-sm"></i>
             </button>
             <div class="text-center flex-1 px-2">
-                <h2 class="text-base font-black text-gray-900 tracking-tight leading-tight truncate">${renderResult.title}</h2>
-                <div class="flex items-center justify-center gap-1 mt-0.5">
+                <h2 class="text-sm font-black text-gray-900 tracking-tight leading-tight truncate">${renderResult.title}</h2>
+                <div class="flex items-center justify-center gap-1 mt-1">
                     <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 1 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
                     <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 2 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
                     <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 3 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
@@ -974,51 +981,58 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
     
     modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1)));
     
-    modal.querySelector('[data-action="close-modal"]')?.addEventListener('click', () => { 
-        modal.classList.remove('translate-y-0');
-        modal.classList.add('translate-y-full');
-        setTimeout(() => { modal.classList.add('hidden'); }, 300);
+    // Usa querySelectorAll com forEach para pegar o 'X' e o botão 'Cancelar'
+    modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
+        btn.addEventListener('click', () => { 
+            modal.classList.remove('translate-y-0');
+            modal.classList.add('translate-y-full');
+            setTimeout(() => { modal.classList.add('hidden'); }, 300);
+        });
     });
 
-    if (newAppointmentState.step === 4) modal.querySelector('#appointmentForm').addEventListener('submit', handleAppointmentFormSubmit);
-    
-    // Animar a entrada
     modal.classList.remove('hidden');
     requestAnimationFrame(() => {
         modal.classList.remove('translate-y-full');
         modal.classList.add('translate-y-0');
     });
 
-    // Lógicas de Seleção de Serviços e Profissionais
+    // Lógicas de Seleção de Serviços com Auto-Avanço
     if (newAppointmentState.step === 2) {
         modal.querySelectorAll('.service-card').forEach(card => card.addEventListener('click', () => {
             const isMulti = modal.querySelector('#multiServiceToggle')?.checked;
             const sel = card.classList.contains('bg-indigo-50');
+            const sid = card.dataset.serviceId;
             if (navigator.vibrate) navigator.vibrate(15);
             
             if (!isMulti) {
+                // Single select (Auto avança)
                 modal.querySelectorAll('.service-card.bg-indigo-50').forEach(c => {
                     c.classList.remove('border-indigo-500', 'bg-indigo-50', 'shadow-md');
                     c.classList.add('border-gray-100', 'shadow-sm');
                 });
-                newAppointmentState.data.selectedServiceIds = [];
-            }
-            
-            const sid = card.dataset.serviceId;
-            if (sel && isMulti) {
-                card.classList.remove('border-indigo-500', 'bg-indigo-50', 'shadow-md');
-                card.classList.add('border-gray-100', 'shadow-sm');
-                newAppointmentState.data.selectedServiceIds = newAppointmentState.data.selectedServiceIds.filter(i => i !== sid);
-            } else {
                 card.classList.add('border-indigo-500', 'bg-indigo-50', 'shadow-md');
                 card.classList.remove('border-gray-100', 'shadow-sm');
-                if(!newAppointmentState.data.selectedServiceIds.includes(sid)) {
-                    newAppointmentState.data.selectedServiceIds.push(sid);
+                newAppointmentState.data.selectedServiceIds = [sid];
+                
+                setTimeout(() => navigateModalStep(3), 250);
+            } else {
+                // Multi select (Não avança)
+                if (sel) {
+                    card.classList.remove('border-indigo-500', 'bg-indigo-50', 'shadow-md');
+                    card.classList.add('border-gray-100', 'shadow-sm');
+                    newAppointmentState.data.selectedServiceIds = newAppointmentState.data.selectedServiceIds.filter(i => i !== sid);
+                } else {
+                    card.classList.add('border-indigo-500', 'bg-indigo-50', 'shadow-md');
+                    card.classList.remove('border-gray-100', 'shadow-sm');
+                    if(!newAppointmentState.data.selectedServiceIds.includes(sid)) {
+                        newAppointmentState.data.selectedServiceIds.push(sid);
+                    }
                 }
             }
         }));
     }
 
+    // Lógica de Seleção de Profissionais com Auto-Avanço
     if (newAppointmentState.step === 3) {
         modal.querySelectorAll('.professional-modal-card').forEach(card => card.addEventListener('click', () => {
             if (navigator.vibrate) navigator.vibrate(15);
@@ -1031,6 +1045,8 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             newAppointmentState.data.professionalId = card.dataset.professionalId;
             const prof = availableProfessionalsForModal.find(p => p.id === card.dataset.professionalId);
             newAppointmentState.data.professionalName = prof ? prof.name : '';
+            
+            setTimeout(() => navigateModalStep(4), 250);
         }));
     }
 
@@ -1038,8 +1054,28 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         modal.querySelector('#clientSearchInput')?.addEventListener('input', (e) => handleClientSearch(e.target.value));
     }
 
+    // Eventos Passo 4
     if (newAppointmentState.step === 4) {
         modal.querySelector('#apptDate')?.addEventListener('change', updateTimesAndDuration);
+        
+        // Event Delegation para salvar o tempo corretamente no Módulo Local
+        modal.querySelector('#availableTimesContainer')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-time-slot]');
+            if (btn) {
+                if (navigator.vibrate) navigator.vibrate(10);
+                modal.querySelectorAll('#availableTimesContainer button').forEach(b => {
+                    b.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600', 'shadow-md');
+                    b.classList.add('bg-white', 'text-gray-700', 'border-gray-200', 'shadow-sm');
+                });
+                btn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600', 'shadow-md');
+                btn.classList.remove('bg-white', 'text-gray-700', 'border-gray-200', 'shadow-sm');
+                newAppointmentState.data.time = btn.dataset.timeSlot;
+            }
+        });
+
+        // Escutador direto no clique para evitar falhas do 'submit' no Mobile
+        modal.querySelector('#btnSubmitAppointment')?.addEventListener('click', handleAppointmentFormSubmit);
+
         updateTimesAndDuration();
         renderLoyaltyRewards();
     }
@@ -1047,15 +1083,14 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
 
 async function handleAppointmentFormSubmit(e) {
     e.preventDefault();
-    const form = e.target;
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = document.getElementById('btnSubmitAppointment');
 
     if (!newAppointmentState.data.time || !newAppointmentState.data.selectedServiceIds.length || !newAppointmentState.data.professionalId) {
         return showNotification('Selecione horário, serviço e profissional.', 'warning');
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> A processar...';
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processando...';
 
     const servicesData = newAppointmentState.data.selectedServiceIds.map(id => {
         const s = availableServicesForModal.find(x => x.id === id);
@@ -1064,6 +1099,9 @@ async function handleAppointmentFormSubmit(e) {
 
     const [h, m] = newAppointmentState.data.time.split(':');
     const startTime = new Date(`${newAppointmentState.data.date}T${h}:${m}:00`);
+
+    const totalDur = servicesData.reduce((acc, s) => acc + (s.duration + (s.bufferTime || 0)), 0);
+    const endTime = new Date(startTime.getTime() + totalDur * 60000);
 
     const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
         ? state.selectedEstablishments[0] 
@@ -1077,6 +1115,7 @@ async function handleAppointmentFormSubmit(e) {
         professionalId: newAppointmentState.data.professionalId,
         professionalName: newAppointmentState.data.professionalName,
         startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(), // Enviamos o endTime atualizado para a API
         redeemedReward: newAppointmentState.data.redeemedReward
     };
 
@@ -1086,7 +1125,7 @@ async function handleAppointmentFormSubmit(e) {
         if (newAppointmentState.data.id) await appointmentsApi.updateAppointment(newAppointmentState.data.id, data);
         else await appointmentsApi.createAppointment(data);
 
-        showNotification('Registro guardado com sucesso!', 'success');
+        showNotification('Registro salvo!', 'success');
         
         const modal = document.getElementById('appointmentModal');
         modal.classList.remove('translate-y-0');
@@ -1106,7 +1145,6 @@ async function updateTimesAndDuration() {
     const durationEl = document.getElementById('apptTotalDuration');
     if (!container) return;
 
-    // Atualiza campo Date caso tenha mudado
     const dateInput = document.getElementById('apptDate');
     if (dateInput && dateInput.value) {
         newAppointmentState.data.date = dateInput.value;
@@ -1121,11 +1159,11 @@ async function updateTimesAndDuration() {
 
     const { professionalId, selectedServiceIds, date, originalDate, originalTime, id: isEditing } = newAppointmentState.data;
     if (!professionalId || !selectedServiceIds.length || !date) {
-        container.innerHTML = '<p class="col-span-full text-center text-xs text-gray-500 font-bold py-6 bg-white rounded-xl shadow-sm border border-gray-100">Preencha os passos anteriores.</p>';
+        container.innerHTML = '<p class="col-span-full text-center text-xs text-gray-500 font-bold py-4 bg-white rounded-xl shadow-sm border border-gray-100">Preencha os passos anteriores.</p>';
         return;
     }
 
-    container.innerHTML = '<div class="col-span-full flex justify-center py-6"><div class="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div></div>';
+    container.innerHTML = '<div class="col-span-full flex justify-center py-4"><div class="w-6 h-6 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div></div>';
 
     try {
         const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
@@ -1148,23 +1186,20 @@ async function updateTimesAndDuration() {
             });
         }
 
-        // --- CORREÇÃO DE REAGENDAMENTO ---
-        // Se estamos a editar, e a data selecionada é a mesma original do agendamento,
-        // garantimos que o horário original aparece na lista para poder ser selecionado novamente.
         if (isEditing && date === originalDate && originalTime) {
             if (!slots.includes(originalTime)) {
                 slots.push(originalTime);
-                slots.sort(); // Mantém a lista em ordem crescente
+                slots.sort(); 
             }
         }
-        // ---------------------------------
 
         container.innerHTML = slots.length > 0 ? slots.map(slot => {
             const sel = newAppointmentState.data.time === slot;
-            return `<button type="button" class="py-3 text-sm font-bold rounded-xl border-2 transition-transform active:scale-95 ${sel ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 shadow-sm'}" onclick="document.querySelectorAll('#availableTimesContainer button').forEach(b=>{b.classList.remove('bg-indigo-600','text-white','border-indigo-600','shadow-md');b.classList.add('bg-white','text-gray-700','border-gray-200','shadow-sm')});this.classList.add('bg-indigo-600','text-white','border-indigo-600','shadow-md');this.classList.remove('bg-white','text-gray-700','border-gray-200','shadow-sm');window._selectedTime='${slot}'; newAppointmentState.data.time='${slot}'; if(navigator.vibrate) navigator.vibrate(10);">${slot}</button>`;
-        }).join('') : '<p class="col-span-full text-center text-xs font-bold text-red-500 bg-white py-6 rounded-xl border border-red-100 shadow-sm">Profissional não tem horários livres.</p>';
+            // O Event Delegation no #availableTimesContainer pega o dataset.timeSlot
+            return `<button type="button" data-time-slot="${slot}" class="py-3 text-sm font-bold rounded-xl border-2 transition-transform active:scale-95 ${sel ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 shadow-sm'}">${slot}</button>`;
+        }).join('') : '<p class="col-span-full text-center text-sm font-bold text-red-500 bg-white py-4 rounded-xl border border-red-100 shadow-sm">Nenhum horário livre.</p>';
     } catch (err) {
-        container.innerHTML = '<p class="col-span-full text-center text-xs font-bold text-red-500 bg-white py-4 rounded-xl">Erro ao pesquisar disponibilidade.</p>';
+        container.innerHTML = '<p class="col-span-full text-center text-sm font-bold text-red-500 bg-white py-4 rounded-xl">Erro ao pesquisar.</p>';
     }
 }
 
@@ -1177,11 +1212,11 @@ function renderLoyaltyRewards() {
     if (!enabled || !clientHasRewards || !rewards?.length) { container.innerHTML = ''; return; }
 
     const avail = rewards.filter(r => clientLoyaltyPoints >= r.points);
-    if (!avail.length) { container.innerHTML = '<p class="text-[0.7rem] font-bold text-gray-400 mt-4 text-center">Nenhuma recompensa de fidelidade atingida ainda.</p>'; return; }
+    if (!avail.length) { container.innerHTML = '<p class="text-xs font-bold text-gray-400 mt-3 text-center">Nenhuma recompensa atingida ainda.</p>'; return; }
 
-    container.innerHTML = `<div class="border border-indigo-100 bg-indigo-50/80 rounded-2xl p-4 mt-2 shadow-sm">
-        <p class="text-[0.7rem] font-bold text-indigo-800 uppercase tracking-wider mb-2">Recompensas de Fidelidade (${clientLoyaltyPoints} pts)</p>
-        ${avail.map(r => `<label class="flex items-center gap-3 p-3 bg-white border border-indigo-100 rounded-xl mb-2 cursor-pointer shadow-sm active:scale-95 transition-transform"><input type="radio" name="loyaltyReward" value="${esc(r.reward)}" data-points="${r.points}" class="w-4 h-4 accent-indigo-600"><span class="text-sm font-bold text-gray-800 flex-1">${esc(r.reward)}</span><span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">-${r.points} pts</span></label>`).join('')}
+    container.innerHTML = `<div class="border border-indigo-100 bg-indigo-50/80 rounded-xl p-3 mt-3 shadow-sm">
+        <p class="text-[0.7rem] font-bold text-indigo-800 uppercase tracking-wider mb-2">Recompensas (${clientLoyaltyPoints} pts)</p>
+        ${avail.map(r => `<label class="flex items-center gap-2 p-2 bg-white border border-indigo-100 rounded-lg mb-1.5 cursor-pointer shadow-sm active:scale-95 transition-transform"><input type="radio" name="loyaltyReward" value="${esc(r.reward)}" data-points="${r.points}" class="w-4 h-4 accent-indigo-600"><span class="text-[0.85rem] font-bold text-gray-800 flex-1">${esc(r.reward)}</span><span class="text-[0.65rem] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">-${r.points} pts</span></label>`).join('')}
     </div>`;
 
     container.querySelectorAll('input[name="loyaltyReward"]').forEach(radio => {
@@ -1194,11 +1229,11 @@ function renderLoyaltyRewards() {
 async function handleClientSearch(term) {
     const container = document.getElementById('clientSearchResults');
     if (!container || term.trim().length < 3) {
-        if (container) container.innerHTML = '<p class="text-xs text-gray-400 font-medium px-2 py-2 text-center">Digite 3 ou mais caracteres...</p>';
+        if (container) container.innerHTML = '<p class="text-sm text-gray-400 font-medium px-2 py-2 text-center">Digite 3 ou mais caracteres...</p>';
         return;
     }
 
-    container.innerHTML = '<div class="text-center py-6"><div class="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div></div>';
+    container.innerHTML = '<div class="text-center py-4"><div class="w-6 h-6 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div></div>';
 
     try {
         const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
@@ -1220,18 +1255,19 @@ async function handleClientSearch(term) {
         allClientsData = found;
 
         if (!found.length) {
-            container.innerHTML = '<p class="text-sm text-gray-500 bg-white border border-gray-200 p-4 rounded-xl text-center font-bold shadow-sm">Nenhum cliente encontrado.</p>';
+            container.innerHTML = '<p class="text-sm text-gray-500 bg-white border border-gray-200 p-3 rounded-xl text-center font-bold shadow-sm">Nenhum cliente encontrado.</p>';
             return;
         }
         
         container.innerHTML = found.map(c => {
             const sel = newAppointmentState.data.clientName === c.name && newAppointmentState.data.clientPhone === c.phone;
-            return `<div class="client-card p-4 bg-white rounded-xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer flex items-center gap-4" data-client-name="${esc(c.name)}" data-client-phone="${esc(c.phone)}" data-loyalty-points="${c.loyaltyPoints || 0}">
+            return `<div class="client-card p-3 bg-white rounded-xl border-2 transition-all active:scale-95 ${sel ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-gray-100 hover:border-gray-200 shadow-sm'} cursor-pointer flex items-center gap-3" data-client-name="${esc(c.name)}" data-client-phone="${esc(c.phone)}" data-loyalty-points="${c.loyaltyPoints || 0}">
                 <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-lg font-black text-gray-500 flex-shrink-0">${esc(c.name).charAt(0)}</div>
-                <div class="flex-1 min-w-0"><p class="text-base font-bold text-gray-900 truncate">${esc(c.name)}</p><p class="text-sm font-semibold text-gray-500 truncate mt-0.5">${esc(c.phone)}</p></div>
+                <div class="flex-1 min-w-0"><p class="text-sm font-bold text-gray-900 truncate">${esc(c.name)}</p><p class="text-[0.75rem] font-semibold text-gray-500 truncate mt-0.5">${esc(c.phone)}</p></div>
             </div>`;
         }).join('');
 
+        // Lógica de Cliente com Auto-Avanço
         container.querySelectorAll('.client-card').forEach(card => {
             card.addEventListener('click', () => {
                 if (navigator.vibrate) navigator.vibrate(15);
@@ -1250,9 +1286,11 @@ async function handleClientSearch(term) {
                 });
                 card.classList.add('border-indigo-500', 'bg-indigo-50', 'shadow-md');
                 card.classList.remove('border-gray-100', 'shadow-sm');
+                
+                setTimeout(() => navigateModalStep(2), 250);
             });
         });
     } catch (err) {
-        container.innerHTML = '<p class="text-xs font-bold text-red-500 bg-red-50 p-4 rounded-xl border border-red-100 text-center shadow-sm">Erro ao pesquisar.</p>';
+        container.innerHTML = '<p class="text-[0.75rem] font-bold text-red-500 bg-red-50 p-3 rounded-xl border border-red-100 text-center shadow-sm">Erro ao pesquisar.</p>';
     }
 }

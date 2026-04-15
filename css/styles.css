@@ -186,29 +186,48 @@ input:checked + .toggle-bg {
     background-color: #4f46e5;
 }
 
-/* --- ESTILOS DE TOAST NOTIFICATION (AJUSTADO) --- */
+/* --- ESTILOS DE TOAST NOTIFICATION (CORRIGIDO PARA UX MOBILE) --- */
 #toast-container {
     position: fixed;
-    bottom: 1.25rem;
-    right: 1.25rem;
-    z-index: 200;
+    /* CORREÇÃO UX: Subimos o toast para evitar colisão com menu inferior (100px + safe area) */
+    bottom: calc(100px + var(--safe-area-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 99999; /* Máxima prioridade para sobrepor modais de agenda ou qualquer outro */
     display: flex;
     flex-direction: column;
+    align-items: center; /* Centraliza as mensagens horizontalmente */
     gap: 0.5rem;
+    width: 100%;
+    pointer-events: none; /* Permite que o usuário clique pela tela se não houver notificação */
+}
+
+@media (min-width: 768px) {
+    #toast-container {
+        left: auto;
+        right: 1.25rem;
+        transform: none;
+        bottom: 1.25rem;
+        align-items: flex-end; /* Volta a alinhar à direita no desktop */
+        width: auto;
+    }
 }
 
 .toast {
+    pointer-events: auto; /* Reativa o clique apenas em cima do balão */
     display: flex;
-    align-items: center; /* Alinha o ícone e o texto verticalmente */
-    padding: 0.4rem 0.8rem; /* Padding vertical e horizontal reduzidos */
-    border-radius: 0.75rem;
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    min-width: auto;
-    max-width: 280px; /* Largura máxima reduzida */
+    align-items: center;
+    padding: 0.75rem 1.25rem; /* Respiro melhor no design */
+    border-radius: 1rem; /* Borda mais moderna e arredondada */
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1); /* Sombra mais destacada */
+    min-width: 250px;
+    max-width: 90vw; /* Limita a largura para não estourar a tela no mobile */
     border-left-width: 4px;
     position: relative;
     overflow: hidden;
-    animation: slideInFromRight 0.4s ease-out, fadeOutToTop 0.5s ease-in 3.5s forwards;
+    background-color: #ffffff; /* Fundo sólido garantido */
+    /* Nova animação de entrada fluida vindo do fundo para cima */
+    animation: slideInFromBottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), fadeOutToTop 0.4s ease-in 3.5s forwards;
 }
 
 .toast.success { background-color: #f0fdf4; border-color: #22c55e; color: #15803d; }
@@ -217,24 +236,28 @@ input:checked + .toggle-bg {
 
 .toast-icon {
     flex-shrink: 0;
-    margin-right: 0.5rem; /* Margem reduzida */
+    margin-right: 0.5rem;
+    font-size: 1.1rem;
 }
 
 .toast-content {
     flex-grow: 1;
+    font-weight: 600;
+    font-size: 0.9rem; /* Fonte melhorada para leitura rápida */
 }
 
 .toast-close {
     position: absolute;
-    top: 2px; /* Ajustado */
-    right: 6px; /* Ajustado */
+    top: 8px;
+    right: 10px;
     background: none;
     border: none;
-    font-size: 1.25rem; /* Tamanho reduzido */
+    font-size: 1.1rem;
     line-height: 1;
     color: inherit;
     opacity: 0.5;
     cursor: pointer;
+    transition: opacity 0.2s;
 }
 .toast-close:hover {
     opacity: 1;
@@ -255,14 +278,15 @@ input:checked + .toggle-bg {
     animation: shrink 3.5s linear forwards;
 }
 
-@keyframes slideInFromRight {
-    from { opacity: 0; transform: translateX(100%); }
-    to { opacity: 1; transform: translateX(0); }
+/* Keyframes Refeitos e Otimizados */
+@keyframes slideInFromBottom {
+    from { opacity: 0; transform: translateY(40px); scale: 0.9; }
+    to { opacity: 1; transform: translateY(0); scale: 1; }
 }
 
 @keyframes fadeOutToTop {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(-20px); }
+    from { opacity: 1; transform: translateY(0); scale: 1; }
+    to { opacity: 0; transform: translateY(-20px); scale: 0.9; }
 }
 
 @keyframes shrink {
@@ -758,8 +782,6 @@ body {
 }
 
 /* --- ESTILO PARA CORRIGIR O LAYOUT PRINCIPAL SOBREPOSTO --- */
-/* Nota: Se estás a usar o Flexbox do Tailwind, esta classe pode já não ser necessária, 
-   mas vamos mantê-la atualizada caso seja acionada nalgum lado pelo JS. */
 .main-content-shift {
     transition: margin-left 0.3s ease-in-out;
     padding-top: 4rem;
