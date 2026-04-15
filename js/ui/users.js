@@ -1,50 +1,65 @@
-// js/ui/users.js (Otimizado para Multi-Tenant Enterprise - 3 Níveis)
+// js/ui/users.js (Arquitetura Premium Multi-Tenant - Tabs & Contexto Global)
 
 import * as usersApi from '../api/users.js';
 import * as professionalsApi from '../api/professionals.js'; 
-import * as establishmentApi from '../api/establishments.js'; // Importante para buscar a hierarquia
+import * as establishmentApi from '../api/establishments.js'; 
 import { state } from '../state.js';
 import { showNotification, showConfirmation } from '../components/modal.js';
+import { escapeHTML } from '../utils.js';
 
 const contentDiv = document.getElementById('content');
 
-// --- LISTA DE MÓDULOS ---
-const modules = {
-    'agenda-section': 'Agenda',
-    'comandas-section': 'Comandas',
-    'relatorios-section': 'Relatórios Gerais',
-    'sales-report-section': 'Relatório de Vendas (Caixa)', 
-    'financial-section': 'Financeiro',
-    'servicos-section': 'Serviços',
-    'produtos-section': 'Produtos',
-    'suppliers-section': 'Fornecedores', 
-    'profissionais-section': 'Profissionais',
-    'ausencias-section': 'Ausências e Bloqueios', 
-    'clientes-section': 'Clientes',
-    'packages-section': 'Pacotes', 
-    'commissions-section': 'Comissões', 
-    'estabelecimento-section': 'Configurações do Estabelecimento', 
-    'users-section': 'Usuários e Acessos' 
+// --- AGRUPAMENTO DE MÓDULOS (Design Profissional) ---
+const moduleGroups = {
+    'Operação & Atendimento': {
+        'dashboard-section': 'Dashboard',
+        'agenda-section': 'Agenda',
+        'comandas-section': 'Comandas',
+        'ausencias-section': 'Ausências e Bloqueios'
+    },
+    'Financeiro & Vendas': {
+        'financial-section': 'Financeiro (ERP)',
+        'sales-report-section': 'Relatório de Vendas',
+        'commissions-section': 'Comissões',
+        'packages-section': 'Planos e Pacotes'
+    },
+    'Cadastros Base': {
+        'clientes-section': 'Clientes',
+        'profissionais-section': 'Profissionais',
+        'servicos-section': 'Serviços',
+        'produtos-section': 'Produtos',
+        'suppliers-section': 'Fornecedores'
+    },
+    'Administração': {
+        'relatorios-section': 'Relatórios Gerais',
+        'estabelecimento-section': 'Configurações da Empresa',
+        'users-section': 'Usuários e Acessos'
+    }
 };
 
-const permissions = {
-    view: 'Visualizar',
-    create: 'Criar',
-    edit: 'Editar'
+const permissions = { view: 'Visualizar', create: 'Criar', edit: 'Editar' };
+
+// Tradução de Roles (Cores e Nomes)
+const roleMap = {
+    'owner': { label: 'Proprietário', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+    'group_admin': { label: 'Admin da Rede', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+    'company_admin': { label: 'Gestor Matriz', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    'branch_manager': { label: 'Gestor Filial', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+    'professional': { label: 'Profissional', color: 'bg-slate-100 text-slate-600 border-slate-200' }
 };
 
-// Variáveis para guardar a referência dos listeners
 let usersPageClickListener = null;
 let usersPageChangeListener = null;
-let currentHierarchy = null; // Cache da hierarquia do Grupo
+let currentHierarchy = null; 
 
-// Tradução de Roles
-const roleNames = {
-    'group_admin': 'Administrador do Grupo',
-    'company_admin': 'Gestor de Matriz',
-    'branch_manager': 'Gestor de Filial',
-    'professional': 'Profissional Padrão'
-};
+// --- FUNÇÃO DE BUSCA MULTI-EMPRESA ---
+function getActiveEstablishmentsFromHeader() {
+    const checkboxes = document.querySelectorAll('#multi-context-list input[type="checkbox"]:checked');
+    if (checkboxes.length > 0) {
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    return [state.establishmentId];
+}
 
 // --- RENDERIZAR A LISTA DE USUÁRIOS ---
 function renderUsersList(users) {
@@ -53,60 +68,73 @@ function renderUsersList(users) {
 
     const showAll = document.getElementById('showInactiveUsersToggle')?.checked;
     if (users.length === 0) {
-        const message = showAll ? 'Nenhum usuário encontrado.' : 'Nenhum usuário ativo cadastrado.';
-        listContainer.innerHTML = `<p class="col-span-full text-center text-gray-500">${message}</p>`;
+        const message = showAll ? 'Nenhum usuário encontrado na base.' : 'Nenhum usuário ativo neste contexto.';
+        listContainer.innerHTML = `
+            <div class="col-span-full py-16 bg-white rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3"><i class="bi bi-people text-3xl text-slate-300"></i></div>
+                <h3 class="text-sm font-bold text-slate-700 mb-1">${message}</h3>
+                <p class="text-[10px] text-slate-500 max-w-xs">Tente selecionar mais unidades no topo da tela ou exibir inativos.</p>
+            </div>`;
         return;
     }
 
-    users.sort((a, b) => (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1));
+    users.sort((a, b) => {
+        if (a.role === 'owner' && b.role !== 'owner') return -1;
+        if (a.role !== 'owner' && b.role === 'owner') return 1;
+        return (a.status === 'active' ? -1 : 1) - (b.status === 'active' ? -1 : 1);
+    });
 
     listContainer.innerHTML = users.map(user => {
         const userDataString = JSON.stringify(user).replace(/'/g, "&apos;");
         const isActive = user.status === 'active';
         
-        const professional = state.professionals.find(p => p.id === user.professionalId); 
-        const professionalName = professional ? professional.name : 'N/A';
+        const professional = state.professionals?.find(p => p.id === user.professionalId); 
+        const professionalName = professional ? professional.name : 'Acesso Administrativo';
         
         const photoInitials = professional ? professional.name.charAt(0) : user.name.charAt(0);
-        const photoSrc = professional?.photo || `https://placehold.co/64x64/E2E8F0/4A5568?text=${encodeURIComponent(photoInitials)}`;
+        const photoSrc = user.photo || professional?.photo || `https://placehold.co/100x100/E2E8F0/4A5568?text=${encodeURIComponent(photoInitials)}`;
 
-        const roleLabel = roleNames[user.role] || 'Profissional';
-        const roleColor = user.role === 'group_admin' ? 'bg-purple-100 text-purple-800' : 
-                          user.role === 'company_admin' ? 'bg-blue-100 text-blue-800' : 
-                          user.role === 'branch_manager' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800';
+        const roleInfo = roleMap[user.role] || roleMap['professional'];
 
         return `
-        <div class="user-card-clickable bg-white rounded-lg shadow-sm border overflow-hidden flex cursor-pointer ${!isActive ? 'opacity-60' : ''} hover:shadow-md transition" 
-             data-action="edit-user" 
-             data-user='${userDataString}'>
+        <div class="user-card-clickable bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between p-4 cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-[0.99] ${!isActive ? 'opacity-60 bg-slate-50' : ''}" 
+             data-action="edit-user" data-user='${userDataString}'>
             
-            <img src="${photoSrc}" alt="Foto de Perfil" class="w-16 h-16 object-cover flex-shrink-0 pointer-events-none border-r">
-            
-            <div class="p-3 flex-grow flex flex-col justify-between min-w-0">
-                <div class="pointer-events-none min-w-0">
-                    <div class="flex justify-between items-start gap-2">
-                        <p class="font-bold text-gray-800 text-sm truncate">${user.name}</p>
-                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap ${roleColor}">${roleLabel}</span>
+            <div class="flex items-center gap-4 w-full md:w-auto mb-4 md:mb-0">
+                <img src="${photoSrc}" alt="Foto" class="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm flex-shrink-0 pointer-events-none">
+                <div class="flex-1 min-w-0 pointer-events-none">
+                    <h3 class="font-black text-slate-800 text-sm md:text-base truncate flex items-center gap-2">
+                        ${escapeHTML(user.name)} 
+                        ${user.role === 'owner' ? '<i class="bi bi-star-fill text-amber-400 text-[10px]" title="Proprietário"></i>' : ''}
+                    </h3>
+                    <p class="text-[10px] md:text-xs text-slate-500 font-medium truncate mb-1">${escapeHTML(user.email)}</p>
+                    <div class="flex flex-wrap gap-1.5 mt-1">
+                        <span class="text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest border ${roleInfo.color}">${roleInfo.label}</span>
+                        ${professional ? `<span class="text-[9px] font-bold px-2 py-0.5 rounded-md uppercase tracking-widest border border-slate-200 bg-slate-50 text-slate-500"><i class="bi bi-scissors text-indigo-400 mr-1"></i>Vínculo Prof.</span>` : ''}
                     </div>
-                    <p class="text-xs text-gray-500 truncate">${user.email}</p>
-                    <p class="text-[10px] text-gray-400 mt-1 truncate">Prof: <span class="font-semibold text-gray-600">${professionalName}</span></p>
-                </div>
-                
-                <div class="mt-2 flex items-center justify-between gap-2">
-                    <label class="flex items-center cursor-pointer" title="${isActive ? 'Ativo' : 'Inativo'}">
-                        <div class="relative">
-                            <input type="checkbox" data-action="toggle-user-status" data-user-id="${user.id}" class="sr-only" ${isActive ? 'checked' : ''}>
-                            <div class="toggle-bg block bg-gray-300 w-8 h-4 rounded-full"></div>
-                        </div>
-                    </label>
-                    
-                    <button data-action="delete-user" data-user-id="${user.id}" class="text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors action-btn-delete" title="Excluir Usuário">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
                 </div>
             </div>
+            
+            <div class="flex items-center justify-between w-full md:w-auto md:justify-end gap-4 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0">
+                <div class="flex flex-col items-start md:items-end mr-4">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Status</span>
+                    <label class="flex items-center cursor-pointer" title="${isActive ? 'Ativo' : 'Inativo'}" data-action-stop-propagation="true">
+                        <div class="relative">
+                            <input type="checkbox" data-action="toggle-user-status" data-user-id="${user.id}" class="sr-only" ${isActive ? 'checked' : ''} ${user.role === 'owner' ? 'disabled' : ''}>
+                            <div class="toggle-bg block ${isActive ? 'bg-emerald-500' : 'bg-slate-300'} ${user.role === 'owner' ? 'opacity-50' : ''} w-10 h-5 rounded-full transition-colors shadow-inner"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform ${isActive ? 'transform translate-x-5' : ''}"></div>
+                        </div>
+                    </label>
+                </div>
+                
+                ${user.role !== 'owner' ? `
+                <button data-action="delete-user" data-user-id="${user.id}" class="text-slate-400 hover:text-red-500 w-10 h-10 rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center border border-transparent hover:border-red-100 shadow-sm md:shadow-none bg-white md:bg-transparent" title="Excluir Usuário">
+                    <i class="bi bi-trash3 pointer-events-none text-base"></i>
+                </button>
+                ` : `<div class="w-10 h-10 flex items-center justify-center text-amber-500"><i class="bi bi-shield-check text-xl"></i></div>`}
+            </div>
         </div>
-    `
+        `;
     }).join('');
 }
 
@@ -116,43 +144,74 @@ function filterAndRenderUsers() {
     renderUsersList(filteredUsers);
 }
 
-// --- RENDERIZAR FORMULÁRIO DE PERMISSÕES ---
+// --- RENDERIZAR FORMULÁRIO DE PERMISSÕES (Agrupado) ---
 function renderPermissionsForm(currentPermissions = {}) {
-    return Object.entries(modules).map(([key, title]) => {
-        const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
-        const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
-        
-        const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
-             <label class="flex flex-col items-center space-y-1 cursor-pointer">
-                <div class="relative">
-                    <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only" ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
-                    <div class="toggle-bg block bg-gray-300 w-8 h-4 rounded-full"></div>
-                </div>
-                <span class="text-[10px] text-gray-600 font-medium">${pLabel}</span>
-            </label>
-        `).join('');
+    let html = '';
+    let hasAnyModule = false;
 
-        const specialPermissionHtml = isAgendaOrComandas ? `
-            <div class="col-span-full pt-2 mt-2 border-t border-gray-100">
-                <label class="flex items-center space-x-2 cursor-pointer">
-                    <div class="relative">
-                        <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only" ${isViewAllChecked ? 'checked' : ''}>
-                        <div class="toggle-bg block bg-gray-300 w-8 h-4 rounded-full"></div>
+    for (const [groupName, groupModules] of Object.entries(moduleGroups)) {
+        // Filtrar módulos deste grupo que a empresa tem acesso
+        const activeModulesInGroup = Object.entries(groupModules).filter(([key, title]) => {
+            const moduleKey = key.replace('-section', '');
+            return !(state.enabledModules && state.enabledModules[moduleKey] === false);
+        });
+
+        if (activeModulesInGroup.length === 0) continue;
+        hasAnyModule = true;
+
+        html += `
+        <div class="mb-6 last:mb-0">
+            <h4 class="font-black text-[10px] text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-100 pb-2"><i class="bi bi-folder2-open text-indigo-400 mr-1"></i> ${groupName}</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        `;
+
+        activeModulesInGroup.forEach(([key, title]) => {
+            const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
+            const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
+            
+            const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
+                <label class="flex items-center justify-between cursor-pointer p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                    <span class="text-[9px] text-slate-600 font-bold uppercase tracking-widest">${pLabel}</span>
+                    <div class="relative ml-2">
+                        <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only permission-checkbox" ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
+                        <div class="toggle-bg block bg-slate-200 w-8 h-4 rounded-full transition-colors shadow-inner"></div>
+                        <div class="dot absolute left-1 top-[2px] bg-white w-3 h-3 rounded-full transition-transform ${currentPermissions[key]?.[pKey] ? 'transform translate-x-4' : ''}"></div>
                     </div>
-                    <span class="text-xs font-bold text-indigo-600">Ver dados de toda a Equipe</span>
                 </label>
-            </div>
-        ` : '';
+            `).join('');
 
-        return `
-        <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200">
-            <h4 class="font-bold text-xs text-gray-800 border-b pb-1.5 mb-2">${title}</h4>
-            <div class="grid grid-cols-3 gap-1">
-                ${permissionToggles}
+            const specialPermissionHtml = isAgendaOrComandas ? `
+                <div class="mt-2 pt-2 border-t border-slate-100">
+                    <label class="flex items-center justify-between cursor-pointer p-2 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/50 transition-colors border border-indigo-100">
+                        <span class="text-[9px] font-black text-indigo-700 uppercase tracking-widest">Acesso Toda Equipe</span>
+                        <div class="relative ml-2">
+                            <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only permission-checkbox" ${isViewAllChecked ? 'checked' : ''}>
+                            <div class="toggle-bg block bg-slate-200 w-8 h-4 rounded-full transition-colors shadow-inner"></div>
+                            <div class="dot absolute left-1 top-[2px] bg-white w-3 h-3 rounded-full transition-transform ${isViewAllChecked ? 'transform translate-x-4' : ''}"></div>
+                        </div>
+                    </label>
+                </div>
+            ` : '';
+
+            html += `
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-indigo-300 transition-colors flex flex-col justify-between">
+                <h5 class="font-black text-xs text-slate-800 mb-3 uppercase tracking-wider">${title}</h5>
+                <div class="space-y-1">
+                    ${permissionToggles}
+                </div>
+                ${specialPermissionHtml}
             </div>
-            ${specialPermissionHtml}
-        </div>
-    `}).join('');
+            `;
+        });
+
+        html += `</div></div>`;
+    }
+
+    if (!hasAnyModule) {
+        return `<div class="p-6 bg-red-50 border border-red-100 rounded-2xl text-center"><p class="text-sm font-bold text-red-600">Sua empresa não possui módulos ativados. Contate o administrador do sistema.</p></div>`;
+    }
+
+    return html;
 }
 
 // --- RENDERIZAR SELETOR DE ACESSOS (HIERARQUIA) ---
@@ -163,31 +222,29 @@ function renderAccessSelector(user) {
     const userAccessCompanies = user?.accessibleCompanies?.map(c => c.id) || [];
     const role = user?.role || 'professional';
 
-    // Se o usuário que estamos editando for Group Admin, ele tem acesso a tudo
-    if (role === 'group_admin') {
-        return `<div class="p-3 bg-purple-50 border border-purple-200 rounded-lg text-purple-800 text-sm font-bold">Acesso Total (Global) liberado.</div>`;
+    if (role === 'owner' || role === 'group_admin') {
+        return `<div class="p-5 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-800 text-sm font-black flex items-center justify-center gap-3"><i class="bi bi-shield-check text-2xl"></i> Acesso Total (Toda a Rede)</div>`;
     }
 
-    let html = `<div class="space-y-3 max-h-48 overflow-y-auto custom-scrollbar p-2 bg-gray-50 rounded border">`;
+    let html = `<div class="space-y-3 max-h-60 overflow-y-auto custom-scrollbar p-1">`;
 
-    // Renderiza as Empresas e Filiais baseadas na Hierarquia carregada
     currentHierarchy.companies.forEach(company => {
         const isCompanyChecked = userAccessCompanies.includes(company.id);
         const companyBranches = currentHierarchy.branches.filter(b => b.companyId === company.id);
         
         html += `
-            <div class="company-block">
-                <label class="flex items-center space-x-2 cursor-pointer mb-1">
-                    <input type="checkbox" class="company-checkbox rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4" value="${company.id}" data-name="${company.name}" ${isCompanyChecked ? 'checked' : ''}>
-                    <span class="text-sm font-bold text-gray-800">🏢 ${company.name}</span>
+            <div class="company-block bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <label class="flex items-center space-x-3 cursor-pointer p-3 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200">
+                    <input type="checkbox" class="company-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-5 w-5" value="${company.id}" data-name="${company.name}" ${isCompanyChecked ? 'checked' : ''}>
+                    <span class="text-sm font-black text-slate-800 uppercase tracking-wider">🏢 ${company.name}</span>
                 </label>
-                <div class="pl-6 space-y-1 border-l-2 border-gray-200 ml-2">
+                <div class="p-2 space-y-1">
                     ${companyBranches.map(branch => {
                         const isBranchChecked = userAccessBranches.includes(branch.id) || isCompanyChecked;
                         return `
-                            <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="checkbox" class="branch-checkbox rounded text-indigo-500 h-3 w-3" value="${branch.id}" data-name="${branch.name}" data-company-id="${company.id}" ${isBranchChecked ? 'checked' : ''}>
-                                <span class="text-xs text-gray-600">📍 ${branch.name}</span>
+                            <label class="flex items-center space-x-3 cursor-pointer p-2.5 hover:bg-indigo-50/50 rounded-lg transition-colors border border-transparent hover:border-indigo-100">
+                                <input type="checkbox" class="branch-checkbox rounded border-slate-300 text-indigo-500 h-4 w-4" value="${branch.id}" data-name="${branch.name}" data-company-id="${company.id}" ${isBranchChecked ? 'checked' : ''}>
+                                <span class="text-xs font-bold text-slate-600">📍 ${branch.name}</span>
                             </label>
                         `;
                     }).join('')}
@@ -200,8 +257,7 @@ function renderAccessSelector(user) {
     return html;
 }
 
-
-// --- FORMULÁRIO DE CRIAÇÃO/EDIÇÃO ---
+// --- FORMULÁRIO DE CRIAÇÃO/EDIÇÃO COM ABAS ---
 async function showUserFormView(user = null) {
     document.getElementById('user-list-view').classList.add('hidden');
     const formView = document.getElementById('user-form-view');
@@ -210,122 +266,161 @@ async function showUserFormView(user = null) {
     let professionals = state.professionals;
     if (!professionals || professionals.length === 0) {
         try {
-            professionals = await professionalsApi.getProfessionals(state.currentViewContext.id); // Usa contexto atual
+            const activeIds = getActiveEstablishmentsFromHeader();
+            const profPromises = activeIds.map(id => professionalsApi.getProfessionals(id));
+            const profResults = await Promise.all(profPromises);
+            const profMap = new Map();
+            profResults.flat().forEach(p => profMap.set(p.id, p));
+            professionals = Array.from(profMap.values());
             state.professionals = professionals;
-        } catch(err) {
-             console.warn('Profissionais não carregados');
-        }
+        } catch(err) { console.warn('Profissionais não carregados', err); }
     }
     
-    // Carregar hierarquia se for admin/manager
-    if (['group_admin', 'company_admin'].includes(state.userRole) && !currentHierarchy) {
+    if (['owner', 'group_admin', 'company_admin'].includes(state.userRole) && !currentHierarchy) {
         try {
-            // Requer que exista uma rota no api/establishments.js chamada getHierarchy
-            // Simularemos a chamada aqui ou assumimos que já foi implementada no seu backend
-            const response = await fetch('/api/establishments/hierarchy', { headers: { 'Authorization': `Bearer ${await state.getAuthToken?.() || ''}` }});
-            if(response.ok) {
-                currentHierarchy = await response.json();
-            }
+            const response = await establishmentApi.getHierarchy();
+            if(response) currentHierarchy = response;
         } catch (error) {
             console.error('Falha ao buscar hierarquia', error);
             currentHierarchy = { companies: [], branches: [] };
         }
     }
 
-    const getProfessionalById = (id) => professionals?.find(p => p.id === id);
-    const initialProfId = user?.professionalId;
-    const initialProf = getProfessionalById(initialProfId);
     const isEditing = user !== null;
+    const isEditingOwner = isEditing && user.role === 'owner';
+    const isCurrentUserOwner = state.userRole === 'owner';
 
-    formView.querySelector('#userFormTitle').textContent = isEditing ? `Editar: ${user.name}` : 'Novo Usuário';
+    const headerTitle = formView.querySelector('#userFormTitle');
+    headerTitle.innerHTML = isEditing ? `<i class="bi bi-person-lines-fill mr-2 text-indigo-600"></i>Editar Perfil: ${user.name}` : `<i class="bi bi-person-plus-fill mr-2 text-indigo-600"></i>Novo Acesso`;
 
     const form = formView.querySelector('#userForm');
     
     form.innerHTML = `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[70vh]">
             
-            <div class="bg-gray-50 p-4 rounded-lg border space-y-3">
-                 <h3 class="font-bold text-sm text-gray-800 border-b pb-1">Dados de Acesso</h3>
-                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div class="form-group">
-                        <label class="text-xs font-bold text-gray-600">Nome Completo</label>
-                        <input type="text" id="userName" required value="${user?.name || ''}" class="w-full p-2 border rounded text-sm">
-                    </div>
-                    <div class="form-group">
-                        <label class="text-xs font-bold text-gray-600">E-mail de Login</label>
-                        <input type="email" id="userEmail" required value="${user?.email || ''}" class="w-full p-2 border rounded text-sm">
-                    </div>
-                </div>
+            <div class="flex overflow-x-auto custom-scrollbar border-b border-slate-200 bg-slate-50 flex-shrink-0">
+                <button type="button" class="tab-btn active px-6 py-4 text-xs font-black uppercase tracking-widest text-indigo-600 border-b-2 border-indigo-600 whitespace-nowrap transition-colors" data-tab="tab-basico">1. Dados Básicos</button>
+                <button type="button" class="tab-btn px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400 border-b-2 border-transparent hover:text-indigo-500 whitespace-nowrap transition-colors" data-tab="tab-acesso">2. Nível & Unidades</button>
+                <button type="button" class="tab-btn px-6 py-4 text-xs font-black uppercase tracking-widest text-slate-400 border-b-2 border-transparent hover:text-indigo-500 whitespace-nowrap transition-colors" data-tab="tab-modulos">3. Módulos do Sistema</button>
             </div>
 
-            ${['group_admin', 'company_admin'].includes(state.userRole) ? `
-            <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-3">
-                 <h3 class="font-bold text-sm text-indigo-800 border-b border-indigo-200 pb-1">Nível de Acesso (Enterprise)</h3>
-                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-xs font-bold text-indigo-700 block mb-1">Perfil do Usuário</label>
-                        <select id="userRole" class="w-full p-2 border border-indigo-300 rounded text-sm bg-white font-semibold">
-                            ${state.userRole === 'group_admin' ? `<option value="group_admin" ${user?.role === 'group_admin' ? 'selected' : ''}>Administrador Global (Acesso a tudo)</option>` : ''}
-                            <option value="company_admin" ${user?.role === 'company_admin' ? 'selected' : ''}>Gestor de Empresa/Matriz</option>
-                            <option value="branch_manager" ${user?.role === 'branch_manager' ? 'selected' : ''}>Gestor de Filial (Loja)</option>
-                            <option value="professional" ${user?.role === 'professional' ? 'selected' : ''}>Profissional Padrão (Barbeiro)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-indigo-700 block mb-1">Locais Permitidos</label>
-                        <div id="hierarchySelectorContainer">
-                            ${renderAccessSelector(user)}
+            <div class="flex-1 p-4 md:p-6 bg-slate-50/30 overflow-y-auto">
+                
+                <div id="tab-basico" class="tab-content space-y-6 animate-fade-in-fast">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3"><i class="bi bi-person-badge text-indigo-500 text-lg"></i> Identificação</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Completo *</label>
+                                <input type="text" id="userName" required value="${user?.name || ''}" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner transition-colors">
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Login *</label>
+                                <input type="email" id="userEmail" required value="${user?.email || ''}" ${isEditingOwner ? 'disabled' : ''} class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner transition-colors ${isEditingOwner ? 'opacity-70 cursor-not-allowed' : ''}">
+                            </div>
                         </div>
                     </div>
-                 </div>
-            </div>
-            ` : `<input type="hidden" id="userRole" value="${user?.role || 'professional'}">`}
 
-            <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-100 space-y-3">
-                 <h3 class="font-bold text-sm text-yellow-800 border-b border-yellow-200 pb-1">Associação na Agenda</h3>
-                <div class="form-group">
-                    <label class="text-xs font-bold text-yellow-700">Vincular a qual Profissional?</label>
-                    <select id="userProfessionalId" class="w-full p-2 border border-yellow-300 rounded text-sm bg-white">
-                        <option value="">-- Não Associar --</option>
-                        ${professionals?.map(p => `<option value="${p.id}" ${p.id === initialProfId ? 'selected' : ''}>${p.name}</option>`).join('')}
-                    </select>
-                    <p class="text-[10px] text-yellow-600 mt-1">Garante que o profissional só veja os agendamentos dele.</p>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3"><i class="bi bi-link-45deg text-orange-500 text-lg"></i> Vínculo na Agenda</h3>
+                        <div class="form-group max-w-xl">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Vincular a qual Perfil Profissional?</label>
+                            <select id="userProfessionalId" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner transition-colors">
+                                <option value="">-- Apenas Administrativo / Recepção --</option>
+                                ${professionals?.map(p => `<option value="${p.id}" ${p.id === user?.professionalId ? 'selected' : ''}>${p.name}</option>`).join('')}
+                            </select>
+                            <p class="text-[10px] font-bold text-orange-500 mt-2 ml-1"><i class="bi bi-info-circle mr-1"></i>Necessário para que o usuário veja sua própria agenda e comissões no app.</p>
+                        </div>
+                    </div>
+
+                    ${!isEditing ? `
+                    <div class="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
+                        <h3 class="font-black text-xs text-rose-800 uppercase tracking-wider flex items-center gap-2 mb-4"><i class="bi bi-asterisk text-rose-500 text-lg"></i> Senha de Acesso</h3>
+                        <input type="password" id="userPassword" required placeholder="Mínimo 6 caracteres" class="w-full max-w-md p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-rose-500 outline-none shadow-inner transition-colors">
+                    </div>
+                    ` : `
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <button type="button" id="btn-show-password" class="text-[10px] py-2.5 px-5 bg-slate-800 text-white font-black uppercase tracking-widest rounded-xl hover:bg-slate-900 transition-colors shadow-md flex items-center gap-2"><i class="bi bi-key-fill text-sm"></i> Redefinir Senha de Acesso</button>
+                        <div id="password-form" class="hidden mt-4 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 max-w-md">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Nova Senha</label>
+                            <input type="password" id="userNewPassword" placeholder="Mínimo 6 caracteres" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-slate-500 outline-none shadow-inner">
+                            <div class="flex gap-2 pt-2">
+                                <button type="button" id="btn-cancel-pwd" class="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 text-[10px] uppercase tracking-widest font-black rounded-xl hover:bg-slate-50 transition-colors shadow-sm">Cancelar</button>
+                                <button type="button" id="btn-save-pwd" class="flex-1 py-2.5 bg-rose-600 text-white text-[10px] uppercase tracking-widest font-black rounded-xl shadow-md hover:bg-rose-700 transition-colors">Salvar Senha</button>
+                            </div>
+                        </div>
+                    </div>
+                    `}
                 </div>
-            </div>
-            
-            ${!isEditing ? `
-            <div class="bg-red-50 p-4 rounded-lg border border-red-100">
-                 <h3 class="font-bold text-sm text-red-800 mb-2">Senha Inicial</h3>
-                 <input type="password" id="userPassword" required placeholder="Mínimo 6 caracteres" class="w-full p-2 border border-red-200 rounded text-sm">
-            </div>
-            ` : `
-            <div class="border-t pt-4 bg-gray-50 p-3 rounded mt-4">
-                <button type="button" data-action="show-password-form" class="text-xs py-1.5 px-3 bg-gray-800 text-white font-bold rounded hover:bg-gray-900 transition">Alterar Senha do Usuário</button>
-                <div id="password-form" class="hidden mt-3 max-w-xs space-y-2">
-                    <input type="password" id="userNewPassword" placeholder="Nova Senha" class="w-full p-2 border rounded text-sm">
-                    <div class="flex gap-2">
-                         <button type="button" data-action="cancel-password-change" class="flex-1 py-1.5 bg-gray-300 text-gray-800 text-xs font-bold rounded">Cancelar</button>
-                         <button type="button" data-action="save-password" class="flex-1 py-1.5 bg-red-600 text-white text-xs font-bold rounded">Salvar Senha</button>
+
+                <div id="tab-acesso" class="tab-content hidden space-y-6 animate-fade-in-fast">
+                    ${['owner', 'group_admin', 'company_admin'].includes(state.userRole) ? `
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3 mb-5"><i class="bi bi-diagram-3 text-indigo-500 text-lg"></i> Permissões de Rede</h3>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div>
+                                <label class="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2 ml-1">Qual o cargo/nível na empresa?</label>
+                                <select id="userRole" class="w-full p-3.5 border border-indigo-200 rounded-xl text-sm font-black text-indigo-900 bg-indigo-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-colors" ${isEditingOwner && !isCurrentUserOwner ? 'disabled' : ''}>
+                                    ${isCurrentUserOwner ? `<option value="owner" ${user?.role === 'owner' ? 'selected' : ''}>Proprietário (Dono do Negócio)</option>` : ''}
+                                    ${['owner', 'group_admin'].includes(state.userRole) ? `<option value="group_admin" ${user?.role === 'group_admin' ? 'selected' : ''}>Administrador Geral (Acesso Total)</option>` : ''}
+                                    <option value="company_admin" ${user?.role === 'company_admin' ? 'selected' : ''}>Gestor de Matriz / Empresa</option>
+                                    <option value="branch_manager" ${user?.role === 'branch_manager' ? 'selected' : ''}>Gestor de Filial (Loja)</option>
+                                    <option value="professional" ${user?.role === 'professional' ? 'selected' : ''}>Profissional / Recepção (Padrão)</option>
+                                </select>
+                            </div>
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 ml-1">Unidades que pode visualizar</label>
+                                <div id="hierarchySelectorContainer">
+                                    ${renderAccessSelector(user)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ` : `<div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center"><p class="text-sm font-bold text-slate-500">Seu nível de acesso não permite alterar a hierarquia deste usuário.</p></div>
+                         <input type="hidden" id="userRole" value="${user?.role || 'professional'}">`}
+                </div>
+
+                <div id="tab-modulos" class="tab-content hidden animate-fade-in-fast">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3 mb-5"><i class="bi bi-ui-checks-grid text-indigo-500 text-lg"></i> O que ele pode fazer no sistema?</h3>
+                        ${renderPermissionsForm(user?.permissions)}
                     </div>
                 </div>
-            </div>
-            `}
 
-            <div class="border-t pt-4 mt-4">
-                <h3 class="text-sm font-bold mb-3 text-gray-800">Permissões de Módulos</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    ${renderPermissionsForm(user?.permissions)}
-                </div>
             </div>
 
-            <div class="flex gap-3 pt-6 border-t">
-                <button type="button" data-action="back-to-list" class="flex-1 py-2 bg-gray-200 text-gray-800 font-bold rounded hover:bg-gray-300">Cancelar</button>
-                <button type="submit" class="flex-1 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700">Salvar Usuário</button>
+            <div class="p-4 bg-white border-t border-slate-200 flex gap-3 flex-shrink-0 relative z-10 shadow-[0_-10px_20px_-5px_rgba(0,0,0,0.05)]">
+                <button type="button" data-action="back-to-list" class="hidden md:block w-1/3 py-3.5 bg-slate-100 text-slate-700 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm">Voltar à Lista</button>
+                <button type="submit" class="w-full md:w-2/3 py-3.5 bg-indigo-600 text-white font-black text-sm uppercase tracking-wider rounded-xl hover:bg-indigo-700 transition-transform active:scale-95 shadow-md flex justify-center items-center gap-2">
+                    <i class="bi bi-check2-circle text-xl"></i> ${isEditing ? 'Salvar Configurações' : 'Cadastrar Usuário'}
+                </button>
             </div>
         </div>
     `;
 
-    // Interatividade da Hierarquia (Checkboxes dinâmicos)
+    // --- LÓGICA DAS TABS ---
+    const tabBtns = formView.querySelectorAll('.tab-btn');
+    const tabContents = formView.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Remove active style from all
+            tabBtns.forEach(b => {
+                b.classList.remove('active', 'text-indigo-600', 'border-indigo-600');
+                b.classList.add('text-slate-400', 'border-transparent');
+            });
+            tabContents.forEach(c => c.classList.add('hidden'));
+
+            // Add active to clicked
+            btn.classList.add('active', 'text-indigo-600', 'border-indigo-600');
+            btn.classList.remove('text-slate-400', 'border-transparent');
+            const targetId = btn.getAttribute('data-tab');
+            formView.querySelector(`#${targetId}`).classList.remove('hidden');
+        });
+    });
+
+    // --- LÓGICA DE HIERARQUIA ---
     const roleSelect = form.querySelector('#userRole');
     const hierarchyContainer = form.querySelector('#hierarchySelectorContainer');
 
@@ -341,19 +436,53 @@ async function showUserFormView(user = null) {
                 cb.addEventListener('change', ev => {
                     const companyBlock = ev.target.closest('.company-block');
                     const branchCheckboxes = companyBlock.querySelectorAll('.branch-checkbox');
-                    branchCheckboxes.forEach(b => b.checked = ev.target.checked);
+                    branchCheckboxes.forEach(b => {
+                        b.checked = ev.target.checked;
+                        // Anima checkboxes dependentes
+                        const dot = b.nextElementSibling.querySelector('.dot');
+                        if (dot) {
+                            if (ev.target.checked) dot.classList.add('transform', 'translate-x-4');
+                            else dot.classList.remove('transform', 'translate-x-4');
+                        }
+                    });
                 });
             });
         };
         attachHierarchyListeners();
     }
 
+    // Toggle visual dos checkboxes de permissão e hierarquia
+    form.querySelectorAll('.permission-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+            const toggleBg = e.target.nextElementSibling;
+            const dot = toggleBg.nextElementSibling;
+            if (e.target.checked) {
+                toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+                dot.classList.add('transform', 'translate-x-4');
+            } else {
+                toggleBg.classList.replace('bg-indigo-500', 'bg-slate-200');
+                dot.classList.remove('transform', 'translate-x-4');
+            }
+        });
+        if (cb.checked) {
+            const toggleBg = cb.nextElementSibling;
+            const dot = toggleBg.nextElementSibling;
+            toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+            dot.classList.add('transform', 'translate-x-4');
+        }
+    });
+
     // --- SALVAR USUÁRIO ---
-    form.addEventListener('submit', async (e) => {
+    form.onsubmit = async (e) => {
         e.preventDefault();
         
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const origText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Processando...';
+        
         const permissions = {};
-        form.querySelectorAll('input[data-module]').forEach(cb => {
+        form.querySelectorAll('.permission-checkbox').forEach(cb => {
             const mod = cb.dataset.module;
             const perm = cb.dataset.permission;
             if (!permissions[mod]) permissions[mod] = {};
@@ -363,11 +492,10 @@ async function showUserFormView(user = null) {
         const professionalId = form.querySelector('#userProfessionalId').value || null;
         const role = form.querySelector('#userRole')?.value || 'professional';
 
-        // Capturar Hierarquia
         const accessibleCompanies = [];
         const accessibleEstablishments = [];
 
-        if (role !== 'group_admin' && form.querySelector('.company-checkbox')) {
+        if (role !== 'group_admin' && role !== 'owner' && form.querySelector('.company-checkbox')) {
             form.querySelectorAll('.company-checkbox:checked').forEach(cb => {
                 accessibleCompanies.push({ id: cb.value, name: cb.dataset.name });
             });
@@ -376,7 +504,8 @@ async function showUserFormView(user = null) {
             });
 
             if (accessibleEstablishments.length === 0) {
-                return showNotification('Atenção', 'Você deve selecionar pelo menos uma filial para este usuário.', 'error');
+                submitBtn.disabled = false; submitBtn.innerHTML = origText;
+                return showNotification('Atenção', 'Selecione pelo menos uma filial na aba de Acesso.', 'warning');
             }
         }
 
@@ -392,49 +521,50 @@ async function showUserFormView(user = null) {
         try {
             if (isEditing) {
                 const newEmail = form.querySelector('#userEmail').value;
-                if (user?.email !== newEmail) userData.email = newEmail;
+                if (user?.email !== newEmail && !isEditingOwner) userData.email = newEmail;
                 
                 await usersApi.updateUser(user.id, userData);
-                showNotification('Usuário atualizado com sucesso!', 'success');
+                showNotification('Sucesso', 'Usuário atualizado.', 'success');
             } else {
                 userData.email = form.querySelector('#userEmail').value;
                 userData.password = form.querySelector('#userPassword').value;
                 await usersApi.createUser(userData);
-                showNotification('Usuário criado com sucesso!', 'success');
+                showNotification('Sucesso', 'Novo usuário cadastrado na plataforma.', 'success');
             }
             loadUsersPage();
         } catch (error) {
             showNotification(`Erro: ${error.message}`, 'error');
+            submitBtn.disabled = false; submitBtn.innerHTML = origText;
         }
-    });
+    };
 
-    // Lógica de Troca de Senha (Mantida)
+    // --- Lógica de Troca de Senha ---
     if (isEditing) {
-        const showPasswordBtn = form.querySelector('[data-action="show-password-form"]');
+        const showPasswordBtn = form.querySelector('#btn-show-password');
         const passwordForm = form.querySelector('#password-form');
         
         if (showPasswordBtn && passwordForm) {
-            showPasswordBtn.addEventListener('click', () => {
+            showPasswordBtn.onclick = () => {
                 showPasswordBtn.classList.add('hidden');
                 passwordForm.classList.remove('hidden');
-            });
+            };
 
-            passwordForm.querySelector('[data-action="cancel-password-change"]').addEventListener('click', () => {
+            form.querySelector('#btn-cancel-pwd').onclick = () => {
                 showPasswordBtn.classList.remove('hidden');
                 passwordForm.classList.add('hidden');
                 passwordForm.querySelector('#userNewPassword').value = '';
-            });
+            };
 
-            passwordForm.querySelector('[data-action="save-password"]').addEventListener('click', async (e) => {
+            form.querySelector('#btn-save-pwd').onclick = async (e) => {
                 const btn = e.target;
                 const newPassword = passwordForm.querySelector('#userNewPassword').value;
-                if (!newPassword || newPassword.length < 6) return showNotification('Aviso', 'Senha deve ter no mínimo 6 caracteres.', 'error');
+                if (!newPassword || newPassword.length < 6) return showNotification('Aviso', 'Senha deve ter no mínimo 6 caracteres.', 'warning');
 
-                if (await showConfirmation('Alterar Senha', 'Tem certeza?')) {
+                if (await showConfirmation('Alterar Senha', 'O usuário usará esta nova senha no próximo acesso. Confirma?')) {
                     try {
-                        btn.disabled = true; btn.textContent = '...';
+                        btn.disabled = true; btn.textContent = 'Aguarde...';
                         await usersApi.changeUserPassword(user.id, newPassword);
-                        showNotification('Sucesso', 'Senha alterada.', 'success');
+                        showNotification('Sucesso', 'Senha alterada com segurança.', 'success');
                         showPasswordBtn.classList.remove('hidden');
                         passwordForm.classList.add('hidden');
                     } catch (err) {
@@ -443,62 +573,83 @@ async function showUserFormView(user = null) {
                         btn.disabled = false; btn.textContent = 'Salvar Senha';
                     }
                 }
-            });
+            };
         }
     }
 }
 
 async function fetchAndRenderUsers() {
     const listContainer = document.getElementById('usersListContainer');
-    listContainer.innerHTML = '<div class="loader col-span-full mx-auto"></div>';
+    listContainer.innerHTML = '<div class="col-span-full py-16 flex justify-center"><div class="loader"></div></div>';
     try {
-        // Busca os usuários baseados no contexto global que o Admin está visualizando
-        const [users, professionals] = await Promise.all([
-            usersApi.getUsers(state.currentViewContext.id), // <- Alterado para o Contexto
-            professionalsApi.getProfessionals(state.currentViewContext.id) 
-        ]);
-        state.users = users;
-        state.professionals = professionals; 
+        const activeIds = getActiveEstablishmentsFromHeader();
+        
+        // Multi-context fetch
+        const userPromises = activeIds.map(id => usersApi.getUsers(id));
+        const profPromises = activeIds.map(id => professionalsApi.getProfessionals(id));
+        
+        const userResults = await Promise.all(userPromises);
+        const profResults = await Promise.all(profPromises);
+        
+        // Deduplicate Users
+        const userMap = new Map();
+        userResults.flat().forEach(u => userMap.set(u.id, u));
+        state.users = Array.from(userMap.values());
+        
+        // Deduplicate Professionals
+        const profMap = new Map();
+        profResults.flat().forEach(p => profMap.set(p.id, p));
+        state.professionals = Array.from(profMap.values());
+        
         filterAndRenderUsers();
     } catch (error) {
-        showNotification('Erro ao carregar usuários.', 'error');
-        listContainer.innerHTML = '<p class="col-span-full text-center text-red-500">Falha ao carregar.</p>';
+        showNotification('Erro ao carregar base de usuários.', 'error');
+        listContainer.innerHTML = '<p class="col-span-full text-center font-bold text-red-500 bg-red-50 p-6 rounded-2xl">Falha de comunicação com o servidor de acessos.</p>';
     }
 }
 
 export async function loadUsersPage() {
     contentDiv.innerHTML = `
-        <style>
-            .toggle-bg::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: white; border-radius: 50%; transition: transform 0.2s; }
-            input:checked + .toggle-bg { background-color: #4f46e5; }
-            input:checked + .toggle-bg::after { transform: translateX(16px); }
-            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-            .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
-        </style>
-        <div id="user-list-view" class="relative min-h-full pb-24">
-            <section>
-                <div class="flex flex-wrap justify-between items-center mb-6 gap-3 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                    <h2 class="text-xl font-bold text-gray-800">Equipe e Acessos</h2>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" id="showInactiveUsersToggle" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <span class="text-xs font-bold text-gray-600 uppercase">Exibir Inativos</span>
+        <div id="user-list-view" class="relative h-full pb-24 p-2 md:p-6 w-full max-w-7xl mx-auto overflow-y-auto custom-scrollbar">
+            <section class="animate-fade-in-down max-w-5xl mx-auto">
+                <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-inner">
+                            <i class="bi bi-shield-lock text-2xl"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg md:text-xl font-black text-slate-800 uppercase tracking-tight">Equipe & Acessos</h2>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão de Logins e Permissões</p>
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100 bg-slate-50 md:bg-transparent">
+                        <div class="relative">
+                            <input type="checkbox" id="showInactiveUsersToggle" class="sr-only">
+                            <div class="toggle-bg block bg-slate-200 w-10 h-5 rounded-full transition-colors shadow-inner"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform"></div>
+                        </div>
+                        <span class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Exibir Bloqueados</span>
                     </label>
                 </div>
-                <div id="usersListContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+                
+                <div id="usersListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-12"></div>
             </section>
             
-            <button id="fab-new-user" data-action="new-user" title="Novo Usuário" class="fixed bottom-6 right-6 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:bg-indigo-700 transition z-50 transform hover:scale-105">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
+            <button id="btn-add-user" data-action="new-user" title="Cadastrar Usuário" class="fixed right-5 md:right-10 bg-indigo-600 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_10px_20px_-10px_rgba(79,70,229,0.8)] hover:bg-indigo-700 transition-transform active:scale-90 z-[90] border border-indigo-500" style="bottom: 96px;">
+                <i class="bi bi-person-plus-fill text-2xl drop-shadow-md pointer-events-none"></i>
             </button>
         </div>
 
-        <div id="user-form-view" class="hidden pb-20">
-             <section>
-                <div class="flex justify-between items-center mb-4 bg-white p-3 rounded-lg shadow-sm border">
-                    <h2 id="userFormTitle" class="text-lg font-bold text-gray-800"></h2>
-                    <button data-action="back-to-list" class="bg-gray-100 text-gray-600 hover:text-gray-900 font-bold py-1.5 px-3 rounded-md transition text-xs">Voltar</button>
+        <div id="user-form-view" class="hidden h-full pb-24 p-2 md:p-6 w-full max-w-4xl mx-auto overflow-y-auto custom-scrollbar relative">
+             <section class="animate-fade-in-down h-full flex flex-col">
+                <div class="flex justify-between items-center mb-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex-shrink-0">
+                    <button data-action="back-to-list" class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-800 transition-colors flex items-center justify-center shadow-inner">
+                        <i class="bi bi-arrow-left text-lg"></i>
+                    </button>
+                    <h2 id="userFormTitle" class="text-sm md:text-base font-black text-slate-800 uppercase tracking-wider flex items-center"></h2>
+                    <div class="w-10"></div>
                 </div>
-                <form id="userForm"></form>
+                <form id="userForm" class="flex-1 flex flex-col"></form>
             </section>
         </div>
     `;
@@ -520,10 +671,10 @@ export async function loadUsersPage() {
             case 'back-to-list': loadUsersPage(); break;
             case 'delete-user': {
                 e.stopPropagation(); 
-                if (await showConfirmation('Excluir Usuário', 'Tem certeza? Ação irreversível.')) {
+                if (await showConfirmation('Excluir Usuário', 'O usuário perderá totalmente o acesso ao sistema. Confirma?')) {
                     try {
                         await usersApi.deleteUser(actionElement.dataset.userId);
-                        showNotification('Usuário excluído!', 'success');
+                        showNotification('Usuário excluído com sucesso.', 'success');
                         loadUsersPage();
                     } catch (error) { showNotification(`Erro: ${error.message}`, 'error'); }
                 }
@@ -533,22 +684,54 @@ export async function loadUsersPage() {
     };
 
     usersPageChangeListener = async (e) => {
-        const toggle = e.target.closest('input[data-action="toggle-user-status"]');
-        if (e.target.id === 'showInactiveUsersToggle') filterAndRenderUsers();
-        else if (toggle) {
-            e.stopPropagation();
-            const userId = toggle.dataset.userId;
-            const newStatus = toggle.checked ? 'active' : 'inactive';
-            try {
-                await usersApi.updateUserStatus(userId, newStatus);
-                const userIndex = state.users.findIndex(u => u.id === userId);
-                if (userIndex > -1) {
-                    state.users[userIndex].status = newStatus;
-                    filterAndRenderUsers();
+        if (e.target.id === 'showInactiveUsersToggle') {
+            const toggleBg = e.target.nextElementSibling;
+            const dot = toggleBg.nextElementSibling;
+            if (e.target.checked) {
+                toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+                dot.classList.add('transform', 'translate-x-5');
+            } else {
+                toggleBg.classList.replace('bg-indigo-500', 'bg-slate-200');
+                dot.classList.remove('transform', 'translate-x-5');
+            }
+            filterAndRenderUsers();
+        } else {
+            const toggle = e.target.closest('input[data-action="toggle-user-status"]');
+            if (toggle) {
+                e.stopPropagation();
+                const userId = toggle.dataset.userId;
+                const newStatus = toggle.checked ? 'active' : 'inactive';
+                
+                const toggleBg = toggle.nextElementSibling;
+                const dot = toggleBg.nextElementSibling;
+                if (toggle.checked) {
+                    toggleBg.classList.replace('bg-slate-300', 'bg-emerald-500');
+                    dot.classList.add('transform', 'translate-x-5');
+                } else {
+                    toggleBg.classList.replace('bg-emerald-500', 'bg-slate-300');
+                    dot.classList.remove('transform', 'translate-x-5');
                 }
-            } catch (error) {
-                showNotification(`Erro: ${error.message}`, 'error');
-                toggle.checked = !toggle.checked;
+
+                try {
+                    await usersApi.updateUserStatus(userId, newStatus);
+                    const userIndex = state.users.findIndex(u => u.id === userId);
+                    if (userIndex > -1) {
+                        state.users[userIndex].status = newStatus;
+                        const card = toggle.closest('.user-card-clickable');
+                        if (newStatus === 'inactive') card.classList.add('opacity-60', 'bg-slate-50');
+                        else card.classList.remove('opacity-60', 'bg-slate-50');
+                    }
+                } catch (error) {
+                    showNotification(`Erro: ${error.message}`, 'error');
+                    toggle.checked = !toggle.checked; 
+                    if (toggle.checked) {
+                        toggleBg.classList.replace('bg-slate-300', 'bg-emerald-500');
+                        dot.classList.add('transform', 'translate-x-5');
+                    } else {
+                        toggleBg.classList.replace('bg-emerald-500', 'bg-slate-300');
+                        dot.classList.remove('transform', 'translate-x-5');
+                    }
+                }
             }
         }
     };

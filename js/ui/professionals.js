@@ -173,7 +173,7 @@ function renderBaseLayout() {
             </section>
 
             <div id="professionals-layout-detail" class="hidden absolute inset-0 z-50 bg-slate-50 flex-col overflow-hidden w-full h-full md:relative md:inset-auto md:z-auto md:flex-1 md:border-l md:border-slate-200">
-                </div>
+            </div>
         </div>
     `;
 }
@@ -396,6 +396,8 @@ async function openProfessionalEditor(profId) {
         </div>
     `;
 
+    // Correção: Removido 'absolute bottom-0', inserido o footer no fluxo normal do flex-col 
+    // e reduzido o 'pb-28' do form container para 'pb-6'.
     detailContainer.innerHTML = `
         ${mobileHeaderHTML}
         
@@ -406,7 +408,7 @@ async function openProfessionalEditor(profId) {
             <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-bold py-3.5 px-4 border-b-2 border-transparent text-slate-500 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="bloqueios">4. Bloqueios</button>
         </div>
         
-        <div class="flex-1 overflow-y-auto p-3 md:p-6 custom-scrollbar bg-slate-50/50 pb-28 relative"> 
+        <div class="flex-1 overflow-y-auto p-3 md:p-6 custom-scrollbar bg-slate-50/50 pb-6 relative"> 
             <form id="professionalForm" class="h-full max-w-4xl mx-auto">
                 <input type="hidden" id="professionalId" value="${prof.id || ''}">
                 <input type="hidden" id="profPhotoBase64" value="${prof.photo || ''}">
@@ -418,9 +420,9 @@ async function openProfessionalEditor(profId) {
             </form>
         </div>
 
-        <footer class="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 flex gap-3">
-            <button type="button" data-action="close-detail-screen" class="hidden md:block py-3.5 px-5 bg-slate-100 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm">Cancelar</button>
-            <button type="button" data-action="save-professional" class="w-full py-4 md:py-3.5 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
+        <footer class="p-3 md:p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 flex gap-3">
+            <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-5 bg-slate-100 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm">Cancelar</button>
+            <button type="button" data-action="save-professional" class="w-full py-3 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
                 <i class="bi bi-save2 text-lg"></i> Salvar Perfil
             </button>
         </footer>
@@ -514,6 +516,7 @@ function fillCadastroTab(prof, services) {
         </div>
     `;
 
+    // Correção: Expandimos o container dos serviços removendo max-h-48 (fixo) e colocando min-h ajustável
     atuacaoContainer.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <div class="flex items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-4">
@@ -575,7 +578,7 @@ function fillCadastroTab(prof, services) {
                     </button>
                 </div>
                 
-                <div id="profServicesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar pr-1 flex-1">
+                <div id="profServicesContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto custom-scrollbar pr-1 flex-1">
                     ${services.map(s => `
                         <label class="flex items-center space-x-3 p-2.5 bg-slate-50 rounded-xl cursor-pointer transition-colors border border-slate-200 hover:border-indigo-300 hover:shadow-sm">
                             <input type="checkbox" value="${s.id}" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4" ${prof.services?.includes(s.id) ? 'checked' : ''}>
@@ -1024,7 +1027,8 @@ function setupEventListeners() {
         }
 
         // --- 6. Eventos com Data-Action ---
-        const button = e.target.closest('button[data-action]');
+        // Correção: Alterado de 'button[data-action]' para '[data-action]' para permitir o clique direto na DIV do card
+        const button = e.target.closest('[data-action]');
         if (!button) return;
         const action = button.dataset.action;
 

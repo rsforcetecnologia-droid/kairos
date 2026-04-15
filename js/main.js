@@ -34,6 +34,7 @@ import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails, getHierarchy } from './api/establishments.js'; 
+import { getProfessional } from './api/professionals.js'; // <-- NOVA IMPORTAÇÃO
 import { checkAndStartOnboarding } from './ui/onboarding.js';
 
 // Notificações
@@ -136,7 +137,6 @@ const pageLoader = {
     'establishments-section': () => renderHierarchyScreen(contentDiv),
 };
 
-// Dicionário de títulos para o cabeçalho dinâmico
 const pageTitles = {
     'dashboard-section': 'Dashboard',
     'agenda-section': 'Agenda',
@@ -220,27 +220,15 @@ function applyTheme(themeKey) {
 export function setTheme(themeName) {
     document.documentElement.setAttribute('data-theme', themeName);
     localStorage.setItem('kairos_theme', themeName);
-    
-    if (themeIcon) {
-        if (themeName === 'dark') {
-            themeIcon.innerHTML = '☀️'; 
-        } else {
-            themeIcon.innerHTML = '🌙'; 
-        }
-    }
+    if (themeIcon) themeIcon.innerHTML = themeName === 'dark' ? '☀️' : '🌙'; 
 }
 
 export function initTheme() {
     const savedTheme = localStorage.getItem('kairos_theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-    if (savedTheme) {
-        setTheme(savedTheme);
-    } else if (prefersDark) {
-        setTheme('dark');
-    } else {
-        setTheme('light');
-    }
+    if (savedTheme) setTheme(savedTheme);
+    else if (prefersDark) setTheme('dark');
+    else setTheme('light');
 }
 
 let unsubscribeNotificationsListener = null;
@@ -296,9 +284,6 @@ function setupRealtimeListeners(establishmentId) {
     });
 }
 
-// ====================================================================
-// 🔥 NOVO MOTOR DE SELETOR DE UNIDADES (MULTI-CONTEXTO)
-// ====================================================================
 async function setupContextSwitcher(baseEstablishmentId) {
     const container = document.getElementById('multi-context-container');
     const btn = document.getElementById('multi-context-btn');
@@ -318,7 +303,6 @@ async function setupContextSwitcher(baseEstablishmentId) {
         let itemsHtml = '';
         let count = 0;
         
-        // Constrói a lista HTML
         matrizes.forEach(matriz => {
             itemsHtml += `
                 <label class="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors mb-1">
@@ -344,37 +328,26 @@ async function setupContextSwitcher(baseEstablishmentId) {
             list.innerHTML = itemsHtml;
             container.style.display = 'block'; 
             
-            // Força a garantir que o Array global das empresas selecionadas existe no state
             if (!state.selectedEstablishments || state.selectedEstablishments.length === 0) {
                 state.selectedEstablishments = [baseEstablishmentId];
             }
 
             const checkboxes = Array.from(list.querySelectorAll('input[type="checkbox"]'));
 
-            // Função para atualizar visualmente o cabeçalho
             const updateUI = () => {
                 const checked = checkboxes.filter(cb => cb.checked);
                 countEl.textContent = checked.length;
 
-                if (checked.length === 0) {
-                    label.textContent = "Nenhuma selecionada";
-                } else if (checked.length === 1) {
-                    label.textContent = checked[0].dataset.name;
-                } else {
-                    label.textContent = `${checked.length} Unidades`;
-                }
+                if (checked.length === 0) label.textContent = "Nenhuma selecionada";
+                else if (checked.length === 1) label.textContent = checked[0].dataset.name;
+                else label.textContent = `${checked.length} Unidades`;
             };
 
-            // Seleção Inicial Baseada no ID Logado
             let defaultFound = false;
             checkboxes.forEach(cb => {
-                if (state.selectedEstablishments.includes(cb.value)) {
-                    cb.checked = true;
-                    defaultFound = true;
-                }
+                if (state.selectedEstablishments.includes(cb.value)) { cb.checked = true; defaultFound = true; }
             });
             
-            // Fallback caso ID não exista na lista
             if (!defaultFound && checkboxes.length > 0) {
                 checkboxes[0].checked = true;
                 state.selectedEstablishments = [checkboxes[0].value];
@@ -382,14 +355,12 @@ async function setupContextSwitcher(baseEstablishmentId) {
             }
             updateUI();
 
-            // Toggle Dropdown (Abre/Fecha)
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 dropdown.classList.toggle('hidden');
                 arrow.style.transform = dropdown.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
             });
 
-            // Fecha ao clicar fora e descarta alterações não aplicadas
             document.addEventListener('click', (e) => {
                 if (!container.contains(e.target) && !dropdown.classList.contains('hidden')) {
                     dropdown.classList.add('hidden');
@@ -399,19 +370,11 @@ async function setupContextSwitcher(baseEstablishmentId) {
                 }
             });
 
-            // Ouve as mudanças nos checkboxes apenas para atualizar a UI provisoriamente
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', updateUI);
-            });
+            checkboxes.forEach(cb => cb.addEventListener('change', updateUI));
 
-            // APLICAR AS ALTERAÇÕES
             applyBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                
-                if (loadingScreen) {
-                    loadingScreen.classList.remove('hidden', 'fade-out');
-                    loadingScreen.style.display = 'flex';
-                }
+                if (loadingScreen) { loadingScreen.classList.remove('hidden', 'fade-out'); loadingScreen.style.display = 'flex'; }
 
                 const checked = checkboxes.filter(cb => cb.checked);
                 if (checked.length === 0) {
@@ -420,9 +383,8 @@ async function setupContextSwitcher(baseEstablishmentId) {
                     return;
                 }
 
-                // Grava as escolhas
                 state.selectedEstablishments = checked.map(cb => cb.value);
-                const primaryId = state.selectedEstablishments[0]; // Serve de base para menus únicos
+                const primaryId = state.selectedEstablishments[0]; 
 
                 try {
                     const estDetails = await getEstablishmentDetails(primaryId);
@@ -431,55 +393,40 @@ async function setupContextSwitcher(baseEstablishmentId) {
                     state.enabledModules = estDetails.modules;
                     state.currentViewContext = { id: primaryId, name: estDetails.name, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
 
-                    if (typeof applyTheme === 'function') {
-                        applyTheme(estDetails.themeColor || 'indigo');
-                    }
+                    if (typeof applyTheme === 'function') applyTheme(estDetails.themeColor || 'indigo');
 
                     setupRealtimeListeners(primaryId);
                     loadHeaderKPIs(state.userPermissions);
 
-                    // Fecha Menu
                     dropdown.classList.add('hidden');
                     arrow.style.transform = 'rotate(0deg)';
 
                     showNotification('Ambiente Atualizado', `Exibindo informações consolidadas.`, 'success');
                     
-                    // Recarrega a view ativa com as novas definições
                     const activeLink = document.querySelector('.sidebar-link.active');
                     const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'dashboard-section';
                     navigateTo(currentSection);
 
                 } catch (err) {
-                    console.error("Erro ao aplicar contextos:", err);
                     showNotification('Erro', 'Ocorreu um problema ao trocar a visualização.', 'error');
                 } finally {
-                    if (loadingScreen) {
-                        loadingScreen.classList.add('fade-out');
-                        setTimeout(() => { loadingScreen.style.display = 'none'; }, 500);
-                    }
+                    if (loadingScreen) { loadingScreen.classList.add('fade-out'); setTimeout(() => { loadingScreen.style.display = 'none'; }, 500); }
                 }
             });
 
-            // Inicialização dos detalhes primários no carregamento do sistema
             try {
                 const estDetails = await getEstablishmentDetails(state.establishmentId);
                 state.establishmentName = estDetails.name;
                 state.enabledModules = estDetails.modules;
                 state.currentViewContext = { id: state.establishmentId, name: estDetails.name, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
-                if (typeof applyTheme === 'function') { applyTheme(estDetails.themeColor || 'indigo'); }
+                if (typeof applyTheme === 'function') applyTheme(estDetails.themeColor || 'indigo'); 
                 setupRealtimeListeners(state.establishmentId);
                 loadHeaderKPIs(state.userPermissions);
-            } catch(e) { console.error(e); }
+            } catch(e) {}
 
-        } else {
-            container.style.display = 'none';
-        }
-    } catch (error) {
-        console.error("Erro ao carregar switcher de contexto:", error);
-        container.style.display = 'none';
-    }
+        } else container.style.display = 'none';
+    } catch (error) { container.style.display = 'none'; }
 }
-// ====================================================================
 
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
@@ -501,20 +448,13 @@ export function navigateTo(sectionId, params = {}) {
     
     const loadPage = pageLoader[sectionId];
     if (loadPage && contentDiv) {
-        
-        // --- 🔴 NOVO: Atualiza o título no cabeçalho superior ---
         const headerTitleEl = document.getElementById('header-page-title');
-        if (headerTitleEl) {
-            // Procura o nome no nosso dicionário (pageTitles). Se não achar, coloca o padrão "Painel de Gestão"
-            headerTitleEl.textContent = pageTitles[sectionId] || 'Painel de Gestão';
-        }
-        // -------------------------------------------------------
+        if (headerTitleEl) headerTitleEl.textContent = pageTitles[sectionId] || 'Painel de Gestão';
 
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
         });
 
-        // Sync bottom nav active state
         if (bottomNav) {
             bottomNavItems.forEach(item => {
                 item.classList.toggle('active', item.getAttribute('data-target') === sectionId);
@@ -532,11 +472,9 @@ export function navigateTo(sectionId, params = {}) {
             sidebar.classList.add('hidden');
             if(mobileOverlay) mobileOverlay.classList.add('hidden');
         }
-
         loadPage(params);
     }
 }
-
 window.navigateTo = navigateTo;
 
 async function loadHeaderKPIs(userPermissions) {
@@ -548,24 +486,15 @@ async function loadHeaderKPIs(userPermissions) {
     const canViewAgenda = userPermissions === null || userPermissions['agenda-section']?.view === true;
     const canViewFinancial = userPermissions === null || userPermissions['financial-section']?.view === true;
 
-    if (canViewAgenda && kpiAppointmentsWrapper) {
-        kpiAppointmentsWrapper.classList.remove('hidden');
-        kpiAppointmentsWrapper.classList.add('inline-flex'); 
-    }
-    if (canViewFinancial && kpiFinancialWrapper) {
-        kpiFinancialWrapper.classList.remove('hidden');
-        kpiFinancialWrapper.classList.add('inline-flex'); 
-    }
-
+    if (canViewAgenda && kpiAppointmentsWrapper) { kpiAppointmentsWrapper.classList.remove('hidden'); kpiAppointmentsWrapper.classList.add('inline-flex'); }
+    if (canViewFinancial && kpiFinancialWrapper) { kpiFinancialWrapper.classList.remove('hidden'); kpiFinancialWrapper.classList.add('inline-flex'); }
     if (!canViewAgenda && !canViewFinancial) return;
 
     try {
         const kpis = await getSummaryKPIs();
         if (canViewAgenda && kpiAppointmentsEl) kpiAppointmentsEl.textContent = kpis.todayAppointments.toString();
         if (canViewFinancial && kpiRevenueEl) kpiRevenueEl.textContent = `R$ ${kpis.todayRevenue.toFixed(2).replace('.', ',')}`;
-    } catch (error) {
-        console.error("Erro ao carregar KPIs do cabeçalho:", error);
-    }
+    } catch (error) {}
 }
 
 async function initializePushNotifications(userUid) {
@@ -649,12 +578,7 @@ function setupBackButtonHandling() {
 
 function escapeHTML(str) {
     if (!str) return '';
-    return str.toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    return str.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
 async function initialize() {
@@ -664,7 +588,6 @@ async function initialize() {
     
     initializeModalClosers();
     setupBackButtonHandling(); 
-
     initTheme();
 
     if (themeToggleBtn) {
@@ -692,9 +615,7 @@ async function initialize() {
             navigateTo(target);
         });
 
-        if (navScroll) {
-            navScroll.addEventListener('scroll', updateScrollHints);
-        }
+        if (navScroll) navScroll.addEventListener('scroll', updateScrollHints);
         updateScrollHints();
     }
 
@@ -737,6 +658,14 @@ async function initialize() {
         });
     }
 
+    // Global listener para atualizar a foto dinamicamente em qualquer tela
+    window.addEventListener('userPhotoUpdated', (e) => {
+        const photoUrl = e.detail;
+        if (profileMenuButton && photoUrl) {
+            profileMenuButton.innerHTML = `<img src="${photoUrl}" alt="Avatar" class="w-full h-full rounded-full object-cover">`;
+        }
+    });
+
     document.addEventListener('click', (e) => {
         if (notificationPanel && !notificationPanel.contains(e.target) && e.target !== notificationBell) notificationPanel.classList.add('hidden');
         if (profileDropdown && !profileDropdown.contains(e.target) && e.target !== profileMenuButton) {
@@ -773,6 +702,7 @@ async function initialize() {
                     let userPermissions = null;
                     let userName = user.displayName; 
                     let userProfessionalId = null; 
+                    let userPhoto = null; // <- FOTO GLOBAL DO USUÁRIO
 
                     const userDocRef = doc(db, 'users', user.uid);
                     const userDoc = await getDoc(userDocRef);
@@ -782,16 +712,34 @@ async function initialize() {
                         userPermissions = (claims.role === 'employee') ? (userData.permissions || {}) : null;
                         userName = userData.name || userName;
                         userProfessionalId = userData.professionalId || null; 
+                        userPhoto = userData.photo || null;
                     }
                     
                     state.userProfessionalId = userProfessionalId; 
+
+                    // Verifica se tem perfil profissional associado para tentar obter a foto de lá
+                    if (userProfessionalId && !userPhoto) {
+                        try {
+                            const prof = await getProfessional(userProfessionalId);
+                            if (prof && prof.photo) {
+                                userPhoto = prof.photo;
+                            }
+                        } catch(e) { console.warn("Erro ao buscar foto profissional no topo", e); }
+                    }
+
                     if (Capacitor.isNativePlatform()) initializePushNotifications(user.uid);
                     
                     const finalUserName = userName || user.email;
                     
                     setGlobalState(claims.establishmentId, "Carregando...", userPermissions);
 
-                    if (profileMenuButton) profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
+                    // ATUALIZAÇÃO DA FOTO NO TOPO
+                    if (userPhoto) {
+                        if (profileMenuButton) profileMenuButton.innerHTML = `<img src="${userPhoto}" class="w-full h-full rounded-full object-cover">`;
+                    } else {
+                        if (profileMenuButton) profileMenuButton.textContent = finalUserName.charAt(0).toUpperCase();
+                    }
+
                     if (profileName) profileName.textContent = finalUserName;
                     if (profileEmail) profileEmail.textContent = user.email;
 
@@ -803,9 +751,7 @@ async function initialize() {
                         });
                     }
 
-                    // Prepara o seletor. Ele faz load dos dados do estabelecimento base.
                     await setupContextSwitcher(claims.establishmentId);
-                    
                     initializeNavigation(navigateTo, userPermissions, state.enabledModules);
                     
                     if (loadingScreen) {
@@ -815,23 +761,17 @@ async function initialize() {
                     if (dashboardContent) dashboardContent.style.display = 'flex';
 
                     setTimeout(() => { checkAndStartOnboarding(); }, 1500); 
-                    
                     navigateTo('dashboard-section');
 
-                } else {
-                    throw new Error("Permissão ou estabelecimento não configurado.");
-                }
+                } else throw new Error("Permissão ou estabelecimento não configurado.");
             } catch (error) {
-                console.error("Erro na inicialização:", error);
                 if (loadingScreen) loadingScreen.style.display = 'none';
                 if (dashboardContent) {
                     dashboardContent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center p-4 text-center"><h2>Erro de Acesso</h2><p>${error.message}</p></div>`;
                     dashboardContent.style.display = 'flex'; 
                 }
             }
-        } else {
-            window.location.href = '/login.html';
-        }
+        } else window.location.href = '/login.html';
     });
 }
 

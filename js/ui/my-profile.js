@@ -1,205 +1,272 @@
-// js/ui/my-profile.js (Blindado)
+// js/ui/my-profile.js
 
 import * as professionalsApi from '../api/professionals.js';
 import * as blockagesApi from '../api/blockages.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
-import { auth } from '../firebase-config.js';
-import { escapeHTML } from '../utils.js'; // --- SEGURANÇA ---
+import { auth, db } from '../firebase-config.js';
+import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { escapeHTML, resizeAndCompressImage } from '../utils.js'; 
 
 const contentDiv = document.getElementById('content');
 
-let currentUserProfessionalData = null; 
-
 export async function loadMyProfilePage() {
-    // BLINDAGEM XSS
-    const safeUserName = escapeHTML(state.userName || 'Usuário');
-    const safeUserEmail = escapeHTML(auth.currentUser?.email || 'E-mail não disponível');
-    const initialChar = state.userName ? state.userName.charAt(0) : 'U';
+    const user = auth.currentUser;
+    if (!user) return;
+
+    let userData = {};
+    try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+            userData = userDoc.data();
+        }
+    } catch (e) {
+        console.error("Erro ao buscar usuário", e);
+    }
+
+    let profData = null;
+    if (state.userProfessionalId) {
+        try {
+            profData = await professionalsApi.getProfessional(state.userProfessionalId);
+        } catch (e) {
+            console.error("Erro ao buscar profissional", e);
+        }
+    }
+
+    const safeName = escapeHTML(userData.name || user.displayName || 'Usuário');
+    const safeEmail = escapeHTML(user.email || 'E-mail não disponível');
+    const safePhone = escapeHTML(userData.phone || '');
+    
+    // Define a imagem (Preferência para a foto do Profissional, ou fallback para Letra)
+    let photoSrc = userData.photo || '';
+    if (profData && profData.photo) {
+        photoSrc = profData.photo;
+    }
+    const finalPhoto = photoSrc || `https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(safeName.charAt(0))}`;
 
     contentDiv.innerHTML = `
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
-            <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                Meu Perfil
-            </h2>
-        </div>
-        <div id="my-profile-content" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="max-w-5xl mx-auto space-y-6 p-4 md:p-6 pb-24">
             
-            <div class="md:col-span-1">
-                <div class="p-4 md:p-6 bg-white rounded-lg shadow-md">
-                    <div class="flex flex-col items-center justify-center py-6">
-                        <img id="user-profile-avatar" 
-                             src="https://placehold.co/128x128/E2E8F0/4A5568?text=${encodeURIComponent(initialChar)}" 
-                             alt="Avatar do Usuário" 
-                             class="w-32 h-32 rounded-full object-cover border-4 border-indigo-200">
-                        <h3 class="text-2xl font-bold text-gray-800 mt-4">${safeUserName}</h3>
-                        <p class="text-md text-gray-600">${safeUserEmail}</p>
-                    </div>
-                </div>
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between animate-fade-in-down">
+                <h2 class="text-base md:text-xl font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    <i class="bi bi-person-badge text-indigo-600 text-2xl"></i> Configurações do Meu Perfil
+                </h2>
             </div>
 
-            <div class="md:col-span-2">
-                 <div id="professional-agenda-block" class="p-4 md:p-6 bg-white rounded-lg shadow-md space-y-6">
-                    <div class="flex justify-center items-center h-full"><div class="loader"></div></div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-1 space-y-6 animate-fade-in">
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 text-center relative overflow-hidden">
+                        
+                        <div class="relative inline-block group cursor-pointer mb-4" id="profile-photo-wrapper">
+                            <img id="profile-avatar" src="${finalPhoto}" class="w-32 h-32 rounded-full object-cover border-4 border-indigo-50 shadow-md transition-all group-hover:brightness-75">
+                            <div class="absolute inset-0 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                                <i class="bi bi-camera-fill text-white text-3xl"></i>
+                            </div>
+                            <input type="file" id="profile-photo-input" class="hidden" accept="image/*">
+                        </div>
+                        
+                        <h3 class="text-lg font-black text-slate-800 truncate px-2" id="display-name">${safeName}</h3>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-5 truncate px-2">${safeEmail}</p>
+                        
+                        ${profData ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest border border-emerald-100 shadow-sm mb-4"><i class="bi bi-check-circle-fill"></i> Perfil Profissional Ativo</span>` : ''}
+
+                        <form id="form-user-details" class="text-left space-y-4 border-t border-slate-100 pt-5 mt-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Completo</label>
+                                <input type="text" id="input-name" value="${safeName}" required class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Telefone / WhatsApp</label>
+                                <input type="tel" id="input-phone" value="${safePhone}" placeholder="(00) 00000-0000" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner transition-colors">
+                            </div>
+                            <button type="submit" class="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-wider hover:bg-indigo-700 transition-transform active:scale-95 shadow-md flex items-center justify-center gap-2">
+                                <i class="bi bi-save2"></i> Salvar Alterações
+                            </button>
+                        </form>
+                    </div>
                 </div>
+
+                <div class="lg:col-span-2 space-y-6 animate-fade-in" id="professional-section">
+                    </div>
             </div>
         </div>
     `;
 
-    await renderProfessionalSection();
+    setupProfileEditing(user, userData);
+    renderBlockagesSection(profData);
 }
 
-async function renderProfessionalSection() {
-    const professionalAgendaBlock = document.getElementById('professional-agenda-block');
-    professionalAgendaBlock.innerHTML = ''; 
+function setupProfileEditing(user, userData) {
+    const photoWrapper = document.getElementById('profile-photo-wrapper');
+    const photoInput = document.getElementById('profile-photo-input');
+    const photoPreview = document.getElementById('profile-avatar');
+    const form = document.getElementById('form-user-details');
 
-    try {
-        const professionalId = state.userProfessionalId;
+    photoWrapper.addEventListener('click', () => photoInput.click());
 
-        if (professionalId) {
-            const professional = await professionalsApi.getProfessional(professionalId);
-            currentUserProfessionalData = professional;
-
-            if (professional.photo) {
-                document.getElementById('user-profile-avatar').src = professional.photo;
-            }
-
-            // BLINDAGEM XSS
-            const safeProfName = escapeHTML(professional.name);
-
-            professionalAgendaBlock.innerHTML = `
-                <div class="bg-indigo-50 p-4 rounded-lg flex items-center gap-4 mb-6">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <div>
-                        <p class="font-semibold text-indigo-800">Você está associado ao profissional: ${safeProfName}</p>
-                        <p class="text-sm text-indigo-700">Use esta seção para gerenciar sua própria agenda rapidamente.</p>
-                    </div>
-                </div>
-
-                <div class="mt-8">
-                    <h4 class="text-xl font-bold text-gray-800 mb-4">Bloquear Agenda Rapidamente</h4>
-                    <p class="text-sm text-gray-600 mb-4">Selecione uma data e horário para criar um bloqueio. Isso impedirá que agendamentos sejam criados nesse intervalo.</p>
-                    <form id="block-schedule-form" class="space-y-4">
-                        <div>
-                            <label for="blockDate" class="block text-sm font-medium text-gray-700">Data do Bloqueio</label>
-                            <input type="date" id="blockDate" class="mt-1 w-full p-2 border border-gray-300 rounded-md" required>
-                        </div>
-                        <div class="flex gap-4">
-                            <div class="flex-1">
-                                <label for="blockStartTime" class="block text-sm font-medium text-gray-700">Hora Início</label>
-                                <input type="time" id="blockStartTime" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="09:00" required>
-                            </div>
-                            <div class="flex-1">
-                                <label for="blockEndTime" class="block text-sm font-medium text-gray-700">Hora Fim</label>
-                                <input type="time" id="blockEndTime" class="mt-1 w-full p-2 border border-gray-300 rounded-md" value="18:00" required>
-                            </div>
-                        </div>
-                        <div>
-                            <label for="blockReason" class="block text-sm font-medium text-gray-700">Motivo (Opcional)</label>
-                            <input type="text" id="blockReason" class="mt-1 w-full p-2 border border-gray-300 rounded-md" placeholder="Ex: Consulta médica, folga, etc.">
-                        </div>
-                        <button type="submit" class="w-full bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition">Bloquear Agenda</button>
-                    </form>
-                </div>
-
-                <div class="mt-8 pt-6 border-t border-gray-200">
-                    <div class="flex justify-between items-center mb-4">
-                        <h4 class="text-xl font-bold text-gray-800">Meus Bloqueios</h4>
-                        <select id="my-blocks-filter" class="p-2 border rounded-md text-sm bg-white">
-                            <option value="future">Futuros</option>
-                            <option value="history">Histórico (Passados)</option>
-                        </select>
-                    </div>
-                    <div id="my-blocks-list" class="space-y-3">
-                        <p class="text-gray-500">A carregar bloqueios...</p>
-                    </div>
-                </div>
-            `;
-            
-            setupBlockForm(professional.id);
-            
-            const filterSelect = document.getElementById('my-blocks-filter');
-            filterSelect.addEventListener('change', (e) => loadMyBlocks(professional.id, e.target.value));
-            
-            loadMyBlocks(professional.id, 'future');
-
-        } else {
-            professionalAgendaBlock.innerHTML = `
-                <div class="bg-gray-100 p-4 rounded-lg text-center text-gray-600">
-                    <p>Você não possui um perfil de profissional associado a esta conta.</p>
-                    <p class="text-sm mt-2">Para gerenciar sua agenda, peça ao administrador para associar seu usuário a um profissional existente na tela de "Usuários".</p>
-                </div>
-            `;
-        }
-
-    } catch (error) {
-        console.error("Erro ao carregar seção de profissional:", error);
-        professionalAgendaBlock.innerHTML = `
-            <div class="bg-red-100 p-4 rounded-lg text-red-700">
-                <p>Ocorreu um erro ao carregar os dados do profissional.</p>
-                <p class="text-sm mt-2">${escapeHTML(error.message)}</p>
-            </div>
-        `;
-    }
-}
-
-function setupBlockForm(professionalId) {
-    const form = document.getElementById('block-schedule-form');
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const blockDate = form.querySelector('#blockDate').value;
-        const blockStartTime = form.querySelector('#blockStartTime').value;
-        const blockEndTime = form.querySelector('#blockEndTime').value;
-        const blockReason = form.querySelector('#blockReason').value;
-
-        if (!blockDate || !blockStartTime || !blockEndTime) {
-            showNotification('Erro', 'Por favor, preencha a data e os horários de início e fim.', 'error');
-            return;
-        }
-
-        if (blockStartTime >= blockEndTime) {
-            showNotification('Erro', 'A hora de início deve ser anterior à hora de fim.', 'error');
-            return;
-        }
-
-        const startDateTime = new Date(`${blockDate}T${blockStartTime}:00`);
-        const endDateTime = new Date(`${blockDate}T${blockEndTime}:00`);
-
-        const saveButton = form.querySelector('button[type="submit"]');
-        saveButton.disabled = true;
-        saveButton.textContent = 'A bloquear...';
+    photoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
         try {
-            await blockagesApi.createBlockage({
-                establishmentId: state.establishmentId, // VINCULAÇÃO FORÇADA
-                professionalId: professionalId,
-                reason: blockReason || 'Bloqueado (Meu Perfil)',
-                startTime: startDateTime.toISOString(),
-                endTime: endDateTime.toISOString()
-            });
+            const base64 = await resizeAndCompressImage(file, 800, 800, 0.8);
+            photoPreview.src = base64;
+            
+            // 1. Atualiza no cadastro do Usuário
+            await updateDoc(doc(db, 'users', user.uid), { photo: base64 });
+            
+            // 2. Sincroniza com o cadastro do Profissional, se houver
+            if (state.userProfessionalId) {
+                await professionalsApi.updateProfessional(state.userProfessionalId, { photo: base64 });
+            }
 
-            showNotification('Sucesso', 'Agenda bloqueada com sucesso!', 'success');
-            form.reset();
-            const currentFilter = document.getElementById('my-blocks-filter').value;
-            loadMyBlocks(professionalId, currentFilter); 
-        } catch (error) {
-            console.error("Erro ao bloquear agenda:", error);
-            showNotification('Erro', `Não foi possível bloquear a agenda: ${error.message}`, 'error');
+            // 3. Dispara evento global para o Topo ser atualizado simultaneamente
+            window.dispatchEvent(new CustomEvent('userPhotoUpdated', { detail: base64 }));
+            showNotification('Sucesso!', 'Sua foto de perfil foi atualizada.', 'success');
+            
+        } catch (err) {
+            showNotification('Erro', 'Não foi possível salvar a imagem. Tente uma menor.', 'error');
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button');
+        const originalBtnText = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Salvando...';
+
+        const newName = document.getElementById('input-name').value.trim();
+        const newPhone = document.getElementById('input-phone').value.trim();
+
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                name: newName,
+                phone: newPhone
+            });
+            
+            if (state.userProfessionalId) {
+                await professionalsApi.updateProfessional(state.userProfessionalId, {
+                    name: newName,
+                    phone: newPhone
+                });
+            }
+
+            state.userName = newName;
+            document.getElementById('display-name').textContent = newName;
+            showNotification('Atualizado!', 'Seus dados foram salvos com sucesso.', 'success');
+        } catch (err) {
+            showNotification('Erro', 'Ocorreu um problema na hora de salvar.', 'error');
         } finally {
-            saveButton.disabled = false;
-            saveButton.textContent = 'Bloquear Agenda';
+            btn.disabled = false; btn.innerHTML = originalBtnText;
         }
     });
 }
 
-async function loadMyBlocks(professionalId, mode = 'future') {
-    const blocksListContainer = document.getElementById('my-blocks-list');
-    blocksListContainer.innerHTML = '<p class="text-gray-500">A carregar bloqueios...</p>';
+function renderBlockagesSection(profData) {
+    const container = document.getElementById('professional-section');
+    
+    if (!profData) {
+        container.innerHTML = `
+            <div class="bg-white p-10 rounded-2xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center h-full">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                    <i class="bi bi-calendar-x text-3xl text-slate-300"></i>
+                </div>
+                <h3 class="text-base font-black text-slate-800 mb-2">Bloqueio de Agenda Indisponível</h3>
+                <p class="text-xs text-slate-500 max-w-sm">Seu usuário não está vinculado a um perfil profissional. Peça ao administrador para realizar o vínculo na aba de Usuários se você precisa gerir agendas.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center shadow-inner"><i class="bi bi-calendar-x text-xl"></i></div>
+                <div>
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">Meus Bloqueios / Pausas</h3>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lance horários que não estará disponível.</p>
+                </div>
+            </div>
+
+            <form id="form-my-blockage" class="bg-orange-50/40 p-4 md:p-5 rounded-2xl border border-orange-100 mb-8 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Data Início</label><input type="date" id="b-date-start" required class="w-full p-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Data Fim (Opcional)</label><input type="date" id="b-date-end" class="w-full p-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Início</label><input type="time" id="b-time-start" required class="w-full p-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner"></div>
+                    <div><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Fim</label><input type="time" id="b-time-end" required class="w-full p-3 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner"></div>
+                </div>
+                <div><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Motivo / Descrição</label><input type="text" id="b-reason" placeholder="Ex: Férias, Consulta Médica..." class="w-full p-3 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 bg-white focus:ring-2 focus:ring-orange-500 outline-none shadow-inner"></div>
+                <button type="submit" class="w-full py-3.5 mt-2 bg-orange-500 text-white rounded-xl font-black text-xs uppercase tracking-wider hover:bg-orange-600 transition-transform active:scale-95 shadow-md">Criar Bloqueio</button>
+            </form>
+
+            <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-3">
+                <h4 class="text-sm font-black text-slate-800 uppercase tracking-wider">Histórico da Agenda</h4>
+                <select id="my-blocks-filter" class="p-2 border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 uppercase tracking-widest bg-slate-50 focus:bg-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+                    <option value="future">Somente Futuros</option>
+                    <option value="history">Registos Passados</option>
+                </select>
+            </div>
+            
+            <div id="my-blocks-list" class="space-y-3 max-h-[380px] overflow-y-auto custom-scrollbar pr-2 pb-4">
+                <div class="loader mx-auto mt-6"></div>
+            </div>
+        </div>
+    `;
+
+    const formBlock = document.getElementById('form-my-blockage');
+    formBlock.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const blockDate = formBlock.querySelector('#b-date-start').value;
+        const endDateInput = formBlock.querySelector('#b-date-end').value || blockDate;
+        const blockStartTime = formBlock.querySelector('#b-time-start').value;
+        const blockEndTime = formBlock.querySelector('#b-time-end').value;
+        const blockReason = formBlock.querySelector('#b-reason').value;
+
+        if (!blockDate || !blockStartTime || !blockEndTime) {
+            return showNotification('Atenção', 'Preencha Data e Horários corretamente.', 'error');
+        }
+
+        const startDateTime = new Date(`${blockDate}T${blockStartTime}:00`);
+        const endDateTime = new Date(`${endDateInput}T${blockEndTime}:00`);
+
+        if (endDateTime <= startDateTime) {
+            return showNotification('Atenção', 'A data e hora de fim deve ser superior ao início.', 'warning');
+        }
+
+        const saveBtn = formBlock.querySelector('button[type="submit"]');
+        const origText = saveBtn.innerHTML;
+        saveBtn.disabled = true; saveBtn.innerHTML = 'A bloquear...';
+
+        try {
+            await blockagesApi.createBlockage({
+                establishmentId: state.establishmentId, 
+                professionalId: profData.id,
+                reason: blockReason || 'Indisponível',
+                startTime: startDateTime.toISOString(),
+                endTime: endDateTime.toISOString()
+            });
+
+            showNotification('Sucesso', 'Agenda bloqueada com êxito.', 'success');
+            formBlock.reset();
+            
+            const currentFilter = document.getElementById('my-blocks-filter').value;
+            loadMyBlocksList(profData.id, currentFilter); 
+        } catch (error) {
+            showNotification('Erro', `Falha ao bloquear: ${error.message}`, 'error');
+        } finally {
+            saveBtn.disabled = false; saveBtn.innerHTML = origText;
+        }
+    });
+
+    const filterSelect = document.getElementById('my-blocks-filter');
+    filterSelect.addEventListener('change', (e) => loadMyBlocksList(profData.id, e.target.value));
+
+    loadMyBlocksList(profData.id, 'future');
+}
+
+async function loadMyBlocksList(professionalId, mode = 'future') {
+    const listContainer = document.getElementById('my-blocks-list');
+    listContainer.innerHTML = '<div class="loader mx-auto mt-6"></div>';
 
     try {
         const now = new Date();
@@ -215,74 +282,72 @@ async function loadMyBlocks(professionalId, mode = 'future') {
             endDate.setFullYear(endDate.getFullYear() + 1);
         }
 
-        const blocks = await blockagesApi.getBlockagesByDateRange(
-            state.establishmentId,
-            startDate.toISOString(),
-            endDate.toISOString(),
-            professionalId
-        );
+        const blocks = await blockagesApi.getBlockagesByDateRange(state.establishmentId, startDate.toISOString(), endDate.toISOString(), professionalId);
         
-        let filteredBlocks = blocks
-            .map(block => ({
-                ...block,
-                startTime: new Date(block.startTime),
-                endTime: new Date(block.endTime)
-            }));
+        let filteredBlocks = blocks.map(b => ({
+            ...b,
+            startTime: new Date(b.startTime),
+            endTime: new Date(b.endTime)
+        }));
 
         if (mode === 'history') {
-            filteredBlocks = filteredBlocks
-                .filter(block => block.endTime < now)
-                .sort((a, b) => b.startTime - a.startTime);
+            filteredBlocks = filteredBlocks.filter(b => b.endTime < now).sort((a, b) => b.startTime - a.startTime);
         } else {
-            filteredBlocks = filteredBlocks
-                .filter(block => block.endTime >= now)
-                .sort((a, b) => a.startTime - b.startTime);
+            filteredBlocks = filteredBlocks.filter(b => b.endTime >= now).sort((a, b) => a.startTime - b.startTime);
         }
 
-        if (filteredBlocks.length > 0) {
-            blocksListContainer.innerHTML = filteredBlocks.map(block => {
-                const formattedDate = block.startTime.toLocaleDateString('pt-BR');
-                const formattedTime = `${block.startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${block.endTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-                const isPast = block.endTime < new Date();
-                
-                // BLINDAGEM XSS
-                const safeReason = escapeHTML(block.reason || 'Sem motivo');
+        if (filteredBlocks.length === 0) {
+            listContainer.innerHTML = `
+                <div class="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <i class="bi bi-info-circle text-2xl text-slate-300 mb-2 block"></i>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nenhum registo ${mode === 'history' ? 'no passado' : 'futuro'}.</p>
+                </div>
+            `;
+            return;
+        }
 
-                return `
-                    <div class="flex items-center justify-between p-3 ${isPast ? 'bg-gray-100 opacity-75' : 'bg-white border border-gray-200'} rounded-md shadow-sm">
-                        <div>
-                            <p class="font-semibold text-gray-800">${formattedDate} das ${formattedTime}</p>
-                            <p class="text-sm text-gray-600">${safeReason}</p>
+        listContainer.innerHTML = filteredBlocks.map(b => {
+            const isPast = b.endTime < new Date();
+            const safeReason = escapeHTML(b.reason || 'Bloqueio');
+            
+            return `
+                <div class="flex justify-between items-center p-3 ${isPast ? 'bg-slate-50 border-slate-200 opacity-80' : 'bg-white border-slate-200 hover:border-orange-200 hover:shadow-sm'} border rounded-xl transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="${isPast ? 'bg-slate-200 text-slate-500 border-slate-300' : 'bg-orange-50 text-orange-600 border-orange-100'} border w-12 h-12 rounded-xl flex flex-col items-center justify-center leading-none shadow-inner flex-shrink-0">
+                            <span class="font-black text-base">${b.startTime.getDate().toString().padStart(2, '0')}</span>
+                            <span class="text-[9px] uppercase font-bold">${b.startTime.toLocaleString('pt-BR', {month:'short'})}</span>
                         </div>
-                        <button data-block-id="${block.id}" class="remove-block-btn text-red-500 hover:text-red-700 text-2xl font-bold leading-none p-1" title="Apagar bloqueio">
-                            &times;
-                        </button>
+                        <div>
+                            <p class="text-xs font-black text-slate-700 mb-0.5">
+                               ${b.startTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} <span class="text-slate-400 font-medium">até</span> ${b.endTime.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
+                            </p>
+                            ${b.startTime.getDate() !== b.endTime.getDate() ? `<p class="text-[10px] text-slate-400 font-bold mb-0.5">Termina: ${b.endTime.toLocaleDateString('pt-BR')}</p>` : ''}
+                            <p class="text-[9px] font-bold ${isPast ? 'text-slate-500' : 'text-orange-500'} uppercase tracking-widest"><i class="bi bi-tag-fill mr-1"></i>${safeReason}</p>
+                        </div>
                     </div>
-                `;
-            }).join('');
+                    <button data-block-id="${b.id}" class="remove-block-btn text-slate-400 hover:text-red-500 w-8 h-8 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center" title="Apagar bloqueio">
+                        <i class="bi bi-trash3 pointer-events-none text-lg"></i>
+                    </button>
+                </div>
+            `;
+        }).join('');
 
-            blocksListContainer.querySelectorAll('.remove-block-btn').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    const blockId = e.currentTarget.dataset.blockId;
-                    if (confirm('Tem certeza que deseja remover este bloqueio?')) {
-                        try {
-                            await blockagesApi.deleteBlockage(blockId);
-                            showNotification('Sucesso', 'Bloqueio removido.', 'success');
-                            loadMyBlocks(professionalId, mode);
-                        } catch (error) {
-                            console.error("Erro ao remover bloqueio:", error);
-                            showNotification('Erro', `Não foi possível remover o bloqueio: ${error.message}`, 'error');
-                        }
+        listContainer.querySelectorAll('.remove-block-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const blockId = e.currentTarget.dataset.blockId;
+                if (confirm('Deletar e deixar a agenda livre neste horário?')) {
+                    try {
+                        await blockagesApi.deleteBlockage(blockId);
+                        showNotification('Removido', 'O bloqueio foi deletado.', 'success');
+                        loadMyBlocksList(professionalId, mode);
+                    } catch (error) {
+                        showNotification('Erro', `Não foi possível remover: ${error.message}`, 'error');
                     }
-                });
+                }
             });
-
-        } else {
-            blocksListContainer.innerHTML = `<p class="text-gray-500 py-4 text-center">Nenhum bloqueio ${mode === 'history' ? 'no histórico recente' : 'futuro agendado'}.</p>`;
-        }
+        });
 
     } catch (error) {
-        console.error("Erro ao carregar bloqueios:", error);
-        blocksListContainer.innerHTML = `<p class="text-red-500">Erro ao carregar bloqueios: ${escapeHTML(error.message)}</p>`;
+        listContainer.innerHTML = `<p class="text-xs text-red-500 font-bold p-3 bg-red-50 rounded-xl">Erro: ${escapeHTML(error.message)}</p>`;
     }
 }

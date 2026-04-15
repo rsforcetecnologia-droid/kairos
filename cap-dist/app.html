@@ -6,7 +6,11 @@
     <title>Painel de Gestão</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
@@ -17,6 +21,11 @@
     <style id="dynamic-theme-styles"></style>
 
     <style>
+        /* APLICANDO A NOVA FONTE GLOBALMENTE */
+        body, html {
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+        }
+
         .toast-notification {
             display: none;
             position: fixed;
@@ -29,7 +38,7 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
             z-index: 9999;
             border-left: 5px solid #8B5CF6;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Plus Jakarta Sans', sans-serif;
             animation: slideUp 0.4s ease-out;
         }
 
@@ -56,7 +65,7 @@
         .kpi-card:hover { transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
 
         /* ============================================ */
-        /* SIDEBAR PREMIUM & MODERNA                    */
+        /* SIDEBAR PREMIUM (Apenas Desktop)             */
         /* ============================================ */
         .sidebar-link.active {
             background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
@@ -68,7 +77,7 @@
         }
         .sidebar-link:not(.active):hover {
             background-color: rgba(255, 255, 255, 0.04);
-            transform: translateX(4px); /* Efeito de deslize suave */
+            transform: translateX(4px);
         }
         .sidebar-link i {
             transition: all 0.3s ease;
@@ -81,11 +90,10 @@
             background-color: rgba(255, 255, 255, 0.04);
         }
         
-        /* Scrollbar elegante para a Sidebar */
         .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
 
         /* ============================================ */
         /* CHECKBOXES PERSONALIZADOS DO CABEÇALHO       */
@@ -119,26 +127,28 @@
         }
 
         /* ============================================ */
-        /* MOBILE BOTTOM NAVIGATION - SCROLLABLE PILLS  */
+        /* MOBILE BOTTOM NAVIGATION - PREMIUM REDESIGN  */
         /* ============================================ */
         .mobile-bottom-nav {
             display: none;
-            position: relative; 
-            flex-shrink: 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
             width: 100%;
-            z-index: 50;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            z-index: 9999;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-top: 1px solid rgba(0,0,0,0.06);
             padding-bottom: env(safe-area-inset-bottom, 0);
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.06);
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.05);
         }
 
         .mobile-bottom-nav-wrapper {
             position: relative;
             display: flex;
             align-items: center;
+            height: 68px; /* Altura fixa e confortável para toque */
         }
 
         .mobile-bottom-nav-scroll {
@@ -147,9 +157,10 @@
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
-            padding: 10px 16px;
+            padding: 0 16px;
             gap: 8px;
-            flex: 1;
+            height: 100%;
+            align-items: center;
             mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
             -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
         }
@@ -159,91 +170,67 @@
         }
 
         .bottom-nav-item {
-            display: inline-flex;
+            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 3px;
+            gap: 2px;
             text-decoration: none;
-            color: #9ca3af;
-            font-size: 0.6rem;
-            font-weight: 500;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            flex-shrink: 0;
-            min-width: 64px;
-            padding: 8px 14px;
+            color: #94a3b8; /* Slate-400 */
+            font-size: 0.62rem;
+            font-weight: 700;
+            min-width: 66px;
+            height: 54px;
             border-radius: 16px;
-            background: #f8f9fb;
-            border: 1.5px solid transparent;
             scroll-snap-align: center;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             -webkit-tap-highlight-color: transparent;
+            position: relative;
             user-select: none;
         }
 
         .bottom-nav-item i {
-            font-size: 1.2rem;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            line-height: 1;
+            font-size: 1.35rem;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
+        /* Estado Ativo (Selecionado) */
         .bottom-nav-item.active {
-            background: #4f46e5;
-            color: #ffffff;
-            border-color: #4f46e5;
-            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
-            transform: translateY(-2px);
+            color: #4f46e5;
+            background: #eef2ff; /* Indigo-50 */
         }
 
         .bottom-nav-item.active i {
-            transform: scale(1.1);
+            transform: translateY(-2px) scale(1.15);
+            color: #4f46e5;
         }
 
-        .bottom-nav-item:not(.active):hover {
-            background: #eef0f6;
-            color: #6366f1;
-            border-color: #e0e2ea;
+        .bottom-nav-item.active span {
+            color: #4f46e5;
         }
 
-        .bottom-nav-item:active {
-            transform: scale(0.95);
+        /* Efeito de Clique (Feedback Nativo) */
+        .bottom-nav-item:not(.active):active {
+            transform: scale(0.92);
+            background: #f8fafc;
         }
 
-        /* Scroll hint arrows */
-        .scroll-hint {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: rgba(79, 70, 229, 0.9);
-            color: white;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.65rem;
-            z-index: 10;
-            pointer-events: none;
-            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
-            animation: hintPulse 2s infinite;
+        @media (max-width: 767px) {
+            .mobile-bottom-nav { display: block; }
+            /* Garante que o conteúdo não fique escondido atrás do menu */
+            #mainContent {
+                padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+            }
         }
 
-        .scroll-hint.left { left: 4px; }
-        .scroll-hint.right { right: 4px; }
-
-        .scroll-hint.visible { display: flex; }
-
-        @keyframes hintPulse {
-            0%, 100% { opacity: 0.7; transform: translateY(-50%) scale(0.9); }
-            50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+        @media (min-width: 768px) {
+            .mobile-bottom-nav { display: none !important; }
         }
 
         /* ============================================ */
         /* AGENDA - CALENDARIO SEMANAL + LISTA LIMPA    */
         /* ============================================ */
 
-        /* --- Toolbar --- */
         .agenda-toolbar {
             background: #fff;
             border-bottom: 1px solid #f1f3f5;
@@ -278,9 +265,7 @@
             transform: scale(0.94);
         }
 
-        .agenda-date-text {
-            text-align: center;
-        }
+        .agenda-date-text { text-align: center; }
 
         .agenda-date-main {
             font-size: 1rem;
@@ -295,11 +280,7 @@
             font-weight: 400;
         }
 
-        .agenda-top-actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        .agenda-top-actions { display: flex; align-items: center; gap: 8px; }
 
         .agenda-today-btn {
             font-size: 0.72rem;
@@ -313,10 +294,7 @@
             transition: all 0.15s;
         }
 
-        .agenda-today-btn:active {
-            transform: scale(0.95);
-            background: #e5e0ff;
-        }
+        .agenda-today-btn:active { transform: scale(0.95); background: #e5e0ff; }
 
         .agenda-fab {
             width: 40px;
@@ -334,11 +312,8 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .agenda-fab:active {
-            transform: scale(0.92);
-        }
+        .agenda-fab:active { transform: scale(0.92); }
 
-        /* --- Sub-toolbar: view toggle + prof pills --- */
         .agenda-subbar {
             display: flex;
             align-items: center;
@@ -348,12 +323,7 @@
             border-bottom: 1px solid #f8f9fa;
         }
 
-        .agenda-view-toggle {
-            display: inline-flex;
-            background: #f1f3f5;
-            border-radius: 10px;
-            padding: 2px;
-        }
+        .agenda-view-toggle { display: inline-flex; background: #f1f3f5; border-radius: 10px; padding: 2px; }
 
         .agenda-view-toggle button {
             padding: 6px 14px;
@@ -374,23 +344,6 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
 
-        .agenda-filter-btn {
-            font-size: 0.72rem;
-            font-weight: 500;
-            color: #868e96;
-            background: none;
-            border: 1px solid #e9ecef;
-            padding: 6px 12px;
-            border-radius: 10px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .agenda-filter-btn:active { background: #f8f9fa; }
-
-        /* --- Professional pills --- */
         .agenda-prof-bar {
             display: flex;
             gap: 8px;
@@ -400,7 +353,6 @@
             scrollbar-width: none;
             background: #fff;
         }
-
         .agenda-prof-bar::-webkit-scrollbar { display: none; }
 
         .prof-pill {
@@ -445,337 +397,8 @@
             font-weight: 600;
             color: #212529;
         }
-
-        /* ============================================ */
-        /* CALENDARIO SEMANAL                           */
-        /* ============================================ */
-
-        .week-container {
-            display: flex;
-            -webkit-overflow-scrolling: touch;
-            min-height: 60vh;
-            background: #fff;
-        }
-
-        .week-day-col {
-            border-right: 1px solid #f1f3f5;
-            display: flex;
-            flex-direction: column;
-            min-height: 100%;
-            flex: 1;
-        }
-
-        .week-day-col:last-child { border-right: none; }
-
-        /* Mobile: 3 of 7 visible, scrollable with snap */
-        @media (max-width: 767px) {
-            .week-container {
-                overflow-x: auto;
-                scroll-snap-type: x mandatory;
-                scrollbar-width: none;
-            }
-            .week-container::-webkit-scrollbar { display: none; }
-            .week-day-col {
-                flex: 0 0 calc(100% / 3);
-                scroll-snap-align: center;
-            }
-        }
-
-        .week-day-header {
-            text-align: center;
-            padding: 10px 4px 8px;
-            border-bottom: 1px solid #f1f3f5;
-            position: sticky;
-            top: 0;
-            background: #fff;
-            z-index: 2;
-        }
-
-        .week-day-header .wd-name {
-            font-size: 0.6rem;
-            font-weight: 600;
-            color: #adb5bd;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .week-day-header .wd-num {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #212529;
-            line-height: 1.4;
-        }
-
-        .week-day-header.is-today .wd-name {
-            color: #4f46e5;
-        }
-
-        .week-day-header.is-today .wd-num {
-            width: 32px;
-            height: 32px;
-            background: #4f46e5;
-            color: #fff;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .week-day-events {
-            flex: 1;
-            padding: 6px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .week-event-chip {
-            padding: 8px 10px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.15s;
-            position: relative;
-            overflow: hidden;
-            background: #f8f9fa;
-            border-left: 3px solid var(--ec, #adb5bd);
-        }
-
-        .week-event-chip:active {
-            transform: scale(0.97);
-        }
-
-        .week-event-chip.completed {
-            opacity: 0.5;
-        }
-
-        .week-event-chip .we-time {
-            font-size: 0.65rem;
-            font-weight: 600;
-            color: #495057;
-            margin-bottom: 2px;
-        }
-
-        .week-event-chip .we-client {
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: #212529;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .week-event-chip .we-service {
-            font-size: 0.62rem;
-            color: #868e96;
-            margin-top: 1px;
-        }
-
-        .week-empty {
-            text-align: center;
-            padding: 20px 6px;
-            color: #ced4da;
-            font-size: 0.65rem;
-            font-weight: 500;
-        }
-
-        .week-blockage {
-            background: #fff5f5;
-            border-left-color: #e03131;
-        }
-
-        .week-blockage .we-time,
-        .week-blockage .we-client {
-            color: #c92a2a;
-        }
-
-        /* ============================================ */
-        /* LISTA LIMPA                                  */
-        /* ============================================ */
-
-        .list-container {
-            padding: 8px 16px 80px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .list-date-group {
-            margin-top: 12px;
-            margin-bottom: 4px;
-        }
-
-        .list-date-label {
-            font-size: 0.68rem;
-            font-weight: 600;
-            color: #868e96;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            padding: 0 4px 4px;
-            border-bottom: 1px solid #f1f3f5;
-            margin-bottom: 6px;
-        }
-
-        .list-card {
-            display: flex;
-            align-items: center;
-            padding: 10px 12px;
-            background: #fff;
-            border-radius: 12px;
-            border: 1px solid #f1f3f5;
-            cursor: pointer;
-            transition: all 0.15s;
-            gap: 10px;
-        }
-
-        .list-card:active {
-            background: #f8f9fa;
-        }
-
-        .list-card.completed {
-            opacity: 0.55;
-            cursor: default;
-        }
-
-        .list-card.blockage {
-            background: #fff5f5;
-            border-color: #ffe3e3;
-        }
-
-        .list-card-time {
-            text-align: center;
-            min-width: 44px;
-            flex-shrink: 0;
-        }
-
-        .list-card-time .t-start {
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: #212529;
-            line-height: 1;
-        }
-
-        .list-card-time .t-dur {
-            font-size: 0.58rem;
-            color: #adb5bd;
-            margin-top: 3px;
-        }
-
-        .list-card-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--dc, #adb5bd);
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
-
-        .list-card-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .list-card-info .lc-name {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #212529;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .list-card-info .lc-detail {
-            font-size: 0.65rem;
-            color: #868e96;
-            margin-top: 1px;
-        }
-
-        .list-card-actions {
-            display: flex;
-            gap: 4px;
-            flex-shrink: 0;
-        }
-
-        .lc-action-btn {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            border: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-
-        .lc-action-btn.wa {
-            background: #e6fcf5;
-            color: #0ca678;
-        }
-
-        .lc-action-btn.comanda {
-            background: #ede9fe;
-            color: #7c3aed;
-        }
-
-        .lc-action-btn:active {
-            transform: scale(0.9);
-        }
-
-        .week-event-chip .we-actions {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            display: flex;
-            gap: 4px;
-        }
-
-        .we-btn {
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
-            border: none;
-            background: #ede9fe;
-            color: #7c3aed;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.12s;
-            font-size: 0.7rem;
-        }
-
-        .we-btn:active {
-            transform: scale(0.85);
-            filter: brightness(0.9);
-        }
-
-        .lc-status-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #868e96;
-            flex-shrink: 0;
-        }
-
-        .lc-status-dot.done {
-            background: #40c057;
-        }
-
-        /* ============================================ */
-
-        @media (max-width: 767px) {
-            .mobile-bottom-nav { display: block; }
-            #mainContent {
-                padding-bottom: 0 !important;
-            }
-            #agenda-view { padding-bottom: 20px; }
-        }
-
-        @media (min-width: 768px) {
-            .mobile-bottom-nav { display: none !important; }
-        }
     </style>
-  <script type="module" crossorigin src="/assets/app-CtnScWLo.js"></script>
+  <script type="module" crossorigin src="/assets/app-CSVCpJpF.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
   <link rel="stylesheet" crossorigin href="/assets/styles-CZYPZ0h4.css">
@@ -788,18 +411,18 @@
             <div class="w-32 h-1 bg-gray-100 rounded-full overflow-hidden">
                 <div class="loading-bar-fill h-full bg-indigo-600 rounded-full"></div>
             </div>
-            <p class="mt-4 text-gray-400 text-sm font-medium animate-pulse">Carregando...</p>
+            <p class="mt-4 text-gray-400 text-sm font-semibold animate-pulse">Carregando...</p>
         </div>
     </div>
 
     <div id="dashboardContent" class="hidden flex h-screen w-full bg-slate-50 overflow-hidden">
         
-        <aside id="sidebar" class="bg-white text-slate-700 w-[260px] flex-shrink-0 flex flex-col transition-all duration-300 z-50 absolute inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 h-screen overflow-hidden border-r border-slate-200">
+        <aside id="sidebar" class="hidden md:flex bg-white text-slate-700 w-[260px] flex-shrink-0 flex-col transition-all duration-300 z-50 h-screen overflow-hidden border-r border-slate-200">
             <div class="h-16 flex items-center justify-between px-6 border-b border-slate-200 flex-shrink-0">
                 <div class="flex items-center gap-3 overflow-hidden">
                     <img src="/assets/logo_kairos-Cl8ouf1y.png" alt="Kairos Logo" class="h-8 w-auto logo-text transition-opacity">
                 </div>
-                <button id="sidebarToggle" class="text-slate-400 hover:text-indigo-600 focus:outline-none transition-colors hidden md:block">
+                <button id="sidebarToggle" class="text-slate-400 hover:text-indigo-600 focus:outline-none transition-colors hidden md:block" title="Recolher Menu">
                     <i class="bi bi-list text-2xl"></i>
                 </button>
             </div>
@@ -813,54 +436,54 @@
 
             <nav class="flex-1 overflow-y-auto py-4 custom-scrollbar" id="sidebar-nav">
                 <ul class="space-y-1 px-3">
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-2">Início</li>
+                    <li class="sidebar-category text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2 mt-2">Início</li>
                     <li>
                         <a href="#" class="sidebar-link active flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="dashboard-section">
                             <i class="bi bi-grid-1x2-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Dashboard</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Dashboard</span>
                         </a>
                     </li>
 
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Operação</li>
+                    <li class="sidebar-category text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Operação</li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="agenda-section">
                             <i class="bi bi-calendar3 w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Agenda</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Agenda</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="comandas-section">
                             <i class="bi bi-receipt w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Comandas / PDV</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Comandas / PDV</span>
                         </a>
                     </li>
 
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Gestão & Vendas</li>
+                    <li class="sidebar-category text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Gestão & Vendas</li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="financial-section">
                             <i class="bi bi-currency-dollar w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Financeiro (ERP)</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Financeiro (ERP)</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="commissions-section">
                             <i class="bi bi-percent w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Comissões</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Comissões</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="packages-section">
                             <i class="bi bi-box-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Planos e Pacotes</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Planos e Pacotes</span>
                         </a>
                     </li>
 
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Base de Dados</li>
+                    <li class="sidebar-category text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Base de Dados</li>
                     <li>
                         <button type="button" class="submenu-toggle w-full flex items-center justify-between py-2.5 px-3 rounded-xl transition-colors group" data-target-submenu="cadastros-submenu">
                             <div class="flex items-center">
                                 <i class="bi bi-database w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                                <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Cadastros Gerais</span>
+                                <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Cadastros Gerais</span>
                             </div>
                             <i class="bi bi-chevron-down text-xs transition-transform duration-300 submenu-arrow"></i>
                         </button>
@@ -873,7 +496,7 @@
                             </li>
                             <li>
                                 <a href="#" class="sidebar-link flex items-center py-2 px-3 rounded-xl transition-all text-sm" data-target="profissionais-section">
-                                    <span class="menu-text font-medium">Equipa / Profissionais</span>
+                                    <span class="menu-text font-medium">Equipe / Profissionais</span>
                                 </a>
                             </li>
                             <li>
@@ -894,45 +517,43 @@
                         </ul>
                     </li>
 
-                    <li class="sidebar-category text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Administração</li>
+                    <li class="sidebar-category text-[10px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2 mt-6">Administração</li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="relatorios-section">
                             <i class="bi bi-bar-chart-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Relatórios</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Relatórios</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="estabelecimento-section">
                             <i class="bi bi-gear-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Minha Empresa</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Minha Empresa</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="users-section">
                             <i class="bi bi-shield-lock-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Usuários e Acessos</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Usuários e Acessos</span>
                         </a>
                     </li>
                     <li>
                         <a href="#" class="sidebar-link flex items-center py-2.5 px-3 rounded-xl transition-all group" data-target="hierarquia-section">
                             <i class="bi bi-diagram-3-fill w-6 text-lg text-slate-400 group-hover:text-indigo-400 transition-colors mr-2"></i>
-                            <span class="menu-text font-semibold text-sm tracking-wide transition-opacity">Rede / Filiais</span>
+                            <span class="menu-text font-bold text-sm tracking-wide transition-opacity">Rede / Filiais</span>
                         </a>
                     </li>
                 </ul>
             </nav>
         </aside>
 
-        <div id="mobile-overlay" class="fixed inset-0 bg-slate-900 bg-opacity-50 z-30 hidden md:hidden"></div>
-
         <div class="flex-1 flex flex-col w-full overflow-hidden relative">
             
-            <header id="main-header" class="bg-white border-b border-slate-200 h-16 px-3 sm:px-6 flex items-center justify-between relative z-20 flex-shrink-0 w-full">
+            <header id="main-header" class="bg-white border-b border-slate-200 h-16 px-3 sm:px-6 flex items-center justify-between relative z-[999] flex-shrink-0 w-full">
                 <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <button id="hamburger-menu-btn" class="text-slate-500 p-1.5 rounded-lg hover:bg-slate-100 md:hidden flex-shrink-0 transition-colors">
+                    <button id="hamburger-menu-btn" class="hidden">
                         <i class="bi bi-list text-2xl"></i>
                     </button>
-                    <h1 id="header-page-title" class="text-base sm:text-xl font-bold text-slate-800 tracking-tight truncate max-w-[110px] sm:max-w-[200px] md:max-w-md lg:max-w-lg">Painel de Gestão</h1>
+                    <h1 id="header-page-title" class="text-xl sm:text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight truncate max-w-[180px] sm:max-w-[280px] md:max-w-md lg:max-w-xl">Painel de Gestão</h1>
                 </div>
 
                 <div class="flex items-center gap-1.5 sm:gap-5 flex-shrink-0">
@@ -948,7 +569,7 @@
                             <i class="bi bi-chevron-down text-slate-400 text-[10px] ml-2 flex-shrink-0 transition-transform hidden sm:inline-block" id="multi-context-arrow"></i>
                         </button>
 
-                        <div id="multi-context-dropdown" class="hidden absolute top-full right-0 sm:right-auto sm:left-0 mt-2 w-[260px] sm:w-[320px] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[100] transform origin-top-right sm:origin-top-left transition-all flex flex-col max-h-[70vh]">
+                        <div id="multi-context-dropdown" class="hidden absolute top-full right-0 sm:right-auto sm:left-0 mt-2 w-[260px] sm:w-[320px] bg-white rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[9999] transform origin-top-right sm:origin-top-left transition-all flex flex-col max-h-[70vh]">
                             <div class="p-3 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl flex justify-between items-center">
                                 <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Unidades Selecionadas</span>
                                 <span id="multi-context-count" class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
@@ -968,16 +589,16 @@
                             <i class="bi bi-bell text-lg sm:text-xl"></i>
                             <span id="notificationBadge" class="notification-badge hidden absolute top-0 right-0 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
                         </button>
-                        <div id="notificationPanel" class="notification-panel hidden absolute right-0 mt-2 w-[280px] sm:w-72 bg-white rounded-xl shadow-xl border border-slate-200 z-[100]">
+                        <div id="notificationPanel" class="notification-panel hidden absolute right-0 mt-2 w-[280px] sm:w-72 bg-white rounded-xl shadow-xl border border-slate-200 z-[9999]">
                             <div class="p-3 font-bold border-b border-slate-100 text-sm text-slate-800">Notificações</div>
-                            <div id="notificationList" class="max-h-80 overflow-y-auto"></div>
+                            <div id="notificationList" class="max-h-80 overflow-y-auto custom-scrollbar"></div>
                         </div>
                     </div>
                     
                     <div class="relative pl-1.5 sm:pl-3 border-l border-slate-200 ml-1 sm:ml-0">
                         <button id="profileMenuButton" class="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold text-xs sm:text-sm hover:bg-indigo-200 transition-colors focus:outline-none ring-2 ring-transparent focus:ring-indigo-300"></button>
                         
-                        <div id="profileDropdown" class="hidden absolute top-full right-0 mt-2 w-[240px] sm:w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-[100] transform origin-top-right transition-all">
+                        <div id="profileDropdown" class="hidden absolute top-full right-0 mt-2 w-[240px] sm:w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-[9999] transform origin-top-right transition-all">
                             <div class="p-4 border-b border-slate-100 bg-slate-50 rounded-t-xl">
                                 <p id="profileName" class="font-bold text-slate-800 truncate text-sm">Usuário</p>
                                 <p id="profileEmail" class="text-xs text-slate-500 truncate mt-0.5">email@usuario.com</p>
@@ -996,11 +617,11 @@
                             </div>
 
                             <div class="p-2">
-                                <a href="#" id="myProfileLink" class="flex items-center gap-3 px-3 py-2 text-sm text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
+                                <a href="#" id="myProfileLink" class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
                                     <i class="bi bi-person text-slate-400 text-lg"></i>
                                     <span>Meu Perfil</span>
                                 </a>
-                                <a href="#" id="logoutButton" class="flex items-center gap-3 px-3 py-2 text-sm text-rose-600 rounded-lg hover:bg-rose-50 transition-colors mt-1">
+                                <a href="#" id="logoutButton" class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-rose-600 rounded-lg hover:bg-rose-50 transition-colors mt-1">
                                     <i class="bi bi-box-arrow-right text-lg"></i>
                                     <span>Sair do Sistema</span>
                                 </a>
@@ -1016,7 +637,6 @@
 
             <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
                 <div class="mobile-bottom-nav-wrapper">
-                    <div class="scroll-hint left" id="scroll-hint-left"><i class="bi bi-chevron-left"></i></div>
                     <div class="mobile-bottom-nav-scroll" id="nav-scroll">
                         <a href="#" class="bottom-nav-item active" data-target="dashboard-section"><i class="bi bi-grid-1x2-fill"></i><span>Resumo</span></a>
                         <a href="#" class="bottom-nav-item" data-target="agenda-section"><i class="bi bi-calendar3"></i><span>Agenda</span></a>
@@ -1025,7 +645,7 @@
                         <a href="#" class="bottom-nav-item" data-target="commissions-section"><i class="bi bi-percent"></i><span>Comissões</span></a>
                         <a href="#" class="bottom-nav-item" data-target="packages-section"><i class="bi bi-box-seam"></i><span>Pacotes</span></a>
                         <a href="#" class="bottom-nav-item" data-target="clientes-section"><i class="bi bi-people"></i><span>Clientes</span></a>
-                        <a href="#" class="bottom-nav-item" data-target="profissionais-section"><i class="bi bi-person-workspace"></i><span>Equipa</span></a>
+                        <a href="#" class="bottom-nav-item" data-target="profissionais-section"><i class="bi bi-person-workspace"></i><span>Equipe</span></a>
                         <a href="#" class="bottom-nav-item" data-target="servicos-section"><i class="bi bi-scissors"></i><span>Serviços</span></a>
                         <a href="#" class="bottom-nav-item" data-target="produtos-section"><i class="bi bi-box"></i><span>Produtos</span></a>
                         <a href="#" class="bottom-nav-item" data-target="suppliers-section"><i class="bi bi-truck"></i><span>Parceiros</span></a>
@@ -1034,7 +654,6 @@
                         <a href="#" class="bottom-nav-item" data-target="users-section"><i class="bi bi-shield-lock-fill"></i><span>Usuários</span></a>
                         <a href="#" class="bottom-nav-item" data-target="hierarquia-section"><i class="bi bi-diagram-3-fill"></i><span>Filiais</span></a>
                     </div>
-                    <div class="scroll-hint right" id="scroll-hint-right"><i class="bi bi-chevron-right"></i></div>
                 </div>
             </nav>
 
@@ -1095,21 +714,21 @@
     <div id="serviceModal" class="modal"></div>
     <div id="genericModal" class="modal"></div>
 
-    <div id="exitConfirmationModal" class="modal" style="z-index: 9999;">
+    <div id="exitConfirmationModal" class="modal" style="z-index: 99999;">
         <div class="modal-content p-6 text-center rounded-2xl shadow-xl max-w-xs mx-auto mt-40 bg-white border border-gray-200">
             <div class="mb-4 text-red-500 flex justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
             </div>
-            <h3 class="text-lg font-bold text-gray-800 mb-2">Sair do Aplicativo?</h3>
-            <p class="text-sm text-gray-600 mb-6">Você deseja fechar o sistema?</p>
+            <h3 class="text-lg font-extrabold text-gray-800 mb-2">Sair do Aplicativo?</h3>
+            <p class="text-sm font-medium text-gray-600 mb-6">Você deseja fechar o sistema?</p>
             <div class="flex gap-3 justify-center">
-                <button id="btn-cancel-exit" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors">Não</button>
-                <button id="btn-confirm-exit" class="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors shadow-sm">Sair</button>
+                <button id="btn-cancel-exit" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">Não</button>
+                <button id="btn-confirm-exit" class="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors shadow-sm">Sair</button>
             </div>
         </div>
     </div>
 
-    <div id="toast-container"></div>
+    <div id="toast-container" class="z-[999999] pointer-events-none relative"></div>
 
 
 </body>
