@@ -1841,3 +1841,118 @@ a:hover {
 .mt-3 { margin-top: 24px; }
 .text-center { text-align: center; }
 .w-100 { width: 100%; }
+/* ==========================================================================
+   ATUALIZAÇÕES DE UX/UI MODERNAS (DARK MODE, DOCK, TOASTS)
+   ========================================================================== */
+
+/* 1. Variáveis de Safe Area (Essencial para o App Nativo não engolir o rodapé) */
+:root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 2. Menu Inferior Mobile (Floating Dock Estilo iOS) */
+.mobile-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: calc(1rem + var(--safe-area-bottom, 0px));
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    z-index: 9999;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 24px;
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.2);
+    overflow: hidden;
+}
+.mobile-bottom-nav-wrapper { height: 64px; }
+.bottom-nav-item.active {
+    color: #4f46e5;
+    background: #eef2ff;
+    box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.1);
+}
+@media (max-width: 767px) {
+    .mobile-bottom-nav { display: block; }
+    #mainContent { padding-bottom: calc(100px + var(--safe-area-bottom, 0px)) !important; }
+}
+
+/* 3. Ajuste do Toast (Notificações) para flutuar ACIMA do Floating Dock */
+#toast-container {
+    bottom: calc(110px + var(--safe-area-bottom, 0px)) !important;
+}
+
+/* 4. Aumentar o tamanho do Avatar no Topo */
+#profileMenuButton {
+    width: 2.5rem !important; /* 40px no mobile */
+    height: 2.5rem !important;
+}
+@media (min-width: 640px) {
+    #profileMenuButton {
+        width: 3rem !important; /* 48px no Desktop */
+        height: 3rem !important;
+    }
+}
+
+/* 5. OVERRIDES DO DARK MODE NATIVO */
+[data-theme="dark"] body {
+    background-color: #0f172a !important; /* Fundo grafite elegante */
+    color: #f8fafc !important; /* Texto claro */
+}
+
+/* Pintar os fundos de componentes claros para escuro */
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-slate-100,
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] #sidebar,
+[data-theme="dark"] #main-header,
+[data-theme="dark"] .modal-content,
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer,
+[data-theme="dark"] #profileDropdown,
+[data-theme="dark"] #notificationPanel,
+[data-theme="dark"] #multi-context-dropdown,
+[data-theme="dark"] .agenda-toolbar,
+[data-theme="dark"] .agenda-subbar,
+[data-theme="dark"] .agenda-prof-bar {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+/* Forçar os textos primários a ficarem brancos */
+[data-theme="dark"] .text-slate-800,
+[data-theme="dark"] .text-slate-700,
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] h1, [data-theme="dark"] h2, [data-theme="dark"] h3 {
+    color: #f1f5f9 !important;
+}
+
+/* Forçar os textos secundários a ficarem cinza claro */
+[data-theme="dark"] .text-slate-500,
+[data-theme="dark"] .text-slate-400,
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-400 {
+    color: #94a3b8 !important;
+}
+
+/* Ajustar inputs e campos de formulário */
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background-color: #0f172a !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+}
+
+/* Ajuste do Floating Dock no Modo Escuro */
+[data-theme="dark"] .mobile-bottom-nav {
+    background: rgba(30, 41, 59, 0.85) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+[data-theme="dark"] .bottom-nav-item.active {
+    background-color: rgba(79, 70, 229, 0.25) !important;
+}

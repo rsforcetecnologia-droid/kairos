@@ -1,27 +1,15 @@
 // js/main.js
 
-// Adicione logo no início ou dentro de um window.onload
+// Bloqueios de gestos nativos para evitar zoom acidental no Mobile (UX de App Nativo)
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Bloquear gesto de pinça (Pinch-to-zoom) no iOS
-    document.addEventListener('gesturestart', function (e) {
-        e.preventDefault();
-    });
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('gesturechange', e => e.preventDefault());
+    document.addEventListener('gestureend', e => e.preventDefault());
 
-    document.addEventListener('gesturechange', function (e) {
-        e.preventDefault();
-    });
-
-    document.addEventListener('gestureend', function (e) {
-        e.preventDefault();
-    });
-
-    // 2. Bloquear Zoom por Duplo Toque (Double-tap)
     let lastTouchEnd = 0;
     document.addEventListener('touchend', function (event) {
         const now = (new Date()).getTime();
-        if (now - lastTouchEnd <= 300) {
-            event.preventDefault();
-        }
+        if (now - lastTouchEnd <= 300) event.preventDefault();
         lastTouchEnd = now;
     }, false);
 });
@@ -34,7 +22,7 @@ import { state, setGlobalState } from './state.js';
 import { initializeModalClosers, showNotification } from './components/modal.js';
 import { initializeNavigation } from './ui/navigation.js';
 import { getEstablishmentDetails, getHierarchy } from './api/establishments.js'; 
-import { getProfessional } from './api/professionals.js'; // <-- NOVA IMPORTAÇÃO
+import { getProfessional } from './api/professionals.js';
 import { checkAndStartOnboarding } from './ui/onboarding.js';
 
 // Notificações
@@ -89,17 +77,7 @@ const themeIcon = document.getElementById('themeIcon');
 // Bottom nav refs
 const bottomNav = document.getElementById('mobile-bottom-nav');
 const navScroll = document.getElementById('nav-scroll');
-const scrollHintLeft = document.getElementById('scroll-hint-left');
-const scrollHintRight = document.getElementById('scroll-hint-right');
 const bottomNavItems = document.querySelectorAll('.bottom-nav-item');
-
-// Update scroll hint visibility
-function updateScrollHints() {
-    if (!navScroll || !scrollHintLeft || !scrollHintRight) return;
-    const { scrollLeft, scrollWidth, clientWidth } = navScroll;
-    scrollHintLeft.classList.toggle('visible', scrollLeft > 5);
-    scrollHintRight.classList.toggle('visible', scrollLeft + clientWidth < scrollWidth - 5);
-}
 
 // Scroll to selected pill on mobile
 function scrollToActiveItem() {
@@ -142,95 +120,51 @@ const pageTitles = {
     'agenda-section': 'Agenda',
     'comandas-section': 'Comandas / PDV',
     'relatorios-section': 'Relatórios',
-    'servicos-section': 'Serviços do Menu',
-    'produtos-section': 'Produtos (Estoque)',
-    'suppliers-section': 'Parceiros de Negócio',
-    'profissionais-section': 'Equipe / Profissionais',
+    'servicos-section': 'Serviços',
+    'produtos-section': 'Estoque',
+    'suppliers-section': 'Parceiros',
+    'profissionais-section': 'Equipe',
     'clientes-section': 'Clientes',
-    'estabelecimento-section': 'Minha Empresa',
+    'estabelecimento-section': 'Empresa',
     'ausencias-section': 'Ausências',
-    'users-section': 'Usuários e Acessos',
+    'users-section': 'Usuários',
     'sales-report-section': 'Relatório de Vendas',
-    'financial-section': 'Financeiro (ERP)',
+    'financial-section': 'Financeiro',
     'commissions-section': 'Comissões',
-    'packages-section': 'Planos e Pacotes',
+    'packages-section': 'Pacotes',
     'my-profile-section': 'Meu Perfil',
     'hierarquia-section': 'Rede / Filiais',
     'establishments-section': 'Rede / Filiais'
 };
 
-// --- 4. FUNÇÕES DE TEMA E NOTIFICAÇÕES ---
-const colorThemes = {
-    indigo: { main: '#4f46e5', hover: '#4338ca', light: '#eef2ff', text: '#ffffff' },
-    blue:   { main: '#2563eb', hover: '#1d4ed8', light: '#eff6ff', text: '#ffffff' },
-    sky:    { main: '#0284c7', hover: '#0369a1', light: '#e0f2fe', text: '#ffffff' },
-    teal:   { main: '#0d9488', hover: '#0f766e', light: '#ccfbf1', text: '#ffffff' },
-    emerald:{ main: '#059669', hover: '#047857', light: '#d1fae5', text: '#ffffff' },
-    green:  { main: '#16a34a', hover: '#15803d', light: '#dcfce7', text: '#ffffff' },
-    lime:   { main: '#65a30d', hover: '#4d7c0f', light: '#ecfccb', text: '#1f2937' },
-    amber:  { main: '#d97706', hover: '#b45309', light: '#fef3c7', text: '#1f2937' },
-    orange: { main: '#ea580c', hover: '#c2410c', light: '#ffedd5', text: '#ffffff' },
-    red:    { main: '#dc2626', hover: '#b91c1c', light: '#fee2e2', text: '#ffffff' },
-    rose:   { main: '#e11d48', hover: '#be123c', light: '#ffe4e6', text: '#ffffff' },
-    pink:   { main: '#db2777', hover: '#be185d', light: '#fce7f3', text: '#ffffff' },
-    fuchsia:{ main: '#c026d3', hover: '#a21caf', light: '#fae8ff', text: '#ffffff' },
-    purple: { main: '#7c3aed', hover: '#6d28d9', light: '#ede9fe', text: '#ffffff' },
-    violet: { main: '#8b5cf6', hover: '#7c3aed', light: '#ddd6fe', text: '#ffffff' },
-    gray:   { main: '#64748b', hover: '#475569', light: '#f1f5f9', text: '#ffffff' },
-    black:  { main: '#111827', hover: '#000000', light: '#e5e7eb', text: '#ffffff' },
-};
-
-function applyTheme(themeKey) {
-    const theme = colorThemes[themeKey] || colorThemes.indigo;
-    const hexToRgb = (hex) => {
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
-    };
-    const mainRgb = hexToRgb(theme.main);
-    document.body.style.setProperty('--theme-main', theme.main);
-    
-    const styleSheet = document.getElementById('dynamic-theme-styles');
-    if (styleSheet) {
-        styleSheet.innerHTML = `
-            :root {
-                --theme-color-main: ${theme.main};
-                --theme-color-hover: ${theme.hover};
-                --theme-color-light: ${theme.light};
-                --theme-rgb: ${mainRgb};
-            }
-            .sidebar-link.active { background-color: var(--theme-color-main) !important; color: ${theme.text} !important; }
-            .sidebar-link:not(.active):hover { background-color: rgba(var(--theme-rgb), 0.1) !important; color: var(--theme-color-main) !important; }
-            .bg-indigo-600 { background-color: var(--theme-color-main) !important; }
-            .hover\\:bg-indigo-700:hover { background-color: var(--theme-color-hover) !important; }
-            .hover\\:bg-indigo-50:hover { background-color: rgba(var(--theme-rgb), 0.1) !important; }
-            .text-indigo-600 { color: var(--theme-color-main) !important; }
-            .hover\\:text-indigo-800:hover { color: var(--theme-color-hover) !important; }
-            .hover\\:text-indigo-600:hover { color: var(--theme-color-main) !important; }
-            .border-indigo-600 { border-color: var(--theme-color-main) !important; }
-            .focus\\:ring-indigo-500:focus { --tw-ring-color: rgba(var(--theme-rgb), 0.5) !important; }
-            .loading-bar-fill { background-color: var(--theme-color-main) !important; }
-            .time-slot-card.selected { background-color: var(--theme-color-main) !important; border-color: var(--theme-color-main) !important; }
-            input:checked + .toggle-bg { background-color: var(--theme-color-main) !important; }
-            .bg-indigo-100 { background-color: var(--theme-color-light) !important; }
-            .text-indigo-800 { color: var(--theme-color-hover) !important; }
-        `;
-    }
-}
-
+// --- 4. FUNÇÕES DE TEMA (DARK / LIGHT MODE) ---
 export function setTheme(themeName) {
     document.documentElement.setAttribute('data-theme', themeName);
     localStorage.setItem('kairos_theme', themeName);
-    if (themeIcon) themeIcon.innerHTML = themeName === 'dark' ? '☀️' : '🌙'; 
+    
+    // Troca o ícone suavemente
+    if (themeIcon) {
+        if (themeName === 'dark') {
+            themeIcon.className = 'bi bi-sun-fill text-lg sm:text-xl text-amber-400';
+        } else {
+            themeIcon.className = 'bi bi-moon-fill text-lg sm:text-xl text-slate-500';
+        }
+    }
 }
 
 export function initTheme() {
     const savedTheme = localStorage.getItem('kairos_theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (savedTheme) setTheme(savedTheme);
-    else if (prefersDark) setTheme('dark');
-    else setTheme('light');
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else if (prefersDark) {
+        setTheme('dark');
+    } else {
+        setTheme('light');
+    }
 }
 
+// --- 5. NOTIFICAÇÕES EM TEMPO REAL ---
 let unsubscribeNotificationsListener = null;
 let notifications = [];
 
@@ -244,14 +178,14 @@ function renderNotificationPanel() {
         notificationBadge.classList.add('hidden');
     }
     if (notifications.length === 0) {
-        notificationList.innerHTML = '<p class="text-center text-gray-500 p-4">Nenhuma notificação.</p>';
+        notificationList.innerHTML = '<p class="text-center text-slate-500 p-4 text-sm">Nenhuma notificação.</p>';
         return;
     }
     notificationList.innerHTML = notifications.map(n => `
     <div class="notification-item ${n.read ? '' : 'unread'}">
-    <p class="font-semibold">${n.title}</p>
-    <p class="text-sm text-gray-600">${n.message}</p>
-    <p class="text-xs text-gray-400 mt-1">${n.time}</p>
+        <p class="font-semibold text-sm text-slate-800">${n.title}</p>
+        <p class="text-xs text-slate-600 mt-0.5">${n.message}</p>
+        <p class="text-[10px] text-slate-400 mt-1"><i class="bi bi-clock mr-1"></i>${n.time}</p>
     </div>
     `).join('');
 }
@@ -284,6 +218,7 @@ function setupRealtimeListeners(establishmentId) {
     });
 }
 
+// --- 6. SWITCHER DE CONTEXTO (MÚLTIPLAS LOJAS) ---
 async function setupContextSwitcher(baseEstablishmentId) {
     const container = document.getElementById('multi-context-container');
     const btn = document.getElementById('multi-context-btn');
@@ -379,7 +314,7 @@ async function setupContextSwitcher(baseEstablishmentId) {
                 const checked = checkboxes.filter(cb => cb.checked);
                 if (checked.length === 0) {
                     if (loadingScreen) { loadingScreen.classList.add('fade-out'); setTimeout(() => { loadingScreen.style.display = 'none'; }, 500); }
-                    showNotification('Atenção', 'Tem de selecionar pelo menos uma unidade.', 'warning');
+                    showNotification('Atenção', 'Selecione pelo menos uma unidade.', 'warning');
                     return;
                 }
 
@@ -393,22 +328,20 @@ async function setupContextSwitcher(baseEstablishmentId) {
                     state.enabledModules = estDetails.modules;
                     state.currentViewContext = { id: primaryId, name: estDetails.name, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
 
-                    if (typeof applyTheme === 'function') applyTheme(estDetails.themeColor || 'indigo');
-
                     setupRealtimeListeners(primaryId);
                     loadHeaderKPIs(state.userPermissions);
 
                     dropdown.classList.add('hidden');
                     arrow.style.transform = 'rotate(0deg)';
 
-                    showNotification('Ambiente Atualizado', `Exibindo informações consolidadas.`, 'success');
+                    showNotification('Ambiente Atualizado', `Exibindo dados consolidados.`, 'success');
                     
                     const activeLink = document.querySelector('.sidebar-link.active');
                     const currentSection = activeLink ? activeLink.getAttribute('data-target') : 'dashboard-section';
                     navigateTo(currentSection);
 
                 } catch (err) {
-                    showNotification('Erro', 'Ocorreu um problema ao trocar a visualização.', 'error');
+                    showNotification('Erro', 'Problema ao trocar a visualização.', 'error');
                 } finally {
                     if (loadingScreen) { loadingScreen.classList.add('fade-out'); setTimeout(() => { loadingScreen.style.display = 'none'; }, 500); }
                 }
@@ -419,7 +352,6 @@ async function setupContextSwitcher(baseEstablishmentId) {
                 state.establishmentName = estDetails.name;
                 state.enabledModules = estDetails.modules;
                 state.currentViewContext = { id: state.establishmentId, name: estDetails.name, type: estDetails.parentId ? 'BRANCH' : 'GROUP' };
-                if (typeof applyTheme === 'function') applyTheme(estDetails.themeColor || 'indigo'); 
                 setupRealtimeListeners(state.establishmentId);
                 loadHeaderKPIs(state.userPermissions);
             } catch(e) {}
@@ -428,6 +360,7 @@ async function setupContextSwitcher(baseEstablishmentId) {
     } catch (error) { container.style.display = 'none'; }
 }
 
+// --- 7. SISTEMA DE NAVEGAÇÃO ---
 export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
     if (sectionId !== 'my-profile-section') {
@@ -436,7 +369,7 @@ export function navigateTo(sectionId, params = {}) {
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
         
         if (!isHierarchyOrConfig && (!isModuleEnabled || !hasEmployeePermission)) {
-            if (contentDiv) contentDiv.innerHTML = `<div class="p-8 text-center"><h2 class="text-2xl font-bold text-red-600">Acesso Negado</h2><p class="text-gray-600">Você não tem permissão para visualizar este módulo.</p></div>`;
+            if (contentDiv) contentDiv.innerHTML = `<div class="p-8 text-center mt-10"><i class="bi bi-shield-lock text-5xl text-rose-500 mb-4 block"></i><h2 class="text-2xl font-bold text-slate-800">Acesso Negado</h2><p class="text-slate-500 mt-2">Você não possui permissão para visualizar esta tela.</p></div>`;
             document.querySelectorAll('.sidebar-link').forEach(link => link.classList.remove('active'));
             if (sidebar && sidebar.classList.contains('absolute')) { 
                  sidebar.classList.add('hidden');
@@ -449,7 +382,7 @@ export function navigateTo(sectionId, params = {}) {
     const loadPage = pageLoader[sectionId];
     if (loadPage && contentDiv) {
         const headerTitleEl = document.getElementById('header-page-title');
-        if (headerTitleEl) headerTitleEl.textContent = pageTitles[sectionId] || 'Painel de Gestão';
+        if (headerTitleEl) headerTitleEl.textContent = pageTitles[sectionId] || 'Painel';
 
         document.querySelectorAll('.sidebar-link').forEach(link => {
             link.classList.toggle('active', link.getAttribute('data-target') === sectionId);
@@ -460,7 +393,6 @@ export function navigateTo(sectionId, params = {}) {
                 item.classList.toggle('active', item.getAttribute('data-target') === sectionId);
             });
             setTimeout(scrollToActiveItem, 50);
-            setTimeout(updateScrollHints, 100);
         }
 
         if (sectionId === 'my-profile-section') {
@@ -501,7 +433,7 @@ async function initializePushNotifications(userUid) {
     try {
         if (Capacitor.getPlatform() === 'android') {
             await PushNotifications.createChannel({
-                id: 'default', name: 'Notificações Gerais', description: 'Alertas de agendamentos e avisos',
+                id: 'default', name: 'Notificações', description: 'Alertas',
                 importance: 5, visibility: 1, vibration: true
             });
         }
@@ -581,6 +513,7 @@ function escapeHTML(str) {
     return str.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
+// --- 8. INICIALIZAÇÃO GERAL ---
 async function initialize() {
     try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
 
@@ -588,12 +521,13 @@ async function initialize() {
     
     initializeModalClosers();
     setupBackButtonHandling(); 
-    initTheme();
+    initTheme(); // Inicia o Dark Mode caso tenha salvo
 
+    // Ouvinte do Botão de Troca de Tema (Sol/Lua)
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
             setTheme(currentTheme === 'dark' ? 'light' : 'dark');
         });
     }
@@ -614,9 +548,6 @@ async function initialize() {
             const target = item.getAttribute('data-target');
             navigateTo(target);
         });
-
-        if (navScroll) navScroll.addEventListener('scroll', updateScrollHints);
-        updateScrollHints();
     }
 
     if (mobileOverlay) {
@@ -658,7 +589,6 @@ async function initialize() {
         });
     }
 
-    // Global listener para atualizar a foto dinamicamente em qualquer tela
     window.addEventListener('userPhotoUpdated', (e) => {
         const photoUrl = e.detail;
         if (profileMenuButton && photoUrl) {
@@ -702,7 +632,7 @@ async function initialize() {
                     let userPermissions = null;
                     let userName = user.displayName; 
                     let userProfessionalId = null; 
-                    let userPhoto = null; // <- FOTO GLOBAL DO USUÁRIO
+                    let userPhoto = null;
 
                     const userDocRef = doc(db, 'users', user.uid);
                     const userDoc = await getDoc(userDocRef);
@@ -717,23 +647,20 @@ async function initialize() {
                     
                     state.userProfessionalId = userProfessionalId; 
 
-                    // Verifica se tem perfil profissional associado para tentar obter a foto de lá
                     if (userProfessionalId && !userPhoto) {
                         try {
                             const prof = await getProfessional(userProfessionalId);
                             if (prof && prof.photo) {
                                 userPhoto = prof.photo;
                             }
-                        } catch(e) { console.warn("Erro ao buscar foto profissional no topo", e); }
+                        } catch(e) {}
                     }
 
                     if (Capacitor.isNativePlatform()) initializePushNotifications(user.uid);
                     
                     const finalUserName = userName || user.email;
-                    
                     setGlobalState(claims.establishmentId, "Carregando...", userPermissions);
 
-                    // ATUALIZAÇÃO DA FOTO NO TOPO
                     if (userPhoto) {
                         if (profileMenuButton) profileMenuButton.innerHTML = `<img src="${userPhoto}" class="w-full h-full rounded-full object-cover">`;
                     } else {
@@ -767,7 +694,7 @@ async function initialize() {
             } catch (error) {
                 if (loadingScreen) loadingScreen.style.display = 'none';
                 if (dashboardContent) {
-                    dashboardContent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center p-4 text-center"><h2>Erro de Acesso</h2><p>${error.message}</p></div>`;
+                    dashboardContent.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center p-4 text-center"><i class="bi bi-x-circle text-5xl text-rose-500 mb-4"></i><h2 class="text-xl font-bold">Erro de Acesso</h2><p class="text-slate-500 mt-2">${error.message}</p></div>`;
                     dashboardContent.style.display = 'flex'; 
                 }
             }

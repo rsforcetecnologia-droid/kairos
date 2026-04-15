@@ -63,7 +63,6 @@ function debounce(func, wait) {
     };
 }
 
-// Retorna as datas formatadas consoante o botão de período selecionado
 function getDatesForPreset(preset) {
     const today = new Date();
     let start, end;
@@ -82,7 +81,6 @@ function getDatesForPreset(preset) {
         end = new Date();
     }
 
-    // Corrige problema de fuso horário para garantir YYYY-MM-DD local
     const toYMD = (d) => {
         const tzOffset = d.getTimezoneOffset() * 60000;
         return new Date(d - tzOffset).toISOString().split('T')[0];
@@ -118,7 +116,7 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
     loadingOverlay.id = 'saving-overlay';
     loadingOverlay.className = 'fixed inset-0 bg-gray-900/60 z-[999999] flex items-center justify-center backdrop-blur-sm';
     loadingOverlay.innerHTML = `
-        <div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center animate-fade-in border border-gray-100">
+        <div class="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center animate-fade-in border border-gray-100">
             <div class="loader mb-4"></div>
             <p class="text-gray-800 font-black text-sm uppercase tracking-widest">Sincronizando...</p>
         </div>
@@ -162,7 +160,6 @@ async function executeSaveAction(comanda, nextStep = 'stay') {
 
     } catch (error) {
         if(document.body.contains(loadingOverlay)) document.body.removeChild(loadingOverlay);
-        console.error("Erro ao salvar:", error);
         comanda._hasUnsavedChanges = true; 
         renderComandaDetail();
         showNotification('Erro', 'Falha ao salvar no servidor: ' + error.message, 'warning');
@@ -254,16 +251,11 @@ function updateKPIs() {
 // --- 4. FUNÇÕES DE RENDERIZAÇÃO DA UI ---
 
 function renderPageLayout() {
-    // Injeção de CSS CORRIGIDA para garantir que TODO e qualquer modal (como o de confirmação) fique por cima!
     contentDiv.innerHTML = `
         <style id="comandas-mobile-css">
             @media (max-width: 767px) {
-                .mobile-detail-open #comandas-list-column {
-                    display: none !important;
-                }
-                #comandas-layout:not(.mobile-detail-open) #comanda-detail-container {
-                    display: none !important;
-                }
+                .mobile-detail-open #comandas-list-column { display: none !important; }
+                #comandas-layout:not(.mobile-detail-open) #comanda-detail-container { display: none !important; }
                 .mobile-detail-open #comanda-detail-container {
                     display: flex !important;
                     position: fixed !important;
@@ -275,11 +267,9 @@ function renderPageLayout() {
                     flex-direction: column !important;
                 }
             }
-            /* Super correção de Z-index global para as Notificações de Sucesso/Erro e Modais de Confirmação */
-            #toast-container, .toast-notification, .modal, .modal-backdrop, .modal-dialog, [id*="modal"], [id*="Modal"] {
-                z-index: 9999999 !important; 
-            }
+            #toast-container, .toast-notification, .modal, .modal-backdrop, .modal-dialog, [id*="modal"], [id*="Modal"] { z-index: 9999999 !important; }
         </style>
+        
         <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
             
             <div id="cashier-controls" class="flex items-center gap-2 mb-2">
@@ -287,13 +277,13 @@ function renderPageLayout() {
             </div>
 
             <div class="grid grid-cols-2 gap-2 mb-2 animate-fade-in w-full">
-                <button id="btn-new-sale" data-action="new-sale" class="bg-indigo-600 text-white rounded-xl p-2.5 flex items-center justify-center shadow-md active:scale-95 transition-transform border border-indigo-700 gap-2">
-                    <i class="bi bi-cart-plus text-lg drop-shadow-md"></i>
-                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Nova Venda</span>
+                <button id="btn-new-sale" data-action="new-sale" class="bg-indigo-600 text-white rounded-xl p-3 flex items-center justify-center shadow-md active:scale-95 transition-transform border border-indigo-700 gap-2">
+                    <i class="bi bi-cart-plus text-xl drop-shadow-md"></i>
+                    <span class="font-black text-xs uppercase tracking-widest leading-none mt-0.5">Nova Venda</span>
                 </button>
-                <button data-action="toggle-history" class="bg-white text-gray-700 rounded-xl p-2.5 flex items-center justify-center shadow-sm border border-gray-200 active:scale-95 transition-transform hover:bg-gray-50 gap-2">
-                    <i class="bi bi-clock-history text-lg text-indigo-500"></i>
-                    <span class="font-black text-[10px] md:text-xs uppercase tracking-widest leading-none mt-0.5">Histórico</span>
+                <button data-action="toggle-history" class="bg-white text-gray-700 rounded-xl p-3 flex items-center justify-center shadow-sm border border-gray-200 active:scale-95 transition-transform hover:bg-gray-50 gap-2">
+                    <i class="bi bi-clock-history text-xl text-indigo-500"></i>
+                    <span class="font-black text-xs uppercase tracking-widest leading-none mt-0.5">Histórico</span>
                 </button>
             </div>
 
@@ -301,65 +291,67 @@ function renderPageLayout() {
 
             <div id="history-panel" class="${localState.showHistoryPanel ? 'block' : 'hidden'} bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-2 animate-fade-in">
                 <h4 class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Período de Busca</h4>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2">
-                    <button data-action="set-period" data-period="hoje" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'hoje' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Hoje</button>
-                    <button data-action="set-period" data-period="este_mes" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'este_mes' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Este Mês</button>
-                    <button data-action="set-period" data-period="mes_passado" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'mes_passado' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Mês Passado</button>
-                    <button data-action="set-period" data-period="custom" class="period-btn py-1.5 text-[9px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'custom' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Personalizado</button>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                    <button data-action="set-period" data-period="hoje" class="period-btn py-2 text-[10px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'hoje' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Hoje</button>
+                    <button data-action="set-period" data-period="este_mes" class="period-btn py-2 text-[10px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'este_mes' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Este Mês</button>
+                    <button data-action="set-period" data-period="mes_passado" class="period-btn py-2 text-[10px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'mes_passado' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Mês Passado</button>
+                    <button data-action="set-period" data-period="custom" class="period-btn py-2 text-[10px] font-bold rounded-lg border transition-colors ${localState.filterPreset === 'custom' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">Personalizado</button>
                 </div>
                 
                 <div id="custom-date-fields" class="${localState.filterPreset === 'custom' ? 'flex' : 'hidden'} gap-2 items-end p-2 bg-gray-50 rounded-lg border border-gray-100 flex-wrap sm:flex-nowrap">
                     <div class="flex-1 min-w-[100px]">
                         <label class="block text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 ml-1">Início</label>
-                        <input type="date" id="filter-start-date" value="${localState.filterStartDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-[10px] font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+                        <input type="date" id="filter-start-date" value="${localState.filterStartDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-xs font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
                     </div>
                     <div class="flex-1 min-w-[100px]">
                         <label class="block text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1 ml-1">Fim</label>
-                        <input type="date" id="filter-end-date" value="${localState.filterEndDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-[10px] font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
+                        <input type="date" id="filter-end-date" value="${localState.filterEndDate}" class="w-full p-2 border border-gray-300 rounded-lg bg-white text-xs font-bold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 shadow-sm">
                     </div>
-                    <button data-action="apply-custom-dates" class="h-[34px] w-full sm:w-auto px-4 bg-indigo-600 text-white font-black text-[10px] rounded-lg hover:bg-indigo-700 shadow-sm active:scale-95 transition-transform uppercase tracking-wider flex items-center justify-center gap-1.5 mt-1 sm:mt-0">
+                    <button data-action="apply-custom-dates" class="h-[38px] w-full sm:w-auto px-4 bg-indigo-600 text-white font-black text-xs rounded-lg hover:bg-indigo-700 shadow-sm active:scale-95 transition-transform uppercase tracking-wider flex items-center justify-center gap-1.5 mt-1 sm:mt-0">
                         <i class="bi bi-search"></i> Buscar
                     </button>
                 </div>
             </div>
 
-            <div class="grid grid-cols-4 gap-1.5 md:gap-3 mb-2 animate-fade-in w-full">
-                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
-                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Abertas</span>
-                    <span id="kpi-abertas" class="text-xs md:text-sm font-black text-indigo-600 mt-0.5 w-full truncate">0</span>
+            <div class="grid grid-cols-4 gap-2 mb-3 animate-fade-in w-full">
+                <div class="bg-white p-2 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Abertas</span>
+                    <span id="kpi-abertas" class="text-sm md:text-base font-black text-indigo-600 mt-0.5 w-full truncate">0</span>
                 </div>
-                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
-                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Vendas</span>
-                    <span id="kpi-vendas" class="text-xs md:text-sm font-black text-green-600 mt-0.5 w-full truncate">R$ 0,00</span>
+                <div class="bg-white p-2 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Vendas</span>
+                    <span id="kpi-vendas" class="text-sm md:text-base font-black text-emerald-600 mt-0.5 w-full truncate">R$ 0,00</span>
                 </div>
-                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
-                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Pagas</span>
-                    <span id="kpi-pagas" class="text-xs md:text-sm font-black text-gray-800 mt-0.5 w-full truncate">0</span>
+                <div class="bg-white p-2 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Pagas</span>
+                    <span id="kpi-pagas" class="text-sm md:text-base font-black text-gray-800 mt-0.5 w-full truncate">0</span>
                 </div>
-                <div class="bg-white p-1.5 md:p-2 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
-                    <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Ticket</span>
-                    <span id="kpi-ticket" class="text-xs md:text-sm font-black text-blue-600 mt-0.5 w-full truncate">R$ 0,00</span>
+                <div class="bg-white p-2 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+                    <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest w-full truncate">Ticket</span>
+                    <span id="kpi-ticket" class="text-sm md:text-base font-black text-blue-600 mt-0.5 w-full truncate">R$ 0,00</span>
                 </div>
-            </div>
-
-            <div class="flex gap-1.5 overflow-x-auto pb-1 w-full custom-scrollbar mb-2 animate-fade-in flex-shrink-0">
-                <button data-filter="todas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Todas</button>
-                <button data-filter="abertas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Abertas</button>
-                <button data-filter="pagas" class="filter-btn px-3 py-1.5 text-[10px] font-black rounded-lg border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Fechadas</button>
             </div>
 
             <div id="comandas-layout" class="flex-1 flex gap-3 min-h-0 w-full animate-fade-in relative overflow-hidden">
-                <div id="comandas-list-column" class="flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm h-full w-full md:w-80 lg:w-96 flex-shrink-0 transition-all duration-300 z-10">
-                    <div id="comandas-list" class="p-2 space-y-1.5 overflow-y-auto custom-scrollbar flex-1">
+                
+                <div id="comandas-list-column" class="flex flex-col bg-transparent md:bg-white md:border md:border-gray-200 rounded-xl md:shadow-sm h-full w-full md:w-80 lg:w-96 flex-shrink-0 transition-all duration-300 z-10">
+                    
+                    <div class="sticky top-0 z-20 bg-slate-50 md:bg-white pt-1 pb-3 px-1 md:px-3 md:pt-3 border-b border-transparent md:border-gray-100 flex gap-2 overflow-x-auto custom-scrollbar flex-shrink-0">
+                        <button data-filter="todas" class="filter-btn flex-1 px-3 py-2 text-xs font-black rounded-xl border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Todas</button>
+                        <button data-filter="abertas" class="filter-btn flex-1 px-3 py-2 text-xs font-black rounded-xl border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Abertas</button>
+                        <button data-filter="pagas" class="filter-btn flex-1 px-3 py-2 text-xs font-black rounded-xl border text-gray-600 border-gray-200 hover:bg-gray-50 transition whitespace-nowrap shadow-sm uppercase tracking-wider">Pagas</button>
+                    </div>
+
+                    <div id="comandas-list" class="space-y-2 overflow-y-auto custom-scrollbar flex-1 px-1 md:px-3 pb-4">
                         <div class="loader mx-auto mt-10"></div>
                     </div>
-                    <div id="pagination-container" class="p-1 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 min-h-[36px] flex justify-center items-center rounded-b-xl"></div>
+                    <div id="pagination-container" class="p-2 border-t border-gray-100 bg-gray-50/50 flex-shrink-0 flex justify-center items-center rounded-b-xl"></div>
                 </div>
 
-                <div id="comanda-detail-container" class="bg-gray-50 md:bg-white border-0 md:border md:border-gray-200 md:rounded-xl shadow-sm flex-col overflow-hidden hidden md:flex flex-1 min-w-0 transition-all duration-300 h-full z-20">
+                <div id="comanda-detail-container" class="bg-slate-50 md:bg-white border-0 md:border md:border-gray-200 md:rounded-2xl shadow-sm flex-col overflow-hidden hidden md:flex flex-1 min-w-0 transition-all duration-300 h-full z-20">
                     <div class="flex flex-col items-center justify-center h-full text-center text-gray-400">
-                        <i class="bi bi-receipt text-4xl opacity-20 mb-2"></i>
-                        <p class="text-sm font-medium">Selecione uma venda</p>
+                        <i class="bi bi-receipt text-5xl opacity-20 mb-3"></i>
+                        <p class="text-base font-medium">Selecione uma comanda</p>
                     </div>
                 </div>
             </div>
@@ -387,11 +379,11 @@ function updateCashierUIState() {
 
     if (!localState.isCashierOpen) {
         if (alertBox) alertBox.innerHTML = `
-            <div class="bg-amber-50 border-l-4 border-amber-400 p-2 mb-2 rounded-r-lg animate-fade-in mx-1 shadow-sm">
+            <div class="bg-amber-50 border-l-4 border-amber-400 p-3 mb-3 rounded-r-xl animate-fade-in mx-1 shadow-sm">
                 <div class="flex items-center">
-                    <i class="bi bi-exclamation-triangle text-amber-500 mr-2 text-base"></i>
-                    <p class="text-[10px] md:text-xs text-amber-800 leading-tight">
-                        <strong>Caixa Fechado!</strong> Abra o caixa para operações.
+                    <i class="bi bi-exclamation-triangle text-amber-500 mr-3 text-lg"></i>
+                    <p class="text-xs md:text-sm text-amber-800 leading-tight">
+                        <strong>Caixa Fechado!</strong> Abra o caixa para operações financeiras.
                     </p>
                 </div>
             </div>
@@ -416,13 +408,13 @@ function renderCashierControls() {
     
     if (localState.isCashierOpen) {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-[10px] font-bold text-green-700 bg-green-100 py-1.5 px-2.5 rounded-lg border border-green-200 uppercase tracking-widest shadow-sm"><i class="bi bi-unlock-fill"></i> Caixa Aberto</span>
-            <button data-action="close-cashier" class="py-1 px-3 bg-red-50 text-red-700 border border-red-200 font-bold rounded-lg hover:bg-red-100 text-[10px] transition shadow-sm">Fechar Caixa</button>
+            <span class="hidden sm:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-100 py-1.5 px-3 rounded-xl border border-emerald-200 uppercase tracking-widest shadow-sm"><i class="bi bi-unlock-fill"></i> Caixa Aberto</span>
+            <button data-action="close-cashier" class="py-1.5 px-4 bg-red-50 text-red-700 border border-red-200 font-bold rounded-xl hover:bg-red-100 text-[10px] transition shadow-sm uppercase tracking-wider">Fechar Caixa</button>
         `;
     } else {
         container.innerHTML = `
-            <span class="hidden sm:inline-block text-[10px] font-bold text-red-700 bg-red-100 py-1.5 px-2.5 rounded-lg border border-red-200 uppercase tracking-widest shadow-sm"><i class="bi bi-lock-fill"></i> Caixa Fechado</span>
-            <button data-action="open-cashier" class="py-1 px-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 text-[10px] shadow-sm transition">Abrir Caixa</button>
+            <span class="hidden sm:inline-block text-[10px] font-bold text-red-700 bg-red-100 py-1.5 px-3 rounded-xl border border-red-200 uppercase tracking-widest shadow-sm"><i class="bi bi-lock-fill"></i> Caixa Fechado</span>
+            <button data-action="open-cashier" class="py-1.5 px-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 text-[10px] shadow-sm transition uppercase tracking-wider">Abrir Caixa</button>
         `;
     }
 }
@@ -435,10 +427,10 @@ function renderComandaList() {
     
     if (!localState.isCashierOpen && localState.activeFilter === 'abertas') {
         listContainer.innerHTML = `
-            <div class="text-center py-10 opacity-60">
-                <i class="bi bi-lock text-3xl text-gray-300 mb-2 block"></i>
-                <p class="text-xs font-bold text-gray-600 uppercase tracking-widest">Caixa Fechado</p>
-                <p class="text-[10px] text-gray-500 mt-1">Abra o caixa para ver as vendas</p>
+            <div class="text-center py-12 opacity-60">
+                <i class="bi bi-lock text-4xl text-gray-300 mb-3 block"></i>
+                <p class="text-sm font-bold text-gray-600 uppercase tracking-widest">Caixa Fechado</p>
+                <p class="text-xs text-gray-500 mt-2">Abra o caixa para ver as vendas</p>
             </div>
         `;
         if (paginationContainer) paginationContainer.innerHTML = '';
@@ -455,7 +447,7 @@ function renderComandaList() {
     updateKPIs(); 
 
     if (filteredComandas.length === 0) {
-        listContainer.innerHTML = `<p class="text-center text-gray-400 py-10 text-xs font-medium">Nenhuma venda encontrada para este filtro e período.</p>`;
+        listContainer.innerHTML = `<p class="text-center text-gray-400 py-12 text-sm font-medium border border-dashed border-gray-200 rounded-2xl mx-2">Nenhuma comanda encontrada.</p>`;
         renderPaginationControls(paginationContainer);
         return;
     }
@@ -474,7 +466,7 @@ function renderComandaList() {
 
         const hasReward = comanda.loyaltyRedemption || (comanda.discount && comanda.discount.reason && String(comanda.discount.reason).toLowerCase().includes('fidelidade'));
         const rewardIndicator = hasReward 
-            ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-4 h-4 ml-1 text-[10px]" title="Prémio Resgatado">🎁</span>` 
+            ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-5 h-5 ml-1.5 text-xs shadow-sm border border-yellow-200" title="Prémio Resgatado">🎁</span>` 
             : '';
 
         const isSelected = String(comanda.id) === String(localState.selectedComandaId);
@@ -491,31 +483,31 @@ function renderComandaList() {
         
         let typeIndicator = '';
         if(isCompleted) {
-            typeIndicator = `<span class="text-[9px] font-bold uppercase text-green-700 bg-green-100 px-1.5 py-0.5 rounded border border-green-200">Paga</span>`;
+            typeIndicator = `<span class="text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">Paga</span>`;
         } else if (isWalkIn) {
-            typeIndicator = `<span class="text-[9px] font-bold uppercase text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">Avulsa</span>`;
+            typeIndicator = `<span class="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">Avulsa</span>`;
         } else {
-            typeIndicator = `<span class="text-[9px] font-bold uppercase text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200">Agenda</span>`;
+            typeIndicator = `<span class="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200">Agenda</span>`;
         }
 
         const div = document.createElement('div');
-        div.className = `comanda-card cursor-pointer border border-gray-100 rounded-lg p-2.5 hover:bg-gray-50 transition-colors shadow-sm ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50/50' : 'bg-white'}`;
+        div.className = `comanda-card cursor-pointer border rounded-2xl p-3.5 hover:bg-gray-50 transition-all shadow-sm mb-2 ${isSelected ? 'ring-2 ring-indigo-500 bg-indigo-50/50 border-transparent' : 'bg-white border-gray-200'}`;
         div.dataset.action = 'select-comanda';
         div.dataset.comandaId = comanda.id;
         div.innerHTML = `
-            <div class="flex justify-between items-start mb-1.5 pointer-events-none">
-                <p class="font-bold text-gray-800 truncate flex-1 min-w-0 pr-2 text-sm">${safeClientName}</p>
+            <div class="flex justify-between items-start mb-2.5 pointer-events-none">
+                <p class="font-bold text-gray-900 truncate flex-1 min-w-0 pr-2 text-base">${safeClientName}</p>
                 <div class="flex items-center flex-shrink-0">
-                    <p class="font-black ${isCompleted ? 'text-green-600' : 'text-gray-800'} text-sm">R$ ${displayTotal.toFixed(2)}</p>
+                    <p class="font-black ${isCompleted ? 'text-emerald-600' : 'text-gray-900'} text-base">R$ ${displayTotal.toFixed(2)}</p>
                     ${rewardIndicator}
                 </div>
             </div>
             <div class="flex justify-between items-center mt-1 pointer-events-none gap-2">
-                <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
                     ${typeIndicator}
-                    <p class="text-[10px] text-gray-500 truncate"><i class="bi bi-person mr-0.5 opacity-50"></i>${safeProfName}</p>
+                    <p class="text-xs text-gray-500 truncate font-medium"><i class="bi bi-person mr-1 opacity-50"></i>${safeProfName}</p>
                 </div>
-                <p class="text-[10px] text-gray-500 font-bold flex-shrink-0"><i class="bi bi-calendar-event mr-0.5 opacity-50"></i>${dateStr} <span class="text-gray-300 mx-0.5">|</span> ${timeStr}</p> 
+                <p class="text-xs text-gray-500 font-bold flex-shrink-0"><i class="bi bi-calendar-event mr-1 opacity-50"></i>${dateStr} <span class="text-gray-300 mx-1">|</span> ${timeStr}</p> 
             </div>
         `;
         fragment.appendChild(div);
@@ -535,11 +527,11 @@ function renderPaginationControls(container) {
     if (totalPages === 0) return;
 
     const div = document.createElement('div');
-    div.className = "flex gap-2 justify-center items-center w-full";
+    div.className = "flex gap-2 justify-center items-center w-full py-1";
     div.innerHTML = `
-        <button data-page="${page - 1}" class="px-2.5 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm ${page <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${page <= 1 ? 'disabled' : ''}>&laquo;</button>
-        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mx-1">Pág ${page} de ${totalPages || 1}</span>
-        <button data-page="${page + 1}" class="px-2.5 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-600 shadow-sm ${page >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${page >= totalPages ? 'disabled' : ''}>&raquo;</button>
+        <button data-page="${page - 1}" class="w-8 h-8 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-sm font-black text-gray-600 shadow-sm flex items-center justify-center ${page <= 1 ? 'opacity-50 cursor-not-allowed' : ''}" ${page <= 1 ? 'disabled' : ''}>&laquo;</button>
+        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mx-2">Pág ${page} de ${totalPages || 1}</span>
+        <button data-page="${page + 1}" class="w-8 h-8 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-sm font-black text-gray-600 shadow-sm flex items-center justify-center ${page >= totalPages ? 'opacity-50 cursor-not-allowed' : ''}" ${page >= totalPages ? 'disabled' : ''}>&raquo;</button>
     `;
     container.appendChild(div);
 
@@ -555,28 +547,27 @@ function renderPaginationControls(container) {
     });
 }
 
-// --- NOVA TELA: CATÁLOGO DE ITENS ---
 function renderAddItemView(comanda, container) {
     const mobileHeaderHTML = `
-        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
             <button data-action="back-to-items" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
-                <i class="bi bi-arrow-left text-lg"></i>
+                <i class="bi bi-arrow-left text-xl"></i>
             </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Catálogo</h3>
+            <h3 class="font-black text-lg text-gray-800 ml-4 uppercase tracking-wider">Catálogo</h3>
         </div>
     `;
 
     container.innerHTML = `
         ${mobileHeaderHTML}
-        <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-gray-50/50 relative flex flex-col">
+        <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-slate-50 relative flex flex-col">
             <div class="relative mb-5 flex-shrink-0">
                 <i class="bi bi-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                <input type="search" id="item-search-input" placeholder="Pesquisar produto ou serviço..." class="w-full pl-12 p-3.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white transition-colors shadow-sm font-bold text-gray-700">
+                <input type="search" id="item-search-input" placeholder="Pesquisar produto ou serviço..." class="w-full pl-12 p-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white transition-colors shadow-sm font-bold text-gray-700">
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 flex-grow overflow-y-auto pb-8">
-                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-indigo-600 bg-indigo-100 py-2 rounded-lg"><i class="bi bi-scissors mr-1"></i> Serviços</h4><div id="catalog-service-list" class="space-y-2"></div></div>
-                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-emerald-600 bg-emerald-100 py-2 rounded-lg"><i class="bi bi-box-seam mr-1"></i> Produtos</h4><div id="catalog-product-list" class="space-y-2"></div></div>
-                <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-purple-600 bg-purple-100 py-2 rounded-lg"><i class="bi bi-boxes mr-1"></i> Pacotes</h4><div id="catalog-package-list" class="space-y-2"></div></div>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-grow overflow-y-auto pb-8">
+                <div class="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-indigo-700 bg-indigo-50 border border-indigo-100 py-2.5 rounded-xl"><i class="bi bi-scissors mr-1"></i> Serviços</h4><div id="catalog-service-list" class="space-y-2"></div></div>
+                <div class="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-100 py-2.5 rounded-xl"><i class="bi bi-box-seam mr-1"></i> Produtos</h4><div id="catalog-product-list" class="space-y-2"></div></div>
+                <div class="bg-white p-3 rounded-2xl border border-gray-200 shadow-sm"><h4 class="font-black mb-3 text-center text-xs uppercase tracking-widest text-purple-700 bg-purple-50 border border-purple-100 py-2.5 rounded-xl"><i class="bi bi-boxes mr-1"></i> Pacotes</h4><div id="catalog-package-list" class="space-y-2"></div></div>
             </div>
         </div>
     `;
@@ -601,10 +592,10 @@ function renderAddItemView(comanda, container) {
                 if (!item.id) return '';
                 
                 return `
-                <button data-action="select-catalog-item" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-400 shadow-sm transition-all text-left group active:scale-95">
-                    <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-lg border border-gray-100 group-hover:bg-indigo-50 group-hover:border-indigo-200">${icons[type]}</div>
+                <button data-action="select-catalog-item" data-item-type="${type}" data-item-id="${item.id}" class="flex items-center gap-3 w-full p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-400 hover:bg-indigo-50 shadow-sm transition-all text-left group active:scale-95">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-lg border border-gray-100 group-hover:bg-white">${icons[type]}</div>
                     <span class="flex-grow text-sm font-bold text-gray-800 line-clamp-2 leading-tight group-hover:text-indigo-700">${escapeHTML(item.name)}</span>
-                    <span class="font-black text-sm text-gray-900 bg-gray-100 px-2 py-1 rounded-md border border-gray-200 whitespace-nowrap group-hover:bg-white group-hover:text-indigo-700">R$ ${item.price.toFixed(2)}</span>
+                    <span class="font-black text-sm text-gray-900 bg-gray-100 px-2.5 py-1.5 rounded-lg border border-gray-200 whitespace-nowrap group-hover:bg-white group-hover:text-indigo-700">R$ ${item.price.toFixed(2)}</span>
                 </button>
             `}).join('') || `<p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center py-6 border border-dashed border-gray-300 rounded-xl">Vazio</p>`;
         });
@@ -617,7 +608,6 @@ function renderAddItemView(comanda, container) {
     }
 }
 
-// --- NOVA TELA: QUANTIDADE DO ITEM ---
 function renderQuantityView(comanda, container) {
     const item = localState.selectedCatalogItem;
     if (!item) {
@@ -629,9 +619,9 @@ function renderQuantityView(comanda, container) {
     let quantity = 1;
     
     const mobileHeaderHTML = `
-        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
             <button data-action="back-to-add-item" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
-                <i class="bi bi-arrow-left text-lg"></i>
+                <i class="bi bi-arrow-left text-xl"></i>
             </button>
             <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Quantidade</h3>
         </div>
@@ -639,7 +629,7 @@ function renderQuantityView(comanda, container) {
 
     container.innerHTML = `
         ${mobileHeaderHTML}
-        <div class="flex-grow flex flex-col items-center justify-center p-6 bg-gray-50/50">
+        <div class="flex-grow flex flex-col items-center justify-center p-6 bg-slate-50 relative">
             <div class="text-center bg-white p-8 rounded-3xl shadow-sm border border-gray-200 w-full max-w-sm">
                 <div class="w-20 h-20 bg-indigo-50 text-indigo-500 rounded-full mx-auto flex items-center justify-center text-4xl mb-6 border border-indigo-100 shadow-inner">
                     ${item.type === 'service' ? '<i class="bi bi-scissors"></i>' : (item.type === 'product' ? '<i class="bi bi-box-seam"></i>' : '<i class="bi bi-boxes"></i>')}
@@ -648,14 +638,14 @@ function renderQuantityView(comanda, container) {
                 <p class="text-base text-gray-600 font-bold bg-gray-100 inline-block px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">R$ ${item.price.toFixed(2)} / unidade</p>
                 
                 <div class="my-10 flex items-center justify-center gap-6">
-                    <button id="quantity-minus-btn" class="w-16 h-16 rounded-full bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:hover:bg-white"><i class="bi bi-dash"></i></button>
+                    <button id="quantity-minus-btn" class="w-16 h-16 rounded-2xl bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:hover:bg-white"><i class="bi bi-dash"></i></button>
                     <span id="quantity-display" class="text-6xl font-black w-24 text-center text-indigo-600 bg-indigo-50 rounded-3xl py-2 border border-indigo-100 shadow-inner">${quantity}</span>
-                    <button id="quantity-plus-btn" class="w-16 h-16 rounded-full bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-green-50 hover:text-green-600 hover:border-green-200 shadow-md transition-all active:scale-90"><i class="bi bi-plus"></i></button>
+                    <button id="quantity-plus-btn" class="w-16 h-16 rounded-2xl bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-green-50 hover:text-green-600 hover:border-green-200 shadow-md transition-all active:scale-90"><i class="bi bi-plus"></i></button>
                 </div>
             </div>
         </div>
-        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-8">
-            <button id="confirm-add-qty-btn" class="w-full py-4 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 transition-all shadow-lg uppercase tracking-widest active:scale-95 flex justify-center items-center gap-2">
+        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-safe relative">
+            <button id="confirm-add-qty-btn" class="w-full py-4 bg-indigo-600 text-white font-black text-base rounded-2xl hover:bg-indigo-700 transition-all shadow-lg uppercase tracking-widest active:scale-95 flex justify-center items-center gap-2">
                 <i class="bi bi-cart-plus text-xl"></i> Confirmar Adição
             </button>
         </footer>
@@ -684,7 +674,6 @@ function renderComandaDetail() {
     
     const comanda = localState.allComandas.find(c => String(c.id) === String(localState.selectedComandaId));
 
-    // Roteamento interno de Telas 
     if (localState.viewMode === 'checkout' && comanda) {
         renderCheckoutView(comanda, detailContainer);
         return;
@@ -699,11 +688,16 @@ function renderComandaDetail() {
     }
     
     const mobileHeaderHTML = `
-        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
-            <button data-action="back-to-list" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner">
-                <i class="bi bi-arrow-left text-lg"></i>
-            </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Detalhes da Comanda</h3>
+        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center justify-between shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
+            <div class="flex items-center">
+                <button data-action="back-to-list" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner">
+                    <i class="bi bi-arrow-left text-xl"></i>
+                </button>
+                <h3 class="font-black text-lg text-gray-800 ml-4 uppercase tracking-wider">Comanda</h3>
+            </div>
+            ${comanda && comanda._hasUnsavedChanges ? `
+                <button data-action="save-comanda" class="bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest px-3 py-2 rounded-lg animate-pulse shadow-md active:scale-95">Salvar</button>
+            ` : ''}
         </div>
     `;
 
@@ -711,11 +705,12 @@ function renderComandaDetail() {
         detailContainer.innerHTML = `
             ${mobileHeaderHTML}
             <div class="flex flex-col items-center justify-center h-full text-center text-gray-500 p-6">
-                <div class="bg-gray-50 p-4 rounded-full mb-3 border border-gray-100">
-                    <i class="bi bi-lock text-3xl text-gray-300"></i>
+                <div class="bg-gray-50 p-6 rounded-full mb-4 border border-gray-100 shadow-inner">
+                    <i class="bi bi-lock text-5xl text-gray-300"></i>
                 </div>
-                <p class="font-bold text-sm text-gray-700">Caixa Fechado</p>
-                <button data-action="open-cashier" class="py-2 px-5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-sm mt-3 text-xs">Abrir Caixa</button>
+                <p class="font-black text-lg text-gray-700 uppercase tracking-widest">Caixa Fechado</p>
+                <p class="text-sm text-gray-500 mt-2 max-w-xs">Você precisa abrir o caixa para gerenciar as vendas.</p>
+                <button data-action="open-cashier" class="py-3 px-8 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 transition shadow-md mt-6 text-sm uppercase tracking-wider">Abrir Caixa Agora</button>
             </div>
         `;
         return;
@@ -724,9 +719,9 @@ function renderComandaDetail() {
     if (!comanda) {
         detailContainer.innerHTML = `
             <div class="hidden md:flex flex-col items-center justify-center h-full text-center text-gray-400">
-                <i class="bi bi-receipt text-4xl opacity-20 mb-2"></i>
-                <p class="text-sm font-medium">Selecione uma venda</p>
-                <p class="text-[10px] uppercase tracking-widest mt-1 opacity-70">Clique na lista ao lado</p>
+                <i class="bi bi-receipt text-6xl opacity-20 mb-4"></i>
+                <p class="text-lg font-bold text-gray-500 uppercase tracking-widest">Nenhuma Selecionada</p>
+                <p class="text-sm mt-2 opacity-70">Clique na lista ao lado para ver os detalhes</p>
             </div>
         `;
         return;
@@ -756,56 +751,60 @@ function renderComandaDetail() {
 
     const hasUnsaved = comanda._hasUnsavedChanges;
     
-    const desktopButtons = `
-        <div class="hidden md:grid grid-cols-3 gap-2 pt-1">
-            <button data-action="add-item" class="col-span-1 py-2.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg hover:bg-indigo-100 transition border border-indigo-200 text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-1">
-                <i class="bi bi-plus-lg"></i> Incluir
-            </button>
-            <button data-action="save-comanda" class="col-span-1 py-2.5 font-bold rounded-lg transition text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-1 ${hasUnsaved ? "bg-amber-500 text-white hover:bg-amber-600 animate-pulse" : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"}">
-                <i class="bi bi-save2"></i> ${hasUnsaved ? "Salvar*" : "Salvar"}
-            </button>
-            <button data-action="go-to-checkout" class="col-span-1 py-2.5 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-sm text-xs uppercase tracking-wider flex justify-center items-center gap-1">
-                <i class="bi bi-currency-dollar text-sm"></i> Pagamento
-            </button>
-        </div>
-    `;
+    // FAB do Adicionar (Aparece flutuando no Mobile)
+    const mobileAddFab = !isCompleted ? `
+        <button data-action="add-item" class="md:hidden fixed bottom-[120px] right-4 w-14 h-14 bg-indigo-600 text-white font-black rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-[60]">
+            <i class="bi bi-plus-lg text-2xl"></i>
+        </button>
+    ` : '';
 
     const desktopFooter = `
-        <footer class="hidden md:block mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] w-full flex-shrink-0 z-20">
-            <div class="flex justify-between items-end mb-3">
+        <footer class="hidden md:block mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] w-full flex-shrink-0 z-20 rounded-b-2xl">
+            <div class="flex justify-between items-end mb-4">
                 <span class="text-xs text-gray-500 font-bold uppercase tracking-widest">Total a Pagar</span>
-                <span class="text-3xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
+                <span class="text-4xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
             </div>
-            ${!isCompleted ? desktopButtons : `
-                <div class="bg-green-50 text-green-700 text-center py-2.5 rounded-lg font-bold border border-green-200 flex items-center justify-center gap-2 text-sm shadow-sm">
-                    <i class="bi bi-check-circle-fill"></i> Comanda Paga
+            ${!isCompleted ? `
+                <div class="grid grid-cols-3 gap-3">
+                    <button data-action="add-item" class="col-span-1 py-3 bg-indigo-50 text-indigo-700 font-black rounded-xl hover:bg-indigo-100 transition border border-indigo-200 text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-2">
+                        <i class="bi bi-plus-lg text-lg"></i> Incluir Item
+                    </button>
+                    <button data-action="save-comanda" class="col-span-1 py-3 font-black rounded-xl transition text-xs shadow-sm uppercase tracking-wider flex justify-center items-center gap-2 ${hasUnsaved ? "bg-amber-500 text-white hover:bg-amber-600 animate-pulse border-transparent" : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"}">
+                        <i class="bi bi-save2 text-lg"></i> ${hasUnsaved ? "Salvar Alterações" : "Salvar"}
+                    </button>
+                    <button data-action="go-to-checkout" class="col-span-1 py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 transition shadow-md text-xs uppercase tracking-wider flex justify-center items-center gap-2">
+                        <i class="bi bi-credit-card text-lg"></i> Finalizar Pagamento
+                    </button>
+                </div>
+            ` : `
+                <div class="bg-emerald-50 text-emerald-700 text-center py-3.5 rounded-xl font-black border border-emerald-200 flex items-center justify-center gap-2 text-sm shadow-sm">
+                    <i class="bi bi-check-circle-fill text-xl"></i> Comanda Paga
                 </div>
             `}
         </footer>
     `;
 
-    // Adaptação Mobile: Rodapé totalmente fixo com os 3 botões limpos
+    // Rodapé Mobile Limpo (Strictly Checkout/Salvar)
     const mobileFooter = `
-        <footer class="md:hidden mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-8">
+        <footer class="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-15px_30px_-5px_rgba(0,0,0,0.1)] z-50 pb-safe">
             <div class="flex justify-between items-end mb-3 px-1">
-                <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total da Comanda</span>
-                <span class="text-2xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total da Comanda</span>
+                    <span class="text-3xl font-black text-gray-900 leading-none">R$ ${total.toFixed(2)}</span>
+                </div>
+                ${hasUnsaved ? `
+                    <button data-action="save-comanda" class="py-2 px-5 font-black rounded-xl text-xs shadow-md uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 transition-transform bg-amber-500 text-white animate-pulse">
+                        <i class="bi bi-save2 text-base"></i> Salvar
+                    </button>
+                ` : ''}
             </div>
             ${!isCompleted ? `
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                    <button data-action="add-item" class="py-3.5 bg-indigo-50 text-indigo-700 font-black rounded-xl border border-indigo-200 text-xs shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                        <i class="bi bi-plus-lg text-lg"></i> Incluir
-                    </button>
-                    <button data-action="save-comanda" class="py-3.5 font-black rounded-xl text-xs shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-transform ${hasUnsaved ? "bg-amber-500 text-white animate-pulse border-transparent" : "bg-white border border-gray-200 text-gray-700"}">
-                        <i class="bi bi-save2 text-lg"></i> ${hasUnsaved ? "Salvar*" : "Salvar"}
-                    </button>
-                </div>
-                <button data-action="go-to-checkout" class="w-full py-4 bg-green-600 text-white font-black text-sm rounded-xl hover:bg-green-700 transition shadow-md uppercase tracking-wider flex justify-center items-center gap-2 active:scale-95">
-                    PAGAMENTO <i class="bi bi-arrow-right text-xl"></i>
+                <button data-action="go-to-checkout" class="w-full py-4 bg-emerald-600 text-white font-black text-sm rounded-xl hover:bg-emerald-700 transition shadow-lg uppercase tracking-wider flex justify-center items-center gap-2 active:scale-95">
+                    Ir para Pagamento <i class="bi bi-arrow-right text-xl"></i>
                 </button>
             ` : `
-                <div class="w-full bg-green-50 text-green-700 text-center py-4 rounded-xl font-bold border border-green-200 flex items-center justify-center gap-2 text-sm shadow-sm mt-2">
-                    <i class="bi bi-check-circle-fill"></i> Comanda Paga
+                <div class="w-full bg-emerald-50 text-emerald-700 text-center py-4 rounded-xl font-black border border-emerald-200 flex items-center justify-center gap-2 text-sm shadow-sm">
+                    <i class="bi bi-check-circle-fill text-xl"></i> Comanda Paga
                 </div>
             `}
         </footer>
@@ -813,75 +812,75 @@ function renderComandaDetail() {
 
     detailContainer.innerHTML = `
         ${mobileHeaderHTML} 
-        <div class="flex-grow overflow-y-auto p-4 pb-6 custom-scrollbar bg-gray-50/50 relative"> 
-            <div class="flex justify-between items-start mb-4 border-b border-gray-200 pb-4 bg-white p-3 rounded-xl shadow-sm">
+        <div class="flex-grow overflow-y-auto p-4 pb-36 md:pb-6 custom-scrollbar bg-slate-50 relative"> 
+            
+            <div class="flex justify-between items-start mb-5 border-b border-gray-200 pb-5 bg-white p-4 rounded-2xl shadow-sm">
                 <div>
-                    <h3 class="text-base font-black text-gray-800 truncate max-w-[200px] md:max-w-xs">${safeClientName}</h3>
-                    <p class="text-xs text-gray-500 flex items-center gap-1 mt-1 font-medium">
-                        <i class="bi bi-person opacity-50"></i> ${safeProfName}
+                    <h3 class="text-lg font-black text-gray-900 truncate max-w-[220px] md:max-w-xs leading-tight">${safeClientName}</h3>
+                    <p class="text-sm text-gray-500 flex items-center gap-1.5 mt-1 font-semibold">
+                        <i class="bi bi-person text-indigo-400"></i> ${safeProfName}
                     </p>
                     ${!isWalkIn ? 
-                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-[10px] font-bold uppercase tracking-widest hover:underline flex items-center gap-1 mt-2">
-                             Ver na Agenda <i class="bi bi-arrow-right-short"></i>
+                        `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-xs font-black uppercase tracking-widest hover:text-indigo-800 flex items-center gap-1 mt-3 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors w-max shadow-sm">
+                             <i class="bi bi-calendar-check"></i> Ver Agenda
                          </button>` 
-                         : `<span class="mt-2 inline-block px-1.5 py-0.5 text-[9px] font-bold bg-blue-100 text-blue-700 rounded uppercase tracking-widest">Venda Avulsa</span>`}
+                         : `<span class="mt-3 inline-block px-2 py-1 text-[10px] font-black bg-blue-100 text-blue-700 rounded-md uppercase tracking-widest border border-blue-200">Venda Avulsa</span>`}
                 </div>
-                <div class="flex gap-1.5">
+                <div class="flex flex-col gap-2">
                     ${isCompleted ? 
-                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="w-8 h-8 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 flex items-center justify-center border border-yellow-200 shadow-sm" title="Reabrir"><i class="bi bi-arrow-counterclockwise text-sm"></i></button>` 
+                        `<button data-action="reopen-appointment" data-id="${comanda.id}" class="w-10 h-10 bg-yellow-50 text-yellow-600 rounded-xl hover:bg-yellow-100 flex items-center justify-center border border-yellow-200 shadow-sm transition-colors" title="Reabrir Comanda"><i class="bi bi-arrow-counterclockwise text-lg"></i></button>` 
                         : ''}
                     ${isWalkIn && !isCompleted ? 
-                        `<button data-action="delete-walk-in" data-id="${comanda.id}" class="w-8 h-8 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 flex items-center justify-center border border-red-200 shadow-sm" title="Excluir"><i class="bi bi-trash3 text-sm"></i></button>` 
+                        `<button data-action="delete-walk-in" data-id="${comanda.id}" class="w-10 h-10 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 flex items-center justify-center border border-red-200 shadow-sm transition-colors" title="Excluir Venda"><i class="bi bi-trash3 text-lg"></i></button>` 
                         : ''}
                 </div>
             </div>
 
-            <div id="loyalty-container" class="mb-4"></div>
+            <div id="loyalty-container" class="mb-5"></div>
 
-            <div class="space-y-2.5">
-                <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 pl-1">Resumo dos Itens</h4>
+            <div class="space-y-3">
+                <h4 class="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-3 pl-1">Itens Adicionados</h4>
                 ${Object.values(groupedItems).map(item => {
                     const isOriginal = item.sources && item.sources.includes('original_service');
                     const isRedeemedItem = localState.pendingRedemption && String(localState.pendingRedemption.appliedToItemId) === String(item.id);
                     const showRewardTag = item.isReward || isRedeemedItem;
 
                     return `
-                    <div class="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-200 shadow-sm ${showRewardTag ? 'border-yellow-400 bg-yellow-50 ring-1 ring-yellow-200' : ''}">
-                        <div class="flex flex-col w-full gap-2.5">
-                            <div class="flex justify-between items-start">
-                                <div class="min-w-0 flex-1 pr-3">
-                                    <p class="text-sm font-bold text-gray-800 line-clamp-2 leading-tight">
-                                        ${showRewardTag ? '🎁 ' : ''}
-                                        ${escapeHTML(item.name)}
-                                    </p>
-                                    <div class="flex items-center mt-1.5">
-                                        ${isOriginal ? '<span class="text-[8px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 mr-2">Original</span>' : ''}
-                                        <p class="text-[11px] text-gray-500 font-semibold">${showRewardTag ? '<span class="text-yellow-700 font-bold bg-yellow-100 px-1.5 py-0.5 rounded border border-yellow-200">Prémio</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
-                                    </div>
+                    <div class="flex flex-col bg-white p-4 rounded-2xl border border-gray-200 shadow-sm ${showRewardTag ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-200' : ''}">
+                        <div class="flex justify-between items-start w-full">
+                            <div class="min-w-0 flex-1 pr-3">
+                                <p class="text-base font-bold text-gray-900 line-clamp-2 leading-tight">
+                                    ${showRewardTag ? '🎁 ' : ''}
+                                    ${escapeHTML(item.name)}
+                                </p>
+                                <div class="flex items-center mt-2 gap-2">
+                                    ${isOriginal ? '<span class="text-[9px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100 px-2 py-1 rounded-md border border-indigo-200">Fixo Agenda</span>' : ''}
+                                    <p class="text-xs text-gray-500 font-bold">${showRewardTag ? '<span class="text-yellow-700 font-black bg-yellow-100 px-2 py-1 rounded-md border border-yellow-200">Resgate</span>' : `R$ ${(item.price || 0).toFixed(2)} un.`}</p>
                                 </div>
-                                <span class="font-black text-base text-gray-900 whitespace-nowrap">R$ ${(item.price * item.quantity).toFixed(2)}</span>
                             </div>
-                            
-                            <div class="flex justify-end pt-1">
+                            <div class="flex flex-col items-end gap-3">
+                                <span class="font-black text-xl text-gray-900 whitespace-nowrap leading-none">R$ ${(item.price * item.quantity).toFixed(2)}</span>
+                                
                                 ${!isCompleted ? `
-                                    <div class="flex items-center bg-gray-50 rounded-lg border border-gray-200 shadow-inner">
+                                    <div class="flex items-center bg-gray-50 rounded-xl border border-gray-200 shadow-inner h-10">
                                         ${isOriginal ? 
-                                            `<span class="text-[10px] font-bold text-gray-500 px-4 py-1.5 bg-gray-100 rounded-lg uppercase tracking-wider">Fixo: ${item.quantity}</span>` 
+                                            `<span class="text-[11px] font-black text-gray-500 px-4 uppercase tracking-widest">Qtd: ${item.quantity}</span>` 
                                             : 
-                                            `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-9 h-9 flex items-center justify-center rounded-l-lg bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 border-r border-gray-200"><i class="bi bi-dash text-lg"></i></button>
-                                             <span class="text-sm font-black text-gray-800 w-10 text-center">${item.quantity}</span>
-                                             <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-9 h-9 flex items-center justify-center rounded-r-lg bg-white text-gray-600 hover:bg-green-50 hover:text-green-600 border-l border-gray-200"><i class="bi bi-plus text-lg"></i></button>`
+                                            `<button data-action="decrease-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-10 h-full flex items-center justify-center rounded-l-xl bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 border-r border-gray-200 active:scale-95"><i class="bi bi-dash text-xl"></i></button>
+                                             <span class="text-sm font-black text-gray-900 w-12 text-center">${item.quantity}</span>
+                                             <button data-action="increase-qty" data-item-id="${item.id}" data-item-type="${item.type}" class="w-10 h-full flex items-center justify-center rounded-r-xl bg-white text-gray-600 hover:bg-emerald-50 hover:text-emerald-600 border-l border-gray-200 active:scale-95"><i class="bi bi-plus text-xl"></i></button>`
                                         }
                                     </div>
-                                ` : `<span class="flex items-center justify-center px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-600 font-bold text-xs uppercase tracking-widest rounded-lg">${item.quantity} Qtd</span>`}
+                                ` : `<span class="flex items-center justify-center px-4 py-2 bg-gray-100 border border-gray-200 text-gray-700 font-black text-xs uppercase tracking-widest rounded-xl">${item.quantity} Itens</span>`}
                             </div>
                         </div>
                     </div>
                 `}).join('')}
-                ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-8 text-gray-400 border border-dashed border-gray-300 bg-gray-50 rounded-xl text-sm font-medium">Nenhum item adicionado</div>' : ''}
+                ${Object.keys(groupedItems).length === 0 ? '<div class="text-center py-12 text-gray-400 border-2 border-dashed border-gray-200 bg-white rounded-2xl text-sm font-medium">Nenhum item lançado</div>' : ''}
             </div>
         </div>
 
+        ${mobileAddFab}
         ${desktopFooter}
         ${mobileFooter}
     `;
@@ -914,96 +913,103 @@ function renderCheckoutView(comanda, container) {
     }
 
     const mobileHeaderHTML = `
-        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+        <div class="md:hidden p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
             <button data-action="back-to-items" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
-                <i class="bi bi-arrow-left text-lg"></i>
+                <i class="bi bi-arrow-left text-xl"></i>
             </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Pagamento</h3>
+            <h3 class="font-black text-lg text-gray-800 ml-4 uppercase tracking-wider">Pagamento</h3>
         </div>
     `;
 
     const checkoutFooter = `
-        <footer class="mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] grid grid-cols-2 gap-3 w-full flex-shrink-0 z-50 pb-8">
-            <button data-action="back-to-items" class="py-4 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-xl hover:bg-gray-50 transition shadow-sm uppercase tracking-wider active:scale-95">Voltar</button>
-            <button data-action="finalize-checkout" class="py-4 bg-green-600 text-white font-black text-sm rounded-xl hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2 uppercase tracking-wider active:scale-95"><i class="bi bi-check2-circle text-lg"></i> Confirmar</button>
+        <footer class="fixed bottom-0 left-0 right-0 md:relative mt-auto p-4 bg-white border-t border-gray-200 shadow-[0_-15px_30px_-5px_rgba(0,0,0,0.1)] md:shadow-none grid grid-cols-3 gap-3 w-full flex-shrink-0 z-50 pb-safe md:pb-4">
+            <button data-action="back-to-items" class="col-span-1 py-4 bg-gray-100 border border-gray-300 text-gray-700 font-black text-sm rounded-xl hover:bg-gray-200 transition shadow-sm uppercase tracking-wider active:scale-95">Voltar</button>
+            <button data-action="finalize-checkout" class="col-span-2 py-4 bg-emerald-600 text-white font-black text-sm rounded-xl hover:bg-emerald-700 transition shadow-lg flex items-center justify-center gap-2 uppercase tracking-wider active:scale-95"><i class="bi bi-check2-circle text-xl"></i> Confirmar</button>
         </footer>
     `;
 
     container.innerHTML = `
         ${mobileHeaderHTML}
-        <div class="flex-grow overflow-y-auto p-4 pb-6 custom-scrollbar bg-gray-50/50">
+        <div class="flex-grow overflow-y-auto p-4 pb-36 md:pb-6 custom-scrollbar bg-slate-50 relative">
             
-            <div class="text-center mb-5 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Subtotal: <span id="checkout-subtotal-display" class="text-gray-600">R$ ${subtotal.toFixed(2)}</span></p>
+            <div class="text-center mb-6 bg-white p-6 rounded-3xl border border-gray-200 shadow-sm relative overflow-hidden">
+                <p class="text-[11px] font-black text-gray-400 uppercase tracking-widest relative z-10">Subtotal: <span id="checkout-subtotal-display" class="text-gray-600">R$ ${subtotal.toFixed(2)}</span></p>
                 
-                <div class="flex flex-col items-center justify-center gap-3 mt-3 mb-2">
-                     <div class="flex items-center gap-2">
-                         <span class="text-[10px] font-bold text-red-400 uppercase tracking-widest"><i class="bi bi-tag-fill mr-1"></i>Desc:</span>
-                         <div class="flex border border-gray-300 rounded-lg bg-white overflow-hidden shadow-inner w-36 h-10">
-                             <input type="number" id="discount-value" value="${discount.value}" class="w-20 p-2 text-center text-sm font-black text-red-500 outline-none bg-transparent" placeholder="0">
-                             <select id="discount-type" class="bg-gray-50 text-xs font-bold text-gray-600 border-l border-gray-200 p-2 outline-none w-16 text-center">
+                <div class="flex flex-col items-center justify-center gap-3 mt-4 mb-3 relative z-10">
+                     <div class="flex items-center gap-3">
+                         <span class="text-xs font-black text-red-400 uppercase tracking-widest bg-red-50 px-2 py-1 rounded-lg border border-red-100"><i class="bi bi-tag-fill mr-1"></i>Desc</span>
+                         <div class="flex border-2 border-gray-300 rounded-xl bg-white overflow-hidden shadow-inner h-12 focus-within:border-indigo-400 transition-colors">
+                             <input type="number" id="discount-value" value="${discount.value}" class="w-24 p-2 text-center text-lg font-black text-red-500 outline-none bg-transparent" placeholder="0">
+                             <select id="discount-type" class="bg-gray-50 text-sm font-black text-gray-600 border-l border-gray-200 px-3 outline-none cursor-pointer hover:bg-gray-100">
                                  <option value="real" ${discount.type === 'real' ? 'selected' : ''}>R$</option>
                                  <option value="percent" ${discount.type === 'percent' ? 'selected' : ''}>%</option>
                              </select>
                          </div>
                      </div>
-                     <input type="text" id="discount-reason" class="w-full max-w-[250px] p-2 text-xs border border-gray-200 rounded-lg text-center focus:border-indigo-400 outline-none text-gray-600 bg-gray-50" placeholder="Motivo do desconto" value="${checkoutState.discountReason || ''}">
+                     <input type="text" id="discount-reason" class="w-full max-w-[280px] p-3 text-sm border-2 border-gray-200 rounded-xl text-center focus:border-indigo-400 outline-none text-gray-700 bg-gray-50 font-medium transition-colors" placeholder="Motivo do desconto (opcional)" value="${checkoutState.discountReason || ''}">
                 </div>
 
-                <p class="text-4xl font-black text-gray-900 mt-4 mb-2" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
+                <p class="text-5xl font-black text-gray-900 mt-6 mb-2 relative z-10 tracking-tight" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
                 
-                <div id="checkout-status-msg" class="mt-1.5 bg-gray-50 py-2 rounded-lg border border-gray-100">
+                <div id="checkout-status-msg" class="mt-4 bg-gray-50 py-3 rounded-xl border border-gray-100 relative z-10 shadow-inner">
                     ${remaining <= 0.01 
-                        ? '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle text-lg mr-1"></i> Pago</p>' 
-                        : `<p class="text-red-500 font-bold text-sm">Faltam: <span id="checkout-remaining-display" class="font-black text-lg">R$ ${remaining.toFixed(2)}</span></p>`
+                        ? '<p class="text-emerald-500 font-black text-base uppercase tracking-widest"><i class="bi bi-check2-circle text-2xl mr-2 align-middle"></i> Totalmente Pago</p>' 
+                        : `<p class="text-red-500 font-bold text-sm uppercase tracking-widest">Faltam: <span id="checkout-remaining-display" class="font-black text-xl text-red-600 ml-1">R$ ${remaining.toFixed(2)}</span></p>`
                     }
                 </div>
             </div>
 
-            <div class="space-y-2 mb-5">
+            <div class="space-y-3 mb-6">
                 ${checkoutState.payments.map((p, index) => `
-                    <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-200 shadow-sm animate-fade-in-fast">
-                        <div class="flex items-center gap-2.5">
-                             <div class="bg-gray-100 px-3 py-1.5 rounded-lg border border-gray-200">
-                                <span class="font-bold text-xs uppercase tracking-widest text-gray-600">${p.method}</span>
-                             </div>
-                             ${p.installments > 1 ? `<span class="text-[10px] font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded border border-purple-200">${p.installments}x</span>` : ''}
-                        </div>
+                    <div class="flex justify-between items-center bg-white p-4 rounded-2xl border border-gray-200 shadow-sm animate-fade-in-fast">
                         <div class="flex items-center gap-3">
-                            <span class="font-black text-lg text-gray-800">R$ ${p.value.toFixed(2)}</span>
-                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-gray-400 hover:text-red-500 hover:bg-red-50 w-8 h-8 rounded-lg flex items-center justify-center transition-colors border border-transparent hover:border-red-200"><i class="bi bi-trash3 text-sm"></i></button>
+                             <div class="bg-gray-100 px-4 py-2 rounded-xl border border-gray-200">
+                                <span class="font-black text-xs uppercase tracking-widest text-gray-700">${p.method}</span>
+                             </div>
+                             ${p.installments > 1 ? `<span class="text-[10px] font-black bg-purple-100 text-purple-700 px-2.5 py-1.5 rounded-lg border border-purple-200 shadow-sm">${p.installments}x</span>` : ''}
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span class="font-black text-xl text-gray-900">R$ ${p.value.toFixed(2)}</span>
+                            <button data-action="remove-payment-checkout" data-index="${index}" class="text-gray-400 hover:text-red-500 hover:bg-red-50 w-10 h-10 rounded-xl flex items-center justify-center transition-colors border border-transparent hover:border-red-200 active:scale-90"><i class="bi bi-trash3 text-lg"></i></button>
                         </div>
                     </div>
                 `).join('')}
             </div>
 
             ${remaining > 0.01 ? `
-            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Adicionar Pagamento</label>
-                <div class="grid grid-cols-3 gap-2 mb-4">
+            <div class="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm">
+                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-100 pb-3">Selecionar Pagamento</label>
+                
+                <div class="grid grid-cols-2 gap-3 mb-5">
                     ${['dinheiro', 'pix', 'debito', 'credito', 'crediario'].map(m => `
-                        <button data-action="select-method" data-method="${m}" class="p-2 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-white'}">
+                        <button data-action="select-method" data-method="${m}" class="py-4 px-2 rounded-xl border text-[11px] font-black uppercase tracking-wider transition-colors active:scale-95 ${checkoutState.selectedMethod === m ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-indigo-50 hover:border-indigo-200'}">
+                            ${m === 'pix' ? '<i class="bi bi-qr-code mr-1"></i> ' : ''}
+                            ${m === 'dinheiro' ? '<i class="bi bi-cash mr-1"></i> ' : ''}
+                            ${m === 'debito' || m === 'credito' ? '<i class="bi bi-credit-card mr-1"></i> ' : ''}
+                            ${m === 'crediario' ? '<i class="bi bi-journal-text mr-1"></i> ' : ''}
                             ${m}
                         </button>
                     `).join('')}
                 </div>
                 
                 ${['credito', 'crediario'].includes(checkoutState.selectedMethod) ? `
-                    <div class="mb-4">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Número de Parcelas</label>
-                        <select id="checkout-installments" class="w-full p-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 bg-gray-50 outline-none focus:border-indigo-400">
-                            ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${checkoutState.installments === i+1 ? 'selected' : ''}>${i+1}x</option>`).join('')}
+                    <div class="mb-5">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Parcelamento</label>
+                        <select id="checkout-installments" class="w-full p-3.5 border-2 border-gray-200 rounded-xl text-sm font-black text-gray-700 bg-gray-50 outline-none focus:border-indigo-500 transition-colors cursor-pointer">
+                            ${Array.from({length: 12}, (_, i) => `<option value="${i+1}" ${checkoutState.installments === i+1 ? 'selected' : ''}>${i+1} Parcela${i > 0 ? 's' : ''}</option>`).join('')}
                         </select>
                     </div>
                 ` : ''}
 
-                <div class="flex items-end gap-3">
+                <div class="flex items-end gap-3 mt-2">
                     <div class="flex-grow relative">
-                        <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Valor do Pagamento</label>
-                        <span class="absolute left-3 bottom-2.5 text-gray-400 font-black text-lg">R$</span>
-                        <input type="number" id="checkout-amount" step="0.01" class="w-full p-2 pl-10 border border-gray-300 rounded-lg text-xl font-black text-gray-800 outline-none focus:border-indigo-500 shadow-inner" value="${remaining.toFixed(2)}">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Valor a Pagar Agora</label>
+                        <span class="absolute left-4 bottom-3.5 text-gray-400 font-black text-xl">R$</span>
+                        <input type="number" id="checkout-amount" step="0.01" class="w-full py-3.5 pl-12 pr-4 border-2 border-gray-300 rounded-xl text-2xl font-black text-gray-900 outline-none focus:border-indigo-500 shadow-inner transition-colors" value="${remaining.toFixed(2)}">
                     </div>
-                    <button data-action="add-payment-checkout" class="h-[46px] px-6 bg-gray-800 text-white font-black text-sm rounded-lg hover:bg-gray-900 transition shadow-md uppercase tracking-wider active:scale-95">OK</button>
+                    <button data-action="add-payment-checkout" class="h-[54px] px-6 bg-gray-800 text-white font-black text-sm rounded-xl hover:bg-gray-900 transition shadow-lg uppercase tracking-wider active:scale-95 flex items-center justify-center gap-2">
+                        OK <i class="bi bi-plus-lg"></i>
+                    </button>
                 </div>
             </div>
             ` : ''}
@@ -1028,9 +1034,9 @@ function renderCheckoutView(comanda, container) {
         const elStatus = container.querySelector('#checkout-status-msg');
         if (elStatus) {
             if (cRemaining <= 0.01) {
-                elStatus.innerHTML = '<p class="text-emerald-500 font-black text-sm uppercase tracking-widest"><i class="bi bi-check2-circle text-lg mr-1"></i> Pago</p>';
+                elStatus.innerHTML = '<p class="text-emerald-500 font-black text-base uppercase tracking-widest"><i class="bi bi-check2-circle text-2xl mr-2 align-middle"></i> Totalmente Pago</p>';
             } else {
-                elStatus.innerHTML = `<p class="text-red-500 font-bold text-sm">Faltam: <span id="checkout-remaining-display" class="font-black text-lg">R$ ${cRemaining.toFixed(2)}</span></p>`;
+                elStatus.innerHTML = `<p class="text-red-500 font-bold text-sm uppercase tracking-widest">Faltam: <span id="checkout-remaining-display" class="font-black text-xl text-red-600 ml-1">R$ ${cRemaining.toFixed(2)}</span></p>`;
             }
         }
         
@@ -1092,21 +1098,21 @@ async function checkAndRenderLoyalty(comanda, containerElement) {
 
     if (availableRewards.length > 0) {
         const rewardDiv = document.createElement('div');
-        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-3 shadow-sm flex justify-between items-center animate-fade-in";
+        rewardDiv.className = "bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-4 shadow-sm flex justify-between items-center animate-fade-in";
         rewardDiv.innerHTML = `
-            <div class="flex items-center gap-2">
-                <div class="bg-white p-2 rounded-lg text-yellow-500 shadow-sm border border-yellow-100 flex items-center justify-center">
-                    <i class="bi bi-star-fill text-xl"></i>
+            <div class="flex items-center gap-3">
+                <div class="bg-white w-10 h-10 rounded-full text-yellow-500 shadow-sm border border-yellow-100 flex items-center justify-center">
+                    <i class="bi bi-star-fill text-lg"></i>
                 </div>
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-yellow-800">Prémio Disponível!</p>
-                    <p class="text-[10px] text-yellow-700 font-bold">Saldo Atual: ${currentPoints} pts</p>
+                    <p class="text-[11px] text-yellow-700 font-bold mt-0.5">Saldo: ${currentPoints} pontos</p>
                 </div>
             </div>
         `;
         const btn = document.createElement('button');
-        btn.innerHTML = "<i class='bi bi-gift mr-1'></i> Resgatar";
-        btn.className = "text-[10px] font-black uppercase tracking-wider bg-yellow-500 text-white px-3 py-2 rounded-lg shadow-md hover:bg-yellow-600 transition-colors";
+        btn.innerHTML = "<i class='bi bi-gift mr-1.5'></i> Resgatar";
+        btn.className = "text-[10px] font-black uppercase tracking-wider bg-yellow-500 text-white px-4 py-2.5 rounded-xl shadow-md hover:bg-yellow-600 transition-colors active:scale-95";
         btn.onclick = () => openRewardSelectionModal(availableRewards, comanda);
         rewardDiv.appendChild(btn);
         containerElement.innerHTML = '';
@@ -1135,16 +1141,16 @@ function openRewardSelectionModal(rewards, comanda) {
                     }
 
                     return `
-                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-3.5 bg-white border border-gray-200 rounded-xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group shadow-sm text-left">
-                        <div class="flex-1 min-w-0 pr-2">
-                            <div class="flex items-center gap-2 mb-1.5">
-                                <span class="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border border-white/0 group-hover:border-yellow-200 ${typeColor}">${typeLabel}</span>
-                                <p class="font-black text-gray-800 group-hover:text-yellow-700 text-sm truncate">${escapeHTML(name)}</p>
+                    <button data-action="select-reward" data-reward-id="${r.id || name}" class="w-full flex items-center justify-between p-4 bg-white border border-gray-200 rounded-2xl hover:border-yellow-400 hover:bg-yellow-50 transition-all group shadow-sm text-left active:scale-95">
+                        <div class="flex-1 min-w-0 pr-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md border border-white/0 group-hover:border-yellow-200 ${typeColor}">${typeLabel}</span>
+                                <p class="font-black text-gray-900 group-hover:text-yellow-700 text-base truncate">${escapeHTML(name)}</p>
                             </div>
                             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Custo: ${cost} pontos</p>
                         </div>
                         <div class="flex-shrink-0">
-                            <span class="block text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-100 shadow-inner">Desc. R$ ${discountValue}</span>
+                            <span class="block text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200 shadow-sm">Desc. R$ ${discountValue}</span>
                         </div>
                     </button>
                 `}).join('')}
@@ -1231,23 +1237,23 @@ async function openNewSaleModal(preSelectedClient = null) {
     const contentHTML = `
         <form id="new-sale-form" class="space-y-4">
             <div class="relative">
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Buscar Cliente</label>
-                <i class="bi bi-search absolute left-4 top-[32px] text-gray-400 text-sm"></i>
-                <input type="text" id="client-search" class="w-full pl-10 p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-800 transition-colors shadow-inner" placeholder="Digite nome ou telefone..." autocomplete="off">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 pl-1">Buscar Cliente</label>
+                <i class="bi bi-search absolute left-4 top-[36px] text-gray-400 text-base"></i>
+                <input type="text" id="client-search" class="w-full pl-11 p-3.5 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-800 transition-colors shadow-inner" placeholder="Digite nome ou telefone..." autocomplete="off">
                 <input type="hidden" id="selected-client-id" required>
                 <ul id="client-suggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto mt-2 custom-scrollbar"></ul>
-                <button type="button" data-action="new-client-from-sale" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest mt-3 flex items-center justify-center w-full gap-1.5 transition-colors bg-indigo-50 py-2 rounded-lg"><i class="bi bi-person-plus-fill text-lg"></i> Cadastrar Novo Cliente Rápido</button>
+                <button type="button" data-action="new-client-from-sale" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest mt-3 flex items-center justify-center w-full gap-1.5 transition-colors bg-indigo-50 hover:bg-indigo-100 py-3 rounded-xl border border-indigo-100"><i class="bi bi-person-plus-fill text-lg"></i> Cadastrar Novo Cliente Rápido</button>
             </div>
             <div class="pt-2 border-t border-gray-100">
-                <label for="new-sale-professional" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Profissional Atendente</label>
-                <select id="new-sale-professional" required class="w-full p-3 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-inner">
+                <label for="new-sale-professional" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 pl-1">Profissional Atendente</label>
+                <select id="new-sale-professional" required class="w-full p-3.5 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-colors shadow-inner">
                     <option value="">-- Selecione o profissional --</option>
                     ${professionalsOptions}
                 </select>
             </div>
             <div class="pt-4">
-                <button type="submit" id="btn-start-sale" class="w-full bg-indigo-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 transition shadow-md flex items-center justify-center gap-2">
-                    <i class="bi bi-cart-plus text-lg"></i> Iniciar Venda
+                <button type="submit" id="btn-start-sale" class="w-full bg-indigo-600 text-white font-black text-sm uppercase tracking-widest py-4 rounded-xl hover:bg-indigo-700 disabled:bg-gray-300 disabled:text-gray-500 transition shadow-lg flex items-center justify-center gap-2 active:scale-95">
+                    <i class="bi bi-cart-plus text-xl"></i> Iniciar Venda
                 </button>
             </div>
         </form>
@@ -1260,20 +1266,20 @@ async function openNewSaleModal(preSelectedClient = null) {
     if (preSelectedClient) {
         hiddenIdInput.value = preSelectedClient.id;
         searchInput.value = `${preSelectedClient.name} (${preSelectedClient.phone || 'Sem tel'})`;
-        searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+        searchInput.classList.add('bg-emerald-50', 'border-emerald-300', 'text-emerald-800');
     }
 
     searchInput.addEventListener('input', debounce(async (e) => {
         const term = e.target.value.trim();
-        hiddenIdInput.value = ''; searchInput.classList.remove('bg-green-50', 'border-green-300', 'text-green-800');
+        hiddenIdInput.value = ''; searchInput.classList.remove('bg-emerald-50', 'border-emerald-300', 'text-emerald-800');
         if (term.length < 2) { suggestionsList.classList.add('hidden'); return; }
         try {
-            suggestionsList.innerHTML = '<li class="p-3 text-sm text-gray-500 text-center"><div class="loader-small mx-auto"></div></li>';
+            suggestionsList.innerHTML = '<li class="p-4 text-sm text-gray-500 text-center"><div class="loader-small mx-auto"></div></li>';
             suggestionsList.classList.remove('hidden');
             const results = await clientsApi.getClients(state.establishmentId, term, 10);
-            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-4 text-xs font-bold text-gray-400 text-center uppercase tracking-widest">Nenhum cliente encontrado</li>';
+            if (results.length === 0) suggestionsList.innerHTML = '<li class="p-5 text-xs font-bold text-gray-400 text-center uppercase tracking-widest">Nenhum cliente encontrado</li>';
             else {
-                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-3 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors flex flex-col justify-center"><div class="font-bold text-sm text-gray-800">${escapeHTML(c.name)}</div><div class="text-xs font-medium text-gray-500 mt-0.5"><i class="bi bi-telephone opacity-50 mr-1"></i>${c.phone || 'Sem telefone'}</div></li>`).join('');
+                suggestionsList.innerHTML = results.map(c => `<li data-client-id="${c.id}" data-client-name="${c.name}" data-client-phone="${c.phone}" class="p-4 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors flex flex-col justify-center"><div class="font-bold text-sm text-gray-800">${escapeHTML(c.name)}</div><div class="text-xs font-medium text-gray-500 mt-1"><i class="bi bi-telephone opacity-50 mr-1.5"></i>${c.phone || 'Sem telefone'}</div></li>`).join('');
             }
         } catch (err) { suggestionsList.classList.add('hidden'); }
     }, 400));
@@ -1285,7 +1291,7 @@ async function openNewSaleModal(preSelectedClient = null) {
             hiddenIdInput.dataset.name = li.dataset.clientName;
             hiddenIdInput.dataset.phone = li.dataset.clientPhone;
             searchInput.value = `${li.dataset.clientName}`;
-            searchInput.classList.add('bg-green-50', 'border-green-300', 'text-green-800');
+            searchInput.classList.add('bg-emerald-50', 'border-emerald-300', 'text-emerald-800');
             suggestionsList.classList.add('hidden');
         }
     });
@@ -1297,18 +1303,18 @@ async function openNewSaleModal(preSelectedClient = null) {
 
 function _comandas_renderClientRegistrationModal() {
     const modalContent = `
-        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+        <form id="comandas_clientRegistrationForm" class="flex flex-col h-full bg-white p-2 sm:p-5 rounded-2xl">
             <div class="grid grid-cols-1 gap-4 mb-5">
                 <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">Nome Completo *</label>
-                    <input type="text" id="regClientName" required class="w-full p-3 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white">
+                    <input type="text" id="regClientName" required class="w-full p-3.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white transition-colors">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 pl-1">WhatsApp (Apenas números) *</label>
-                    <input type="tel" id="regClientPhone" required class="w-full p-3 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white" placeholder="Ex: 912345678">
+                    <input type="tel" id="regClientPhone" required class="w-full p-3.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner bg-gray-50 focus:bg-white transition-colors" placeholder="Ex: 912345678">
                 </div>
             </div>
-            <button type="submit" class="w-full py-3.5 bg-green-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-green-700 transition shadow-md flex items-center justify-center gap-2">
+            <button type="submit" class="w-full py-4 bg-emerald-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-emerald-700 transition shadow-lg flex items-center justify-center gap-2 active:scale-95">
                 <i class="bi bi-save2 text-lg"></i> Salvar e Selecionar
             </button>
         </form>
@@ -1345,15 +1351,15 @@ async function _comandas_handleClientRegistration(e) {
 
 async function openCashierModal() {
     const contentHTML = `
-        <form id="open-cashier-form" class="space-y-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+        <form id="open-cashier-form" class="space-y-4 bg-white p-2 sm:p-5 rounded-2xl">
             <div>
-                <label for="initial-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 text-center">Fundo de Caixa Inicial (Troco)</label>
+                <label for="initial-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 text-center">Fundo de Caixa Inicial (Troco)</label>
                 <div class="relative max-w-xs mx-auto">
-                    <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-xl">R$</span>
-                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-3 pl-12 border border-gray-300 rounded-xl text-2xl font-black text-gray-900 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 outline-none shadow-inner text-center transition-colors" placeholder="0.00" value="0.00">
+                    <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-2xl">R$</span>
+                    <input type="number" step="0.01" min="0" id="initial-amount" required class="w-full p-4 pl-14 border-2 border-gray-300 rounded-2xl text-3xl font-black text-gray-900 bg-gray-50 focus:bg-white focus:border-emerald-500 outline-none shadow-inner text-center transition-colors" placeholder="0.00" value="0.00">
                 </div>
             </div>
-            <button type="submit" class="w-full bg-green-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-green-700 transition shadow-md mt-4 flex items-center justify-center gap-2"><i class="bi bi-unlock-fill text-lg"></i> Confirmar Abertura</button>
+            <button type="submit" class="w-full bg-emerald-600 text-white font-black text-sm uppercase tracking-widest py-4 rounded-2xl hover:bg-emerald-700 transition shadow-lg mt-6 flex items-center justify-center gap-2 active:scale-95"><i class="bi bi-unlock-fill text-xl"></i> Confirmar Abertura</button>
         </form>
     `;
     const { modalElement } = showGenericModal({ title: "Abrir Caixa", contentHTML, maxWidth: 'max-w-xs' });
@@ -1374,24 +1380,24 @@ async function handleOpenCloseCashierModal() {
     try {
         const report = await cashierApi.getCloseCashierReport(sessionId);
         const contentHTML = `
-            <form id="close-cashier-form" class="space-y-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                <div class="grid grid-cols-2 gap-3 text-center mb-2">
-                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 shadow-inner"><p class="text-[10px] text-blue-500 uppercase font-black tracking-widest mb-1">Abertura</p><p class="text-base font-black text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
-                    <div class="bg-green-50 p-3 rounded-xl border border-green-100 shadow-inner"><p class="text-[10px] text-green-500 uppercase font-black tracking-widest mb-1">Vendas Dinheiro</p><p class="text-base font-black text-green-700">R$ ${report.cashSales.toFixed(2)}</p></div>
+            <form id="close-cashier-form" class="space-y-4 bg-white p-2 sm:p-5 rounded-2xl">
+                <div class="grid grid-cols-2 gap-3 text-center mb-4">
+                    <div class="bg-blue-50 p-3 rounded-2xl border border-blue-100 shadow-inner"><p class="text-[9px] text-blue-500 uppercase font-black tracking-widest mb-1">Abertura</p><p class="text-base font-black text-blue-700">R$ ${report.initialAmount.toFixed(2)}</p></div>
+                    <div class="bg-emerald-50 p-3 rounded-2xl border border-emerald-100 shadow-inner"><p class="text-[9px] text-emerald-500 uppercase font-black tracking-widest mb-1">Vendas Dinheiro</p><p class="text-base font-black text-emerald-700">R$ ${report.cashSales.toFixed(2)}</p></div>
                 </div>
-                <div class="bg-gray-900 text-white p-4 rounded-2xl text-center shadow-lg mb-5 border border-gray-700">
-                    <p class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Esperado em Gaveta</p>
-                    <p class="text-4xl font-black tracking-tight text-white drop-shadow">R$ ${report.expectedAmount.toFixed(2)}</p>
+                <div class="bg-gray-900 text-white p-5 rounded-3xl text-center shadow-xl mb-6 border border-gray-800">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Esperado em Gaveta</p>
+                    <p class="text-5xl font-black tracking-tight text-white drop-shadow-md">R$ ${report.expectedAmount.toFixed(2)}</p>
                 </div>
                 
-                <div class="bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-inner">
-                    <label for="final-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 text-center">Informar Contagem Final Real (Gaveta)</label>
+                <div class="bg-gray-50 p-5 rounded-3xl border border-gray-200 shadow-inner">
+                    <label for="final-amount" class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 text-center">Informar Contagem Final Real (Gaveta)</label>
                     <div class="relative max-w-xs mx-auto">
-                        <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-xl">R$</span>
-                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-3 pl-12 border border-gray-300 rounded-xl text-2xl font-black text-gray-900 bg-white focus:ring-2 focus:ring-red-500 outline-none shadow-sm text-center transition-colors" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
+                        <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-black text-2xl">R$</span>
+                        <input type="number" step="0.01" min="0" id="final-amount" required class="w-full p-4 pl-14 border-2 border-gray-300 rounded-2xl text-3xl font-black text-gray-900 bg-white focus:border-red-500 outline-none shadow-sm text-center transition-colors" placeholder="0.00" value="${report.expectedAmount.toFixed(2)}">
                     </div>
                 </div>
-                <button type="submit" class="w-full bg-red-600 text-white font-black text-sm uppercase tracking-widest py-3.5 rounded-xl hover:bg-red-700 transition shadow-md mt-2 flex items-center justify-center gap-2"><i class="bi bi-lock-fill text-lg"></i> Confirmar Fecho</button>
+                <button type="submit" class="w-full bg-red-600 text-white font-black text-sm uppercase tracking-widest py-4 rounded-2xl hover:bg-red-700 transition shadow-lg mt-4 flex items-center justify-center gap-2 active:scale-95"><i class="bi bi-lock-fill text-xl"></i> Confirmar Fecho</button>
             </form>
         `;
         const { modalElement } = showGenericModal({ title: "Fechar Caixa", contentHTML, maxWidth: 'max-w-sm' });
@@ -1553,7 +1559,7 @@ async function handleFinalizeCheckout(comanda) {
 
     const loadingOverlay = document.createElement('div');
     loadingOverlay.className = 'fixed inset-0 bg-gray-900/60 z-[999999] flex items-center justify-center backdrop-blur-sm';
-    loadingOverlay.innerHTML = '<div class="bg-white p-6 rounded-2xl shadow-2xl flex flex-col items-center"><div class="loader mb-4"></div><p class="text-sm font-black text-gray-800 uppercase tracking-widest mt-2">Finalizando...</p></div>';
+    loadingOverlay.innerHTML = '<div class="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center"><div class="loader mb-5"></div><p class="text-sm font-black text-gray-800 uppercase tracking-widest mt-2">Processando...</p></div>';
     document.body.appendChild(loadingOverlay);
 
     try {
@@ -1658,12 +1664,10 @@ async function fetchAndDisplayData() {
     let sDate = localState.filterStartDate;
     let eDate = localState.filterEndDate;
     
-    // Objeto formatado de maneira a suportar tanto as APIs antigas como as atualizadas
     let dateParams;
     if (sDate && eDate && sDate !== eDate) {
          dateParams = { startDate: sDate, endDate: eDate };
     } else {
-         // Se for o mesmo dia, mandamos o objeto para as APis novas e uma string para compatibilidade
          dateParams = { startDate: sDate, endDate: eDate, date: sDate };
     }
 
@@ -1800,8 +1804,8 @@ export async function loadComandasPage(params = {}) {
                     hideMobileDetail(); 
                     localState.selectedComandaId = null; 
                     localState.selectedCatalogItem = null;
-                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50/50')); 
-                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.add('bg-white')); 
+                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50/50', 'border-transparent')); 
+                    document.querySelectorAll('.comanda-card').forEach(el => el.classList.add('bg-white', 'border-gray-200')); 
                     renderComandaDetail(); 
                     break;
                     
@@ -1965,7 +1969,6 @@ export async function loadComandasPage(params = {}) {
     
     if (params.selectedAppointmentId) localState.selectedComandaId = String(params.selectedAppointmentId);
     
-    // Suporte para datas vindas de navegação externa
     if (params.filterDate) {
         const extDate = new Date(params.filterDate).toISOString().split('T')[0];
         localState.filterStartDate = extDate;

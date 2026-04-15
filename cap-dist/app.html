@@ -127,28 +127,32 @@
         }
 
         /* ============================================ */
-        /* MOBILE BOTTOM NAVIGATION - PREMIUM REDESIGN  */
+        /* MOBILE BOTTOM NAVIGATION - FLOATING DOCK     */
         /* ============================================ */
         .mobile-bottom-nav {
             display: none;
             position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
+            /* Modificação: Descolado do fundo com bordas flutuantes */
+            bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+            left: 1rem;
+            right: 1rem;
+            width: auto;
             z-index: 9999;
-            background: rgba(255, 255, 255, 0.92);
+            /* Glassmorphism */
+            background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(0,0,0,0.06);
-            padding-bottom: env(safe-area-inset-bottom, 0);
-            box-shadow: 0 -10px 40px rgba(0,0,0,0.05);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 24px;
+            box-shadow: 0 10px 40px -10px rgba(0,0,0,0.2);
+            overflow: hidden; /* Para respeitar as bordas arredondadas do dock */
         }
 
         .mobile-bottom-nav-wrapper {
             position: relative;
             display: flex;
             align-items: center;
-            height: 68px; /* Altura fixa e confortável para toque */
+            height: 64px; /* Mais fino para parecer uma pílula */
         }
 
         .mobile-bottom-nav-scroll {
@@ -157,12 +161,10 @@
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
             scrollbar-width: none;
-            padding: 0 16px;
-            gap: 8px;
+            padding: 0 12px;
+            gap: 4px;
             height: 100%;
             align-items: center;
-            mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
         }
 
         .mobile-bottom-nav-scroll::-webkit-scrollbar {
@@ -174,14 +176,14 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 2px;
+            gap: 4px;
             text-decoration: none;
             color: #94a3b8; /* Slate-400 */
-            font-size: 0.62rem;
+            font-size: 0.65rem;
             font-weight: 700;
-            min-width: 66px;
-            height: 54px;
-            border-radius: 16px;
+            min-width: 72px;
+            height: 50px;
+            border-radius: 18px;
             scroll-snap-align: center;
             transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
             -webkit-tap-highlight-color: transparent;
@@ -190,18 +192,19 @@
         }
 
         .bottom-nav-item i {
-            font-size: 1.35rem;
+            font-size: 1.25rem;
             transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        /* Estado Ativo (Selecionado) */
+        /* Estado Ativo (Selecionado) - Estilo Pílula Preenchida */
         .bottom-nav-item.active {
             color: #4f46e5;
             background: #eef2ff; /* Indigo-50 */
+            box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.1);
         }
 
         .bottom-nav-item.active i {
-            transform: translateY(-2px) scale(1.15);
+            transform: translateY(-1px) scale(1.1);
             color: #4f46e5;
         }
 
@@ -212,14 +215,14 @@
         /* Efeito de Clique (Feedback Nativo) */
         .bottom-nav-item:not(.active):active {
             transform: scale(0.92);
-            background: #f8fafc;
+            background: rgba(0,0,0,0.03);
         }
 
         @media (max-width: 767px) {
             .mobile-bottom-nav { display: block; }
-            /* Garante que o conteúdo não fique escondido atrás do menu */
+            /* Garante que o conteúdo não fique escondido atrás do menu flutuante */
             #mainContent {
-                padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+                padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
             }
         }
 
@@ -398,10 +401,10 @@
             color: #212529;
         }
     </style>
-  <script type="module" crossorigin src="/assets/app-Du3iyoOs.js"></script>
+  <script type="module" crossorigin src="/assets/app-DBItwNrg.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-C2tbVz-J.js">
-  <link rel="stylesheet" crossorigin href="/assets/styles-kVXFFoHW.css">
+  <link rel="stylesheet" crossorigin href="/assets/styles-CQhY7Cv2.css">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
 <body class="bg-slate-100">
 
@@ -584,6 +587,10 @@
                         </div>
                     </div>
 
+                    <button id="themeToggleBtn" class="text-slate-500 hover:text-indigo-600 p-1.5 sm:p-2 rounded-full hover:bg-indigo-50 transition-colors" title="Alternar Tema">
+                        <i class="bi bi-moon-fill text-lg sm:text-xl" id="themeIcon"></i>
+                    </button>
+
                     <div class="relative">
                         <button id="notificationBell" class="relative text-slate-500 hover:text-indigo-600 p-1.5 sm:p-2 rounded-full hover:bg-indigo-50 transition-colors">
                             <i class="bi bi-bell text-lg sm:text-xl"></i>
@@ -596,26 +603,14 @@
                     </div>
                     
                     <div class="relative pl-1.5 sm:pl-3 border-l border-slate-200 ml-1 sm:ml-0">
-                        <button id="profileMenuButton" class="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold text-xs sm:text-sm hover:bg-indigo-200 transition-colors focus:outline-none ring-2 ring-transparent focus:ring-indigo-300"></button>
+                        <button id="profileMenuButton" class="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold text-sm sm:text-base hover:bg-indigo-200 transition-colors focus:outline-none ring-2 ring-transparent focus:ring-indigo-300 shadow-sm"></button>
                         
-                        <div id="profileDropdown" class="hidden absolute top-full right-0 mt-2 w-[240px] sm:w-64 bg-white rounded-xl shadow-xl border border-slate-200 z-[9999] transform origin-top-right transition-all">
+                        <div id="profileDropdown" class="hidden absolute top-full right-0 mt-2 w-[220px] bg-white rounded-xl shadow-xl border border-slate-200 z-[9999] transform origin-top-right transition-all">
                             <div class="p-4 border-b border-slate-100 bg-slate-50 rounded-t-xl">
                                 <p id="profileName" class="font-bold text-slate-800 truncate text-sm">Usuário</p>
                                 <p id="profileEmail" class="text-xs text-slate-500 truncate mt-0.5">email@usuario.com</p>
                             </div>
                             
-                            <div class="p-4 border-b border-slate-100">
-                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Cor do Tema</p>
-                                <div class="flex flex-wrap gap-2" id="colorThemeSelector">
-                                    <button class="w-6 h-6 rounded-full bg-[#4f46e5] ring-2 ring-transparent hover:ring-[#4f46e5] transition-all" data-theme="indigo" title="Indigo"></button>
-                                    <button class="w-6 h-6 rounded-full bg-[#059669] ring-2 ring-transparent hover:ring-[#059669] transition-all" data-theme="emerald" title="Verde"></button>
-                                    <button class="w-6 h-6 rounded-full bg-[#e11d48] ring-2 ring-transparent hover:ring-[#e11d48] transition-all" data-theme="rose" title="Rosa"></button>
-                                    <button class="w-6 h-6 rounded-full bg-[#d97706] ring-2 ring-transparent hover:ring-[#d97706] transition-all" data-theme="amber" title="Laranja"></button>
-                                    <button class="w-6 h-6 rounded-full bg-[#0ea5e9] ring-2 ring-transparent hover:ring-[#0ea5e9] transition-all" data-theme="sky" title="Azul"></button>
-                                    <button class="w-6 h-6 rounded-full bg-[#475569] ring-2 ring-transparent hover:ring-[#475569] transition-all" data-theme="gray" title="Cinza"></button>
-                                </div>
-                            </div>
-
                             <div class="p-2">
                                 <a href="#" id="myProfileLink" class="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
                                     <i class="bi bi-person text-slate-400 text-lg"></i>
