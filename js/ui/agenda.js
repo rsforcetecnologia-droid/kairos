@@ -532,9 +532,17 @@ export async function loadAgendaPage(params = {}) {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <button id="btnTodayHeader" class="bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm hover:bg-indigo-100 transition-colors uppercase tracking-wide">
-                            Hoje
-                        </button>
+                        <div class="flex items-center gap-1 bg-indigo-50 rounded-lg border border-indigo-100 p-0.5 shadow-sm">
+                            <button id="btnPrevDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Anterior">
+                                <i class="bi bi-chevron-left text-sm"></i>
+                            </button>
+                            <button id="btnTodayHeader" class="text-indigo-700 px-2 py-1 font-bold text-xs hover:bg-indigo-100 transition-colors uppercase tracking-wide rounded-md active:scale-95">
+                                Hoje
+                            </button>
+                            <button id="btnNextDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Próximo">
+                                <i class="bi bi-chevron-right text-sm"></i>
+                            </button>
+                        </div>
                         <div class="agenda-view-toggle bg-gray-100 p-1 rounded-xl flex gap-1">
                             <button class="${localState.currentView === 'list' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="list">Lista</button>
                             <button class="${localState.currentView === 'week' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="week">Semana</button>
@@ -563,6 +571,20 @@ export async function loadAgendaPage(params = {}) {
     document.getElementById('btnTodayHeader').addEventListener('click', () => {
         localState.currentDate = new Date();
         if (navigator.vibrate) navigator.vibrate(30);
+        fetchAndDisplayAgenda();
+    });
+
+    document.getElementById('btnPrevDate').addEventListener('click', () => {
+        const daysToMove = localState.currentView === 'week' ? 7 : 1;
+        localState.currentDate.setDate(localState.currentDate.getDate() - daysToMove);
+        if (navigator.vibrate) navigator.vibrate(20);
+        fetchAndDisplayAgenda();
+    });
+
+    document.getElementById('btnNextDate').addEventListener('click', () => {
+        const daysToMove = localState.currentView === 'week' ? 7 : 1;
+        localState.currentDate.setDate(localState.currentDate.getDate() + daysToMove);
+        if (navigator.vibrate) navigator.vibrate(20);
         fetchAndDisplayAgenda();
     });
 
@@ -981,7 +1003,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
     
     modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1)));
     
-    // Usa querySelectorAll com forEach para pegar o 'X' e o botão 'Cancelar'
     modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
         btn.addEventListener('click', () => { 
             modal.classList.remove('translate-y-0');
@@ -996,7 +1017,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         modal.classList.add('translate-y-0');
     });
 
-    // Lógicas de Seleção de Serviços com Auto-Avanço
     if (newAppointmentState.step === 2) {
         modal.querySelectorAll('.service-card').forEach(card => card.addEventListener('click', () => {
             const isMulti = modal.querySelector('#multiServiceToggle')?.checked;
@@ -1005,7 +1025,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             if (navigator.vibrate) navigator.vibrate(15);
             
             if (!isMulti) {
-                // Single select (Auto avança)
                 modal.querySelectorAll('.service-card.bg-indigo-50').forEach(c => {
                     c.classList.remove('border-indigo-500', 'bg-indigo-50', 'shadow-md');
                     c.classList.add('border-gray-100', 'shadow-sm');
@@ -1016,7 +1035,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
                 
                 setTimeout(() => navigateModalStep(3), 250);
             } else {
-                // Multi select (Não avança)
                 if (sel) {
                     card.classList.remove('border-indigo-500', 'bg-indigo-50', 'shadow-md');
                     card.classList.add('border-gray-100', 'shadow-sm');
@@ -1032,7 +1050,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         }));
     }
 
-    // Lógica de Seleção de Profissionais com Auto-Avanço
     if (newAppointmentState.step === 3) {
         modal.querySelectorAll('.professional-modal-card').forEach(card => card.addEventListener('click', () => {
             if (navigator.vibrate) navigator.vibrate(15);
@@ -1054,11 +1071,9 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         modal.querySelector('#clientSearchInput')?.addEventListener('input', (e) => handleClientSearch(e.target.value));
     }
 
-    // Eventos Passo 4
     if (newAppointmentState.step === 4) {
         modal.querySelector('#apptDate')?.addEventListener('change', updateTimesAndDuration);
         
-        // Event Delegation para salvar o tempo corretamente no Módulo Local
         modal.querySelector('#availableTimesContainer')?.addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-time-slot]');
             if (btn) {
@@ -1073,7 +1088,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             }
         });
 
-        // Escutador direto no clique para evitar falhas do 'submit' no Mobile
         modal.querySelector('#btnSubmitAppointment')?.addEventListener('click', handleAppointmentFormSubmit);
 
         updateTimesAndDuration();
@@ -1115,7 +1129,7 @@ async function handleAppointmentFormSubmit(e) {
         professionalId: newAppointmentState.data.professionalId,
         professionalName: newAppointmentState.data.professionalName,
         startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(), // Enviamos o endTime atualizado para a API
+        endTime: endTime.toISOString(),
         redeemedReward: newAppointmentState.data.redeemedReward
     };
 
@@ -1195,7 +1209,6 @@ async function updateTimesAndDuration() {
 
         container.innerHTML = slots.length > 0 ? slots.map(slot => {
             const sel = newAppointmentState.data.time === slot;
-            // O Event Delegation no #availableTimesContainer pega o dataset.timeSlot
             return `<button type="button" data-time-slot="${slot}" class="py-3 text-sm font-bold rounded-xl border-2 transition-transform active:scale-95 ${sel ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 shadow-sm'}">${slot}</button>`;
         }).join('') : '<p class="col-span-full text-center text-sm font-bold text-red-500 bg-white py-4 rounded-xl border border-red-100 shadow-sm">Nenhum horário livre.</p>';
     } catch (err) {
@@ -1267,7 +1280,6 @@ async function handleClientSearch(term) {
             </div>`;
         }).join('');
 
-        // Lógica de Cliente com Auto-Avanço
         container.querySelectorAll('.client-card').forEach(card => {
             card.addEventListener('click', () => {
                 if (navigator.vibrate) navigator.vibrate(15);
