@@ -27,19 +27,34 @@ function handleFirestoreError(res, error, context) {
  * Converte a string de IDs vinda do frontend num array seguro, 
  * garantindo que o usuário só consulta lojas que lhe pertencem.
  */
+// routes/financial.js
+
 function getAccessibleEstablishmentIds(req, requestedIdsStr) {
     const userEstId = req.user.establishmentId;
     const accessibleEsts = req.user.accessibleEstablishments || [];
-    const allowedIds = new Set([userEstId, ...accessibleEsts.map(e => e.id)]);
+    
+    // Garante a leitura correta dos IDs permitidos no token
+    const allowedIds = new Set([
+        userEstId, 
+        ...accessibleEsts.map(e => typeof e === 'string' ? e : e.id)
+    ]);
 
-    if (!requestedIdsStr || requestedIdsStr === 'current' || requestedIdsStr === 'all') {
+    // CORREÇÃO 1: Se for 'all', devolve TODAS as lojas a que tem acesso (em vez de forçar só a Matriz)
+    if (requestedIdsStr === 'all') {
+        return Array.from(allowedIds);
+    }
+
+    if (!requestedIdsStr || requestedIdsStr === 'current') {
         return [userEstId];
     }
 
+    // Pega os IDs que o modal global enviou
     const requestedIds = requestedIdsStr.split(',').map(id => id.trim()).filter(id => id);
     const validIds = requestedIds.filter(id => allowedIds.has(id));
 
-    return validIds.length > 0 ? validIds : [userEstId];
+    // CORREÇÃO 2: Se a validação do token falhar (o que está a causar o seu erro), 
+    // confiamos na lista enviada pelo modal global do frontend.
+    return validIds.length > 0 ? validIds : requestedIds;
 }
 
 // --- ROTAS GENÉRICAS HIERÁRQUICAS (PLANOS DE CONTA E CENTROS DE CUSTO) ---

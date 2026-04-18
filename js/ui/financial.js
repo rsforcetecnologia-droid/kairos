@@ -908,42 +908,47 @@ function renderSummary() {
     const themeColor = isRec ? 'emerald' : 'red';
     const iconBase = isRec ? 'bi-arrow-down-left-circle-fill text-emerald-500' : 'bi-arrow-up-right-circle-fill text-red-500';
 
+    // js/ui/financial.js (dentro da função renderSummary)
+
     section.innerHTML = `
-        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                <div class="w-8 h-8 md:w-12 md:h-12 rounded-full bg-gray-50 flex items-center justify-center">
-                    <i class="bi ${iconBase} text-base md:text-xl"></i>
+        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-4 rounded-2xl md:rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-2">
+                <div class="w-8 h-8 md:w-9 md:h-9 rounded-full bg-gray-50 flex items-center justify-center">
+                    <i class="bi ${iconBase} text-base md:text-lg"></i>
                 </div>
                 <span class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest leading-tight">Total<br class="md:hidden"/> Geral</span>
             </div>
-            <span class="text-xl md:text-3xl font-black text-gray-900">${formatCurrency(total)}</span>
+            <span class="text-xl md:text-2xl font-black text-gray-900">${formatCurrency(total)}</span>
         </div>
-        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                <div class="w-8 h-8 md:w-12 md:h-12 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i class="bi bi-clock-history text-blue-500 text-base md:text-xl"></i>
+
+        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-4 rounded-2xl md:rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-2">
+                <div class="w-8 h-8 md:w-9 md:h-9 rounded-full bg-blue-50 flex items-center justify-center">
+                    <i class="bi bi-clock-history text-blue-500 text-base md:text-lg"></i>
                 </div>
                 <span class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest leading-tight">A Vencer<br class="md:hidden"/> Pendente</span>
             </div>
-            <span class="text-xl md:text-3xl font-black text-blue-600">${formatCurrency(pending)}</span>
+            <span class="text-xl md:text-2xl font-black text-blue-600">${formatCurrency(pending)}</span>
         </div>
-        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                <div class="w-8 h-8 md:w-12 md:h-12 rounded-full bg-${themeColor}-50 flex items-center justify-center">
-                    <i class="bi bi-check-circle-fill text-${themeColor}-500 text-base md:text-xl"></i>
+
+        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-4 rounded-2xl md:rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-2">
+                <div class="w-8 h-8 md:w-9 md:h-9 rounded-full bg-${themeColor}-50 flex items-center justify-center">
+                    <i class="bi bi-check-circle-fill text-${themeColor}-500 text-base md:text-lg"></i>
                 </div>
                 <span class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest leading-tight">Status<br class="md:hidden"/> Baixado</span>
             </div>
-            <span class="text-xl md:text-3xl font-black text-${themeColor}-600">${formatCurrency(paid)}</span>
+            <span class="text-xl md:text-2xl font-black text-${themeColor}-600">${formatCurrency(paid)}</span>
         </div>
-        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
-                <div class="w-8 h-8 md:w-12 md:h-12 rounded-full ${overdue > 0 ? 'bg-red-50' : 'bg-gray-50'} flex items-center justify-center">
-                    <i class="bi bi-exclamation-circle-fill ${overdue > 0 ? 'text-red-500' : 'text-gray-300'} text-base md:text-xl"></i>
+
+        <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-4 rounded-2xl md:rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-2">
+                <div class="w-8 h-8 md:w-9 md:h-9 rounded-full ${overdue > 0 ? 'bg-red-50' : 'bg-gray-50'} flex items-center justify-center">
+                    <i class="bi bi-exclamation-circle-fill ${overdue > 0 ? 'text-red-500' : 'text-gray-300'} text-base md:text-lg"></i>
                 </div>
                 <span class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-widest leading-tight">Pagos<br class="md:hidden"/> Atrasados</span>
             </div>
-            <span class="text-xl md:text-3xl font-black ${overdue > 0 ? 'text-red-600' : 'text-gray-400'}">${formatCurrency(overdue)}</span>
+            <span class="text-xl md:text-2xl font-black ${overdue > 0 ? 'text-red-600' : 'text-gray-400'}">${formatCurrency(overdue)}</span>
         </div>
     `;
 }
