@@ -908,8 +908,6 @@ function renderSummary() {
     const themeColor = isRec ? 'emerald' : 'red';
     const iconBase = isRec ? 'bi-arrow-down-left-circle-fill text-emerald-500' : 'bi-arrow-up-right-circle-fill text-red-500';
 
-    // js/ui/financial.js (dentro da função renderSummary)
-
     section.innerHTML = `
         <div class="snap-center shrink-0 w-[140px] md:w-full bg-white p-4 md:p-4 rounded-2xl md:rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
             <div class="flex items-center gap-2 md:gap-3 mb-2 md:mb-2">
@@ -1361,12 +1359,13 @@ function openFinancialModal(type, item = null) {
         return `<option value="${est.id}" ${isSelected ? 'selected' : ''}>${est.type === 'Matriz' ? '🏢' : '📍'} ${escapeHTML(est.name)}</option>`;
     }).join('');
 
-    modal.className = 'fixed inset-0 z-[10000] bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center opacity-0 transition-opacity duration-300 p-0 md:p-6';
+    // Ajustamos as margens e paddings no modalWrapper
+    modal.className = 'fixed inset-0 z-[10000] bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center opacity-0 transition-opacity duration-300 md:p-6';
 
     modal.innerHTML = `
         ${datalistHTML}
 
-        <div id="modal-content-wrapper" class="w-full md:max-w-3xl bg-gray-50 flex flex-col transform transition-all duration-300 translate-y-full md:translate-y-0 md:scale-95 md:opacity-0 h-[90vh] md:h-auto md:max-h-[90vh] rounded-t-3xl md:rounded-3xl overflow-hidden shadow-2xl relative" style="font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;">
+        <div id="modal-content-wrapper" class="w-full md:max-w-5xl bg-gray-50 flex flex-col transform transition-all duration-300 translate-y-full md:translate-y-0 md:scale-95 md:opacity-0 h-full md:h-auto md:max-h-[90vh] md:rounded-3xl overflow-hidden shadow-2xl relative" style="font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;">
             
             <header class="bg-${themeColor}-600 border-b border-${themeColor}-700 px-5 py-4 flex items-center justify-between pt-safe-top md:pt-4 shadow-sm z-20 flex-shrink-0 relative overflow-hidden md:rounded-t-3xl">
                 <div class="absolute right-[-20px] top-[-20px] opacity-10 pointer-events-none">
@@ -1383,26 +1382,25 @@ function openFinancialModal(type, item = null) {
             </header>
             
             <form id="financial-form" class="flex-1 overflow-y-auto custom-scrollbar pb-safe flex flex-col relative z-0 bg-gray-50">
-                <div class="p-4 md:p-6 space-y-4 md:space-y-5">
+                <div class="p-0 md:p-6 space-y-0 md:space-y-5">
 
                     ${!item ? `
-                    <div class="bg-gray-200/80 p-1.5 rounded-xl flex border border-gray-300 shadow-inner" id="mode-switcher">
+                    <div class="bg-gray-200/80 p-1.5 md:rounded-xl flex border-b md:border border-gray-300 shadow-inner" id="mode-switcher">
                         <button type="button" class="mode-btn flex-1 py-2 text-[10px] md:text-xs uppercase tracking-widest font-black rounded-lg shadow-sm bg-white text-gray-900 transition-all" data-mode="single">Único</button>
                         <button type="button" class="mode-btn flex-1 py-2 text-[10px] md:text-xs uppercase tracking-widest font-black rounded-lg text-gray-500 hover:text-gray-900 transition-all" data-mode="installment">Parcelado</button>
                         <button type="button" class="mode-btn flex-1 py-2 text-[10px] md:text-xs uppercase tracking-widest font-black rounded-lg text-gray-500 hover:text-gray-900 transition-all" data-mode="repeat">Recorrente</button>
                     </div>
                     ` : ''}
 
-                    <div class="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-200 shadow-sm space-y-4">
-                        
-                        <div>
+                    <div class="bg-white p-4 md:p-6 md:rounded-3xl border-b md:border border-gray-200 shadow-sm space-y-4 md:space-y-0 md:grid md:grid-cols-4 md:gap-4">
+                        <div class="md:col-span-2">
                             <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Unidade de Lançamento</label>
                             <select name="establishmentId" required class="w-full py-3 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 focus:bg-white outline-none text-sm font-bold text-gray-800 transition-all shadow-sm cursor-pointer">
                                 ${estOptions}
                             </select>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 gap-4 md:col-span-2">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 text-center">Valor Total (R$)</label>
                                 <input type="number" step="0.01" name="amount" required 
@@ -1418,7 +1416,7 @@ function openFinancialModal(type, item = null) {
                         </div>
                     </div>
 
-                    <div id="recurrence-options" style="display: none;" class="bg-indigo-50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-indigo-100 shadow-inner">
+                    <div id="recurrence-options" style="display: none;" class="bg-indigo-50 p-4 md:p-6 md:rounded-3xl border-b md:border border-indigo-100 shadow-inner">
                         <div class="flex flex-col md:flex-row gap-4 items-center">
                             <div class="w-full md:w-auto">
                                 <label id="recurrence-label" class="block text-[10px] font-black text-indigo-800 uppercase tracking-widest text-center md:text-left mb-1.5">Quantidade de Meses</label>
@@ -1435,7 +1433,7 @@ function openFinancialModal(type, item = null) {
                         </div>
                     </div>
 
-                    <div class="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-200 shadow-sm space-y-4">
+                    <div class="bg-white p-4 md:p-6 md:rounded-3xl border-b md:border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Descrição / Título</label>
                             <input type="text" name="description" required 
@@ -1454,8 +1452,8 @@ function openFinancialModal(type, item = null) {
                         </div>
                     </div>
 
-                    <div class="bg-white p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-200 shadow-sm space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-4 md:p-6 md:rounded-3xl border-b md:border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-1 md:col-span-2 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Plano de Natureza</label>
                                 <select name="naturezaId" class="w-full py-3 px-4 bg-gray-50 focus:bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-${themeColor}-500 outline-none text-sm font-bold text-gray-700 transition-all shadow-sm">
@@ -1470,7 +1468,7 @@ function openFinancialModal(type, item = null) {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-2 md:col-span-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nº Documento</label>
                                 <input type="text" name="documentNumber" 
@@ -1487,7 +1485,7 @@ function openFinancialModal(type, item = null) {
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 md:p-6 rounded-2xl md:rounded-3xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 md:gap-6 md:items-center">
+                    <div class="bg-white p-5 md:p-6 md:rounded-3xl border-b md:border border-gray-200 shadow-sm flex flex-col md:flex-row gap-4 md:gap-6 md:items-center">
                         <label class="flex items-center justify-between cursor-pointer group flex-1">
                             <div>
                                 <span class="block text-sm md:text-base font-black text-gray-900 uppercase tracking-wide group-active:text-${themeColor}-600 transition-colors">Marcar como ${isPayable ? 'Pago' : 'Recebido'}</span>
@@ -1507,7 +1505,7 @@ function openFinancialModal(type, item = null) {
                         </div>
                     </div>
                     
-                    <div class="h-2"></div>
+                    <div class="h-2 md:hidden"></div>
                 </div>
 
                 <div class="p-4 md:p-5 border-t border-gray-200 bg-white md:bg-gray-50 flex gap-3 flex-shrink-0 z-20 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] md:rounded-b-3xl">

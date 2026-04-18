@@ -565,7 +565,7 @@ export async function loadAgendaPage(params = {}) {
                 <i class="bi bi-plus-lg text-2xl"></i>
             </button>
             
-            <div id="appointmentModal" class="fixed inset-0 z-[10000] bg-gray-50 flex-col hidden w-full h-full transform transition-transform duration-300 translate-y-full"></div>
+            <div id="appointmentModal" class="fixed inset-0 z-[10000] hidden"></div>
         </div>`;
 
     document.getElementById('btnTodayHeader').addEventListener('click', () => {
@@ -784,7 +784,7 @@ function showOptionsMenu() {
 }
 
 // ============================================================================
-// MODAL DE TELA CHEIA E LÓGICA DE PASSOS (COM AUTO-AVANÇO)
+// MODAL RESPONSIVO (TELA CHEIA MOBILE / FLUTUANTE DESKTOP)
 // ============================================================================
 
 function navigateModalStep(step) {
@@ -969,25 +969,41 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         case 4: renderResult = renderStep4_Schedule(); break;
     }
 
-    modal.className = 'fixed inset-0 z-[10000] bg-gray-50 flex flex-col w-full h-full transform transition-transform duration-300 translate-y-full';
+    // Configurando as classes do Modal (Mobile Tela Cheia / Desktop Flutuante)
+    modal.className = 'fixed inset-0 z-[10000] hidden flex items-end md:items-center justify-center bg-gray-900/50 backdrop-blur-sm transition-opacity duration-300 opacity-0';
     
     modal.innerHTML = `
-        <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between pt-safe-top shadow-sm z-20">
-            <button type="button" data-action="close-modal" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 active:scale-90 transition-transform">
-                <i class="bi bi-x-lg text-sm"></i>
-            </button>
-            <div class="text-center flex-1 px-2">
-                <h2 class="text-sm font-black text-gray-900 tracking-tight leading-tight truncate">${renderResult.title}</h2>
-                <div class="flex items-center justify-center gap-1 mt-1">
-                    <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 1 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
-                    <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 2 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
-                    <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 3 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
-                    <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 4 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
+        <div class="absolute inset-0 z-0 cursor-pointer" data-action="close-modal"></div>
+        <div id="appointmentModalContent" class="relative z-10 w-full h-full md:h-auto md:max-h-[85vh] md:w-[550px] md:rounded-2xl bg-gray-50 flex flex-col transform transition-all duration-300 translate-y-full md:translate-y-8 md:scale-95 shadow-2xl overflow-hidden">
+            <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between pt-safe-top md:pt-4 shadow-sm z-20">
+                <button type="button" data-action="close-modal" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 active:scale-90 transition-all">
+                    <i class="bi bi-x-lg text-sm"></i>
+                </button>
+                <div class="text-center flex-1 px-2">
+                    <h2 class="text-sm font-black text-gray-900 tracking-tight leading-tight truncate">${renderResult.title}</h2>
+                    <div class="flex items-center justify-center gap-1 mt-1">
+                        <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 1 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
+                        <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 2 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
+                        <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 3 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
+                        <div class="w-2 h-2 rounded-full ${newAppointmentState.step >= 4 ? 'bg-indigo-600' : 'bg-gray-200'}"></div>
+                    </div>
                 </div>
-            </div>
-            <div class="w-10 h-10"></div> </header>
-        <form id="appointmentForm" class="flex-1 overflow-y-auto flex flex-col bg-gray-50">${renderResult.content}</form>
+                <div class="w-10 h-10"></div>
+            </header>
+            <form id="appointmentForm" class="flex-1 overflow-y-auto flex flex-col bg-gray-50">${renderResult.content}</form>
+        </div>
     `;
+
+    // Função universal de encerramento
+    const closeApptModal = () => {
+        const content = modal.querySelector('#appointmentModalContent');
+        if (content) {
+            content.classList.remove('translate-y-0', 'md:translate-y-0', 'md:scale-100');
+            content.classList.add('translate-y-full', 'md:translate-y-8', 'md:scale-95');
+        }
+        modal.classList.add('opacity-0');
+        setTimeout(() => { modal.classList.add('hidden'); }, 300);
+    };
 
     modal.querySelectorAll('[data-action="next-step"]').forEach(btn => btn.addEventListener('click', () => {
         const cs = parseInt(btn.dataset.currentStep, 10);
@@ -1004,18 +1020,18 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
     modal.querySelectorAll('[data-action="prev-step"]').forEach(btn => btn.addEventListener('click', () => navigateModalStep(parseInt(btn.dataset.currentStep, 10) - 1)));
     
     modal.querySelectorAll('[data-action="close-modal"]').forEach(btn => {
-        btn.addEventListener('click', () => { 
-            modal.classList.remove('translate-y-0');
-            modal.classList.add('translate-y-full');
-            setTimeout(() => { modal.classList.add('hidden'); }, 300);
-        });
+        btn.addEventListener('click', closeApptModal);
     });
 
+    // Exibindo o Modal (Trigger Animations)
     modal.classList.remove('hidden');
-    requestAnimationFrame(() => {
-        modal.classList.remove('translate-y-full');
-        modal.classList.add('translate-y-0');
-    });
+    void modal.offsetWidth; // Força layout reflow
+    modal.classList.remove('opacity-0');
+    const contentBox = modal.querySelector('#appointmentModalContent');
+    if (contentBox) {
+        contentBox.classList.remove('translate-y-full', 'md:translate-y-8', 'md:scale-95');
+        contentBox.classList.add('translate-y-0', 'md:translate-y-0', 'md:scale-100');
+    }
 
     if (newAppointmentState.step === 2) {
         modal.querySelectorAll('.service-card').forEach(card => card.addEventListener('click', () => {
@@ -1141,9 +1157,14 @@ async function handleAppointmentFormSubmit(e) {
 
         showNotification('Registro salvo!', 'success');
         
+        // Fechamento Universal Animado
         const modal = document.getElementById('appointmentModal');
-        modal.classList.remove('translate-y-0');
-        modal.classList.add('translate-y-full');
+        const content = modal.querySelector('#appointmentModalContent');
+        if (content) {
+            content.classList.remove('translate-y-0', 'md:translate-y-0', 'md:scale-100');
+            content.classList.add('translate-y-full', 'md:translate-y-8', 'md:scale-95');
+        }
+        modal.classList.add('opacity-0');
         setTimeout(() => { modal.classList.add('hidden'); }, 300);
         
         fetchAndDisplayAgenda();
