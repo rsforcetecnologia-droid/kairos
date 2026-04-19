@@ -1,433 +1,554 @@
-// Arquivo: js/admin/super-establishments.js
+// js/admin/super-establishments.js
 
-import { db, collection, getDocs, doc, updateDoc } from '../firebase-config.js'; 
+import { authenticatedFetch } from '../api/apiService.js';
+import { showNotification, showConfirmation } from '../components/modal.js';
+import { escapeHTML } from '../utils.js'; // <-- IMPORTAÇÃO CORRIGIDA
 
-// Variáveis globais para cachear os dados e evitar consultas repetidas
-let cachedEstablishments = [];
-let cachedPlans = []; // NOVO: Armazenar os planos vindos do banco de dados
+let localState = {
+    tenants: [],
+    plans: [],
+    searchQuery: '',
+    currentPage: 1,
+    limit: 20,
+    totalPages: 1
+};
 
 export async function loadEstablishments(container) {
+    renderBaseLayout(container);
+    setupEventListeners(container);
     
-    // 1. Desenhamos a estrutura básica
+    // Carrega dados em paralelo
+    await Promise.all([
+        fetchPlans(),
+        fetchTenants()
+    ]);
+}
+
+// ============================================================================
+// 🎨 1. RENDERIZAÇÃO DO LAYOUT (TAILWIND CSS)
+// ============================================================================
+
+function renderBaseLayout(container) {
     container.innerHTML = `
-        <style>
-            .estab-table th { background-color: #f8fafc; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
-            .estab-row:hover { background-color: #f1f5f9; cursor: pointer; }
-            .badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
-            .badge-active { background-color: #dcfce7; color: #166534; }
-            .badge-blocked { background-color: #fee2e2; color: #991b1b; }
+        <div class="h-full flex flex-col w-full relative font-sans animate-fade-in">
             
-            /* Slide-out Panel */
-            .slide-panel-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.4); z-index: 40; display: none; opacity: 0; transition: opacity 0.3s; }
-            .slide-panel { position: fixed; top: 0; right: -600px; width: 100%; max-width: 500px; height: 100vh; background: #fff; z-index: 50; box-shadow: -4px 0 15px rgba(0,0,0,0.1); transition: right 0.3s ease-in-out; display: flex; flex-direction: column; }
-            .slide-panel.open { right: 0; }
-            .slide-panel-header { padding: 20px 25px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-            .slide-panel-content { padding: 25px; overflow-y: auto; flex: 1; }
-            .slide-panel-footer { padding: 20px 25px; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: flex-end; gap: 10px; }
-            
-            /* Formulário no Panel */
-            .form-group { margin-bottom: 15px; }
-            .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 5px; }
-            .form-control { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; color: #1e293b; transition: border 0.2s; box-sizing: border-box;}
-            .form-control:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-            .form-row { display: flex; gap: 15px; }
-            .form-row > div { flex: 1; }
-            
-            .btn-primary { background: #3b82f6; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
-            .btn-primary:hover { background: #2563eb; }
-            .btn-secondary { background: #e2e8f0; color: #475569; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
-            .btn-secondary:hover { background: #cbd5e1; }
-            .btn-danger { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-            .btn-success { background: #dcfce7; color: #16a34a; border: 1px solid #bbf7d0; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-            .btn-outline { background: transparent; color: #3b82f6; border: 1px solid #3b82f6; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 5px;}
-        </style>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-            <div>
-                <h3 style="color: #0f172a; font-size: 1.5rem; font-weight: 700; margin: 0;">🏢 Gestão de Estabelecimentos</h3>
-                <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">Gerencie assinaturas, acessos e detalhes dos clientes Kairos.</p>
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800 tracking-tight">Gestão de Inquilinos (Redes)</h2>
+                    <p class="text-sm text-slate-500 font-medium mt-1">Gira os clientes da plataforma, planos e acessos Master.</p>
+                </div>
+                <button id="btn-open-wizard" class="bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-brand-700 shadow-md shadow-brand-500/30 active:scale-95 transition-all flex items-center gap-2">
+                    <i class="bi bi-building-add text-lg"></i> Novo Cliente (Rede)
+                </button>
             </div>
-            <button id="btn-add-client" class="btn-primary">+ Novo Cliente</button>
-        </div>
 
-        <div style="background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); overflow: hidden;">
-            <div style="padding: 20px;">
-                <p id="loading-msg" style="color: #64748b; font-style: italic; text-align: center; padding: 20px;">A carregar base de dados...</p>
-                
-                <div style="overflow-x: auto;">
-                    <table id="clients-table" class="estab-table" style="width: 100%; border-collapse: collapse; display: none;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid #e2e8f0; text-align: left;">
-                                <th style="padding: 15px;">Empresa</th>
-                                <th style="padding: 15px;">Dono / Contato</th>
-                                <th style="padding: 15px;">Plano</th>
-                                <th style="padding: 15px;">Vencimento</th>
-                                <th style="padding: 15px;">Status</th>
-                                <th style="padding: 15px; text-align: right;">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="clients-tbody"></tbody>
-                    </table>
+            <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 mb-4 flex items-center">
+                <i class="bi bi-search text-slate-400 ml-3 text-lg"></i>
+                <input type="text" id="search-tenant-input" placeholder="Pesquisar por nome da empresa, NIF, email..." class="w-full bg-transparent border-none p-3 outline-none text-sm font-bold text-slate-700 placeholder-slate-400">
+                <div class="border-l border-slate-200 pl-2 ml-2">
+                    <button id="btn-refresh-table" class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors">
+                        <i class="bi bi-arrow-clockwise text-lg"></i>
+                    </button>
                 </div>
             </div>
-        </div>
 
-        <div id="slide-overlay" class="slide-panel-overlay"></div>
-
-        <div id="slide-panel" class="slide-panel">
-            <div class="slide-panel-header">
-                <h3 style="margin: 0; color: #0f172a; font-size: 1.2rem;">Detalhes do Estabelecimento</h3>
-                <button id="btn-close-panel" style="background: none; border: none; font-size: 1.5rem; color: #64748b; cursor: pointer;">&times;</button>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
+                <div class="overflow-x-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-left border-collapse whitespace-nowrap">
+                        <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                            <tr>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Empresa (Rede)</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Responsável (Master)</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Plano SaaS</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Status</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tenants-table-body" class="divide-y divide-slate-100">
+                            <tr>
+                                <td colspan="5" class="py-16 text-center text-slate-400">
+                                    <div class="loader mx-auto mb-3 border-brand-500"></div>
+                                    <p class="text-xs font-bold uppercase tracking-widest">A carregar Inquilinos...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="pagination-container" class="bg-slate-50 border-t border-slate-200 p-3 flex justify-between items-center px-6"></div>
             </div>
-            
-            <div class="slide-panel-content">
-                <form id="form-estab-details">
-                    <input type="hidden" id="edit-id">
-                    
-                    <h4 style="color: #3b82f6; margin-top: 0; margin-bottom: 15px; font-size: 0.9rem; text-transform: uppercase;">Acesso Rápido</h4>
-                    <div style="display: flex; gap: 10px; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px dashed #e2e8f0;">
-                        <button type="button" id="btn-impersonate-action" class="btn-outline">
-                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
-                            Entrar como Cliente
-                        </button>
-                        <button type="button" id="btn-toggle-status-action" class="btn-secondary" style="flex: 1;">Bloquear</button>
-                    </div>
 
-                    <h4 style="color: #3b82f6; margin-bottom: 15px; font-size: 0.9rem; text-transform: uppercase;">Dados da Empresa</h4>
-                    <div class="form-group">
-                        <label>Nome Fantasia / Empresa</label>
-                        <input type="text" id="edit-name" class="form-control" required>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>CPF / CNPJ</label>
-                            <input type="text" id="edit-cpfCnpj" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>Tenant (URL Customizada)</label>
-                            <input type="text" id="edit-tenant" class="form-control" placeholder="ex: barbearia-do-joao">
-                        </div>
-                    </div>
+            <div id="slide-panel-overlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 hidden opacity-0 transition-opacity duration-300"></div>
 
-                    <h4 style="color: #3b82f6; margin-top: 20px; margin-bottom: 15px; font-size: 0.9rem; text-transform: uppercase;">Contato</h4>
-                    <div class="form-group">
-                        <label>Nome do Dono / Responsável</label>
-                        <input type="text" id="edit-owner" class="form-control">
+            <div id="slide-panel" class="fixed top-0 right-0 h-full w-full max-w-[500px] bg-white z-50 shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 flex flex-col">
+                <div class="px-6 py-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                    <div>
+                        <h3 id="panel-title" class="text-lg font-black text-slate-800 tracking-tight">Novo Inquilino</h3>
+                        <p id="panel-subtitle" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Configuração de Ambiente</p>
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>E-mail</label>
-                            <input type="email" id="edit-email" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>WhatsApp / Telefone</label>
-                            <input type="text" id="edit-phone" class="form-control">
-                        </div>
+                    <button id="btn-close-panel" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors active:scale-95">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                
+                <div id="panel-content" class="flex-1 overflow-y-auto p-6 custom-scrollbar">
                     </div>
-
-                    <h4 style="color: #3b82f6; margin-top: 20px; margin-bottom: 15px; font-size: 0.9rem; text-transform: uppercase;">Assinatura & Acesso</h4>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Plano Atual</label>
-                            <select id="edit-plan" class="form-control">
-                                <option value="">A carregar...</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Criado em</label>
-                            <input type="text" id="edit-created" class="form-control" readonly style="background: #f1f5f9; color: #64748b;">
-                        </div>
+                
+                <div id="panel-footer" class="p-5 border-t border-slate-200 bg-slate-50 flex gap-3 justify-end">
                     </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Vencimento da Fatura</label>
-                            <input type="date" id="edit-dueDate" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>Limite de Acesso</label>
-                            <input type="date" id="edit-accessLimit" class="form-control">
-                        </div>
-                    </div>
-                </form>
-            </div>
-            
-            <div class="slide-panel-footer">
-                <button type="button" id="btn-cancel-edit" class="btn-secondary">Cancelar</button>
-                <button type="button" id="btn-save-edit" class="btn-primary">Salvar Alterações</button>
             </div>
         </div>
     `;
-
-    // 2. Carrega os planos disponíveis primeiro, depois a tabela
-    await fetchAvailablePlans();
-    await fetchAndRenderTable();
-    setupPanelEvents(container);
 }
 
-// --- Busca de Dados ---
+// ============================================================================
+// 📡 2. COMUNICAÇÃO COM O BACKEND (API REST)
+// ============================================================================
 
-// NOVO: Função que vai ao Firebase buscar os planos reais que criaste no "Planos & Faturas"
-async function fetchAvailablePlans() {
+async function fetchPlans() {
     try {
-        // Tenta ler a coleção "packages" (onde o Kairos costuma guardar os planos)
-        const plansSnap = await getDocs(collection(db, 'packages')); 
-        cachedPlans = [];
-
-        if (!plansSnap.empty) {
-            plansSnap.forEach(doc => {
-                const planData = doc.data();
-                // Tenta pegar o nome do plano (name, title ou nome)
-                const planName = planData.name || planData.title || planData.nome || doc.id;
-                cachedPlans.push(planName);
-            });
-        }
-
-        // Fallback: Se a coleção "packages" estiver vazia, tenta "plans"
-        if (cachedPlans.length === 0) {
-            const plansSnap2 = await getDocs(collection(db, 'plans'));
-            plansSnap2.forEach(doc => {
-                const planData = doc.data();
-                cachedPlans.push(planData.name || planData.title || planData.nome || doc.id);
-            });
-        }
+        const plans = await authenticatedFetch('/api/admin/plans');
+        localState.plans = plans || [];
     } catch (error) {
-        console.warn("Aviso: Falha ao carregar planos do banco. Utilizando fallback padrão.", error);
+        console.error("Erro ao buscar planos:", error);
+        showNotification('Erro', 'Falha ao carregar a lista de planos SaaS do sistema.', 'error');
     }
 }
 
-async function fetchAndRenderTable() {
-    const tbody = document.getElementById('clients-tbody');
-    const table = document.getElementById('clients-table');
-    const loadingMsg = document.getElementById('loading-msg');
+async function fetchTenants() {
+    const tbody = document.getElementById('tenants-table-body');
+    const pagination = document.getElementById('pagination-container');
+    
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-12 text-center"><div class="loader mx-auto border-brand-500 mb-2"></div><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Atualizando...</p></td></tr>`;
+    }
 
     try {
-        const querySnapshot = await getDocs(collection(db, 'establishments'));
-        cachedEstablishments = [];
+        let url = `/api/admin/tenants?page=${localState.currentPage}&limit=${localState.limit}`;
+        if (localState.searchQuery) url += `&search=${encodeURIComponent(localState.searchQuery)}`;
 
-        if (querySnapshot.empty) {
-            loadingMsg.innerText = "Nenhum estabelecimento cadastrado.";
+        const response = await authenticatedFetch(url);
+        
+        localState.tenants = response.data || [];
+        localState.totalPages = response.pagination.totalPages || 1;
+        
+        renderTenantsTable();
+        renderPagination(pagination);
+    } catch (error) {
+        console.error("Erro ao buscar inquilinos:", error);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="py-12 text-center text-rose-500 font-bold text-sm"><i class="bi bi-exclamation-triangle block text-2xl mb-2"></i> Erro ao carregar os clientes.</td></tr>`;
+    }
+}
+
+// ============================================================================
+// 🖼️ 3. RENDERIZAÇÃO DE COMPONENTES
+// ============================================================================
+
+function renderTenantsTable() {
+    const tbody = document.getElementById('tenants-table-body');
+    if (!tbody) return;
+
+    if (localState.tenants.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" class="py-16 text-center">
+                    <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300 text-2xl"><i class="bi bi-buildings"></i></div>
+                    <p class="text-sm font-bold text-slate-600">Nenhum cliente encontrado.</p>
+                    <p class="text-xs text-slate-400 mt-1">Tente pesquisar com outro termo ou cadastre uma nova rede.</p>
+                </td>
+            </tr>`;
+        return;
+    }
+
+    // Mapa para o nome dos planos para exibição amigável
+    const plansMap = new Map(localState.plans.map(p => [p.id, p.name]));
+
+    const html = localState.tenants.map(tenant => {
+        const isBlocked = tenant.status === 'inactive' || tenant.status === 'blocked';
+        const statusBadge = isBlocked 
+            ? `<span class="bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-lock-fill mr-1"></i> Bloqueado</span>`
+            : `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-check-circle-fill mr-1"></i> Ativo</span>`;
+
+        const planName = plansMap.get(tenant.planId) || 'Plano Personalizado';
+        
+        return `
+            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer" data-action="view-tenant" data-id="${tenant.id}">
+                <td class="p-4">
+                    <p class="text-sm font-bold text-slate-800 group-hover:text-brand-600 transition-colors">${escapeHTML(tenant.name)}</p>
+                    <p class="text-[10px] text-slate-500 font-semibold mt-0.5"><i class="bi bi-file-earmark-text mr-1 opacity-50"></i>NIF/CNPJ: ${escapeHTML(tenant.document || 'Não ind.')}</p>
+                </td>
+                <td class="p-4">
+                    <p class="text-xs font-bold text-slate-700"><i class="bi bi-person-fill mr-1 text-slate-400"></i> ${escapeHTML(tenant.ownerEmail || 'Desconhecido')}</p>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm">${escapeHTML(planName)}</span>
+                </td>
+                <td class="p-4 text-center">${statusBadge}</td>
+                <td class="p-4 text-right">
+                    <button class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-brand-50 hover:text-brand-600 hover:border-brand-200 transition-all active:scale-95">
+                        Gerir
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = html;
+}
+
+function renderPagination(container) {
+    if (!container) return;
+    if (localState.totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = `
+        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pág. ${localState.currentPage} de ${localState.totalPages}</span>
+        <div class="flex gap-2">
+            <button data-action="prev-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50 transition-colors" ${localState.currentPage <= 1 ? 'disabled' : ''}>
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <button data-action="next-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50 transition-colors" ${localState.currentPage >= localState.totalPages ? 'disabled' : ''}>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
+// ============================================================================
+// 🧙‍♂️ 4. WIZARD E PAINEL LATERAL (SIDE PANEL)
+// ============================================================================
+
+function openPanel(mode, tenantId = null) {
+    const overlay = document.getElementById('slide-panel-overlay');
+    const panel = document.getElementById('slide-panel');
+    const title = document.getElementById('panel-title');
+    const content = document.getElementById('panel-content');
+    const footer = document.getElementById('panel-footer');
+
+    overlay.classList.remove('hidden');
+    
+    // Pequeno delay para a transição do CSS atuar
+    requestAnimationFrame(() => {
+        overlay.classList.remove('opacity-0');
+        panel.classList.remove('translate-x-full');
+    });
+
+    if (mode === 'create') {
+        title.innerText = 'Nova Assinatura (SaaS)';
+        
+        const planOptions = localState.plans.map(p => `<option value="${p.id}">${escapeHTML(p.name)} - (Max: ${p.maxEstablishments} Lojas)</option>`).join('');
+
+        content.innerHTML = `
+            <form id="wizard-form" class="space-y-6">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="bi bi-1-circle-fill text-sm"></i> Dados da Empresa</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Fantasia / Rede *</label>
+                            <input type="text" id="wiz-company" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">NIF / CNPJ (Opcional)</label>
+                            <input type="text" id="wiz-doc" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="bi bi-2-circle-fill text-sm"></i> Acesso Master (Dono)</h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome do Proprietário *</label>
+                            <input type="text" id="wiz-name" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail (Login) *</label>
+                            <input type="email" id="wiz-email" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Senha Inicial *</label>
+                                <input type="text" id="wiz-password" required value="kairos123" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">WhatsApp</label>
+                                <input type="text" id="wiz-phone" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-brand-500">
+                    <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="bi bi-3-circle-fill text-sm"></i> Faturação e Limites</h4>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Plano Base *</label>
+                        <select id="wiz-plan" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm font-bold text-slate-800 transition-shadow cursor-pointer">
+                            <option value="">Selecione o plano...</option>
+                            ${planOptions}
+                        </select>
+                        <p class="text-[9px] text-slate-400 mt-2 ml-1 font-medium"><i class="bi bi-info-circle"></i> O plano define quantos estabelecimentos (filiais) este cliente pode criar no sistema dele.</p>
+                    </div>
+                </div>
+            </form>
+        `;
+
+        footer.innerHTML = `
+            <button data-action="close-panel" class="px-5 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">Cancelar</button>
+            <button data-action="submit-wizard" class="px-6 py-3 rounded-xl font-bold text-sm text-white bg-brand-600 hover:bg-brand-700 shadow-md shadow-brand-500/30 transition-all flex items-center gap-2 active:scale-95">
+                <i class="bi bi-check2-circle text-lg"></i> Criar Inquilino (Tenant)
+            </button>
+        `;
+    } 
+    else if (mode === 'view' && tenantId) {
+        const tenant = localState.tenants.find(t => t.id === tenantId);
+        if(!tenant) return;
+
+        title.innerText = 'Detalhes do Inquilino';
+        const isBlocked = tenant.status === 'inactive' || tenant.status === 'blocked';
+        const planName = localState.plans.find(p => p.id === tenant.planId)?.name || 'Plano Personalizado';
+        
+        content.innerHTML = `
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-slate-100 rounded-2xl mx-auto flex items-center justify-center text-3xl text-slate-300 border border-slate-200 shadow-inner mb-4">
+                    <i class="bi bi-buildings-fill"></i>
+                </div>
+                <h2 class="text-xl font-black text-slate-800 tracking-tight">${escapeHTML(tenant.name)}</h2>
+                <p class="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest bg-slate-100 inline-block px-3 py-1 rounded-full border border-slate-200">Plano: ${escapeHTML(planName)}</p>
+            </div>
+
+            <div class="space-y-4">
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center flex-shrink-0"><i class="bi bi-person-fill text-lg"></i></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Dono / Responsável</p>
+                        <p class="text-sm font-bold text-slate-800 truncate">${escapeHTML(tenant.ownerEmail)}</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center flex-shrink-0"><i class="bi bi-file-earmark-text text-lg"></i></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">NIF / CNPJ</p>
+                        <p class="text-sm font-bold text-slate-800 truncate">${escapeHTML(tenant.document || 'Não fornecido')}</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full ${isBlocked ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'} flex items-center justify-center flex-shrink-0">
+                        <i class="bi ${isBlocked ? 'bi-lock-fill' : 'bi-check-circle-fill'} text-lg"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Status do Sistema</p>
+                        <p class="text-sm font-black ${isBlocked ? 'text-rose-600' : 'text-emerald-600'} truncate uppercase tracking-widest">${isBlocked ? 'Acesso Suspenso' : 'Ambiente Ativo'}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 bg-indigo-50 border border-indigo-100 rounded-2xl p-5 shadow-sm">
+                <h4 class="text-xs font-black text-indigo-800 uppercase tracking-widest mb-2 flex items-center gap-2"><i class="bi bi-headset"></i> Modo de Suporte</h4>
+                <p class="text-[10px] text-indigo-600 font-medium mb-4 leading-relaxed">Assuma a identidade deste cliente temporariamente. O painel será aberto exatamente como o cliente o vê, permitindo-lhe investigar problemas ou configurar o ambiente para ele.</p>
+                <button data-action="impersonate" data-id="${tenant.id}" class="w-full py-3.5 bg-white border border-indigo-200 text-indigo-700 font-black rounded-xl hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm flex items-center justify-center gap-2 active:scale-95">
+                    <i class="bi bi-box-arrow-in-right text-lg"></i> Entrar como o Cliente
+                </button>
+            </div>
+        `;
+
+        footer.innerHTML = `
+            <button data-action="close-panel" class="px-5 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors">Fechar</button>
+            <button data-action="toggle-status" data-id="${tenant.id}" data-current="${tenant.status}" class="px-6 py-3 rounded-xl font-bold text-sm transition-all shadow-sm active:scale-95 flex items-center gap-2 ${isBlocked ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-rose-100 text-rose-700 border border-rose-200 hover:bg-rose-200'}">
+                <i class="bi ${isBlocked ? 'bi-unlock-fill' : 'bi-lock-fill'}"></i> ${isBlocked ? 'Restaurar Acesso' : 'Suspender Cliente'}
+            </button>
+        `;
+    }
+}
+
+function closePanel() {
+    const overlay = document.getElementById('slide-panel-overlay');
+    const panel = document.getElementById('slide-panel');
+    
+    panel.classList.add('translate-x-full');
+    overlay.classList.add('opacity-0');
+    
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+    }, 300); // Aguarda o CSS transition terminar
+}
+
+// ============================================================================
+// ⚡ 5. CONTROLOS E EVENTOS DE ACÇÃO
+// ============================================================================
+
+async function handleCreateTenant(btnElement) {
+    const form = document.getElementById('wizard-form');
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const payload = {
+        companyName: document.getElementById('wiz-company').value,
+        documentInfo: document.getElementById('wiz-doc').value,
+        adminName: document.getElementById('wiz-name').value,
+        adminEmail: document.getElementById('wiz-email').value,
+        adminPassword: document.getElementById('wiz-password').value,
+        adminPhone: document.getElementById('wiz-phone').value,
+        planId: document.getElementById('wiz-plan').value,
+    };
+
+    const originalHTML = btnElement.innerHTML;
+    btnElement.innerHTML = '<div class="loader-small border-white mr-2"></div> Criando Ambiente...';
+    btnElement.disabled = true;
+
+    try {
+        const response = await authenticatedFetch('/api/admin/tenants', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        showNotification('Fantástico!', `A rede de ${payload.companyName} foi criada e o utilizador Master já tem acesso.`, 'success');
+        closePanel();
+        await fetchTenants();
+
+    } catch (error) {
+        showNotification('Erro na Criação', error.message, 'error');
+        btnElement.innerHTML = originalHTML;
+        btnElement.disabled = false;
+    }
+}
+
+async function handleToggleStatus(btnElement) {
+    const tenantId = btnElement.dataset.id;
+    const currentStatus = btnElement.dataset.current;
+    const newStatus = (currentStatus === 'inactive' || currentStatus === 'blocked') ? 'active' : 'blocked';
+    const actionName = newStatus === 'blocked' ? 'BLOQUEAR' : 'DESBLOQUEAR';
+
+    const confirmed = await showConfirmation('Alterar Status do Cliente', `Deseja realmente ${actionName} esta rede? Isso afetará todas as filiais ligadas a esta conta e desconectará o cliente.`);
+    if (!confirmed) return;
+
+    try {
+        const btnOriginalText = btnElement.innerHTML;
+        btnElement.innerHTML = '<div class="loader-small mx-auto border-current"></div>';
+        btnElement.disabled = true;
+
+        await authenticatedFetch(`/api/admin/tenants/${tenantId}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        showNotification('Sucesso', `O ambiente foi ${newStatus === 'blocked' ? 'bloqueado' : 'ativado'}.`, 'success');
+        closePanel();
+        await fetchTenants();
+    } catch (error) {
+        showNotification('Erro', error.message, 'error');
+        closePanel();
+    }
+}
+
+async function handleImpersonate(btnElement) {
+    const tenantId = btnElement.dataset.id;
+
+    try {
+        const btnOriginalText = btnElement.innerHTML;
+        btnElement.innerHTML = '<div class="loader-small border-indigo-600 mr-2"></div> Conectando...';
+        btnElement.disabled = true;
+
+        const response = await authenticatedFetch(`/api/admin/tenants/${tenantId}/impersonate`, {
+            method: 'POST'
+        });
+
+        if (response && response.token) {
+            // Guardamos o token especial emitido pelo nosso backend no localstorage
+            // O frontend do app.html (login/verificação) deve intercetar isto.
+            localStorage.setItem('impersonateToken', response.token);
+            
+            showNotification('Conectado', 'A redirecionar para o painel do cliente...', 'info');
+            setTimeout(() => {
+                window.open('/app.html', '_blank');
+                btnElement.innerHTML = btnOriginalText;
+                btnElement.disabled = false;
+            }, 1000);
+        }
+
+    } catch (error) {
+        showNotification('Acesso Recusado', error.message, 'error');
+        btnElement.innerHTML = '<i class="bi bi-box-arrow-in-right text-lg"></i> Entrar como o Cliente';
+        btnElement.disabled = false;
+    }
+}
+
+// Setup global de Event Listeners da página
+function setupEventListeners(container) {
+    
+    // Pesquisa com Debounce
+    let searchTimeout;
+    container.addEventListener('input', (e) => {
+        if (e.target.id === 'search-tenant-input') {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                localState.searchQuery = e.target.value;
+                localState.currentPage = 1;
+                fetchTenants();
+            }, 500);
+        }
+    });
+
+    container.addEventListener('click', (e) => {
+        // Interceptador global para [data-action]
+        const actionBtn = e.target.closest('[data-action]');
+        
+        if (actionBtn) {
+            e.preventDefault();
+            const action = actionBtn.dataset.action;
+
+            switch(action) {
+                case 'close-panel':
+                    closePanel();
+                    break;
+                case 'view-tenant':
+                    openPanel('view', actionBtn.dataset.id);
+                    break;
+                case 'submit-wizard':
+                    handleCreateTenant(actionBtn);
+                    break;
+                case 'toggle-status':
+                    handleToggleStatus(actionBtn);
+                    break;
+                case 'impersonate':
+                    handleImpersonate(actionBtn);
+                    break;
+                case 'prev-page':
+                    if (localState.currentPage > 1) {
+                        localState.currentPage--;
+                        fetchTenants();
+                    }
+                    break;
+                case 'next-page':
+                    if (localState.currentPage < localState.totalPages) {
+                        localState.currentPage++;
+                        fetchTenants();
+                    }
+                    break;
+            }
+            return; // Se processámos uma action, saímos do listener
+        }
+
+        // Botões avulsos sem data-action (legacy ou específicos)
+        const btnOpenWizard = e.target.closest('#btn-open-wizard');
+        if (btnOpenWizard) {
+            openPanel('create');
             return;
         }
 
-        let rowsHTML = "";
-
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            data.id = docSnap.id; 
-            cachedEstablishments.push(data);
-
-            const name = data.name || data.nomeFantasia || "Sem Nome";
-            const owner = data.ownerName || data.dono || "Não informado";
-            const phone = data.phone || data.whatsapp || "Sem telefone";
-            const plan = data.planName || data.plano || "Sem Plano";
-            const status = data.status || "active";
-            const dueDate = data.dueDate ? formatDate(data.dueDate) : "Não def.";
-
-            let statusBadge = status === 'active' 
-                ? `<span class="badge badge-active">ATIVO</span>` 
-                : `<span class="badge badge-blocked">BLOQUEADO</span>`;
-
-            rowsHTML += `
-                <tr class="estab-row" style="border-bottom: 1px solid #f1f5f9; transition: all 0.2s;" onclick="window.openEstablishmentDetails('${data.id}')">
-                    <td style="padding: 15px;">
-                        <strong style="color: #0f172a; display: block; font-size: 0.95rem;">${name}</strong>
-                        <small style="color: #64748b; font-family: monospace;">ID: ${data.id.substring(0,8)}...</small>
-                    </td>
-                    <td style="padding: 15px; color: #475569; font-size: 0.9rem;">
-                        <span style="display: block; font-weight: 500; color: #1e293b;">${owner}</span>
-                        <small style="color: #64748b;">${phone}</small>
-                    </td>
-                    <td style="padding: 15px; color: #334155; font-weight: 500; font-size: 0.9rem;">${plan}</td>
-                    <td style="padding: 15px; color: #475569; font-size: 0.9rem;">${dueDate}</td>
-                    <td style="padding: 15px;">${statusBadge}</td>
-                    <td style="padding: 15px; text-align: right;">
-                        <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.openEstablishmentDetails('${data.id}')">Gerenciar</button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        tbody.innerHTML = rowsHTML;
-        loadingMsg.style.display = 'none';
-        table.style.display = 'table';
-
-    } catch (error) {
-        console.error("Erro ao carregar clientes:", error);
-        loadingMsg.innerHTML = `<span style="color: #dc2626;">Erro ao carregar base de dados.</span>`;
-    }
-}
-
-// --- Lógica do Painel Lateral ---
-
-function setupPanelEvents(container) {
-    const overlay = document.getElementById('slide-overlay');
-    const panel = document.getElementById('slide-panel');
-    const btnClose = document.getElementById('btn-close-panel');
-    const btnCancel = document.getElementById('btn-cancel-edit');
-    const btnSave = document.getElementById('btn-save-edit');
-    const btnImpersonate = document.getElementById('btn-impersonate-action');
-    const btnToggleStatus = document.getElementById('btn-toggle-status-action');
-
-    const closePanel = () => {
-        panel.classList.remove('open');
-        overlay.style.opacity = '0';
-        setTimeout(() => overlay.style.display = 'none', 300);
-    };
-
-    btnClose.addEventListener('click', closePanel);
-    btnCancel.addEventListener('click', closePanel);
-    overlay.addEventListener('click', closePanel);
-
-    window.openEstablishmentDetails = (id) => {
-        const estab = cachedEstablishments.find(e => e.id === id);
-        if(!estab) return;
-
-        document.getElementById('edit-id').value = estab.id;
-        document.getElementById('edit-name').value = estab.name || estab.nomeFantasia || "";
-        document.getElementById('edit-cpfCnpj').value = estab.cpfCnpj || estab.cnpj || "";
-        document.getElementById('edit-tenant').value = estab.tenant || estab.slug || "";
-        document.getElementById('edit-owner').value = estab.ownerName || estab.dono || "";
-        document.getElementById('edit-email').value = estab.email || "";
-        document.getElementById('edit-phone').value = estab.phone || estab.whatsapp || "";
-        
-        // --- PREENCHIMENTO DINÂMICO DO SELECT DE PLANOS ---
-        const planSelect = document.getElementById('edit-plan');
-        planSelect.innerHTML = ''; // Limpa as opções atuais
-        
-        // 1. Injeta os planos lidos da base de dados
-        cachedPlans.forEach(planName => {
-            planSelect.add(new Option(planName, planName));
-        });
-
-        // 2. Verifica o plano que o cliente já tem assinado
-        let currentPlan = estab.planName || estab.plano || "";
-        
-        // 3. Se o cliente tiver um plano antigo que já não existe na base de dados, adicionamos à lista com um aviso para não perder dados
-        if (currentPlan && !cachedPlans.includes(currentPlan)) {
-            planSelect.add(new Option(`${currentPlan} (Descontinuado)`, currentPlan));
+        const btnRefresh = e.target.closest('#btn-refresh-table');
+        if (btnRefresh) {
+            fetchTenants();
+            return;
         }
 
-        // Seleciona o plano no menu
-        planSelect.value = currentPlan;
-
-        // Datas
-        document.getElementById('edit-created').value = estab.createdAt ? formatDate(estab.createdAt) : "Desconhecida";
-        document.getElementById('edit-dueDate').value = estab.dueDate || "";
-        document.getElementById('edit-accessLimit').value = estab.accessLimit || "";
-
-        // Status Button Config
-        const status = estab.status || 'active';
-        if(status === 'active'){
-            btnToggleStatus.className = 'btn-danger';
-            btnToggleStatus.innerText = 'Suspender Acesso';
-            btnToggleStatus.dataset.action = 'block';
-        } else {
-            btnToggleStatus.className = 'btn-success';
-            btnToggleStatus.innerText = 'Restaurar Acesso';
-            btnToggleStatus.dataset.action = 'unblock';
-        }
-
-        btnImpersonate.dataset.id = estab.id;
-        btnImpersonate.dataset.name = estab.name || estab.nomeFantasia || "Estabelecimento";
-
-        overlay.style.display = 'block';
-        setTimeout(() => {
-            overlay.style.opacity = '1';
-            panel.classList.add('open');
-        }, 10);
-    };
-
-    btnSave.addEventListener('click', async () => {
-        const id = document.getElementById('edit-id').value;
-        const btnOriginalText = btnSave.innerText;
-        btnSave.innerText = 'Salvando...';
-        btnSave.disabled = true;
-
-        try {
-            const estabRef = doc(db, 'establishments', id);
-            await updateDoc(estabRef, {
-                name: document.getElementById('edit-name').value,
-                nomeFantasia: document.getElementById('edit-name').value, 
-                cpfCnpj: document.getElementById('edit-cpfCnpj').value,
-                tenant: document.getElementById('edit-tenant').value,
-                slug: document.getElementById('edit-tenant').value, 
-                ownerName: document.getElementById('edit-owner').value,
-                email: document.getElementById('edit-email').value,
-                phone: document.getElementById('edit-phone').value,
-                planName: document.getElementById('edit-plan').value, // Salva o novo plano escolhido
-                plano: document.getElementById('edit-plan').value, // Duplicado por segurança
-                dueDate: document.getElementById('edit-dueDate').value,
-                accessLimit: document.getElementById('edit-accessLimit').value
-            });
-
+        // Fecha o painel se clicar no overlay opaco fora dele
+        if (e.target.id === 'slide-panel-overlay') {
             closePanel();
-            await fetchAndRenderTable(); 
-            
-            const btnTitle = document.getElementById('btn-add-client');
-            const originalTitleText = btnTitle.innerText;
-            btnTitle.innerText = "✔ Salvo com sucesso!";
-            btnTitle.style.background = "#16a34a";
-            setTimeout(() => {
-                btnTitle.innerText = originalTitleText;
-                btnTitle.style.background = "";
-            }, 3000);
-
-        } catch (error) {
-            console.error("Erro ao atualizar estabelecimento:", error);
-            alert("Erro ao salvar: " + error.message);
-        } finally {
-            btnSave.innerText = btnOriginalText;
-            btnSave.disabled = false;
         }
     });
-
-    btnToggleStatus.addEventListener('click', async () => {
-        const id = document.getElementById('edit-id').value;
-        const action = btnToggleStatus.dataset.action;
-        const newStatus = action === 'block' ? 'blocked' : 'active';
-        
-        if(!confirm(`Deseja realmente ${action === 'block' ? 'BLOQUEAR' : 'DESBLOQUEAR'} este estabelecimento?`)) return;
-
-        try {
-            btnToggleStatus.innerText = 'Aguarde...';
-            const estabRef = doc(db, 'establishments', id);
-            await updateDoc(estabRef, { status: newStatus });
-            
-            closePanel();
-            await fetchAndRenderTable();
-        } catch (error) {
-            console.error("Erro ao alterar status:", error);
-            alert("Erro: " + error.message);
-            btnToggleStatus.innerText = action === 'block' ? 'Suspender Acesso' : 'Restaurar Acesso';
-        }
-    });
-
-    btnImpersonate.addEventListener('click', () => {
-        const estabId = btnImpersonate.dataset.id;
-        const estabName = btnImpersonate.dataset.name;
-
-        if(confirm(`Deseja entrar no ambiente do cliente "${estabName}"?\n\nIsto abrirá o sistema numa nova janela.`)) {
-            localStorage.setItem('kairos_superadmin_impersonating', 'true');
-            localStorage.setItem('tenantId', estabId); 
-            localStorage.setItem('tenantName', estabName);
-            
-            window.open('/app.html', '_blank'); 
-        }
-    });
-}
-
-function formatDate(dateInput) {
-    if(!dateInput) return "";
-    let date;
-    if (typeof dateInput.toDate === 'function') {
-        date = dateInput.toDate();
-    } else {
-        date = new Date(dateInput);
-        date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
-    }
-    if (isNaN(date.getTime())) return dateInput; 
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
 }

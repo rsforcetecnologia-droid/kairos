@@ -3,34 +3,23 @@
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-const { AggregateField } = require('firebase-admin/firestore'); // Importante para otimização
+const { AggregateField } = require('firebase-admin/firestore');
 
-// Lista de módulos padrão
+// 1. IMPORTAMOS OS MIDDLEWARES REAIS AQUI
+const { verifyToken, isSuperAdmin } = require('../middlewares/auth');
+
+// Lista de módulos padrão...
 const defaultModules = {
-    agenda: true, comandas: true, relatorios: true, 'sales-report': true,
-    financial: true, servicos: true, produtos: true, suppliers: true,
-    profissionais: true, ausencias: true, clientes: true, packages: true,
-    commissions: true, estabelecimento: true, users: true, mobileApp: true
+    // ... (mantenha o seu código existente aqui) ...
 };
 
-// Permissões totais para o dono
 const masterPermissions = {
-    'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
-    'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
-    'relatorios-section': { view: true, create: true, edit: true },
-    'sales-report-section': { view: true, create: true, edit: true },
-    'financial-section': { view: true, create: true, edit: true },
-    'servicos-section': { view: true, create: true, edit: true },
-    'produtos-section': { view: true, create: true, edit: true },
-    'suppliers-section': { view: true, create: true, edit: true },
-    'profissionais-section': { view: true, create: true, edit: true },
-    'ausencias-section': { view: true, create: true, edit: true },
-    'clientes-section': { view: true, create: true, edit: true },
-    'packages-section': { view: true, create: true, edit: true },
-    'commissions-section': { view: true, create: true, edit: true },
-    'estabelecimento-section': { view: true, create: true, edit: true },
-    'users-section': { view: true, create: true, edit: true }
+    // ... (mantenha o seu código existente aqui) ...
 };
+
+// 2. SUBSTITUÍMOS O MIDDLEWARE FALSO PELOS MIDDLEWARES REAIS
+// O verifyToken extrai o "req.user" do Token. O isSuperAdmin verifica a role.
+router.use(verifyToken, isSuperAdmin);
 
 // --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
@@ -44,7 +33,7 @@ function handleFirestoreError(res, error, context) {
             createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs."
         });
     }
-    res.status(500).json({ message: `Erro ao processar ${context}.` });
+    res.status(500).json({ message: error.message || `Erro ao processar ${context}.` });
 }
 
 const getSafeDate = (dateVal) => {
@@ -55,10 +44,10 @@ const getSafeDate = (dateVal) => {
 };
 
 // =======================================================================
-// 🚀 ROTAS ADMIN OTIMIZADAS
+// ⚙️ CONFIGURAÇÕES DA PLATAFORMA E DASHBOARD (SAAS)
 // =======================================================================
 
-// Config da plataforma
+// Config da plataforma (Logo, etc)
 router.get('/config', async (req, res) => {
     try {
         const doc = await req.db.collection('config').doc('plataforma').get();
@@ -66,81 +55,51 @@ router.get('/config', async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Erro config.' }); }
 });
 
-// 1. DASHBOARD ANALYTICS (TOTALMENTE REESCRITO PARA PERFORMANCE)
+// Dashboard Analytics
 router.get('/dashboard-stats', async (req, res) => {
     try {
         const { db } = req;
         const now = new Date();
         const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(now.getDate() - 30);
-        const fiveDaysFromNow = new Date(); fiveDaysFromNow.setDate(now.getDate() + 5);
 
-        // 1. Buscar Planos (Cachear preço)
-        const plansSnapshot = await db.collection('subscriptionPlans').get();
+        // 1. Buscar Planos para cálculo do MRR
+        const plansSnapshot = await db.collection('saas_plans').get();
         const planPrices = {};
         plansSnapshot.forEach(d => planPrices[d.id] = d.data().price || 0);
 
-        // 2. Executar Queries em Paralelo (Aggregation e Selects Leves)
-        const [totalAgg, activeAgg, cancelledAgg, mrrSnap, newUsersSnap, attentionSnap] = await Promise.all([
-            // A. Contadores Totais (Rápido e Barato)
-            db.collection('establishments').count().get(),
-            db.collection('establishments').where('status', '==', 'active').count().get(),
-            db.collection('establishments').where('status', 'in', ['deleted', 'inactive']).count().get(),
-            
-            // B. Para MRR: Busca apenas o ID do plano dos ativos (Payload mínimo)
-            db.collection('establishments').where('status', '==', 'active').select('subscription.planId').get(),
-
-            // C. Para Gráfico: Busca apenas a data de criação dos últimos 30 dias
-            db.collection('establishments').where('createdAt', '>=', admin.firestore.Timestamp.fromDate(thirtyDaysAgo)).select('createdAt').get(),
-
-            // D. Para Lista de Atenção: Filtra diretamente pela data de expiração (Requer índice)
-            db.collection('establishments')
-                .where('status', '==', 'active')
-                .where('subscription.expiryDate', '<=', admin.firestore.Timestamp.fromDate(fiveDaysFromNow))
-                .where('subscription.expiryDate', '>', admin.firestore.Timestamp.now()) // Apenas futuros próximos ou vencidos recentemente? Ajuste conforme necessidade
-                .orderBy('subscription.expiryDate', 'asc')
-                .limit(10)
-                .select('name', 'subscription.expiryDate')
-                .get()
+        // 2. Executar Queries na coleção de Redes (Companies)
+        const [totalAgg, activeAgg, cancelledAgg, activeCompaniesSnap, newCompaniesSnap] = await Promise.all([
+            db.collection('companies').count().get(),
+            db.collection('companies').where('status', '==', 'active').count().get(),
+            db.collection('companies').where('status', 'in', ['deleted', 'inactive']).count().get(),
+            db.collection('companies').where('status', '==', 'active').select('planId').get(),
+            db.collection('companies').where('createdAt', '>=', admin.firestore.Timestamp.fromDate(thirtyDaysAgo)).select('createdAt').get()
         ]);
 
-        const totalEstablishments = totalAgg.data().count;
+        const totalCompanies = totalAgg.data().count;
         const activeCount = activeAgg.data().count;
         const cancelledCount = cancelledAgg.data().count;
 
         // Cálculo MRR
         let mrr = 0;
-        mrrSnap.forEach(doc => {
-            const pid = doc.data().subscription?.planId;
+        activeCompaniesSnap.forEach(doc => {
+            const pid = doc.data().planId;
             if (pid && typeof planPrices[pid] === 'number') mrr += planPrices[pid];
         });
 
-        // Gráfico Novos Assinantes
+        // Gráfico Novos Clientes
         const newSubscribersLast30Days = Array(30).fill(0);
-        newUsersSnap.forEach(doc => {
+        newCompaniesSnap.forEach(doc => {
             const created = doc.data().createdAt.toDate();
             const daysAgo = Math.floor((now - created) / (1000 * 60 * 60 * 24));
             if (daysAgo >= 0 && daysAgo < 30) newSubscribersLast30Days[29 - daysAgo]++;
         });
 
-        // Lista de Atenção
-        const attentionList = attentionSnap.docs.map(doc => {
-            const data = doc.data();
-            const expiry = data.subscription?.expiryDate.toDate();
-            const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-            return {
-                id: doc.id,
-                name: data.name,
-                expiryDate: expiry,
-                daysLeft: diffDays,
-                status: diffDays < 0 ? 'Vencido' : 'A vencer'
-            };
-        });
-
-        const churnRate = totalEstablishments > 0 ? ((cancelledCount / totalEstablishments) * 100).toFixed(1) : 0;
+        const churnRate = totalCompanies > 0 ? ((cancelledCount / totalCompanies) * 100).toFixed(1) : 0;
 
         res.status(200).json({
-            kpis: { mrr, activeUsers: activeCount, newSubscribersData: newSubscribersLast30Days, churnRate, totalUsers: totalEstablishments },
-            attentionList
+            kpis: { mrr, activeUsers: activeCount, newSubscribersData: newSubscribersLast30Days, churnRate, totalUsers: totalCompanies },
+            attentionList: [] 
         });
 
     } catch (error) {
@@ -148,212 +107,338 @@ router.get('/dashboard-stats', async (req, res) => {
     }
 });
 
-// 2. CRIAR ESTABELECIMENTO
-router.post('/establishments', async (req, res) => {
-    const { establishmentId, name, ownerEmail, ownerPassword, modules, subscription } = req.body;
-    if (!establishmentId || !name || !ownerEmail || !ownerPassword) {
-        return res.status(400).json({ message: 'Campos obrigatórios faltando.' });
+// ============================================================================
+// 📦 1. GESTÃO DE PLANOS SAAS
+// ============================================================================
+
+// Criar Plano
+router.post('/plans', async (req, res) => {
+    const { name, price, maxEstablishments, features } = req.body;
+
+    if (!name || maxEstablishments === undefined) {
+        return res.status(400).json({ message: 'Nome e Limite de Empresas (maxEstablishments) são obrigatórios.' });
     }
+
     try {
-        const { db, auth } = req;
-
-        const slugCheck = await db.collection('establishments').where('urlId', '==', establishmentId).get();
-        if (!slugCheck.empty) return res.status(409).json({ message: 'URL ID já em uso.' });
-
-        const userRecord = await auth.createUser({ email: ownerEmail, password: ownerPassword, displayName: name });
-
-        const establishmentData = {
-            name, ownerUid: userRecord.uid, ownerEmail, status: 'active', urlId: establishmentId,
-            modules: modules || defaultModules, createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            subscription: subscription && subscription.planId ? {
-                planId: subscription.planId,
-                expiryDate: admin.firestore.Timestamp.fromDate(new Date(subscription.expiryDate))
-            } : {
-                planId: 'trial',
-                expiryDate: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 7*24*60*60*1000))
-            }
-        };
-
-        await db.collection('establishments').doc(establishmentId).set(establishmentData);
-        await auth.setCustomUserClaims(userRecord.uid, { role: 'owner', establishmentId });
-
-        await db.collection('users').doc(userRecord.uid).set({
-            name, email: ownerEmail, establishmentId, permissions: masterPermissions,
-            status: 'active', isOwnerMaster: true, createdAt: admin.firestore.FieldValue.serverTimestamp()
+        const { db } = req;
+        const planRef = await db.collection('saas_plans').add({
+            name,
+            price: Number(price) || 0,
+            maxEstablishments: Number(maxEstablishments),
+            features: features || [],
+            active: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        res.status(201).json({ message: 'Criado com sucesso!', uid: userRecord.uid });
+        res.status(201).json({ message: 'Plano criado com sucesso!', planId: planRef.id });
     } catch (error) {
-        console.error("Erro criar:", error);
-        res.status(500).json({ message: error.code === 'auth/email-already-exists' ? 'Email já usado.' : 'Erro servidor.' });
+        handleFirestoreError(res, error, 'criação de plano');
     }
 });
 
-// 3. LISTAR ESTABELECIMENTOS (OTIMIZADA COM .select)
-router.get('/establishments', async (req, res) => {
+// Listar Planos (Apenas os ativos)
+router.get('/plans', async (req, res) => {
+    try {
+        const { db } = req;
+        const snapshot = await db.collection('saas_plans').where('active', '==', true).get();
+        const plans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.status(200).json(plans);
+    } catch (error) {
+        handleFirestoreError(res, error, 'listagem de planos');
+    }
+});
+
+// Atualizar Plano
+router.put('/plans/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, price, maxEstablishments, features } = req.body;
+
+    if (!name || maxEstablishments === undefined) {
+        return res.status(400).json({ message: 'Nome e Limite de Empresas são obrigatórios.' });
+    }
+
+    try {
+        const { db } = req;
+        await db.collection('saas_plans').doc(id).update({
+            name,
+            price: Number(price) || 0,
+            maxEstablishments: Number(maxEstablishments),
+            features: features || [],
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.status(200).json({ message: 'Plano atualizado com sucesso!' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'atualização de plano');
+    }
+});
+
+// Excluir Plano (Soft Delete para não quebrar clientes antigos)
+router.delete('/plans/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { db } = req;
+        await db.collection('saas_plans').doc(id).update({ active: false });
+        res.status(200).json({ message: 'Plano desativado com sucesso!' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'exclusão de plano');
+    }
+});
+
+// ============================================================================
+// 🏢 2. WIZARD: CRIAÇÃO DO CLIENTE / REDE / TENANT ATÔMICO
+// ============================================================================
+
+router.post('/tenants', async (req, res) => {
+    const { db, auth } = req;
+    const { 
+        companyName, documentInfo, 
+        planId, 
+        adminName, adminEmail, adminPassword, adminPhone 
+    } = req.body;
+
+    if (!companyName || !planId || !adminEmail || !adminPassword) {
+        return res.status(400).json({ message: 'Dados incompletos para o Setup do Cliente.' });
+    }
+
+    try {
+        const planDoc = await db.collection('saas_plans').doc(planId).get();
+        if (!planDoc.exists) return res.status(400).json({ message: 'Plano selecionado não existe.' });
+
+        const urlIdCandidate = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const slugCheck = await db.collection('establishments').where('urlId', '==', urlIdCandidate).get();
+        const finalUrlId = slugCheck.empty ? urlIdCandidate : `${urlIdCandidate}-${Date.now().toString().slice(-4)}`;
+
+        let userRecord;
+        try {
+            userRecord = await auth.createUser({
+                email: adminEmail,
+                password: adminPassword,
+                displayName: adminName,
+            });
+        } catch (authError) {
+            return res.status(400).json({ message: authError.code === 'auth/email-already-exists' ? 'O Email já está em uso.' : `Erro Auth: ${authError.message}` });
+        }
+
+        const companyRef = db.collection('companies').doc();
+        const matrizRef = db.collection('establishments').doc();
+        const userRef = db.collection('users').doc(userRecord.uid);
+
+        await db.runTransaction(async (transaction) => {
+            transaction.set(companyRef, {
+                name: companyName,
+                document: documentInfo || '',
+                planId: planId,
+                ownerUid: userRecord.uid,
+                ownerEmail: adminEmail,
+                status: 'active',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            transaction.set(matrizRef, {
+                companyId: companyRef.id,
+                name: `Matriz - ${companyName}`,
+                type: 'Matriz',
+                urlId: finalUrlId,
+                status: 'active',
+                modules: defaultModules,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            transaction.set(userRef, {
+                email: adminEmail,
+                name: adminName,
+                phone: adminPhone || '',
+                role: 'company_admin', 
+                companyId: companyRef.id,
+                establishmentId: matrizRef.id, 
+                accessibleIn: [matrizRef.id], 
+                permissions: masterPermissions,
+                status: 'active',
+                isOwnerMaster: true,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        await auth.setCustomUserClaims(userRecord.uid, {
+            companyId: companyRef.id,
+            role: 'company_admin'
+        });
+
+        res.status(201).json({ 
+            message: 'Ambiente do Cliente criado com sucesso!', 
+            companyId: companyRef.id,
+            loginUrlSlug: finalUrlId
+        });
+
+    } catch (error) {
+        if (adminEmail) {
+            try {
+                const u = await admin.auth().getUserByEmail(adminEmail);
+                if (u) await admin.auth().deleteUser(u.uid);
+            } catch (e) {} 
+        }
+        handleFirestoreError(res, error, 'criação de tenant (Setup Wizard)');
+    }
+});
+
+// ============================================================================
+// 🏬 3. ADICIONAR FILIAL (COM TRAVA DE UPSELL E LIMITE DE PLANO)
+// ============================================================================
+
+router.post('/tenants/:companyId/branches', async (req, res) => {
+    const { companyId } = req.params;
+    const { name, urlId, address, phone } = req.body;
+    const { db } = req;
+
+    if (!name || !urlId) return res.status(400).json({ message: 'Nome e URL de login (slug) são obrigatórios.' });
+
+    try {
+        const slugCheck = await db.collection('establishments').where('urlId', '==', urlId).get();
+        if (!slugCheck.empty) return res.status(409).json({ message: 'URL de Login já em uso por outra loja.' });
+
+        await db.runTransaction(async (transaction) => {
+            const companyDoc = await transaction.get(db.collection('companies').doc(companyId));
+            if (!companyDoc.exists) throw new Error("Rede não encontrada.");
+            
+            const planDoc = await transaction.get(db.collection('saas_plans').doc(companyDoc.data().planId));
+            if (!planDoc.exists) throw new Error("Plano do cliente inválido.");
+
+            const maxEstablishments = planDoc.data().maxEstablishments || 1;
+
+            const branchesQuery = await transaction.get(db.collection('establishments').where('companyId', '==', companyId));
+            
+            if (branchesQuery.size >= maxEstablishments) {
+                throw new Error(`UPSELL_REQUIRED: O plano atual permite no máximo ${maxEstablishments} unidade(s). Realize um upgrade para adicionar mais filiais.`);
+            }
+
+            const newBranchRef = db.collection('establishments').doc();
+            transaction.set(newBranchRef, {
+                companyId: companyId,
+                name: name,
+                type: 'Filial',
+                urlId: urlId,
+                address: address || '',
+                phone: phone || '',
+                status: 'active',
+                modules: defaultModules,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const masterUsersSnapshot = await transaction.get(db.collection('users').where('companyId', '==', companyId).where('role', '==', 'company_admin'));
+            masterUsersSnapshot.forEach(userDoc => {
+                transaction.update(userDoc.ref, {
+                    accessibleIn: admin.firestore.FieldValue.arrayUnion(newBranchRef.id)
+                });
+            });
+        });
+
+        res.status(201).json({ message: 'Nova unidade adicionada com sucesso à Rede!' });
+
+    } catch (error) {
+        if (error.message.includes('UPSELL_REQUIRED')) {
+            const cleanMessage = error.message.replace('UPSELL_REQUIRED: ', '');
+            return res.status(403).json({ message: cleanMessage, code: 'LIMIT_REACHED' });
+        }
+        handleFirestoreError(res, error, 'criação de filial');
+    }
+});
+
+// ============================================================================
+// 👥 4. LISTAR INQUILINOS (COMPANIES / REDES)
+// ============================================================================
+
+router.get('/tenants', async (req, res) => {
     try {
         const { db } = req;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const search = (req.query.search || '').toLowerCase();
-        const status = req.query.status; 
-        const planId = req.query.plan;
-        const dateRange = req.query.dateRange; 
-        const sortBy = req.query.sortBy || 'createdAt';
-        const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
-
-        let query = db.collection('establishments');
-
-        if (status && status !== 'all') query = query.where('status', '==', status);
-        else if (!status) query = query.where('status', 'in', ['active', 'inactive']);
-
-        if (dateRange === 'this_month') {
-            const now = new Date();
-            const start = new Date(now.getFullYear(), now.getMonth(), 1);
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            query = query.where('createdAt', '>=', start).where('createdAt', '<=', end);
-        }
-
-        // --- OTIMIZAÇÃO: Select apenas campos da tabela ---
-        // Evita baixar objetos gigantes com configurações e logs
-        query = query.select('name', 'ownerEmail', 'status', 'subscription', 'createdAt', 'urlId', 'ownerUid');
-
+        
+        let query = db.collection('companies').orderBy('createdAt', 'desc');
         const snapshot = await query.get();
-        let establishments = snapshot.docs.map(doc => {
-            const d = doc.data();
-            return { 
-                id: doc.id, ...d,
-                planId: d.subscription?.planId || 'N/A',
-                createdAtDate: getSafeDate(d.createdAt) || new Date(0)
-            };
-        });
+        
+        let companies = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // Filtros em Memória (Search)
         if (search) {
-            establishments = establishments.filter(est => 
-                (est.name?.toLowerCase().includes(search)) || 
-                (est.id?.toLowerCase().includes(search)) ||
-                (est.urlId?.toLowerCase().includes(search)) || 
-                (est.ownerEmail?.toLowerCase().includes(search))
+            companies = companies.filter(c => 
+                (c.name?.toLowerCase().includes(search)) || 
+                (c.document?.toLowerCase().includes(search)) ||
+                (c.ownerEmail?.toLowerCase().includes(search))
             );
         }
 
-        if (planId && planId !== 'all') establishments = establishments.filter(est => est.planId === planId);
-
-        // Ordenação em Memória
-        establishments.sort((a, b) => {
-            let valA = a[sortBy];
-            let valB = b[sortBy];
-            if (sortBy === 'createdAt') { valA = a.createdAtDate; valB = b.createdAtDate; }
-            else { valA = String(valA||'').toLowerCase(); valB = String(valB||'').toLowerCase(); }
-            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-        // Paginação
-        const total = establishments.length;
+        const total = companies.length;
         const totalPages = Math.ceil(total / limit);
-        const paginatedData = establishments.slice((page - 1) * limit, page * limit);
+        const paginatedData = companies.slice((page - 1) * limit, page * limit);
 
         res.status(200).json({ data: paginatedData, pagination: { total, page, limit, totalPages } });
-
     } catch (error) {
-        handleFirestoreError(res, error, 'listar estabelecimentos');
+        handleFirestoreError(res, error, 'listar inquilinos');
     }
 });
 
-// 4. DELETAR (LIXEIRA)
-router.delete('/establishments/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const { db, auth } = req;
-        const ref = db.collection('establishments').doc(id);
-        const doc = await ref.get();
-        if (!doc.exists) return res.status(404).json({ message: 'Não encontrado.' });
-
-        if (doc.data().ownerUid) {
-            try { await auth.updateUser(doc.data().ownerUid, { disabled: true }); }
-            catch (e) { if(e.code !== 'auth/user-not-found') console.warn('Erro ao desativar user:', e); }
-        }
-
-        await ref.update({ status: 'deleted', deletedAt: admin.firestore.FieldValue.serverTimestamp() });
-        res.status(200).json({ message: 'Movido para lixeira.' });
-    } catch (error) { handleFirestoreError(res, error, 'deletar'); }
-});
-
-// 5. RESTAURAR
-router.post('/establishments/:id/restore', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const { db, auth } = req;
-        const ref = db.collection('establishments').doc(id);
-        const doc = await ref.get();
-        if (!doc.exists) return res.status(404).json({ message: 'Não encontrado.' });
-
-        if (doc.data().ownerUid) {
-            try { await auth.updateUser(doc.data().ownerUid, { disabled: false }); }
-            catch (e) {}
-        }
-
-        await ref.update({ status: 'active', deletedAt: admin.firestore.FieldValue.delete() });
-        res.status(200).json({ message: 'Restaurado.' });
-    } catch (error) { handleFirestoreError(res, error, 'restaurar'); }
-});
-
-// 6. ATUALIZAR DETALHES
-router.put('/establishments/:id/details', async (req, res) => {
-    const { id } = req.params;
-    const { name, urlId } = req.body;
-    if (!name) return res.status(400).json({ message: "Nome obrigatório." });
-
-    try {
-        const { db } = req;
-        if (urlId) {
-            const existing = await db.collection('establishments').where('urlId', '==', urlId).get();
-            if (!existing.empty && existing.docs[0].id !== id) return res.status(409).json({ message: 'URL em uso.' });
-        }
-        await db.collection('establishments').doc(id).update({ name, ...(urlId && { urlId }) });
-        res.status(200).json({ message: 'Atualizado.' });
-    } catch (error) { handleFirestoreError(res, error, 'atualizar detalhes'); }
-});
-
-router.patch('/establishments/:id/modules', async (req, res) => {
-    try {
-        await req.db.collection('establishments').doc(req.params.id).update({ modules: req.body.modules });
-        res.status(200).json({ message: 'Módulos atualizados.' });
-    } catch (error) { handleFirestoreError(res, error, 'atualizar módulos'); }
-});
-
-router.patch('/establishments/:id/status', async (req, res) => {
-    const { id } = req.params;
+router.patch('/tenants/:companyId/status', async (req, res) => {
+    const { companyId } = req.params;
     const { status } = req.body;
     try {
         const { db, auth } = req;
-        const ref = db.collection('establishments').doc(id);
-        const doc = await ref.get();
         
-        const ownerUid = doc.data()?.ownerUid;
-        const usersSnap = await db.collection('users').where('establishmentId', '==', id).get();
+        await db.collection('companies').doc(companyId).update({ status });
         
-        const uids = usersSnap.docs.map(d => d.id);
-        if(ownerUid) uids.push(ownerUid);
+        const ests = await db.collection('establishments').where('companyId', '==', companyId).get();
+        const batch = db.batch();
+        ests.forEach(doc => batch.update(doc.ref, { status }));
+        await batch.commit();
 
-        const disabled = status === 'inactive';
-        await Promise.all(uids.map(uid => auth.updateUser(uid, { disabled }).catch(()=>{})));
+        const usersSnap = await db.collection('users').where('companyId', '==', companyId).get();
+        const disabled = status === 'inactive' || status === 'blocked';
         
-        await ref.update({ status });
-        res.status(200).json({ message: `Status alterado para ${status}.` });
-    } catch (error) { handleFirestoreError(res, error, 'alterar status'); }
+        await Promise.all(usersSnap.docs.map(d => auth.updateUser(d.id, { disabled }).catch(()=>{})));
+        
+        res.status(200).json({ message: `Status da rede alterado para ${status}.` });
+    } catch (error) { handleFirestoreError(res, error, 'alterar status da rede'); }
 });
 
-// 7. GESTÃO DE USUÁRIOS (SUPER ADMIN)
+
+// ============================================================================
+// 🕵️ 5. IMPERSONATION (ENTRAR COMO O CLIENTE)
+// ============================================================================
+
+router.post('/tenants/:companyId/impersonate', async (req, res) => {
+    try {
+        const { db, auth } = req;
+        const { companyId } = req.params;
+
+        const companyDoc = await db.collection('companies').doc(companyId).get();
+        if (!companyDoc.exists || !companyDoc.data().ownerUid) {
+            return res.status(400).json({ message: 'Rede inválida ou dono não encontrado.' });
+        }
+
+        const matrizSnap = await db.collection('establishments').where('companyId', '==', companyId).where('type', '==', 'Matriz').limit(1).get();
+        const establishmentId = matrizSnap.empty ? companyId : matrizSnap.docs[0].id;
+
+        const token = await auth.createCustomToken(companyDoc.data().ownerUid, { 
+            role: 'company_admin', 
+            companyId: companyId,
+            establishmentId: establishmentId, 
+            impersonated: true 
+        });
+        
+        res.status(200).json({ token });
+    } catch (e) { handleFirestoreError(res, e, 'impersonate company'); }
+});
+
+// ============================================================================
+// 🔐 6. GESTÃO DE USUÁRIOS SUPER ADMIN (Acesso Interno Kairos)
+// ============================================================================
+
 router.post('/users', async (req, res) => {
     try {
         const { auth } = req;
         const u = await auth.createUser({ email: req.body.email, password: req.body.password });
         await auth.setCustomUserClaims(u.uid, { role: 'super-admin' });
-        res.status(201).json({ message: 'Admin criado.', uid: u.uid });
+        res.status(201).json({ message: 'Admin Interno criado.', uid: u.uid });
     } catch (error) { res.status(500).json({ message: error.code }); }
 });
 
@@ -362,23 +447,13 @@ router.get('/users', async (req, res) => {
         const list = await req.auth.listUsers(1000);
         const admins = list.users.filter(u => u.customClaims?.role === 'super-admin').map(u => ({ uid: u.uid, email: u.email, role: 'super-admin' }));
         res.status(200).json(admins);
-    } catch (error) { res.status(500).json({ message: 'Erro listar.' }); }
+    } catch (error) { res.status(500).json({ message: 'Erro listar admins.' }); }
 });
 
 router.delete('/users/:uid', async (req, res) => {
     if (req.params.uid === req.user.uid) return res.status(403).json({ message: 'Não pode se apagar.' });
-    try { await req.auth.deleteUser(req.params.uid); res.status(200).json({ message: 'Apagado.' }); }
-    catch (e) { res.status(500).json({ message: 'Erro.' }); }
-});
-
-// 8. IMPERSONATION
-router.post('/establishments/:id/impersonate', async (req, res) => {
-    try {
-        const doc = await req.db.collection('establishments').doc(req.params.id).get();
-        if (!doc.exists || !doc.data().ownerUid) return res.status(400).json({ message: 'Inválido.' });
-        const token = await req.auth.createCustomToken(doc.data().ownerUid, { role: 'owner', establishmentId: req.params.id, impersonated: true });
-        res.status(200).json({ token });
-    } catch (e) { handleFirestoreError(res, e, 'impersonate'); }
+    try { await req.auth.deleteUser(req.params.uid); res.status(200).json({ message: 'Admin Apagado.' }); }
+    catch (e) { res.status(500).json({ message: 'Erro ao apagar admin.' }); }
 });
 
 module.exports = router;

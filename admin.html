@@ -3,232 +3,221 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kairos - Painel Super Admin</title>
+    <title>Kairos - Super Admin</title>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
+                    colors: {
+                        brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 900: '#1e3a8a' },
+                        sidebar: '#0f172a',
+                        sidebarHover: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
     
     <style>
-        body.admin-body {
-            display: flex;
-            height: 100vh;
-            margin: 0;
-            font-family: 'Inter', sans-serif;
-            background-color: #f4f6f9;
-            overflow: hidden;
+        body { background-color: #f8fafc; }
+        
+        /* Scrollbar customizada para o Admin */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Loading global simples */
+        .loader {
+            border: 3px solid #f3f4f6; border-top: 3px solid #3b82f6;
+            border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite;
         }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* --- Menu Lateral --- */
-        .sidebar {
-            width: 260px;
-            background-color: #111827;
-            color: #ffffff;
-            display: flex;
-            flex-direction: column;
-            transition: all 0.3s;
-        }
-
-        .sidebar-header {
-            padding: 25px 20px;
-            text-align: center;
-            font-weight: 700;
-            font-size: 1.2rem;
-            letter-spacing: 1px;
-            border-bottom: 1px solid #1f2937;
-        }
-
-        .sidebar-menu {
-            list-style: none;
-            padding: 15px 0;
-            margin: 0;
-            flex: 1;
-        }
-
-        .sidebar-menu a {
-            display: flex;
-            align-items: center;
-            padding: 15px 25px;
-            color: #9ca3af;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.2s;
-            border-left: 4px solid transparent;
-        }
-
-        .sidebar-menu a:hover, .sidebar-menu a.active {
-            background-color: #1f2937;
-            color: #ffffff;
-            border-left-color: #3b82f6;
-        }
-
-        /* --- Área Principal --- */
-        .main-wrapper {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .topbar {
-            background-color: #ffffff;
-            padding: 20px 30px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 10;
-        }
-
-        .topbar h2 {
-            margin: 0;
-            font-size: 1.4rem;
-            color: #1f2937;
-        }
-
-        .user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .role-badge {
-            background-color: #dbeafe;
-            color: #1d4ed8;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .btn-logout {
-            background-color: #fee2e2;
-            color: #dc2626;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .btn-logout:hover {
-            background-color: #fecaca;
-        }
-
-        /* --- O Palco Dinâmico --- */
-        #dynamic-content {
-            padding: 30px;
-            flex: 1;
-            overflow-y: auto;
-            background-color: #f4f6f9;
-        }
+        /* Animações de entrada */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
     </style>
 </head>
-<body class="admin-body">
+<body class="flex h-screen overflow-hidden text-slate-800 antialiased selection:bg-brand-500 selection:text-white">
 
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            KAIROS ⚡ ADMIN
+    <aside class="w-[260px] bg-sidebar text-slate-300 flex flex-col flex-shrink-0 transition-all duration-300 z-20">
+        
+        <div class="h-20 flex items-center px-6 border-b border-white/5">
+            <div class="flex items-center gap-3 text-white">
+                <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shadow-lg shadow-brand-500/30">
+                    <i class="bi bi-lightning-charge-fill text-lg"></i>
+                </div>
+                <span class="font-black text-xl tracking-tight">KAIROS <span class="font-medium text-brand-500 text-sm">SaaS</span></span>
+            </div>
         </div>
         
-        <ul class="sidebar-menu">
-            <li data-module="dashboard">
-                <a href="#dashboard" id="menu-dashboard" class="active">📊 Visão Geral</a>
-            </li>
-            <li data-module="establishments">
-                <a href="#establishments" id="menu-establishments">🏢 Estabelecimentos</a>
-            </li>
-            <li data-module="whatsapp">
-                <a href="#whatsapp" id="menu-whatsapp">💬 Central WhatsApp</a>
-            </li>
-            <li data-module="financial">
-                <a href="#financial" id="menu-financial">💳 Planos & Faturas</a>
-            </li>
-            <li data-module="team">
-                <a href="#team" id="menu-team">👥 Equipe Kairos</a>
-            </li>
-            <li data-module="settings">
-                <a href="#settings" id="menu-settings">⚙️ Configurações API</a>
-            </li>
-        </ul>
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+            <p class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Gestão Principal</p>
+            
+            <a href="#dashboard" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-grid-1x2-fill text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Visão Geral
+            </a>
+            
+            <a href="#establishments" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-buildings-fill text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Clientes (Redes)
+            </a>
+            
+            <a href="#financial" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-credit-card-2-front-fill text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Planos & Faturas
+            </a>
+
+            <div class="my-6 border-t border-white/5"></div>
+            <p class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 mt-5">Sistema</p>
+            
+            <a href="#whatsapp" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-whatsapp text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Instâncias WhatsApp
+            </a>
+            
+            <a href="#team" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-shield-lock-fill text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Admin Internos
+            </a>
+            
+            <a href="#settings" class="menu-item group flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-sm transition-all hover:bg-sidebarHover hover:text-white mb-1">
+                <i class="bi bi-gear-fill text-slate-400 group-hover:text-brand-500 transition-colors"></i>
+                Config. Globais
+            </a>
+        </nav>
+
+        <div class="p-4 border-t border-white/5">
+            <div class="bg-sidebarHover rounded-xl p-3 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs border border-slate-600">
+                    AD
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs font-bold text-white truncate">Super Admin</p>
+                    <p id="user-role-display" class="text-[9px] text-brand-400 font-medium truncate uppercase tracking-widest">Carregando...</p>
+                </div>
+            </div>
+        </div>
+
     </aside>
 
-    <div class="main-wrapper">
+    <div class="flex-1 flex flex-col min-w-0 bg-slate-50">
         
-        <header class="topbar">
-            <h2 id="page-title">Visão Geral</h2>
-            <div class="user-info">
-                <span class="role-badge" id="user-role-display">Carregando...</span>
-                <button id="btn-logout" class="btn-logout">Sair do Sistema</button>
+        <header class="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 flex-shrink-0">
+            <div class="flex items-center gap-4">
+                <h2 id="page-title" class="text-xl font-black text-slate-800 tracking-tight">Painel</h2>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-brand-600 transition-colors border border-slate-200">
+                    <i class="bi bi-bell-fill"></i>
+                </button>
+                <div class="w-px h-8 bg-slate-200"></div>
+                <button id="btn-logout" class="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 rounded-lg text-sm font-bold transition-colors border border-rose-100 active:scale-95">
+                    <i class="bi bi-box-arrow-right"></i> Sair
+                </button>
             </div>
         </header>
 
-        <main id="dynamic-content">
-            <div style="display: flex; justify-content: center; align-items: center; height: 100%; color: #6b7280;">
-                Carregando sistema seguro...
+        <main id="dynamic-content" class="flex-1 overflow-y-auto p-6 md:p-8">
+            <div class="h-full flex flex-col items-center justify-center text-slate-400">
+                <div class="loader mb-4"></div>
+                <p class="font-medium text-sm animate-pulse">Iniciando ambiente seguro...</p>
             </div>
         </main>
+        
     </div>
 
+    <div id="genericModal" style="display: none;"></div>
+    <div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
     <script type="module">
-        // Importa a segurança
         import { initializeSecurity, logoutAdmin, currentUserRole } from './js/admin/super-security.js';
-        
-        // Importa os módulos dinâmicos
         import { loadDashboard } from './js/admin/super-dashboard.js';
         import { loadEstablishments } from './js/admin/super-establishments.js';
-        import { loadFinancial } from './js/admin/super-financial.js'; // NOVO MÓDULO ADICIONADO
+        import { loadFinancial } from './js/admin/super-financial.js'; 
         
-        // Inicializa o bloqueio de segurança
         initializeSecurity();
 
-        // Configura o botão de sair
         document.getElementById('btn-logout').addEventListener('click', logoutAdmin);
 
-        // Lógica de navegação no menu lateral
-        const menuLinks = document.querySelectorAll('.sidebar-menu a');
+        const menuLinks = document.querySelectorAll('.menu-item');
         const contentArea = document.getElementById('dynamic-content'); 
+        const pageTitle = document.getElementById('page-title');
+        
+        // Estilo ativo do Tailwind
+        const activeClasses = ['bg-brand-600', 'text-white', 'shadow-md', 'shadow-brand-500/20'];
+        const inactiveClasses = ['hover:bg-sidebarHover', 'hover:text-white'];
         
         menuLinks.forEach(link => {
             link.addEventListener('click', async (e) => {
                 e.preventDefault();
                 
-                // Estiliza o botão clicado
-                menuLinks.forEach(l => l.classList.remove('active'));
-                e.target.classList.add('active');
+                // Reset de classes
+                menuLinks.forEach(l => {
+                    l.classList.remove(...activeClasses);
+                    l.classList.add(...inactiveClasses);
+                    const icon = l.querySelector('i');
+                    if(icon) icon.classList.replace('text-white', 'text-slate-400');
+                });
                 
-                // Atualiza título (remove os emojis para um visual mais limpo)
-                document.getElementById('page-title').innerText = e.target.innerText.substring(2).trim();
+                // Aplica classe ativa
+                const target = e.currentTarget;
+                target.classList.remove(...inactiveClasses);
+                target.classList.add(...activeClasses);
+                const activeIcon = target.querySelector('i');
+                if(activeIcon) activeIcon.classList.replace('text-slate-400', 'text-white');
+                
+                // Atualiza Título (Sem os ícones do HTML)
+                pageTitle.innerText = target.innerText.trim();
 
-                // Mostra o cargo
                 if(currentUserRole) {
                     document.getElementById('user-role-display').innerText = currentUserRole;
                 }
 
-                const moduleName = e.target.getAttribute('href').replace('#', '');
+                const moduleName = target.getAttribute('href').replace('#', '');
                 
-                // --- MÁGICA DOS MÓDULOS (ROTEAMENTO) ---
-                if (moduleName === 'dashboard') {
-                    await loadDashboard(contentArea);
-                } 
-                else if (moduleName === 'establishments') {
-                    await loadEstablishments(contentArea);
-                }
-                else if (moduleName === 'financial') {
-                    // NOVO: Chama a função do ecrã financeiro
-                    await loadFinancial(contentArea);
-                }
-                else {
-                    contentArea.innerHTML = `<h3 style="color: #6b7280;">Módulo ${moduleName} em desenvolvimento...</h3>`;
-                }
+                // Animação de transição limpa
+                contentArea.innerHTML = '<div class="flex h-full items-center justify-center"><div class="loader"></div></div>';
+                
+                setTimeout(async () => {
+                    if (moduleName === 'dashboard') {
+                        await loadDashboard(contentArea);
+                    } 
+                    else if (moduleName === 'establishments') {
+                        await loadEstablishments(contentArea);
+                    }
+                    else if (moduleName === 'financial') {
+                        await loadFinancial(contentArea);
+                    }
+                    else {
+                        contentArea.innerHTML = `
+                            <div class="flex flex-col items-center justify-center h-full text-slate-400">
+                                <i class="bi bi-tools text-5xl mb-4 opacity-30"></i>
+                                <h3 class="text-lg font-bold text-slate-600">Módulo em Desenvolvimento</h3>
+                                <p class="text-sm mt-1">A seção "${moduleName}" estará disponível em breve.</p>
+                            </div>
+                        `;
+                    }
+                }, 300); // Pequeno delay para a UI respirar
             });
         });
 
-        // Auto-clique no Dashboard ao carregar a página
+        // Auto-click inicial
         setTimeout(() => {
-            const dashboardBtn = document.getElementById('menu-dashboard');
-            if(dashboardBtn) dashboardBtn.click();
+            const firstMenu = document.querySelector('.menu-item[href="#dashboard"]');
+            if(firstMenu) firstMenu.click();
         }, 1000);
 
     </script>

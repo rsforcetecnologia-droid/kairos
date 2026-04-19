@@ -21,7 +21,8 @@ const verifyToken = async (req, res, next) => {
         const decodedToken = await admin.auth().verifyIdToken(token);
         req.user = decodedToken; // Adiciona o payload do token ao objeto da requisição
         
-        // --- INÍCIO DA MODIFICAÇÃO ---
+        // --- INÍCIO DA MODIFICAÇÃO (PERMISSÕES E ROLES) ---
+        
         // Se for um employee, busca os dados da collection 'users'
         if (req.user.role === 'employee' && req.user.establishmentId) {
              const userDoc = await admin.firestore().collection('users').doc(req.user.uid).get();
@@ -30,12 +31,13 @@ const verifyToken = async (req, res, next) => {
                  // Adiciona o professionalId, o nome E AS PERMISSÕES ao req.user
                  req.user.professionalId = userData.professionalId || null; 
                  req.user.name = userData.name || req.user.name; 
-                 req.user.permissions = userData.permissions || {}; // <-- ADICIONADO
+                 req.user.permissions = userData.permissions || {}; 
              } else {
                  // Se o documento do usuário não for encontrado, define permissões vazias
                  req.user.permissions = {};
              }
-        // NOVO: Se for um owner, busca o professionalId associado ao email dele
+        
+        // Se for um owner (Unidade Única), busca o professionalId associado ao email dele
         } else if (req.user.role === 'owner' && req.user.establishmentId) {
             const profQuery = await admin.firestore().collection('professionals')
                 .where('establishmentId', '==', req.user.establishmentId)
@@ -44,11 +46,16 @@ const verifyToken = async (req, res, next) => {
                 .get();
             
             if (!profQuery.empty) {
-                req.user.professionalId = profQuery.docs[0].id; // <-- ADICIONADO
+                req.user.professionalId = profQuery.docs[0].id; 
             }
             // Donos (owner) têm permissão para tudo por padrão
-            req.user.permissions = null; // <-- ADICIONADO (null significa "sem restrições")
+            req.user.permissions = null; 
+
+        // Se for um Dono de Rede Multi-Tenant (Novo SaaS)
+        } else if (req.user.role === 'company_admin') {
+            req.user.permissions = null; // Master tem permissão a tudo
         }
+
         // --- FIM DA MODIFICAÇÃO ---
 
         next();
@@ -60,38 +67,40 @@ const verifyToken = async (req, res, next) => {
 
 // 2. Verifica se o usuário (já validado por verifyToken) é um Super Admin
 const isSuperAdmin = (req, res, next) => {
-    if (req.user && req.user.role === 'super-admin') {
+    // CORREÇÃO: Aceita as duas nomenclaturas para evitar falhas com tokens legados ou o script criarAdmin
+    if (req.user && (req.user.role === 'super-admin' || req.user.role === 'super_admin')) {
         return next();
     }
     return res.status(403).json({ message: 'Acesso negado. Requer permissão de Super Administrador.' });
 };
 
-// 3. Verifica se o usuário é um Dono (Owner)
+// 3. Verifica se o usuário é um Dono (Owner ou Master da Rede)
 const isOwner = (req, res, next) => {
-    if (req.user && req.user.role === 'owner') {
+    if (req.user && (req.user.role === 'owner' || req.user.role === 'company_admin')) {
         return next();
     }
     return res.status(403).json({ message: 'Acesso negado. Requer permissão de Dono do Estabelecimento.' });
 };
 
-// 4. Verifica se o usuário tem acesso geral (Dono OU Funcionário)
+// 4. Verifica se o usuário tem acesso geral (Dono, Company Admin OU Funcionário)
 const hasAccess = (req, res, next) => {
-    if (req.user && (req.user.role === 'owner' || req.user.role === 'employee')) {
+    if (req.user && (req.user.role === 'owner' || req.user.role === 'employee' || req.user.role === 'company_admin')) {
         return next();
     }
     return res.status(403).json({ message: 'Acesso negado. Permissões insuficientes.' });
 };
 
-// 5. NOVO MIDDLEWARE: Verifica se a assinatura está ativa ou dentro do período de carência
+// 5. Verifica se a assinatura está ativa ou dentro do período de carência
 const checkSubscription = async (req, res, next) => {
     // Apenas aplica a lógica se for um usuário de estabelecimento (Owner ou Employee)
     if (!req.user || !req.user.establishmentId) {
         return next();
     }
     
-    // Usuários sem permissões (proprietários de novos estabelecimentos) também devem passar.
-    if (req.user.role === 'owner' || req.user.role === 'employee') {
+    // Usuários sem permissões (proprietários de novos estabelecimentos ou masters) também devem passar.
+    if (req.user.role === 'owner' || req.user.role === 'employee' || req.user.role === 'company_admin') {
         
+        // Pega a matriz / estabelecimento principal do token
         const { establishmentId } = req.user;
         const GRACE_PERIOD_DAYS = 5; // Período de carência
         const currentDate = new Date();
@@ -106,27 +115,25 @@ const checkSubscription = async (req, res, next) => {
 
             const subscription = establishmentDoc.data().subscription;
 
-            // Se não houver plano ou data de expiração, bloqueia o acesso (ou usa o módulo de teste)
+            // Se não houver plano ou data de expiração, bloqueia o acesso
             if (!subscription || !subscription.expiryDate) {
+                // Em modo SaaS Multi-tenant, podemos deixar passar provisoriamente, mas para
+                // manter a sua regra de negócio ativa, mantemos o bloqueio:
                 return res.status(403).json({ message: 'Acesso negado. O estabelecimento não possui um plano de assinatura ativo.' });
             }
 
             const expiryTimestamp = subscription.expiryDate;
             let expiryDate;
 
-            // Check if it's a Firestore Timestamp object (which has a toDate method)
             if (expiryTimestamp && typeof expiryTimestamp.toDate === 'function') {
                 expiryDate = expiryTimestamp.toDate();
             }
-            // Check if it's a serialized Timestamp object (common when passed through JSON)
             else if (expiryTimestamp && typeof expiryTimestamp._seconds === 'number') {
                 expiryDate = new Date(expiryTimestamp._seconds * 1000);
             }
-            // Check if it's a string date
             else if (typeof expiryTimestamp === 'string') {
                 expiryDate = new Date(expiryTimestamp);
             } else {
-                // If it's none of the above, it's invalid or missing
                 return res.status(403).json({ message: 'Acesso negado. Assinatura com data de expiração inválida.' });
             }
             
@@ -141,7 +148,7 @@ const checkSubscription = async (req, res, next) => {
                 });
             }
             
-            // Aviso (opcional, mas bom para o fluxo) para o frontend
+            // Aviso para o frontend
             if (currentDate > expiryDate && currentDate <= gracePeriodEnd) {
                 res.setHeader('X-Subscription-Status', 'grace_period');
             } else if (currentDate <= expiryDate) {
