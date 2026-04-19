@@ -11,7 +11,6 @@ import * as cashierApi from '../api/cashier.js';
 import * as packagesApi from '../api/packages.js';
 import * as professionalsApi from '../api/professionals.js';
 import * as establishmentsApi from '../api/establishments.js';
-import * as financialApi from '../api/financial.js';
 import { state } from '../state.js';
 import { showNotification, showConfirmation, showGenericModal } from '../components/modal.js';
 import { navigateTo } from '../main.js';
@@ -209,7 +208,6 @@ function getSafeAllItems(comanda) {
     return comanda._cachedItems;
 }
 
-// --- LÓGICA DE SCREEN SWAP 100% NATIVA ---
 function showMobileDetail() {
     const layout = document.getElementById('comandas-layout');
     if (layout) layout.classList.add('mobile-detail-open');
@@ -1563,40 +1561,15 @@ async function handleFinalizeCheckout(comanda) {
     document.body.appendChild(loadingOverlay);
 
     try {
-        if (isAppointment) await appointmentsApi.checkoutAppointment(comanda.id, data);
-        else {
+        // As APIs de backend (appointmentsApi e salesApi) JÁ FAZEM A INTEGRAÇÃO NO SERVIDOR.
+        // Nenhuma requisição financeira extra deve ser disparada aqui.
+        if (isAppointment) {
+            await appointmentsApi.checkoutAppointment(comanda.id, data);
+        } else {
             data.establishmentId = state.establishmentId;
             data.clientId = comanda.clientId; data.clientName = comanda.clientName; data.professionalId = comanda.professionalId;
             if (comanda.clientPhone) data.clientPhone = comanda.clientPhone;
             await salesApi.createSale(data);
-        }
-
-        // --- INTEGRAÇÃO FINANCEIRA AUTOMÁTICA ---
-        try {
-            const clientEntity = comanda.clientName ? `${comanda.clientName} ${comanda.clientPhone ? '- ' + comanda.clientPhone : ''}`.trim() : 'Cliente Avulso';
-            
-            const config = localState.establishmentConfig || {};
-            const defNature = config.defaultReceitaNaturezaId || config.financeConfig?.receitaNaturezaId || null;
-            const defCostCenter = config.defaultReceitaCentroCustoId || config.financeConfig?.receitaCentroCustoId || null;
-            
-            for (const p of payments) {
-                if (p.method === 'fiado') continue; 
-                await financialApi.createReceivable({
-                    establishmentId: state.establishmentId,
-                    description: `Comanda - ${comanda.clientName || 'Avulso'}`,
-                    amount: p.value,
-                    dueDate: new Date().toISOString().split('T')[0],
-                    naturezaId: defNature,
-                    centroDeCustoId: defCostCenter,
-                    entity: clientEntity,
-                    paymentMethod: p.method,
-                    status: 'paid',
-                    paymentDate: new Date().toISOString().split('T')[0],
-                    origin: 'comanda'
-                });
-            }
-        } catch (finErr) {
-            console.error("Erro na integração com o financeiro:", finErr);
         }
         
         let msg = 'Venda finalizada com sucesso!';

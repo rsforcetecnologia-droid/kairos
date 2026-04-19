@@ -3,123 +3,120 @@
 import { state } from '../state.js';
 import * as appointmentsApi from '../api/appointments.js';
 import * as clientsApi from '../api/clients.js';
+import * as financialApi from '../api/financial.js'; 
 import { navigateTo } from '../main.js';
 import { escapeHTML } from '../utils.js';
 
 let revenueChartInstance = null;
 
+// Função auxiliar para obter YYYY-MM-DD em horário local (sem bugar fuso horário)
+function getLocalDateString(dateObj) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 export async function loadDashboardPage() {
     const contentDiv = document.getElementById('content');
     
-    // Estado de carregamento suave
     contentDiv.innerHTML = `
-        <div class="flex items-center justify-center h-full min-h-[60vh]">
+        <div class="flex items-center justify-center h-full min-h-[60vh] font-sans">
             <div class="flex flex-col items-center">
-                <div class="w-10 h-10 border-4 border-indigo-50 border-t-indigo-500 rounded-full animate-spin mb-4"></div>
-                <p class="text-slate-400 font-medium text-sm">A processar dados consolidados...</p>
+                <div class="w-12 h-12 border-[3px] border-indigo-50 border-t-indigo-500 rounded-full animate-spin mb-4 shadow-sm"></div>
+                <p class="text-slate-500 font-semibold text-sm tracking-wide animate-pulse">Sincronizando dados...</p>
             </div>
         </div>
     `;
 
     try {
-        // --- 1. Lógica de Datas ---
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const endOfToday = new Date(today);
         endOfToday.setHours(23, 59, 59, 999);
         
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         
         const sevenDaysAgo = new Date(today);
         sevenDaysAgo.setDate(today.getDate() - 6);
 
-        // --- 2. Identificar Contextos Selecionados (Multiseleção) ---
-        // Se a multiseleção já estiver ativa no state, usamos. Caso contrário, usamos o id único.
+        // 1. Identificar Contextos Selecionados (Multiseleção)
         const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
             ? state.selectedEstablishments 
             : [state.establishmentId];
+            
+        const selectedEstsString = estIds.join(',');
 
-        // --- 3. Busca de Dados Reais Agregada (Para Múltiplas Unidades) ---
-        // Faz a busca em paralelo para todas as lojas selecionadas
-        const fetchPromises = estIds.map(async (estId) => {
+        // 2. Busca Paralela de Agendamentos e Clientes (Mês atual)
+        const apptsClientsPromises = estIds.map(async (estId) => {
             const [appts, clients] = await Promise.all([
-                appointmentsApi.getAppointmentsByDateRange(estId, firstDayOfMonth.toISOString(), endOfToday.toISOString(), null),
-                clientsApi.getClients(estId)
+                appointmentsApi.getAppointmentsByDateRange(estId, firstDayOfMonth.toISOString(), endOfToday.toISOString(), null).catch(() => []),
+                clientsApi.getClients(estId).catch(() => [])
             ]);
-            return { appts: appts || [], clients: clients || [] };
+            return { appts, clients };
         });
 
-        const results = await Promise.all(fetchPromises);
+        // 3. Busca Paralela do Financeiro (Receitas Reais e Despesas do mês)
+        const financialPromises = Promise.all([
+            financialApi.getReceivables({ startDate: getLocalDateString(firstDayOfMonth), endDate: getLocalDateString(lastDayOfMonth), establishmentId: selectedEstsString }).catch(() => ({entries:[]})),
+            financialApi.getPayables({ startDate: getLocalDateString(firstDayOfMonth), endDate: getLocalDateString(lastDayOfMonth), establishmentId: selectedEstsString }).catch(() => ({entries:[]}))
+        ]);
 
-        // Consolidação dos dados
+        const [apptsClientsResults, [receivablesRes, payablesRes]] = await Promise.all([
+            Promise.all(apptsClientsPromises),
+            financialPromises
+        ]);
+
         let apptsMonth = [];
         let allClients = [];
 
-        results.forEach(res => {
+        apptsClientsResults.forEach(res => {
             apptsMonth = apptsMonth.concat(res.appts);
             allClients = allClients.concat(res.clients);
         });
 
-        // Função auxiliar para extrair o valor do agendamento
-        const getPrice = (appt) => {
-            return (appt.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) 
-                   || Number(appt.totalPrice || 0) 
-                   || Number(appt.servicePrice || 0);
-        };
+        const receivables = receivablesRes.entries || [];
+        const payables = payablesRes.entries || [];
 
-        // --- 4. Cálculo de Métricas ---
+        const todayString = getLocalDateString(today);
+
+        // 4. Cálculo de Métricas Financeiras
+        const receitaMes = receivables.filter(r => r.status === 'paid').reduce((sum, r) => sum + r.amount, 0);
+        const despesaMes = payables.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+        const saldoMes = receitaMes - despesaMes;
+
+        const receitaHoje = receivables.filter(r => 
+            r.status === 'paid' && 
+            (r.paymentDate === todayString || (!r.paymentDate && r.dueDate.startsWith(todayString)))
+        ).reduce((sum, r) => sum + r.amount, 0);
+
+        // 5. Cálculo de Métricas Operacionais
         const apptsToday = apptsMonth.filter(a => {
             const st = new Date(a.startTime);
             return st >= today && st <= endOfToday;
         });
 
-        const completedToday = apptsToday.filter(a => a.status === 'completed');
-        const completedMonth = apptsMonth.filter(a => a.status === 'completed');
-
-        const receitaHoje = completedToday.reduce((sum, a) => sum + getPrice(a), 0);
-        const receitaMes = completedMonth.reduce((sum, a) => sum + getPrice(a), 0);
         const agendamentosHoje = apptsToday.length;
+        const completedMonth = apptsMonth.filter(a => a.status === 'completed');
         const ticketMedio = completedMonth.length > 0 ? (receitaMes / completedMonth.length) : 0;
 
-        // --- 5. Dados para o Gráfico (Últimos 7 dias consolidados) ---
-        const labels = [];
-        const data = [];
-        const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-        
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(sevenDaysAgo);
-            d.setDate(sevenDaysAgo.getDate() + i);
-            labels.push(dayNames[d.getDay()]);
-            
-            const dayStart = new Date(d).setHours(0,0,0,0);
-            const dayEnd = new Date(d).setHours(23,59,59,999);
-            
-            const dayAppts = apptsMonth.filter(a => {
-                const st = new Date(a.startTime).getTime();
-                return a.status === 'completed' && st >= dayStart && st <= dayEnd;
-            });
-            const dayRev = dayAppts.reduce((sum, a) => sum + getPrice(a), 0);
-            data.push(dayRev);
-        }
-        const chartData = { labels, data };
-
-        // --- 6. Próximos Agendamentos (Hoje a partir de agora) ---
+        // 6. Próximos Agendamentos (Hoje a partir de agora)
         const nextAppointments = apptsToday
             .filter(a => new Date(a.startTime).getTime() >= now.getTime() && a.status !== 'completed' && a.status !== 'cancelled')
             .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-            .slice(0, 4) // Pega apenas os 4 próximos
+            .slice(0, 4) 
             .map(a => ({
                 client: a.clientName || 'Desconhecido',
                 service: a.serviceName || (a.services && a.services[0] ? a.services[0].name : 'Serviço'),
                 time: new Date(a.startTime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                prof: (a.professionalName || '').split(' ')[0] || 'Profissional',
+                prof: (a.professionalName || '').split(' ')[0] || 'Profissionais',
                 id: a.id
             }));
 
-        // --- 7. Aniversariantes de Hoje ---
+        // 7. Aniversariantes de Hoje (Remoção de duplicados multi-lojas)
         const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}`;
         
-        // Remove duplicados pelo telefone (caso o mesmo cliente exista em filiais diferentes)
         const uniqueClientsMap = new Map();
         allClients.forEach(c => {
             if (c.phone) uniqueClientsMap.set(c.phone, c);
@@ -133,8 +130,8 @@ export async function loadDashboardPage() {
                 let bMonth, bDay;
                 if (c.birthDate.includes('-')) {
                     const parts = c.birthDate.split('-');
-                    if(parts[0].length === 4) { bMonth = parts[1]; bDay = parts[2]; } // YYYY-MM-DD
-                    else { bDay = parts[0]; bMonth = parts[1]; } // DD-MM-YYYY
+                    if(parts[0].length === 4) { bMonth = parts[1]; bDay = parts[2]; } 
+                    else { bDay = parts[0]; bMonth = parts[1]; } 
                 } else if (c.birthDate.includes('/')) {
                     const parts = c.birthDate.split('/');
                     bDay = parts[0]; bMonth = parts[1];
@@ -149,138 +146,169 @@ export async function loadDashboardPage() {
                 return { name: c.name, age, phone: c.phone };
             });
 
-        const metrics = { receitaHoje, agendamentosHoje, receitaMes, ticketMedio };
+        const metrics = { receitaHoje, agendamentosHoje, receitaMes, despesaMes, saldoMes, ticketMedio };
         const isMultiView = estIds.length > 1;
 
-        // --- 8. Renderizar ---
-        renderDashboardUI(contentDiv, metrics, chartData, nextAppointments, birthdays, isMultiView);
-        initRevenueChart(chartData);
+        // 8. Renderização Inicial (Apenas UI, Gráfico carrega logo depois)
+        renderDashboardUI(contentDiv, metrics, nextAppointments, birthdays, isMultiView, getLocalDateString(sevenDaysAgo), getLocalDateString(today));
+        
+        // 9. Carregar dados do gráfico isoladamente (para suportar recarregamento pelo botão)
+        await loadAndRenderChart(sevenDaysAgo, today);
+
         setupDashboardEvents();
 
     } catch (error) {
         console.error("Erro ao carregar dashboard:", error);
         contentDiv.innerHTML = `
-            <div class="flex flex-col items-center justify-center h-full min-h-[60vh] text-slate-500">
-                <i class="bi bi-exclamation-circle text-4xl mb-3 text-rose-400"></i>
-                <p class="font-medium text-sm">Ocorreu um erro ao carregar os dados.</p>
-                <button onclick="window.navigateTo('dashboard-section')" class="mt-4 px-5 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors">Tentar Novamente</button>
+            <div class="flex flex-col items-center justify-center h-full min-h-[60vh] text-slate-500 font-sans">
+                <i class="bi bi-exclamation-triangle text-5xl mb-4 text-rose-400"></i>
+                <h3 class="font-bold text-lg text-slate-700">Erro de Sincronização</h3>
+                <p class="font-medium text-sm mt-1">Ocorreu um problema ao comunicar com o servidor.</p>
+                <button onclick="window.navigateTo('dashboard-section')" class="mt-6 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm active:scale-95">Tentar Novamente</button>
             </div>
         `;
     }
 }
 
-function renderDashboardUI(container, metrics, chartData, nextAppointments, birthdays, isMultiView) {
+function renderDashboardUI(container, metrics, nextAppointments, birthdays, isMultiView, chartInitialStart, chartInitialEnd) {
     const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    // Badge extra caso estejamos a ver os dados agregados
-    const multiViewBadge = isMultiView 
-        ? `<span class="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-2 align-middle">CONSOLIDADO</span>` 
-        : '';
+    const multiViewBanner = isMultiView 
+        ? `
+        <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-xl flex items-center gap-3 text-indigo-700 mb-5 shadow-sm">
+            <div class="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0"><i class="bi bi-buildings text-indigo-600 text-xs"></i></div>
+            <span class="text-xs font-semibold">Visão Consolidada: Os dados refletem a soma das filiais selecionadas.</span>
+        </div>
+        ` : '';
 
     container.innerHTML = `
-        <div class="p-5 md:p-8 max-w-7xl mx-auto space-y-6 pb-24 font-sans animate-fade-in">
+        <div class="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto pb-24 font-sans text-slate-800">
             
-            <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
-                <div>
-                    <h2 class="text-[1.4rem] font-semibold text-slate-700 tracking-tight">Visão Geral ${multiViewBadge}</h2>
-                    <p class="text-[0.85rem] text-slate-500 font-normal mt-1">Acompanhe o desempenho em tempo real.</p>
+            ${multiViewBanner}
+
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5 mb-5 md:mb-6">
+                
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-300 transition-colors relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><i class="bi bi-cash-coin text-8xl text-emerald-600"></i></div>
+                    <div class="flex items-center gap-2.5 mb-2 relative z-10">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+                            <i class="bi bi-arrow-down-left-circle text-base"></i>
+                        </div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Receita<br/>Hoje</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-bold text-slate-700 relative z-10 tracking-tight">${formatter.format(metrics.receitaHoje)}</h3>
                 </div>
-                <div class="text-right">
-                    <p class="text-xs font-semibold text-indigo-600 bg-indigo-50/70 px-3 py-1.5 rounded-lg inline-block border border-indigo-100/50">
-                        <i class="bi bi-calendar2-week me-1"></i> ${new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'long' })}
-                    </p>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-blue-300 transition-colors relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><i class="bi bi-wallet2 text-8xl text-blue-600"></i></div>
+                    <div class="flex items-center gap-2.5 mb-2 relative z-10">
+                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                            <i class="bi bi-graph-up-arrow text-base"></i>
+                        </div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Faturamento<br/>(Mês)</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-bold text-slate-700 relative z-10 tracking-tight">${formatter.format(metrics.receitaMes)}</h3>
                 </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-rose-300 transition-colors relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><i class="bi bi-cart-x text-8xl text-rose-600"></i></div>
+                    <div class="flex items-center gap-2.5 mb-2 relative z-10">
+                        <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+                            <i class="bi bi-arrow-up-right-circle text-base"></i>
+                        </div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Despesas<br/>(Mês)</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-bold text-rose-600 relative z-10 tracking-tight">${formatter.format(metrics.despesaMes)}</h3>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 transition-colors relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity"><i class="bi bi-piggy-bank text-8xl text-indigo-600"></i></div>
+                    <div class="flex items-center gap-2.5 mb-2 relative z-10">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                            <i class="bi bi-bank text-base"></i>
+                        </div>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Saldo<br/>Líquido</span>
+                    </div>
+                    <h3 class="text-2xl md:text-3xl font-bold ${metrics.saldoMes >= 0 ? 'text-indigo-600' : 'text-rose-600'} relative z-10 tracking-tight">${formatter.format(metrics.saldoMes)}</h3>
+                </div>
+
             </div>
 
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-                
-                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-9 h-9 rounded-[10px] bg-emerald-50 text-emerald-500 flex items-center justify-center">
-                            <i class="bi bi-cash-stack text-lg"></i>
-                        </div>
-                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Receita Hoje</span>
+            <div class="grid grid-cols-2 gap-4 md:gap-5 mb-5 md:mb-6">
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-inner">
+                    <div>
+                        <span class="block text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Agendamentos Hoje</span>
+                        <span class="text-xl font-bold text-slate-700">${metrics.agendamentosHoje}</span>
                     </div>
-                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.receitaHoje)}</h3>
+                    <div class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-400 border border-slate-100"><i class="bi bi-calendar-check text-base"></i></div>
                 </div>
-
-                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-9 h-9 rounded-[10px] bg-indigo-50 text-indigo-500 flex items-center justify-center">
-                            <i class="bi bi-calendar-check text-lg"></i>
-                        </div>
-                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Agendamentos</span>
+                <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex justify-between items-center shadow-inner">
+                    <div>
+                        <span class="block text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Ticket Médio Geral</span>
+                        <span class="text-xl font-bold text-slate-700">${formatter.format(metrics.ticketMedio)}</span>
                     </div>
-                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${metrics.agendamentosHoje}</h3>
+                    <div class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-400 border border-slate-100"><i class="bi bi-receipt text-base"></i></div>
                 </div>
-
-                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-9 h-9 rounded-[10px] bg-blue-50 text-blue-500 flex items-center justify-center">
-                            <i class="bi bi-graph-up-arrow text-lg"></i>
-                        </div>
-                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Receita (Mês)</span>
-                    </div>
-                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.receitaMes)}</h3>
-                </div>
-
-                <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100 flex flex-col justify-center hover:shadow-md transition-all duration-300">
-                    <div class="flex items-center gap-3 mb-2">
-                        <div class="w-9 h-9 rounded-[10px] bg-amber-50 text-amber-500 flex items-center justify-center">
-                            <i class="bi bi-receipt text-lg"></i>
-                        </div>
-                        <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Ticket Médio</span>
-                    </div>
-                    <h3 class="text-2xl md:text-[1.7rem] font-semibold text-slate-700 mt-1">${formatter.format(metrics.ticketMedio)}</h3>
-                </div>
-
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 md:gap-6">
                 
                 <div class="lg:col-span-2 space-y-5 md:space-y-6">
                     
-                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
-                        <div class="flex justify-between items-center mb-5">
-                            <h3 class="text-[0.95rem] font-semibold text-slate-700">Receita (Últimos 7 dias)</h3>
-                            <button class="text-slate-400 hover:text-indigo-500 transition-colors"><i class="bi bi-three-dots"></i></button>
+                    <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3 border-b border-slate-100 pb-4">
+                            <div>
+                                <h3 class="text-sm font-semibold text-slate-700">Desempenho Geral</h3>
+                                <p class="text-[10px] text-slate-400 font-medium">Receita Realizada vs Agendamentos Concluídos</p>
+                            </div>
+                            
+                            <div class="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-200 w-full md:w-auto">
+                                <input type="date" id="chart-start-date" value="${chartInitialStart}" class="bg-white text-[10px] md:text-xs py-1.5 px-2 border border-slate-200 rounded text-slate-600 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 shadow-sm flex-1 md:w-28 font-medium">
+                                <span class="text-slate-400 text-[10px] font-semibold">até</span>
+                                <input type="date" id="chart-end-date" value="${chartInitialEnd}" class="bg-white text-[10px] md:text-xs py-1.5 px-2 border border-slate-200 rounded text-slate-600 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 shadow-sm flex-1 md:w-28 font-medium">
+                                <button id="btn-update-chart" class="bg-indigo-600 text-white px-2.5 py-1.5 rounded hover:bg-indigo-700 transition-colors shadow-sm active:scale-95 flex items-center justify-center">
+                                    <i class="bi bi-arrow-repeat text-xs"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="relative h-60 w-full">
+                        
+                        <div class="relative h-64 w-full" id="chart-container">
                             <canvas id="revenueChart"></canvas>
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 md:p-6 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-[0.95rem] font-semibold text-slate-700 flex items-center gap-2">
-                                Próximos Agendamentos
+                    <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                            <h3 class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                                <i class="bi bi-calendar-range text-indigo-500"></i> Próximos na Agenda
                             </h3>
-                            <button data-action="goto-agenda" class="text-[11px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors">Ver Agenda Completa <i class="bi bi-arrow-right"></i></button>
+                            <button data-action="goto-agenda" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded hover:bg-indigo-100 transition-colors uppercase tracking-widest border border-indigo-100 shadow-sm">Ver Todos</button>
                         </div>
                         
-                        <div class="space-y-2.5">
+                        <div class="space-y-2">
                             ${nextAppointments.length > 0 ? nextAppointments.map(appt => `
-                                <div data-action="goto-agenda" class="flex items-center justify-between p-3.5 rounded-[14px] border border-slate-100/60 bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-100 transition-all cursor-pointer group">
-                                    <div class="flex items-center gap-4">
-                                        <div class="w-11 h-11 rounded-full bg-white border border-slate-200 flex flex-col items-center justify-center flex-shrink-0 text-indigo-600 shadow-sm">
-                                            <span class="font-semibold text-sm">${appt.time.split(':')[0]}</span><span class="text-[8px] font-medium leading-none text-slate-400">${appt.time.split(':')[1]}</span>
+                                <div data-action="goto-agenda" class="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 transition-colors cursor-pointer group">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-lg bg-white border border-slate-200 flex flex-col items-center justify-center flex-shrink-0 text-indigo-600 shadow-sm">
+                                            <span class="font-bold text-sm leading-tight">${appt.time.split(':')[0]}</span>
+                                            <span class="text-[9px] font-semibold leading-tight text-slate-400">${appt.time.split(':')[1]}</span>
                                         </div>
                                         <div>
-                                            <p class="font-medium text-slate-700 text-sm group-hover:text-indigo-700 transition-colors">${escapeHTML(appt.client)}</p>
-                                            <p class="text-[11px] text-slate-500 font-normal mt-0.5">${escapeHTML(appt.service)} <span class="mx-1 text-slate-300">•</span> ${escapeHTML(appt.prof)}</p>
+                                            <p class="font-semibold text-slate-700 text-[0.8rem] group-hover:text-indigo-700 transition-colors">${escapeHTML(appt.client)}</p>
+                                            <p class="text-[10px] font-medium text-slate-500 mt-0.5">${escapeHTML(appt.service)} <span class="mx-1 text-slate-300">•</span> ${escapeHTML(appt.prof)}</p>
                                         </div>
                                     </div>
-                                    <button class="w-8 h-8 rounded-full text-slate-300 flex items-center justify-center group-hover:text-indigo-500 transition-colors">
-                                        <i class="bi bi-chevron-right text-sm"></i>
-                                    </button>
+                                    <div class="w-7 h-7 rounded-full text-slate-300 flex items-center justify-center group-hover:text-indigo-500 transition-colors">
+                                        <i class="bi bi-chevron-right text-xs"></i>
+                                    </div>
                                 </div>
                             `).join('') : `
-                                <div class="text-center py-8 text-slate-400">
-                                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                        <i class="bi bi-cup-hot text-xl text-slate-300"></i>
+                                <div class="text-center py-6 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    <div class="w-10 h-10 bg-white shadow-sm rounded-full flex items-center justify-center mx-auto mb-2 border border-slate-100">
+                                        <i class="bi bi-calendar2-x text-lg text-slate-300"></i>
                                     </div>
-                                    <p class="text-sm font-medium text-slate-500">Agenda livre por agora.</p>
-                                    <p class="text-xs font-normal mt-1">Nenhum agendamento pendente para hoje.</p>
+                                    <p class="text-xs font-semibold text-slate-500">Agenda livre</p>
+                                    <p class="text-[10px] font-medium mt-0.5">Nenhum agendamento pendente para hoje.</p>
                                 </div>
                             `}
                         </div>
@@ -290,59 +318,60 @@ function renderDashboardUI(container, metrics, chartData, nextAppointments, birt
 
                 <div class="space-y-5 md:space-y-6">
                     
-                    <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
-                        <h3 class="text-[0.95rem] font-semibold text-slate-700 mb-4">Ações Rápidas</h3>
-                        <div class="grid grid-cols-2 gap-3">
-                            <button data-action="new-appointment" class="flex flex-col items-center justify-center p-4 bg-indigo-50/50 rounded-2xl text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors border border-indigo-100/50 group">
-                                <i class="bi bi-plus-lg text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-[11px] font-medium text-center">Agendamento</span>
+                    <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-semibold text-slate-700 mb-3 border-b border-slate-100 pb-3">Ações Rápidas</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button data-action="new-appointment" class="flex flex-col items-center justify-center p-3 bg-indigo-50/70 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-100/50 group active:scale-95">
+                                <i class="bi bi-calendar-plus text-xl mb-1.5 opacity-80 group-hover:opacity-100 transition-opacity"></i>
+                                <span class="text-[9px] font-bold uppercase tracking-widest text-center">Agendar</span>
                             </button>
                             
-                            <button data-action="goto-pdv" class="flex flex-col items-center justify-center p-4 bg-emerald-50/50 rounded-2xl text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors border border-emerald-100/50 group">
-                                <i class="bi bi-cart2 text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-[11px] font-medium text-center">Abrir PDV</span>
+                            <button data-action="goto-pdv" class="flex flex-col items-center justify-center p-3 bg-emerald-50/70 rounded-xl text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-100/50 group active:scale-95">
+                                <i class="bi bi-cart-check text-xl mb-1.5 opacity-80 group-hover:opacity-100 transition-opacity"></i>
+                                <span class="text-[9px] font-bold uppercase tracking-widest text-center">PDV / Caixa</span>
                             </button>
                             
-                            <button data-action="goto-clients" class="flex flex-col items-center justify-center p-4 bg-blue-50/50 rounded-2xl text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-blue-100/50 group">
-                                <i class="bi bi-people text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-[11px] font-medium text-center">Clientes</span>
+                            <button data-action="goto-clients" class="flex flex-col items-center justify-center p-3 bg-blue-50/70 rounded-xl text-blue-700 hover:bg-blue-100 transition-colors border border-blue-100/50 group active:scale-95">
+                                <i class="bi bi-people text-xl mb-1.5 opacity-80 group-hover:opacity-100 transition-opacity"></i>
+                                <span class="text-[9px] font-bold uppercase tracking-widest text-center">Clientes</span>
                             </button>
                             
-                            <button data-action="open-link" class="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors border border-slate-200/60 group">
-                                <i class="bi bi-link-45deg text-[1.3rem] mb-2 group-hover:scale-110 transition-transform"></i>
-                                <span class="text-[11px] font-medium text-center">O meu Link</span>
+                            <button data-action="open-link" class="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors border border-slate-200 group active:scale-95">
+                                <i class="bi bi-globe text-xl mb-1.5 opacity-80 group-hover:opacity-100 transition-opacity"></i>
+                                <span class="text-[9px] font-bold uppercase tracking-widest text-center">Meu Link</span>
                             </button>
                         </div>
                     </div>
 
-                    <div class="bg-white p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] border border-slate-100">
-                        <h3 class="text-[0.95rem] font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                            <i class="bi bi-gift text-rose-400"></i> Aniversariantes Hoje
+                    <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <h3 class="text-sm font-semibold text-slate-700 mb-3 border-b border-slate-100 pb-3 flex items-center gap-1.5">
+                            <i class="bi bi-gift text-rose-400"></i> Aniversariantes
                         </h3>
                         
-                        <div class="space-y-3">
+                        <div class="space-y-2">
                             ${birthdays.length > 0 ? birthdays.map(b => {
                                 const cleanPhone = (b.phone || '').replace(/\D/g, '');
                                 const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Olá ${b.name.split(' ')[0]}! A equipa deseja-lhe um Feliz Aniversário! 🎉`)}`;
                                 
                                 return `
-                                <div class="flex items-center justify-between p-3 rounded-[12px] border border-rose-50 bg-rose-50/30">
-                                    <div class="flex items-center gap-3">
-                                        <div class="w-9 h-9 rounded-full bg-rose-100/70 text-rose-500 flex items-center justify-center font-semibold text-sm">
+                                <div class="flex items-center justify-between p-2.5 rounded-xl border border-rose-100 bg-rose-50/40 hover:bg-rose-50 transition-colors">
+                                    <div class="flex items-center gap-2.5">
+                                        <div class="w-8 h-8 rounded-lg bg-white text-rose-500 flex items-center justify-center font-bold text-xs border border-rose-100 shadow-sm">
                                             ${escapeHTML(b.name).charAt(0)}
                                         </div>
                                         <div>
-                                            <p class="font-medium text-slate-700 text-[0.8rem]">${escapeHTML(b.name)}</p>
-                                            ${b.age ? `<p class="text-[10px] font-medium text-rose-400 mt-0.5">${b.age} anos</p>` : ''}
+                                            <p class="font-semibold text-slate-700 text-[0.75rem] leading-tight">${escapeHTML(b.name)}</p>
+                                            ${b.age ? `<p class="text-[9px] font-medium text-rose-400 mt-0.5">${b.age} anos</p>` : ''}
                                         </div>
                                     </div>
-                                    <a href="${waLink}" target="_blank" class="w-8 h-8 rounded-full bg-white text-emerald-500 shadow-sm border border-emerald-50 flex items-center justify-center hover:bg-emerald-50 transition-colors" title="Enviar Parabéns pelo WhatsApp">
-                                        <i class="bi bi-whatsapp text-[0.85rem]"></i>
+                                    <a href="${waLink}" target="_blank" class="w-8 h-8 rounded-lg bg-white text-emerald-500 shadow-sm border border-emerald-100 flex items-center justify-center hover:bg-emerald-50 hover:border-emerald-200 transition-colors" title="Enviar Parabéns pelo WhatsApp">
+                                        <i class="bi bi-whatsapp text-[0.8rem]"></i>
                                     </a>
                                 </div>
                             `}).join('') : `
-                                <div class="text-center py-5 text-slate-400">
-                                    <p class="text-xs font-normal">Sem aniversariantes hoje.</p>
+                                <div class="text-center py-6 text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    <i class="bi bi-balloon text-2xl mb-1.5 opacity-50"></i>
+                                    <p class="text-[10px] font-bold uppercase tracking-widest">Sem festas hoje</p>
                                 </div>
                             `}
                         </div>
@@ -351,15 +380,83 @@ function renderDashboardUI(container, metrics, chartData, nextAppointments, birt
                 </div>
             </div>
         </div>
-        
-        <style>
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-            .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        </style>
     `;
 }
 
-function initRevenueChart(chartData) {
+async function loadAndRenderChart(startDateObj, endDateObj) {
+    const container = document.getElementById('chart-container');
+    const startInput = document.getElementById('chart-start-date');
+    const endInput = document.getElementById('chart-end-date');
+    
+    if(container) {
+        // Overlay de loading leve
+        const overlay = document.createElement('div');
+        overlay.id = 'chart-loading-overlay';
+        overlay.className = 'absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-10 rounded-xl';
+        overlay.innerHTML = '<div class="w-8 h-8 border-[3px] border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>';
+        container.appendChild(overlay);
+    }
+
+    try {
+        const startStr = getLocalDateString(startDateObj);
+        const endStr = getLocalDateString(endDateObj);
+
+        const estIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments 
+            : [state.establishmentId];
+        const selectedEstsString = estIds.join(',');
+
+        // Busca dados específicos para o gráfico no período selecionado
+        const financialRes = await financialApi.getReceivables({ startDate: startStr, endDate: endStr, establishmentId: selectedEstsString }).catch(()=>({entries:[]}));
+        
+        const apptsPromises = estIds.map(estId => appointmentsApi.getAppointmentsByDateRange(estId, startStr + 'T00:00:00.000Z', endStr + 'T23:59:59.999Z', null).catch(()=>[]));
+        const apptsResults = await Promise.all(apptsPromises);
+        
+        const appts = apptsResults.flat();
+        const receivables = financialRes.entries || [];
+
+        const labels = [];
+        const revData = [];
+        const apptData = [];
+        
+        let curr = new Date(startDateObj);
+        curr.setHours(0,0,0,0);
+        
+        const endLimit = new Date(endDateObj);
+        endLimit.setHours(23,59,59,999);
+
+        // Agrupa dia a dia iterando sobre as datas
+        while(curr <= endLimit) {
+            const dStr = getLocalDateString(curr);
+            labels.push(curr.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'}));
+            
+            const dayRev = receivables
+                .filter(r => r.status === 'paid' && (r.paymentDate === dStr || (!r.paymentDate && r.dueDate.startsWith(dStr))))
+                .reduce((sum, r) => sum + r.amount, 0);
+            
+            // Filtra agendamentos realizados que comecem nesse dia (verificando formato da string ISO)
+            const dayAppts = appts.filter(a => a.status === 'completed' && a.startTime && a.startTime.startsWith(dStr)).length;
+
+            revData.push(dayRev);
+            apptData.push(dayAppts);
+            
+            curr.setDate(curr.getDate() + 1);
+        }
+        
+        initRevenueChart(labels, revData, apptData);
+
+        if (startInput) startInput.value = startStr;
+        if (endInput) endInput.value = endStr;
+
+    } catch (error) {
+        console.error('Erro ao recarregar grafico:', error);
+    } finally {
+        const overlay = document.getElementById('chart-loading-overlay');
+        if(overlay) overlay.remove();
+    }
+}
+
+function initRevenueChart(labels, revenueData, apptsData) {
     const ctx = document.getElementById('revenueChart');
     if (!ctx) return;
 
@@ -369,66 +466,116 @@ function initRevenueChart(chartData) {
 
     const canvasContext = ctx.getContext('2d');
     const gradient = canvasContext.createLinearGradient(0, 0, 0, 240);
-    gradient.addColorStop(0, 'rgba(79, 70, 229, 0.15)'); 
-    gradient.addColorStop(1, 'rgba(79, 70, 229, 0.01)');
+    gradient.addColorStop(0, 'rgba(99, 102, 241, 0.2)'); 
+    gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
 
     revenueChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: chartData.labels,
-            datasets: [{
-                label: 'Receita (R$)',
-                data: chartData.data,
-                borderColor: '#6366f1', 
-                backgroundColor: gradient,
-                borderWidth: 2.5,
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#6366f1',
-                pointBorderWidth: 2,
-                pointRadius: 3,
-                pointHoverRadius: 5,
-                fill: true,
-                tension: 0.35 
-            }]
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Receita Real (R$)',
+                    data: revenueData,
+                    borderColor: '#6366f1', // Indigo
+                    backgroundColor: gradient,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: '#6366f1',
+                    pointBorderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension: 0.3,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Agendamentos Feitos',
+                    data: apptsData,
+                    borderColor: '#10b981', // Emerald
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointBackgroundColor: '#10b981',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: false,
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false },
+                legend: { 
+                    display: true,
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 6,
+                        boxHeight: 6,
+                        font: { family: 'Nunito, sans-serif', size: 10, weight: 'bold' },
+                        color: '#64748b'
+                    }
+                },
                 tooltip: {
                     backgroundColor: '#1e293b',
-                    padding: 12,
+                    padding: 10,
                     cornerRadius: 8,
-                    titleFont: { size: 12, family: 'Inter', weight: 'normal' },
-                    bodyFont: { size: 13, weight: 'bold', family: 'Inter' },
-                    displayColors: false,
+                    titleFont: { size: 11, family: 'Nunito, sans-serif', weight: 'normal' },
+                    bodyFont: { size: 12, weight: 'bold', family: 'Nunito, sans-serif' },
+                    displayColors: true,
+                    usePointStyle: true,
                     callbacks: {
                         label: function(context) {
-                            if (context.parsed.y !== null) {
-                                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                            if (context.datasetIndex === 0) {
+                                return 'Receita: ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
                             }
-                            return '';
+                            return 'Concluídos: ' + context.parsed.y;
                         }
                     }
                 }
             },
             scales: {
                 y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
                     beginAtZero: true,
                     grid: { color: '#f8fafc', drawBorder: false },
                     border: { display: false },
                     ticks: {
                         color: '#94a3b8',
-                        font: { family: 'Inter', size: 10 },
+                        font: { family: 'Nunito, sans-serif', size: 9, weight: '600' },
                         maxTicksLimit: 6,
                         callback: function(value) { return 'R$ ' + value; }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: { drawOnChartArea: false }, // Evita sobreposição de linhas de fundo
+                    border: { display: false },
+                    ticks: {
+                        color: '#10b981',
+                        font: { family: 'Nunito, sans-serif', size: 9, weight: '600' },
+                        stepSize: 1,
+                        callback: function(value) {
+                            if (Math.floor(value) === value) return value;
+                        }
                     }
                 },
                 x: {
                     grid: { display: false, drawBorder: false },
                     border: { display: false },
-                    ticks: { color: '#94a3b8', font: { family: 'Inter', size: 11, weight: '500' } }
+                    ticks: { color: '#94a3b8', font: { family: 'Nunito, sans-serif', size: 9, weight: '600' } }
                 }
             },
             interaction: { intersect: false, mode: 'index' },
@@ -439,7 +586,20 @@ function initRevenueChart(chartData) {
 function setupDashboardEvents() {
     const contentDiv = document.getElementById('content');
     
+    // Delegação de eventos
     contentDiv.addEventListener('click', (e) => {
+        const btnUpdateChart = e.target.closest('#btn-update-chart');
+        if (btnUpdateChart) {
+            const startInput = document.getElementById('chart-start-date');
+            const endInput = document.getElementById('chart-end-date');
+            if (startInput && endInput && startInput.value && endInput.value) {
+                const sDate = new Date(startInput.value + 'T00:00:00');
+                const eDate = new Date(endInput.value + 'T00:00:00');
+                loadAndRenderChart(sDate, eDate);
+            }
+            return;
+        }
+
         const actionBtn = e.target.closest('[data-action]');
         if (!actionBtn) return;
 
@@ -447,8 +607,6 @@ function setupDashboardEvents() {
         
         switch(action) {
             case 'goto-agenda':
-                navigateTo('agenda-section');
-                break;
             case 'new-appointment':
                 navigateTo('agenda-section');
                 break;
