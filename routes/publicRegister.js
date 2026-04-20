@@ -1,8 +1,9 @@
-// routes/publicRegister.js
+// routes/publicRegister.js (Atualizado com Data de Vencimento)
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 
+const { verifyToken } = require('../middlewares/auth');
 
 // ####################################################################
 // ### PERMISSÕES DO USUÁRIO MASTER ###
@@ -27,134 +28,93 @@ const masterPermissions = {
 };
 
 // ####################################################################
-// ### ROTA DE REGISTO ###
+// ### ROTA DE CRIAÇÃO DO AMBIENTE DO CLIENTE (TENANT) ###
 // ####################################################################
 
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
+    
+    const userRole = req.user.role || '';
+    if (userRole !== 'admin' && userRole !== 'superadmin' && userRole !== 'super_admin') {
+         return res.status(403).json({ message: 'Acesso negado. Apenas administradores master podem criar novos clientes.' });
+    }
+
     const { 
         establishmentName, 
+        establishmentId, 
         ownerEmail, 
-        ownerPassword, 
-        planId, 
-        paymentMethodId,
-        installments, // <--- NOVO: Recebe a quantidade de parcelas
+        ownerPassword,
+        ownerName,      
+        documentInfo,   
+        phone,          
+        planId,         
+        isNetwork,      
         timezone 
     } = req.body;
     
-    const rawEstablishmentId = req.body.establishmentId;
-
-    if (!rawEstablishmentId || !establishmentName || !ownerEmail || !ownerPassword || !planId || !paymentMethodId) {
-        return res.status(400).json({ message: 'Todos os campos são obrigatórios, incluindo o método de pagamento.' });
+    if (!establishmentId || !establishmentName || !ownerEmail || !ownerPassword || !planId) {
+        return res.status(400).json({ message: 'Campos obrigatórios ausentes. Verifique Nome, ID, Email, Senha e Plano.' });
     }
     
     if (ownerPassword.length < 6) {
         return res.status(400).json({ message: 'A senha deve ter pelo menos 6 caracteres.' });
     }
 
-    const sanitizedId = rawEstablishmentId.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const sanitizedId = establishmentId.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (sanitizedId.length === 0) {
-          return res.status(400).json({ message: 'ID do estabelecimento inválido após limpeza. Use apenas letras e números.' });
+          return res.status(400).json({ message: 'ID do estabelecimento inválido. Use apenas letras e números.' });
     }
 
     try {
         const { db, auth } = req;
         const establishmentRef = db.collection('establishments').doc(sanitizedId);
 
-        // --- 1. Verificação do Plano ---
-        const planDoc = await db.collection('subscriptionPlans').doc(planId).get();
-        if (!planDoc.exists || !planDoc.data().stripePriceId) {
-            throw new Error('Plano de assinatura inválido ou não configurado corretamente com o Stripe.');
-        }
-        const planData = planDoc.data();
-        const { allowedModules, stripePriceId } = planData; 
-        
         const existingEstablishment = await establishmentRef.get();
         if (existingEstablishment.exists) {
              return res.status(409).json({ message: `O ID de acesso '${sanitizedId}' já está em uso. Por favor, escolha outro.` });
         }
+
+        let allowedModules = {};
+        const planDoc = await db.collection('saas_plans').doc(planId).get();
         
-        // --- 2. CRIAÇÃO DA ASSINATURA STRIPE (COM 7 DIAS GRÁTIS + PARCELAMENTO) ---
-
-        // 2.1. Cria um cliente Stripe
-        const customer = await stripe.customers.create({
-            email: ownerEmail,
-            name: establishmentName,
-            metadata: { establishmentId: sanitizedId } 
-        });
-
-        // 2.2. Associa o cartão ao cliente (Fundamental para cobrança futura)
-        await stripe.paymentMethods.attach(paymentMethodId, {
-            customer: customer.id,
-        });
-
-        // 2.3. Define este cartão como o padrão para cobranças
-        await stripe.customers.update(customer.id, {
-            invoice_settings: {
-                default_payment_method: paymentMethodId,
-            },
-        });
-
-        // 2.4. Configura os parâmetros da Assinatura
-        const installmentsCount = parseInt(installments) || 1;
-        
-        const subscriptionParams = {
-            customer: customer.id,
-            items: [{ price: stripePriceId }], 
-            payment_behavior: 'default_incomplete',
-            proration_behavior: 'none',
-            expand: ['latest_invoice.payment_intent'],
-            metadata: { establishmentId: sanitizedId },
-            trial_period_days: 7, // 7 dias de teste grátis
-        };
-
-        // *** LÓGICA DE PARCELAMENTO ***
-        // Se o cliente escolheu parcelar (> 1x), configuramos o invoice do Stripe
-        if (installmentsCount > 1) {
-            subscriptionParams.payment_settings = {
-                payment_method_options: {
-                    card: {
-                        installments: {
-                            enabled: true,
-                            plan: {
-                                count: installmentsCount,
-                                type: 'fixed_count'
-                            }
-                        }
-                    }
-                }
-            };
+        if (planDoc.exists) {
+            allowedModules = planDoc.data().allowedModules || {};
+        } else {
+            return res.status(400).json({ message: 'O plano selecionado não foi encontrado na base de dados.' });
         }
-
-        // Cria a assinatura com as configurações definidas
-        const subscriptionStripe = await stripe.subscriptions.create(subscriptionParams);
         
-        const expiryDate = new Date(subscriptionStripe.current_period_end * 1000);
-        
-        // --- 3. Salvar no Firebase ---
-
         const userRecord = await auth.createUser({
             email: ownerEmail,
             password: ownerPassword,
-            displayName: establishmentName,
+            displayName: ownerName || establishmentName, 
         });
         
+        // 🔄 CORREÇÃO: Calcula 30 dias de acesso padrão a partir de hoje
+        const initialExpiryDate = new Date();
+        initialExpiryDate.setDate(initialExpiryDate.getDate() + 30);
+
         const establishmentData = {
+            id: sanitizedId,
             name: establishmentName,
+            companyName: establishmentName, 
+            document: documentInfo || null,
+            phone: phone || null,
             ownerUid: userRecord.uid,
+            ownerId: userRecord.uid, 
             ownerEmail: ownerEmail,
-            // Status 'trialing' é considerado 'active' pelo seu Webhook, então o acesso é liberado
-            status: (subscriptionStripe.status === 'active' || subscriptionStripe.status === 'trialing') ? 'active' : 'inactive',
-            modules: allowedModules || {}, 
+            ownerName: ownerName || '',
+            isNetwork: Boolean(isNetwork),
+            status: 'active', 
+            planId: planId, 
+            modules: allowedModules, 
             timezone: timezone || 'America/Sao_Paulo', 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            publicBookingEnabled: false,
             subscription: {
                 planId: planId,
-                expiryDate: admin.firestore.Timestamp.fromDate(expiryDate),
-                stripeSubscriptionId: subscriptionStripe.id, 
-                statusStripe: subscriptionStripe.status, 
-                stripeCustomerId: customer.id,
-                isTrial: true,
-                installments: installmentsCount // Guarda info do parcelamento escolhido
+                status: 'active',
+                isManualAdmin: true,
+                // 🔄 CORREÇÃO: Salvamos a data no formato nativo do Firestore
+                expiryDate: admin.firestore.Timestamp.fromDate(initialExpiryDate)
             }
         };
 
@@ -165,37 +125,29 @@ router.post('/', async (req, res) => {
             establishmentId: sanitizedId 
         });
 
-        // 4. Cria o "Usuário Master"
         const newUserRef = db.collection('users').doc(userRecord.uid);
         await newUserRef.set({
-            name: establishmentName,
+            name: ownerName || establishmentName,
             email: ownerEmail,
             establishmentId: sanitizedId,
             permissions: masterPermissions,
             professionalId: null,
             status: 'active',
             isOwnerMaster: true,
+            role: 'owner',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // Constrói a URL correta do login (protocolo + host)
-        // Em produção no Cloud Run, certifique-se que req.get('host') retorna o domínio correto ou use variável de ambiente
-        const loginUrl = `${req.protocol}://${req.get('host')}/login.html`;
-
         res.status(201).json({ 
-            message: 'Conta criada com sucesso! Aproveite seus 7 dias grátis.', 
-            loginUrl: loginUrl
+            message: 'Ambiente do cliente criado com sucesso!',
+            establishmentId: sanitizedId
         });
 
     } catch (error) {
-        console.error("Erro no processo de Registro:", error);
-        
-        if (error.type === 'StripeCardError' || error.type === 'StripeInvalidRequestError') {
-             return res.status(400).json({ message: `Erro no Cartão: ${error.message}` });
-        }
+        console.error("Erro ao criar ambiente do cliente:", error);
         
         if (error.code === 'auth/email-already-exists') {
-            return res.status(409).json({ message: 'Este e-mail já está sendo utilizado.' });
+            return res.status(409).json({ message: 'Este e-mail já está sendo utilizado por outro usuário.' });
         }
         
         res.status(500).json({ message: error.message || 'Erro interno no servidor.' });

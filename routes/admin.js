@@ -1,9 +1,8 @@
-// routes/admin.js
+// routes/admin.js (Código Otimizado e Unificado na coleção 'establishments')
 
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
-const { AggregateField } = require('firebase-admin/firestore');
 const { verifyToken, isSuperAdmin } = require('../middlewares/auth');
 
 const defaultModules = {
@@ -38,13 +37,6 @@ function handleFirestoreError(res, error, context) {
     res.status(500).json({ message: error.message || `Erro ao processar ${context}.` });
 }
 
-const getSafeDate = (dateVal) => {
-    if (!dateVal) return null;
-    if (typeof dateVal.toDate === 'function') return dateVal.toDate();
-    const d = new Date(dateVal);
-    return isNaN(d.getTime()) ? null : d;
-};
-
 // =======================================================================
 // ⚙️ CONFIGURAÇÕES E DASHBOARD
 // =======================================================================
@@ -66,29 +58,29 @@ router.get('/dashboard-stats', async (req, res) => {
         const planPrices = {};
         plansSnapshot.forEach(d => planPrices[d.id] = d.data().price || 0);
 
-        const [totalAgg, activeAgg, cancelledAgg, activeCompaniesSnap, newCompaniesSnap] = await Promise.all([
-            db.collection('companies').count().get(),
-            db.collection('companies').where('status', '==', 'active').count().get(),
-            db.collection('companies').where('status', 'in', ['deleted', 'inactive', 'blocked']).count().get(),
-            db.collection('companies').where('status', '==', 'active').select('planId').get(),
-            db.collection('companies').where('createdAt', '>=', admin.firestore.Timestamp.fromDate(thirtyDaysAgo)).select('createdAt').get()
-        ]);
+        // 🔄 Busca os estabelecimentos para gerar os gráficos
+        const allSnap = await db.collection('establishments').get();
+        // Filtra apenas os clientes raízes (Matrizes), ou seja, quem não tem parentId
+        const roots = allSnap.docs.map(d => d.data()).filter(e => !e.parentId);
 
-        const totalCompanies = totalAgg.data().count;
-        const activeCount = activeAgg.data().count;
-        const cancelledCount = cancelledAgg.data().count;
+        const totalCompanies = roots.length;
+        const activeRoots = roots.filter(e => e.status === 'active');
+        const activeCount = activeRoots.length;
+        const cancelledCount = roots.filter(e => ['deleted', 'inactive', 'blocked'].includes(e.status)).length;
 
         let mrr = 0;
-        activeCompaniesSnap.forEach(doc => {
-            const pid = doc.data().planId;
+        activeRoots.forEach(e => {
+            const pid = e.planId || (e.subscription && e.subscription.planId);
             if (pid && typeof planPrices[pid] === 'number') mrr += planPrices[pid];
         });
 
         const newSubscribersLast30Days = Array(30).fill(0);
-        newCompaniesSnap.forEach(doc => {
-            const created = doc.data().createdAt.toDate();
-            const daysAgo = Math.floor((now - created) / (1000 * 60 * 60 * 24));
-            if (daysAgo >= 0 && daysAgo < 30) newSubscribersLast30Days[29 - daysAgo]++;
+        roots.forEach(e => {
+            if (e.createdAt) {
+                const created = e.createdAt.toDate ? e.createdAt.toDate() : new Date(e.createdAt);
+                const daysAgo = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+                if (daysAgo >= 0 && daysAgo < 30) newSubscribersLast30Days[29 - daysAgo]++;
+            }
         });
 
         const churnRate = totalCompanies > 0 ? ((cancelledCount / totalCompanies) * 100).toFixed(1) : 0;
@@ -146,89 +138,6 @@ router.delete('/plans/:id', async (req, res) => {
 // 🏢 2. INQUILINOS / REDES / TENANTS
 // ============================================================================
 
-router.post('/tenants', async (req, res) => {
-    const { db, auth } = req;
-    const { 
-        companyName, documentInfo, phone, address, isNetwork, // Dados da Empresa
-        planId, // Plano
-        adminName, adminEmail, adminPassword // Dados Master
-    } = req.body;
-
-    if (!companyName || !planId || !adminEmail || !adminPassword) {
-        return res.status(400).json({ message: 'Dados essenciais incompletos.' });
-    }
-
-    try {
-        const planDoc = await db.collection('saas_plans').doc(planId).get();
-        if (!planDoc.exists) return res.status(400).json({ message: 'Plano não existe.' });
-
-        // Auto-geração silenciosa do Slug interno para a Matriz funcionar sem erros no front do cliente
-        const baseSlug = companyName.toLowerCase().replace(/[^a-z0-9-]/g, '');
-        const slugCheck = await db.collection('establishments').where('urlId', '==', baseSlug).get();
-        const finalUrlId = slugCheck.empty ? baseSlug : `${baseSlug}-${Date.now().toString().slice(-4)}`;
-
-        let userRecord;
-        try {
-            userRecord = await auth.createUser({ email: adminEmail, password: adminPassword, displayName: adminName });
-        } catch (authError) {
-            return res.status(400).json({ message: authError.code === 'auth/email-already-exists' ? 'Email já em uso.' : authError.message });
-        }
-
-        const companyRef = db.collection('companies').doc();
-        const matrizRef = db.collection('establishments').doc();
-        const userRef = db.collection('users').doc(userRecord.uid);
-
-        const nextDueDate = new Date();
-        nextDueDate.setDate(nextDueDate.getDate() + 30); // 1 Mês grátis padrão
-
-        await db.runTransaction(async (transaction) => {
-            transaction.set(companyRef, {
-                name: companyName, 
-                document: documentInfo || '',
-                phone: phone || '',
-                address: address || '',
-                isNetwork: isNetwork === true || isNetwork === 'true',
-                planId: planId, 
-                ownerUid: userRecord.uid, 
-                ownerEmail: adminEmail,
-                status: 'active',
-                nextDueDate: nextDueDate.toISOString().split('T')[0],
-                gracePeriodDays: 5, 
-                lastPaymentStatus: 'pending', // pending, paid, overdue
-                lastPaymentDate: null,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            transaction.set(matrizRef, {
-                companyId: companyRef.id, 
-                name: isNetwork ? `Matriz - ${companyName}` : companyName, 
-                type: 'Matriz',
-                urlId: finalUrlId, 
-                status: 'active', 
-                modules: defaultModules,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            transaction.set(userRef, {
-                email: adminEmail, name: adminName, phone: phone || '',
-                role: 'company_admin', companyId: companyRef.id,
-                establishmentId: matrizRef.id, accessibleIn: [matrizRef.id], 
-                permissions: masterPermissions, status: 'active', isOwnerMaster: true,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        });
-
-        await auth.setCustomUserClaims(userRecord.uid, { companyId: companyRef.id, role: 'company_admin' });
-        res.status(201).json({ message: 'Cliente criado com sucesso!', companyId: companyRef.id });
-
-    } catch (error) {
-        if (adminEmail) {
-            try { const u = await admin.auth().getUserByEmail(adminEmail); if (u) await admin.auth().deleteUser(u.uid); } catch (e) {} 
-        }
-        handleFirestoreError(res, error, 'setup wizard');
-    }
-});
-
 router.get('/tenants', async (req, res) => {
     try {
         const { db } = req;
@@ -236,9 +145,12 @@ router.get('/tenants', async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const search = (req.query.search || '').toLowerCase();
         
-        let query = db.collection('companies').orderBy('createdAt', 'desc');
-        const snapshot = await query.get();
-        let companies = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // 🔄 Busca da coleção correta (establishments)
+        const snapshot = await db.collection('establishments').orderBy('createdAt', 'desc').get();
+        let allEstablishments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Filtra para pegar apenas os donos (Matrizes), ocultando filiais soltas da tabela
+        let companies = allEstablishments.filter(e => !e.parentId);
 
         if (search) {
             companies = companies.filter(c => 
@@ -269,7 +181,8 @@ router.put('/tenants/:companyId', async (req, res) => {
         if (lastPaymentStatus !== undefined) updateData.lastPaymentStatus = lastPaymentStatus; 
         if (isNetwork !== undefined) updateData.isNetwork = isNetwork;
 
-        await db.collection('companies').doc(companyId).update(updateData);
+        // Atualiza direto o estabelecimento raiz
+        await db.collection('establishments').doc(companyId).update(updateData);
         res.status(200).json({ message: 'Dados do cliente atualizados com sucesso.' });
     } catch (error) {
         handleFirestoreError(res, error, 'atualizar inquilino');
@@ -281,15 +194,19 @@ router.patch('/tenants/:companyId/status', async (req, res) => {
     const { status } = req.body;
     try {
         const { db, auth } = req;
-        await db.collection('companies').doc(companyId).update({ status });
         
-        const ests = await db.collection('establishments').where('companyId', '==', companyId).get();
+        // 1. Atualiza o status da Matriz
+        await db.collection('establishments').doc(companyId).update({ status });
+        
+        // 2. Atualiza o status de todas as filiais amarradas a esta Matriz
+        const ests = await db.collection('establishments').where('parentId', '==', companyId).get();
         const batch = db.batch();
         ests.forEach(doc => batch.update(doc.ref, { status }));
         await batch.commit();
 
-        const usersSnap = await db.collection('users').where('companyId', '==', companyId).get();
-        const disabled = status === 'inactive' || status === 'blocked';
+        // 3. Desativa os utilizadores
+        const usersSnap = await db.collection('users').where('establishmentId', '==', companyId).get();
+        const disabled = status === 'inactive' || status === 'blocked' || status === 'deleted';
         await Promise.all(usersSnap.docs.map(d => auth.updateUser(d.id, { disabled }).catch(()=>{})));
         
         res.status(200).json({ message: `Status alterado para ${status}.` });
@@ -318,9 +235,9 @@ router.post('/tenants/:companyId/payments', async (req, res) => {
     try {
         const { db } = req;
         await db.runTransaction(async (t) => {
-            const companyRef = db.collection('companies').doc(companyId);
-            const compDoc = await t.get(companyRef);
-            if (!compDoc.exists) throw new Error("Cliente não encontrado.");
+            const estRef = db.collection('establishments').doc(companyId);
+            const estDoc = await t.get(estRef);
+            if (!estDoc.exists) throw new Error("Cliente não encontrado.");
 
             const paymentRef = db.collection('saas_payments').doc();
             t.set(paymentRef, {
@@ -334,21 +251,21 @@ router.post('/tenants/:companyId/payments', async (req, res) => {
             });
 
             if (status === 'paid') {
-                const currentDueDateStr = compDoc.data().nextDueDate;
+                const currentDueDateStr = estDoc.data().nextDueDate;
                 let currentDueDate = currentDueDateStr ? new Date(currentDueDateStr + 'T12:00:00Z') : new Date();
                 
-                currentDueDate.setMonth(currentDueDate.getMonth() + 1);
+                currentDueDate.setMonth(currentDueDate.getMonth() + 1); // Adiciona 1 mês
                 
-                t.update(companyRef, {
+                t.update(estRef, {
                     lastPaymentDate: paymentDate || new Date().toISOString().split('T')[0],
                     lastPaymentStatus: 'paid',
                     nextDueDate: currentDueDate.toISOString().split('T')[0],
                     status: 'active' 
                 });
 
-                if (compDoc.data().status === 'blocked' || compDoc.data().status === 'inactive') {
-                    const ests = await t.get(db.collection('establishments').where('companyId', '==', companyId));
-                    ests.forEach(doc => t.update(doc.ref, { status: 'active' }));
+                if (estDoc.data().status === 'blocked' || estDoc.data().status === 'inactive') {
+                    const branches = await t.get(db.collection('establishments').where('parentId', '==', companyId));
+                    branches.forEach(doc => t.update(doc.ref, { status: 'active' }));
                 }
             }
         });
@@ -357,72 +274,8 @@ router.post('/tenants/:companyId/payments', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'registar pagamento saas'); }
 });
 
-
 // ============================================================================
-// 🏬 4. ADICIONAR FILIAL (COM TRAVA DE UPSELL E LIMITE DE PLANO)
-// ============================================================================
-
-router.post('/tenants/:companyId/branches', async (req, res) => {
-    const { companyId } = req.params;
-    const { name, urlId, address, phone } = req.body;
-    const { db } = req;
-
-    if (!name || !urlId) return res.status(400).json({ message: 'Nome e URL de login (slug) são obrigatórios.' });
-
-    try {
-        const slugCheck = await db.collection('establishments').where('urlId', '==', urlId).get();
-        if (!slugCheck.empty) return res.status(409).json({ message: 'URL de Login já em uso por outra loja.' });
-
-        await db.runTransaction(async (transaction) => {
-            const companyDoc = await transaction.get(db.collection('companies').doc(companyId));
-            if (!companyDoc.exists) throw new Error("Rede não encontrada.");
-            
-            const planDoc = await transaction.get(db.collection('saas_plans').doc(companyDoc.data().planId));
-            if (!planDoc.exists) throw new Error("Plano do cliente inválido.");
-
-            const maxEstablishments = planDoc.data().maxEstablishments || 1;
-
-            const branchesQuery = await transaction.get(db.collection('establishments').where('companyId', '==', companyId));
-            
-            if (branchesQuery.size >= maxEstablishments) {
-                throw new Error(`UPSELL_REQUIRED: O plano atual permite no máximo ${maxEstablishments} unidade(s). Realize um upgrade para adicionar mais filiais.`);
-            }
-
-            const newBranchRef = db.collection('establishments').doc();
-            transaction.set(newBranchRef, {
-                companyId: companyId,
-                name: name,
-                type: 'Filial',
-                urlId: urlId,
-                address: address || '',
-                phone: phone || '',
-                status: 'active',
-                modules: defaultModules,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            const masterUsersSnapshot = await transaction.get(db.collection('users').where('companyId', '==', companyId).where('role', '==', 'company_admin'));
-            masterUsersSnapshot.forEach(userDoc => {
-                transaction.update(userDoc.ref, {
-                    accessibleIn: admin.firestore.FieldValue.arrayUnion(newBranchRef.id)
-                });
-            });
-        });
-
-        res.status(201).json({ message: 'Nova unidade adicionada com sucesso à Rede!' });
-
-    } catch (error) {
-        if (error.message.includes('UPSELL_REQUIRED')) {
-            const cleanMessage = error.message.replace('UPSELL_REQUIRED: ', '');
-            return res.status(403).json({ message: cleanMessage, code: 'LIMIT_REACHED' });
-        }
-        handleFirestoreError(res, error, 'criação de filial');
-    }
-});
-
-
-// ============================================================================
-// 🕵️ 5. IMPERSONATION E OUTRAS ROTAS
+// 🕵️ 4. IMPERSONATION E ADMINS INTERNOS
 // ============================================================================
 
 router.post('/tenants/:companyId/impersonate', async (req, res) => {
@@ -430,14 +283,11 @@ router.post('/tenants/:companyId/impersonate', async (req, res) => {
         const { db, auth } = req;
         const { companyId } = req.params;
 
-        const companyDoc = await db.collection('companies').doc(companyId).get();
-        if (!companyDoc.exists || !companyDoc.data().ownerUid) return res.status(400).json({ message: 'Rede inválida ou dono não encontrado.' });
+        const estDoc = await db.collection('establishments').doc(companyId).get();
+        if (!estDoc.exists || !estDoc.data().ownerUid) return res.status(400).json({ message: 'Rede inválida ou dono não encontrado.' });
 
-        const matrizSnap = await db.collection('establishments').where('companyId', '==', companyId).where('type', '==', 'Matriz').limit(1).get();
-        const establishmentId = matrizSnap.empty ? companyId : matrizSnap.docs[0].id;
-
-        const token = await auth.createCustomToken(companyDoc.data().ownerUid, { 
-            role: 'company_admin', companyId, establishmentId, impersonated: true 
+        const token = await auth.createCustomToken(estDoc.data().ownerUid, { 
+            role: 'owner', establishmentId: companyId, impersonated: true 
         });
         
         res.status(200).json({ token });

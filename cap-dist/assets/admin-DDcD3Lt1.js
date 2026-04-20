@@ -1,13 +1,13 @@
-import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-config-C2tbVz-J.js";import{onAuthStateChanged as N,signOut as B}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";import{a as c,b as d,e as b,s as L,c as q}from"./utils-JfzC6GFr.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";const A={super_admin:["dashboard","establishments","whatsapp","financial","team","settings"],support:["establishments","whatsapp"],financial:["dashboard","establishments","financial"],developer:["whatsapp","settings"]};let h=null;function R(){document.body.style.display="none",N(k,async e=>{if(e)try{let t=(await e.getIdTokenResult()).claims.role;t==="super-admin"&&(t="super_admin"),t&&A[t]?(h=t,console.log("🛡️ Acesso Seguro Concedido! Perfil:",h),F(h),document.body.style.display="flex"):(console.error("🚨 Intruso detectado: Conta sem cargo de gestão."),await B(k),window.location.href="admin-login.html")}catch(a){console.error("Erro ao verificar permissões de segurança:",a),window.location.href="admin-login.html"}else window.location.href="admin-login.html"})}function F(e){const a=A[e]||[];document.querySelectorAll("[data-module]").forEach(s=>{const r=s.getAttribute("data-module");a.includes(r)||s.remove()})}async function O(){try{await B(k),window.location.href="admin-login.html"}catch(e){console.error("Erro ao sair do sistema:",e)}}const U=e=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(e||0);async function V(e){e.innerHTML=`
+import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as y}from"./firebase-config-C2tbVz-J.js";import{onAuthStateChanged as N,signOut as B}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";import{a as p,b as d,e as b,s as k,c as q}from"./utils-JfzC6GFr.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";import"https://www.gstatic.com/firebasejs/11.6.1/firebase-messaging.js";const A={super_admin:["dashboard","establishments","whatsapp","financial","team","settings"],support:["establishments","whatsapp"],financial:["dashboard","establishments","financial"],developer:["whatsapp","settings"]};let v=null;function R(){document.body.style.display="none",N(y,async e=>{if(e)try{let a=(await e.getIdTokenResult()).claims.role;a==="super-admin"&&(a="super_admin"),a&&A[a]?(v=a,console.log("🛡️ Acesso Seguro Concedido! Perfil:",v),O(v),document.body.style.display="flex"):(console.error("🚨 Intruso detectado: Conta sem cargo de gestão."),await B(y),window.location.href="admin-login.html")}catch(s){console.error("Erro ao verificar permissões de segurança:",s),window.location.href="admin-login.html"}else window.location.href="admin-login.html"})}function O(e){const s=A[e]||[];document.querySelectorAll("[data-module]").forEach(t=>{const r=t.getAttribute("data-module");s.includes(r)||t.remove()})}async function z(){try{await B(y),window.location.href="admin-login.html"}catch(e){console.error("Erro ao sair do sistema:",e)}}const F=e=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(e||0);async function U(e){e.innerHTML=`
         <div class="flex flex-col items-center justify-center h-full text-slate-400">
             <div class="loader mb-4"></div>
             <p class="font-medium text-sm animate-pulse">A carregar métricas do SaaS...</p>
         </div>
-    `;try{const a=await c("/api/admin/dashboard-stats");if(!a||!a.kpis)throw new Error("Dados de KPIs não retornados pela API.");const{kpis:t}=a,s=Math.max(...t.newSubscribersData,1),r=t.newSubscribersData.map(l=>`
+    `;try{const s=await p("/api/admin/dashboard-stats");if(!s||!s.kpis)throw new Error("Dados de KPIs não retornados pela API.");const{kpis:a}=s,t=Math.max(...a.newSubscribersData,1),r=a.newSubscribersData.map(o=>`
                 <div class="group relative flex-1 flex items-end justify-center h-full">
-                    <div class="w-full bg-brand-200 hover:bg-brand-500 transition-colors rounded-t-sm" style="height: ${l/s*100}%"></div>
+                    <div class="w-full bg-brand-200 hover:bg-brand-500 transition-colors rounded-t-sm" style="height: ${o/t*100}%"></div>
                     <div class="opacity-0 group-hover:opacity-100 absolute -top-8 bg-slate-800 text-white text-[10px] py-1 px-2 rounded font-bold transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                        ${l} novos
+                        ${o} novos
                     </div>
                 </div>
             `).join("");e.innerHTML=`
@@ -35,7 +35,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                             </div>
                             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">Receita<br>Recorrente (MRR)</span>
                         </div>
-                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${U(t.mrr)}</h3>
+                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${F(a.mrr)}</h3>
                     </div>
 
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-brand-300 transition-colors">
@@ -48,7 +48,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                             </div>
                             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">Assinaturas<br>Ativas</span>
                         </div>
-                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${t.activeUsers}</h3>
+                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${a.activeUsers}</h3>
                     </div>
 
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-slate-300 transition-colors">
@@ -61,7 +61,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                             </div>
                             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">Total<br>Cadastrados</span>
                         </div>
-                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${t.totalUsers}</h3>
+                        <h3 class="text-3xl font-black text-slate-800 relative z-10 tracking-tight">${a.totalUsers}</h3>
                     </div>
 
                     <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group hover:border-rose-300 transition-colors">
@@ -74,7 +74,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                             </div>
                             <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-tight">Taxa de<br>Cancelamento</span>
                         </div>
-                        <h3 class="text-3xl font-black text-rose-600 relative z-10 tracking-tight">${t.churnRate}%</h3>
+                        <h3 class="text-3xl font-black text-rose-600 relative z-10 tracking-tight">${a.churnRate}%</h3>
                     </div>
 
                 </div>
@@ -90,7 +90,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                                 <p class="text-xs text-slate-400 mt-1">Crescimento diário nos últimos 30 dias.</p>
                             </div>
                             <div class="bg-brand-50 text-brand-700 text-xl font-black px-4 py-2 rounded-xl shadow-inner border border-brand-100">
-                                +${t.newSubscribersData.reduce((l,o)=>l+o,0)}
+                                +${a.newSubscribersData.reduce((o,n)=>o+n,0)}
                             </div>
                         </div>
                         
@@ -147,14 +147,14 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
 
                 </div>
             </div>
-        `}catch(a){console.error("Erro ao carregar os dados do Dashboard:",a),e.innerHTML=`
+        `}catch(s){console.error("Erro ao carregar os dados do Dashboard:",s),e.innerHTML=`
             <div class="flex flex-col items-center justify-center h-full text-slate-500 p-6">
                 <i class="bi bi-exclamation-triangle text-5xl mb-4 text-rose-400"></i>
                 <h3 class="font-bold text-lg text-slate-700">Falha ao Sincronizar</h3>
                 <p class="font-medium text-sm mt-1 max-w-md text-center">Não foi possível carregar as métricas do SaaS. Verifique se o utilizador atual possui privilégios de Super Admin.</p>
                 <button onclick="location.reload()" class="mt-6 px-6 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition-colors shadow-sm active:scale-95">Tentar Novamente</button>
             </div>
-        `}}let i={tenants:[],plans:[],payments:[],searchQuery:"",currentPage:1,limit:20,totalPages:1,activeTab:"cadastro"},w=null;async function _(e){J(e),ae(e),await Promise.all([G(),x()])}function J(e){e.innerHTML=`
+        `}}let l={tenants:[],plans:[],payments:[],searchQuery:"",currentPage:1,limit:20,totalPages:1,activeTab:"cadastro"},h=null;async function V(e){_(e),ae(e),await Promise.all([J(),m()])}function _(e){e.innerHTML=`
         <div class="h-full flex flex-col w-full relative font-sans animate-fade-in pb-12">
             
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -162,7 +162,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                     <h2 class="text-2xl font-black text-slate-800 tracking-tight">Clientes (SaaS CRM)</h2>
                     <p class="text-sm text-slate-500 font-medium mt-1">Gira cadastros, planos, faturas e bloqueios dos seus clientes.</p>
                 </div>
-                <button id="btn-open-wizard" class="bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-brand-700 shadow-md shadow-brand-500/30 active:scale-95 transition-all flex items-center gap-2">
+                <button id="btn-open-create-modal" class="bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-brand-700 shadow-md shadow-brand-500/30 active:scale-95 transition-all flex items-center gap-2">
                     <i class="bi bi-building-add text-lg"></i> Novo Cliente
                 </button>
             </div>
@@ -229,126 +229,53 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                 </div>
             </div>
         </div>
-    `}async function G(){try{i.plans=await c("/api/admin/plans")||[]}catch{d("Erro","Falha ao carregar os planos.","error")}}async function x(){const e=document.getElementById("tenants-table-body"),a=document.getElementById("pagination-container");e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center"><div class="loader mx-auto mb-2 border-brand-500"></div></td></tr>');try{let t=`/api/admin/tenants?page=${i.currentPage}&limit=${i.limit}`;i.searchQuery&&(t+=`&search=${encodeURIComponent(i.searchQuery)}`);const s=await c(t);i.tenants=(s.data||[]).filter(r=>r.status!=="deleted"),i.totalPages=s.pagination.totalPages||1,T(),Q(a)}catch{e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center text-rose-500">Erro ao carregar clientes.</td></tr>')}}async function j(e){try{const a=await c(`/api/admin/tenants/${e}/payments`);i.payments=a||[],W(e)}catch{document.getElementById("payments-wrapper").innerHTML='<p class="text-rose-500 text-xs font-bold text-center mt-4">Erro ao carregar pagamentos.</p>'}}function C(e){if(!e)return"-";try{const[a,t,s]=e.split("T")[0].split("-");return`${s}/${t}/${a}`}catch{return e}}function T(){const e=document.getElementById("tenants-table-body");if(!e)return;if(i.tenants.length===0){e.innerHTML='<tr><td colspan="5" class="py-16 text-center text-slate-400">Nenhum cliente encontrado.</td></tr>';return}const a=new Map(i.plans.map(s=>[s.id,s.name])),t=i.tenants.map(s=>{const r=s.status==="inactive"||s.status==="blocked",l=a.get(s.planId)||"Não Definido",o=s.nextDueDate?C(s.nextDueDate):"-",n=s.lastPaymentStatus==="overdue"?'<span class="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded ml-1 border border-rose-100"><i class="bi bi-exclamation-circle text-[8px]"></i> Atrasado</span>':'<span class="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded ml-1 border border-emerald-100">Em dia</span>';return`
-            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer border-b border-slate-100" data-action="view-tenant" data-id="${s.id}">
+    `}async function J(){try{l.plans=await p("/api/admin/plans")||[]}catch{d("Erro","Falha ao carregar os planos.","error")}}async function m(){const e=document.getElementById("tenants-table-body"),s=document.getElementById("pagination-container");e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center"><div class="loader mx-auto mb-2 border-brand-500"></div></td></tr>');try{let a=`/api/admin/tenants?page=${l.currentPage}&limit=${l.limit}`;l.searchQuery&&(a+=`&search=${encodeURIComponent(l.searchQuery)}`);const t=await p(a);l.tenants=(t.data||[]).filter(r=>r.status!=="deleted"),l.totalPages=t.pagination.totalPages||1,T(),G(s)}catch{e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center text-rose-500">Erro ao carregar clientes.</td></tr>')}}async function C(e){try{const s=await p(`/api/admin/tenants/${e}/payments`);l.payments=s||[],W(e)}catch{document.getElementById("payments-wrapper").innerHTML='<p class="text-rose-500 text-xs font-bold text-center mt-4">Erro ao carregar pagamentos.</p>'}}function j(e){if(!e)return"-";try{const[s,a,t]=e.split("T")[0].split("-");return`${t}/${a}/${s}`}catch{return e}}function T(){const e=document.getElementById("tenants-table-body");if(!e)return;if(l.tenants.length===0){e.innerHTML='<tr><td colspan="5" class="py-16 text-center text-slate-400">Nenhum cliente encontrado.</td></tr>';return}const s=new Map(l.plans.map(t=>[t.id,t.name])),a=l.tenants.map(t=>{const r=t.status==="inactive"||t.status==="blocked",o=s.get(t.planId)||"Não Definido",n=t.nextDueDate?j(t.nextDueDate):"-",i=t.lastPaymentStatus==="overdue"?'<span class="text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded ml-1 border border-rose-100"><i class="bi bi-exclamation-circle text-[8px]"></i> Atrasado</span>':'<span class="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded ml-1 border border-emerald-100">Em dia</span>';return`
+            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer border-b border-slate-100" data-action="view-tenant" data-id="${t.id}">
                 <td class="p-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-lg ${s.isNetwork?"bg-indigo-50 text-indigo-500 border-indigo-100":"bg-white text-slate-500 border-slate-200"} flex items-center justify-center border shadow-sm">
-                            <i class="bi ${s.isNetwork?"bi-diagram-3-fill":"bi-shop"}"></i>
+                        <div class="w-10 h-10 rounded-lg ${t.isNetwork?"bg-indigo-50 text-indigo-500 border-indigo-100":"bg-white text-slate-500 border-slate-200"} flex items-center justify-center border shadow-sm">
+                            <i class="bi ${t.isNetwork?"bi-diagram-3-fill":"bi-shop"}"></i>
                         </div>
                         <div>
-                            <p class="text-sm font-bold text-slate-800 group-hover:text-brand-600 transition-colors">${b(s.name)}</p>
-                            <p class="text-[10px] text-slate-500 font-semibold mt-0.5">DOC: ${b(s.document||"N/A")}</p>
+                            <p class="text-sm font-bold text-slate-800 group-hover:text-brand-600 transition-colors">${b(t.name)}</p>
+                            <p class="text-[10px] text-slate-500 font-semibold mt-0.5">DOC: ${b(t.document||"N/A")}</p>
                         </div>
                     </div>
                 </td>
                 <td class="p-4">
-                    <p class="text-xs font-bold text-slate-700"><i class="bi bi-person-fill text-slate-300 mr-1"></i> ${b(s.ownerEmail||"S/E-mail")}</p>
+                    <p class="text-xs font-bold text-slate-700"><i class="bi bi-person-fill text-slate-300 mr-1"></i> ${b(t.ownerEmail||"S/E-mail")}</p>
                 </td>
                 <td class="p-4 text-center">
-                    <p class="text-xs font-black text-slate-700">${b(l)}</p>
-                    <p class="text-[9px] font-bold text-slate-500 mt-1">Vence: ${o} ${n}</p>
+                    <p class="text-xs font-black text-slate-700">${b(o)}</p>
+                    <p class="text-[9px] font-bold text-slate-500 mt-1">Vence: ${n} ${i}</p>
                 </td>
                 <td class="p-4 text-center">
                     ${r?'<span class="bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest"><i class="bi bi-lock-fill"></i> Bloqueado</span>':'<span class="bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest"><i class="bi bi-check-circle-fill"></i> Ativo</span>'}
                 </td>
                 <td class="p-4 text-right">
                     <div class="flex items-center justify-end gap-2">
-                        <button class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-brand-50 hover:text-brand-600 hover:border-brand-200 transition-colors active:scale-95" data-action="view-tenant" data-id="${s.id}">
+                        <button class="bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm hover:bg-brand-50 hover:text-brand-600 hover:border-brand-200 transition-colors active:scale-95" data-action="view-tenant" data-id="${t.id}">
                             Gerir
                         </button>
-                        <button class="bg-white border border-slate-200 text-slate-400 w-8 h-8 flex items-center justify-center rounded-lg shadow-sm hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors active:scale-95" data-action="delete-tenant" data-id="${s.id}" title="Excluir Cliente">
+                        <button class="bg-white border border-slate-200 text-slate-400 w-8 h-8 flex items-center justify-center rounded-lg shadow-sm hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors active:scale-95" data-action="delete-tenant" data-id="${t.id}" title="Excluir Cliente">
                             <i class="bi bi-trash3"></i>
                         </button>
                     </div>
                 </td>
             </tr>
-        `}).join("");e.innerHTML=t}function Q(e){if(e){if(i.totalPages<=1){e.innerHTML="";return}e.innerHTML=`
-        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pág. ${i.currentPage} de ${i.totalPages}</span>
+        `}).join("");e.innerHTML=a}function G(e){if(e){if(l.totalPages<=1){e.innerHTML="";return}e.innerHTML=`
+        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pág. ${l.currentPage} de ${l.totalPages}</span>
         <div class="flex gap-2">
-            <button data-action="prev-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50" ${i.currentPage<=1?"disabled":""}><i class="bi bi-chevron-left"></i></button>
-            <button data-action="next-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50" ${i.currentPage>=i.totalPages?"disabled":""}><i class="bi bi-chevron-right"></i></button>
+            <button data-action="prev-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50" ${l.currentPage<=1?"disabled":""}><i class="bi bi-chevron-left"></i></button>
+            <button data-action="next-page" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 shadow-sm disabled:opacity-50" ${l.currentPage>=l.totalPages?"disabled":""}><i class="bi bi-chevron-right"></i></button>
         </div>
-    `}}function S(e,a=null){const t=document.getElementById("slide-panel-overlay"),s=document.getElementById("slide-panel"),r=document.getElementById("modal-container"),l=document.getElementById("panel-title"),o=document.getElementById("panel-content"),u=document.getElementById("panel-footer"),n=document.getElementById("panel-tabs-container");t.classList.remove("hidden"),s.classList.remove("hidden"),s.classList.add("flex"),requestAnimationFrame(()=>{t.classList.remove("opacity-0"),r.classList.remove("scale-95","opacity-0"),r.classList.add("scale-100","opacity-100")});const p=i.plans.map(m=>`<option value="${m.id}">${b(m.name)}</option>`).join("");if(e==="create")l.innerText="Cadastrar Novo Cliente",n.classList.add("hidden"),r.classList.add("max-w-3xl"),r.classList.remove("max-w-4xl"),o.innerHTML=`
-            <form id="wizard-form" class="space-y-6">
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                        <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">1. Perfil da Empresa</h4>
-                        
-                        <div class="mb-4">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Tipo de Cadastro *</label>
-                            <div class="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                <label class="flex-1 cursor-pointer relative">
-                                    <input type="radio" name="wiz-is-network" value="false" checked class="peer sr-only">
-                                    <div class="text-center text-xs font-bold text-slate-500 py-2 rounded-lg peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm transition-all">Única Loja</div>
-                                </label>
-                                <label class="flex-1 cursor-pointer relative">
-                                    <input type="radio" name="wiz-is-network" value="true" class="peer sr-only">
-                                    <div class="text-center text-xs font-bold text-slate-500 py-2 rounded-lg peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition-all">Rede (Múltiplas)</div>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Fantasia / Marca *</label>
-                                <input type="text" id="wiz-company" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                            
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">CNPJ / CPF</label>
-                                <input type="text" id="wiz-doc" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Telefone Principal</label>
-                                <input type="text" id="wiz-phone" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="space-y-6">
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">2. Acesso Master (Dono)</h4>
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Completo do Proprietário *</label>
-                                    <input type="text" id="wiz-name" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Login *</label>
-                                    <input type="email" id="wiz-email" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow" autocomplete="new-email">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Senha Inicial *</label>
-                                    <input type="text" id="wiz-password" required value="kairos123" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-brand-500">
-                            <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">3. Assinatura SaaS</h4>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Plano Base *</label>
-                                <select id="wiz-plan" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer transition-shadow">
-                                    <option value="">Selecione o plano...</option>${p}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        `,u.innerHTML=`
-            <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest">Cancelar</button>
-            <button data-action="submit-wizard" class="px-8 py-3 rounded-xl font-black text-sm text-white bg-brand-600 hover:bg-brand-700 shadow-md flex items-center gap-2 active:scale-95 transition-transform uppercase tracking-widest">Criar Ambiente</button>
-        `;else if(e==="view"&&a){const m=i.tenants.find(D=>D.id===a);if(!m)return;l.innerText=m.name,n.classList.remove("hidden"),r.classList.add("max-w-4xl"),r.classList.remove("max-w-3xl"),i.activeTab="cadastro",H(m,p),u.innerHTML=`
-            <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest active:scale-95">Fechar Janela</button>
-            <button data-action="update-tenant" data-id="${m.id}" class="px-8 py-3 bg-brand-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-brand-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2">
-                <i class="bi bi-save2"></i> Salvar Cadastro
-            </button>
-        `}}function H(e,a){const t=document.getElementById("panel-content");document.querySelectorAll(".panel-tab").forEach(l=>{l.dataset.tab===i.activeTab?(l.classList.remove("border-transparent","text-slate-500"),l.classList.add("border-brand-600","text-brand-600")):(l.classList.add("border-transparent","text-slate-500"),l.classList.remove("border-brand-600","text-brand-600"))});const r=e.status==="inactive"||e.status==="blocked"||e.status==="deleted";i.activeTab==="cadastro"?(t.innerHTML=`
+    `}}function Q(){const e=document.getElementById("modalCreateTenant"),s=document.getElementById("modalCreateTenantContent"),a=document.getElementById("newTenantPlan");e&&s&&(a&&l.plans.length>0&&(a.innerHTML='<option value="">Selecione o plano...</option>'+l.plans.map(t=>`<option value="${t.id}">${b(t.name)}</option>`).join("")),e.classList.remove("opacity-0","pointer-events-none"),s.classList.remove("scale-95"),s.classList.add("scale-100"))}function I(){const e=document.getElementById("modalCreateTenant"),s=document.getElementById("modalCreateTenantContent"),a=document.getElementById("formCreateTenant"),t=document.getElementById("feedbackMsg");e&&s&&(s.classList.remove("scale-100"),s.classList.add("scale-95"),e.classList.add("opacity-0","pointer-events-none"),setTimeout(()=>{a&&a.reset(),t&&t.classList.add("hidden")},300))}function Z(e,s=null){if(!s)return;const a=document.getElementById("slide-panel-overlay"),t=document.getElementById("slide-panel"),r=document.getElementById("modal-container"),o=document.getElementById("panel-title"),n=document.getElementById("panel-footer"),c=document.getElementById("panel-tabs-container");a.classList.remove("hidden"),t.classList.remove("hidden"),t.classList.add("flex"),requestAnimationFrame(()=>{a.classList.remove("opacity-0"),r.classList.remove("scale-95","opacity-0"),r.classList.add("scale-100","opacity-100")});const i=l.tenants.find(u=>u.id===s);if(!i)return;const f=l.plans.map(u=>`<option value="${u.id}">${b(u.name)}</option>`).join("");o.innerText=i.name,c.classList.remove("hidden"),r.classList.add("max-w-4xl"),l.activeTab="cadastro",H(i,f),n.innerHTML=`
+        <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest active:scale-95">Fechar Janela</button>
+        <button data-action="update-tenant" data-id="${i.id}" class="px-8 py-3 bg-brand-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-brand-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2">
+            <i class="bi bi-save2"></i> Salvar Cadastro
+        </button>
+    `}function H(e,s){const a=document.getElementById("panel-content");document.querySelectorAll(".panel-tab").forEach(o=>{o.dataset.tab===l.activeTab?(o.classList.remove("border-transparent","text-slate-500"),o.classList.add("border-brand-600","text-brand-600")):(o.classList.add("border-transparent","text-slate-500"),o.classList.remove("border-brand-600","text-brand-600"))});const r=e.status==="inactive"||e.status==="blocked"||e.status==="deleted";l.activeTab==="cadastro"?(a.innerHTML=`
             <form id="tenant-full-form" class="space-y-6">
-                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
                         <div class="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
@@ -386,7 +313,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                             <div>
                                 <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Plano Contratado (Upsell / Downgrade)</label>
                                 <select id="edit-plan" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer transition-shadow">
-                                    ${a}
+                                    ${s}
                                 </select>
                             </div>
                             
@@ -437,7 +364,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                     </div>
                 </div>
             </form>
-        `,setTimeout(()=>{const l=document.getElementById("edit-plan");l&&e.planId&&(l.value=e.planId)},50)):i.activeTab==="history"&&(t.innerHTML=`
+        `,setTimeout(()=>{const o=document.getElementById("edit-plan");o&&e.planId&&(o.value=e.planId)},50)):l.activeTab==="history"&&(a.innerHTML=`
             <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col h-full min-h-[400px]">
                 <div class="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                     <h4 class="text-xs font-black text-slate-800 tracking-tight flex items-center gap-2"><i class="bi bi-receipt-cutoff text-emerald-600"></i> Faturas Pagas</h4>
@@ -448,24 +375,24 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                     <div class="loader mx-auto mt-10"></div>
                 </div>
             </div>
-        `,j(e.id))}function W(e){const a=document.getElementById("payments-wrapper");if(a){if(i.payments.length===0){a.innerHTML=`
+        `,C(e.id))}function W(e){const s=document.getElementById("payments-wrapper");if(s){if(l.payments.length===0){s.innerHTML=`
             <div class="text-center py-16">
                 <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3 border border-slate-100"><i class="bi bi-receipt text-2xl text-slate-300"></i></div>
                 <p class="text-sm font-bold text-slate-600">Nenhum pagamento registado.</p>
                 <p class="text-xs text-slate-400 mt-1">Os pagamentos desta assinatura aparecerão aqui.</p>
             </div>
-        `;return}a.innerHTML=i.payments.map(t=>`
+        `;return}s.innerHTML=l.payments.map(a=>`
         <div class="flex justify-between items-center p-4 bg-slate-50 border border-slate-200 rounded-xl shadow-sm hover:border-brand-200 hover:bg-white transition-all group">
             <div>
-                <p class="text-base font-black text-slate-800 tracking-tight">R$ ${Number(t.amount).toFixed(2)}</p>
-                <p class="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest"><i class="bi bi-calendar-check text-emerald-500 mr-1"></i> Data: ${C(t.paymentDate)}</p>
+                <p class="text-base font-black text-slate-800 tracking-tight">R$ ${Number(a.amount).toFixed(2)}</p>
+                <p class="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest"><i class="bi bi-calendar-check text-emerald-500 mr-1"></i> Data: ${j(a.paymentDate)}</p>
             </div>
             <div class="text-right">
                 <span class="bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm">Pago</span>
-                <p class="text-[9px] font-bold text-slate-400 mt-1.5 uppercase tracking-widest">Via ${b(t.paymentMethod)}</p>
+                <p class="text-[9px] font-bold text-slate-400 mt-1.5 uppercase tracking-widest">Via ${b(a.paymentMethod)}</p>
             </div>
         </div>
-    `).join("")}}function g(){const e=document.getElementById("slide-panel-overlay"),a=document.getElementById("slide-panel"),t=document.getElementById("modal-container");e.classList.add("opacity-0"),t&&(t.classList.remove("scale-100","opacity-100"),t.classList.add("scale-95","opacity-0")),setTimeout(()=>{e.classList.add("hidden"),a.classList.add("hidden"),a.classList.remove("flex")},300)}async function X(e){const a=document.getElementById("wizard-form");if(!a.checkValidity()){a.reportValidity();return}const t=document.querySelector('input[name="wiz-is-network"]:checked'),r={companyName:document.getElementById("wiz-company").value,documentInfo:document.getElementById("wiz-doc").value,isNetwork:t?t.value:!1,phone:document.getElementById("wiz-phone").value,adminName:document.getElementById("wiz-name").value,adminEmail:document.getElementById("wiz-email").value,adminPassword:document.getElementById("wiz-password").value,planId:document.getElementById("wiz-plan").value},l=e.innerHTML;e.innerHTML='<div class="loader-small border-white mr-2"></div> Criando...',e.disabled=!0;try{await c("/api/admin/tenants",{method:"POST",body:JSON.stringify(r)}),d("Fantástico!",`A conta de ${r.companyName} foi criada com sucesso.`,"success"),g(),await x()}catch(o){d("Erro",o.message,"error"),e.innerHTML=l,e.disabled=!1}}async function Z(e){const a=e.dataset.id,t={phone:document.getElementById("edit-phone").value,documentInfo:document.getElementById("edit-doc").value,planId:document.getElementById("edit-plan").value,nextDueDate:document.getElementById("edit-due-date").value,gracePeriodDays:document.getElementById("edit-grace-period").value,lastPaymentStatus:document.getElementById("edit-pay-status").value},s=e.innerHTML;e.innerHTML='<div class="loader-small border-white mr-2"></div> Salvando...',e.disabled=!0;try{await c(`/api/admin/tenants/${a}`,{method:"PUT",body:JSON.stringify(t)}),d("Sucesso","Cadastro do cliente salvo com sucesso.","success");const r=i.tenants.findIndex(l=>l.id===a);r>-1&&(i.tenants[r]={...i.tenants[r],...t,document:t.documentInfo},T()),g()}catch(r){d("Erro",r.message,"error"),e.innerHTML=s,e.disabled=!1}}async function K(e){const a=`
+    `).join("")}}function L(){const e=document.getElementById("slide-panel-overlay"),s=document.getElementById("slide-panel"),a=document.getElementById("modal-container");e.classList.add("opacity-0"),a&&(a.classList.remove("scale-100","opacity-100"),a.classList.add("scale-95","opacity-0")),setTimeout(()=>{e.classList.add("hidden"),s.classList.add("hidden"),s.classList.remove("flex")},300)}async function X(e){const s=e.dataset.id,a={phone:document.getElementById("edit-phone").value,documentInfo:document.getElementById("edit-doc").value,planId:document.getElementById("edit-plan").value,nextDueDate:document.getElementById("edit-due-date").value,gracePeriodDays:document.getElementById("edit-grace-period").value,lastPaymentStatus:document.getElementById("edit-pay-status").value},t=e.innerHTML;e.innerHTML='<div class="loader border-white mr-2 w-4 h-4"></div> Salvando...',e.disabled=!0;try{await p(`/api/admin/tenants/${s}`,{method:"PUT",body:JSON.stringify(a)}),d("Sucesso","Cadastro do cliente salvo com sucesso.","success");const r=l.tenants.findIndex(o=>o.id===s);r>-1&&(l.tenants[r]={...l.tenants[r],...a,document:a.documentInfo},T()),L()}catch(r){d("Erro",r.message,"error"),e.innerHTML=t,e.disabled=!1}}async function K(e){const s=`
         <form id="manual-payment-form" class="space-y-5 bg-white p-1 rounded-2xl">
             <div>
                 <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Valor Recebido (R$)</label>
@@ -491,7 +418,7 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
                 <i class="bi bi-check2-circle text-lg"></i> Confirmar Fatura Paga
             </button>
         </form>
-    `,{modalElement:t,close:s}=q({title:"Registar Fatura Paga",contentHTML:a,maxWidth:"max-w-sm"});t.querySelector("#manual-payment-form").addEventListener("submit",async r=>{r.preventDefault();const l=r.target.querySelector('button[type="submit"]'),o=l.innerHTML;l.innerHTML='<div class="loader-small border-white"></div>',l.disabled=!0;const u={amount:document.getElementById("pay-amount").value,paymentDate:document.getElementById("pay-date").value,paymentMethod:document.getElementById("pay-method").value,status:"paid"};try{await c(`/api/admin/tenants/${e}/payments`,{method:"POST",body:JSON.stringify(u)}),d("Sucesso","Pagamento registado. O vencimento foi adiado em 1 mês.","success"),s(),await x(),j(e)}catch(n){d("Erro",n.message,"error"),l.innerHTML=o,l.disabled=!1}})}async function Y(e){if(await L("Atenção MÁXIMA!","Deseja excluir DEFINITIVAMENTE este cliente? A conta ficará invisível, o acesso será bloqueado e ele desaparecerá desta tabela."))try{await c(`/api/admin/tenants/${e}/status`,{method:"PATCH",body:JSON.stringify({status:"deleted"})}),d("Sucesso","Ambiente excluído com sucesso.","success"),i.tenants=i.tenants.filter(t=>t.id!==e),T()}catch(t){d("Erro",t.message,"error")}}async function ee(e){const a=e.dataset.id,t=e.dataset.current==="inactive"||e.dataset.current==="blocked"||e.dataset.current==="deleted"?"active":"blocked";if(!await L("Zona de Risco",`Deseja realmente ${t==="blocked"?"BLOQUEAR":"DESBLOQUEAR"} o acesso de toda esta rede?`))return;const r=e.innerHTML;e.innerHTML='<div class="loader-small mx-auto border-white"></div>',e.disabled=!0;try{await c(`/api/admin/tenants/${a}/status`,{method:"PATCH",body:JSON.stringify({status:t})}),d("Sucesso",`Ambiente ${t==="blocked"?"bloqueado":"ativado"}.`,"success"),g(),await x()}catch(l){d("Erro",l.message,"error"),e.innerHTML=r,e.disabled=!1}}async function te(e){const a=e.dataset.id,t=e.innerHTML;e.innerHTML='<div class="loader-small border-brand-600 mr-2"></div> Acedendo...',e.disabled=!0;try{const s=await c(`/api/admin/tenants/${a}/impersonate`,{method:"POST"});s&&s.token&&(localStorage.setItem("impersonateToken",s.token),d("Conectado","A redirecionar...","info"),setTimeout(()=>{window.open("/app.html","_blank"),e.innerHTML=t,e.disabled=!1},1e3))}catch(s){d("Acesso Recusado",s.message,"error"),e.innerHTML=t,e.disabled=!1}}function ae(e){w&&e.removeEventListener("click",w);let a;e.addEventListener("input",t=>{t.target.id==="search-tenant-input"&&(clearTimeout(a),a=setTimeout(()=>{i.searchQuery=t.target.value,i.currentPage=1,x()},500))}),w=t=>{if(t.target.id==="slide-panel-overlay"){g();return}const s=t.target.closest(".panel-tab");if(s){i.activeTab=s.dataset.tab;const o=document.querySelector('[data-action="update-tenant"], [data-action="toggle-status"], [data-action="add-manual-payment"]')?.dataset.id;if(o){const u=i.tenants.find(p=>p.id===o),n=i.plans.map(p=>`<option value="${p.id}">${b(p.name)}</option>`).join("");H(u,n)}return}const r=t.target.closest("[data-action], #btn-open-wizard, #btn-refresh-table, #btn-close-panel");if(!r)return;if(r.id==="btn-open-wizard"){S("create");return}if(r.id==="btn-refresh-table"){x();return}if(r.id==="btn-close-panel"){g();return}const l=r.dataset.action;if(l==="delete-tenant"){t.stopPropagation(),Y(r.dataset.id);return}switch(t.preventDefault(),l){case"close-panel":g();break;case"view-tenant":S("view",r.dataset.id);break;case"submit-wizard":X(r);break;case"update-tenant":Z(r);break;case"toggle-status":ee(r);break;case"impersonate":te(r);break;case"add-manual-payment":K(r.dataset.id);break;case"prev-page":i.currentPage>1&&(i.currentPage--,x());break;case"next-page":i.currentPage<i.totalPages&&(i.currentPage++,x());break}},e.addEventListener("click",w)}const se={dashboard:"Visão Geral (Dashboard)",agenda:"Agenda / Calendário",comandas:"Comandas / PDV",relatorios:"Relatórios (Analytics)","sales-report":"Relatório de Vendas",financial:"Financeiro",servicos:"Serviços",produtos:"Produtos",suppliers:"Fornecedores",profissionais:"Profissionais",ausencias:"Ausências e Bloqueios",clientes:"Clientes",packages:"Pacotes de Serviços",commissions:"Comissões",estabelecimento:"Configurações",users:"Usuários Internos",whatsapp:"Integração WhatsApp",mobileApp:"Acesso App Mobile"};let f={plans:[],tempPlanId:null},y=null;async function re(e){le(e),de(e),await P()}function le(e){e.innerHTML=`
+    `,{modalElement:a,close:t}=q({title:"Registar Fatura Paga",contentHTML:s,maxWidth:"max-w-sm"});a.querySelector("#manual-payment-form").addEventListener("submit",async r=>{r.preventDefault();const o=r.target.querySelector('button[type="submit"]'),n=o.innerHTML;o.innerHTML='<div class="loader border-white w-4 h-4"></div>',o.disabled=!0;const c={amount:document.getElementById("pay-amount").value,paymentDate:document.getElementById("pay-date").value,paymentMethod:document.getElementById("pay-method").value,status:"paid"};try{await p(`/api/admin/tenants/${e}/payments`,{method:"POST",body:JSON.stringify(c)}),d("Sucesso","Pagamento registado. O vencimento foi adiado em 1 mês.","success"),t(),await m(),C(e)}catch(i){d("Erro",i.message,"error"),o.innerHTML=n,o.disabled=!1}})}async function Y(e){if(await k("Atenção MÁXIMA!","Deseja excluir DEFINITIVAMENTE este cliente? A conta ficará invisível, o acesso será bloqueado e ele desaparecerá desta tabela."))try{await p(`/api/admin/tenants/${e}/status`,{method:"PATCH",body:JSON.stringify({status:"deleted"})}),d("Sucesso","Ambiente excluído com sucesso.","success"),l.tenants=l.tenants.filter(a=>a.id!==e),T()}catch(a){d("Erro",a.message,"error")}}async function ee(e){const s=e.dataset.id,a=e.dataset.current==="inactive"||e.dataset.current==="blocked"||e.dataset.current==="deleted"?"active":"blocked";if(!await k("Zona de Risco",`Deseja realmente ${a==="blocked"?"BLOQUEAR":"DESBLOQUEAR"} o acesso de toda esta rede?`))return;const r=e.innerHTML;e.innerHTML='<div class="loader mx-auto border-white w-4 h-4"></div>',e.disabled=!0;try{await p(`/api/admin/tenants/${s}/status`,{method:"PATCH",body:JSON.stringify({status:a})}),d("Sucesso",`Ambiente ${a==="blocked"?"bloqueado":"ativado"}.`,"success"),L(),await m()}catch(o){d("Erro",o.message,"error"),e.innerHTML=r,e.disabled=!1}}async function te(e){const s=e.dataset.id,a=e.innerHTML;e.innerHTML='<div class="loader border-brand-600 mr-2 w-4 h-4"></div> Acedendo...',e.disabled=!0;try{const t=await p(`/api/admin/tenants/${s}/impersonate`,{method:"POST"});t&&t.token&&(localStorage.setItem("impersonateToken",t.token),d("Conectado","A redirecionar...","info"),setTimeout(()=>{window.open("/app.html","_blank"),e.innerHTML=a,e.disabled=!1},1e3))}catch(t){d("Acesso Recusado",t.message,"error"),e.innerHTML=a,e.disabled=!1}}function ae(e){h&&e.removeEventListener("click",h);let s;e.addEventListener("input",t=>{t.target.id==="search-tenant-input"&&(clearTimeout(s),s=setTimeout(()=>{l.searchQuery=t.target.value,l.currentPage=1,m()},500))}),h=t=>{if(t.target.closest("#btn-open-create-modal")){Q();return}if(t.target.closest("#btnCloseTenantModal")||t.target.closest("#btnCancelTenant")){I();return}if(t.target.id==="slide-panel-overlay"||t.target.closest("#btn-close-panel")||t.target.closest('[data-action="close-panel"]')){L();return}const r=t.target.closest(".panel-tab");if(r){l.activeTab=r.dataset.tab;const c=document.querySelector('[data-action="update-tenant"], [data-action="toggle-status"], [data-action="add-manual-payment"]')?.dataset.id;if(c){const i=l.tenants.find(u=>u.id===c),f=l.plans.map(u=>`<option value="${u.id}">${b(u.name)}</option>`).join("");H(i,f)}return}const o=t.target.closest("[data-action], #btn-refresh-table");if(!o)return;if(o.id==="btn-refresh-table"){m();return}const n=o.dataset.action;if(n==="delete-tenant"){t.stopPropagation(),Y(o.dataset.id);return}switch(t.preventDefault(),n){case"view-tenant":Z("view",o.dataset.id);break;case"update-tenant":X(o);break;case"toggle-status":ee(o);break;case"impersonate":te(o);break;case"add-manual-payment":K(o.dataset.id);break;case"prev-page":l.currentPage>1&&(l.currentPage--,m());break;case"next-page":l.currentPage<l.totalPages&&(l.currentPage++,m());break}},e.addEventListener("click",h);const a=document.getElementById("formCreateTenant");a&&!a.dataset.listener&&(a.dataset.listener="true",a.addEventListener("submit",async t=>{t.preventDefault();const r=document.getElementById("btnCreateTenant"),o=document.getElementById("feedbackMsg"),n=r.innerHTML;try{r.disabled=!0,r.innerHTML='<div class="loader border-white mr-2 w-4 h-4" style="display:inline-block"></div> Criando...',o.classList.add("hidden");const c=document.querySelector('input[name="newTenantIsNetwork"]:checked'),i={establishmentName:document.getElementById("newTenantName").value,establishmentId:document.getElementById("newTenantId").value,ownerEmail:document.getElementById("newTenantEmail").value,ownerPassword:document.getElementById("newTenantPassword").value,ownerName:document.getElementById("newTenantOwnerName").value,documentInfo:document.getElementById("newTenantDoc").value,phone:document.getElementById("newTenantPhone").value,planId:document.getElementById("newTenantPlan").value,isNetwork:c&&c.value==="true",timezone:Intl.DateTimeFormat().resolvedOptions().timeZone};await p("/api/public/register",{method:"POST",body:JSON.stringify(i)}),d("Fantástico!","Ambiente do cliente criado com sucesso!","success"),I(),m()}catch(c){o.textContent=c.message||"Ocorreu um erro ao criar o cliente.",o.classList.remove("hidden","bg-emerald-50","text-emerald-700","border-emerald-200"),o.classList.add("bg-rose-50","text-rose-700","border-rose-200")}finally{r.disabled=!1,r.innerHTML=n}}))}const se={dashboard:"Visão Geral (Dashboard)",agenda:"Agenda / Calendário",comandas:"Comandas / PDV",relatorios:"Relatórios (Analytics)","sales-report":"Relatório de Vendas",financial:"Financeiro",servicos:"Serviços",produtos:"Produtos",suppliers:"Fornecedores",profissionais:"Profissionais",ausencias:"Ausências e Bloqueios",clientes:"Clientes",packages:"Pacotes de Serviços",commissions:"Comissões",estabelecimento:"Configurações",users:"Usuários Internos",whatsapp:"Integração WhatsApp",mobileApp:"Acesso App Mobile"};let x={plans:[],tempPlanId:null},w=null;async function oe(e){re(e),de(e),await E()}function re(e){e.innerHTML=`
         <div class="h-full flex flex-col w-full relative font-sans animate-fade-in pb-[100px] md:pb-6">
             
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -586,37 +513,37 @@ import"./modulepreload-polyfill-B5Qt9EMX.js";import{a as k}from"./firebase-confi
             </div>
             
         </div>
-    `}async function P(){const e=document.getElementById("plans-table-body");try{const a=await c("/api/admin/plans");f.plans=a||[],ie()}catch(a){console.error("Erro ao buscar planos:",a),e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center text-rose-500 font-bold text-sm"><i class="bi bi-exclamation-triangle block text-2xl mb-2"></i> Erro ao carregar os planos.</td></tr>')}}function ie(){const e=document.getElementById("plans-table-body");if(!e)return;if(f.plans.length===0){e.innerHTML=`
+    `}async function E(){const e=document.getElementById("plans-table-body");try{const s=await p("/api/admin/plans");x.plans=s||[],le()}catch(s){console.error("Erro ao buscar planos:",s),e&&(e.innerHTML='<tr><td colspan="5" class="py-12 text-center text-rose-500 font-bold text-sm"><i class="bi bi-exclamation-triangle block text-2xl mb-2"></i> Erro ao carregar os planos.</td></tr>')}}function le(){const e=document.getElementById("plans-table-body");if(!e)return;if(x.plans.length===0){e.innerHTML=`
             <tr>
                 <td colspan="5" class="py-16 text-center">
                     <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300 text-2xl"><i class="bi bi-tags"></i></div>
                     <p class="text-sm font-bold text-slate-600">Nenhum plano cadastrado.</p>
                     <p class="text-xs text-slate-400 mt-1">Clique em '+ Novo Plano' para criar as regras de venda.</p>
                 </td>
-            </tr>`;return}const a=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}),t=f.plans.map(s=>{const l=s.active!==!1?'<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-check-circle-fill mr-1"></i> Ativo</span>':'<span class="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-pause-circle-fill mr-1"></i> Inativo</span>';return`
-            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer" data-action="edit-plan" data-id="${s.id}">
+            </tr>`;return}const s=new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}),a=x.plans.map(t=>{const o=t.active!==!1?'<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-check-circle-fill mr-1"></i> Ativo</span>':'<span class="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-pause-circle-fill mr-1"></i> Inativo</span>';return`
+            <tr class="hover:bg-slate-50 transition-colors group cursor-pointer" data-action="edit-plan" data-id="${t.id}">
                 <td class="p-4">
-                    <p class="text-sm font-black text-slate-800 group-hover:text-emerald-600 transition-colors">${b(s.name)}</p>
+                    <p class="text-sm font-black text-slate-800 group-hover:text-emerald-600 transition-colors">${b(t.name)}</p>
                 </td>
                 <td class="p-4 text-center">
-                    <p class="text-lg font-black text-slate-700">${a.format(s.price)}</p>
+                    <p class="text-lg font-black text-slate-700">${s.format(t.price)}</p>
                 </td>
                 <td class="p-4 text-center">
-                    <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest shadow-sm">${s.maxEstablishments||1} Lojas Max.</span>
+                    <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest shadow-sm">${t.maxEstablishments||1} Lojas Max.</span>
                 </td>
-                <td class="p-4 text-center">${l}</td>
+                <td class="p-4 text-center">${o}</td>
                 <td class="p-4 text-right">
-                    <button data-action="delete-plan" data-id="${s.id}" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 shadow-sm transition-all active:scale-95 ml-auto">
+                    <button data-action="delete-plan" data-id="${t.id}" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 shadow-sm transition-all active:scale-95 ml-auto">
                         <i class="bi bi-trash3"></i>
                     </button>
                 </td>
             </tr>
-        `}).join("");e.innerHTML=t}function E(e=null){f.tempPlanId=e;const a=document.getElementById("plan-modal");document.getElementById("plan-form").reset();const s=!!e;document.getElementById("modal-title").innerText=s?"Editar Plano SaaS":"Novo Plano SaaS";const r=s?f.plans.find(n=>n.id===e):null;s&&r?(document.getElementById("plan-name").value=r.name||"",document.getElementById("plan-price").value=r.price||0,document.getElementById("plan-max-ests").value=r.maxEstablishments||1):document.getElementById("plan-max-ests").value=1;const l=document.getElementById("modules-grid"),o=r?.features||r?.allowedModules||{},u=Array.isArray(o)?o.reduce((n,p)=>({...n,[p]:!0}),{}):o;l.innerHTML=Object.entries(se).map(([n,p])=>{const m=!s||u[n]?"checked":"";return`
+        `}).join("");e.innerHTML=a}function P(e=null){x.tempPlanId=e;const s=document.getElementById("plan-modal");document.getElementById("plan-form").reset();const t=!!e;document.getElementById("modal-title").innerText=t?"Editar Plano SaaS":"Novo Plano SaaS";const r=t?x.plans.find(i=>i.id===e):null;t&&r?(document.getElementById("plan-name").value=r.name||"",document.getElementById("plan-price").value=r.price||0,document.getElementById("plan-max-ests").value=r.maxEstablishments||1):document.getElementById("plan-max-ests").value=1;const o=document.getElementById("modules-grid"),n=r?.features||r?.allowedModules||{},c=Array.isArray(n)?n.reduce((i,f)=>({...i,[f]:!0}),{}):n;o.innerHTML=Object.entries(se).map(([i,f])=>{const u=!t||c[i]?"checked":"";return`
             <label class="flex items-center p-3 border border-slate-200 rounded-xl cursor-pointer transition-colors hover:bg-emerald-50/50 hover:border-emerald-300 group shadow-sm bg-slate-50">
-                <input type="checkbox" name="plan-modules" value="${n}" ${m} class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer">
-                <span class="text-xs font-bold text-slate-700 ml-3 group-hover:text-emerald-800">${p}</span>
+                <input type="checkbox" name="plan-modules" value="${i}" ${u} class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer">
+                <span class="text-xs font-bold text-slate-700 ml-3 group-hover:text-emerald-800">${f}</span>
             </label>
-        `}).join(""),a.classList.remove("hidden"),a.style.display="flex",requestAnimationFrame(()=>{a.classList.remove("opacity-0");const n=a.querySelector("#modal-content-wrapper");n&&(n.classList.remove("translate-y-full","md:translate-y-8","md:scale-95","opacity-0"),n.classList.add("translate-y-0","md:scale-100","opacity-100"))})}function z(){const e=document.getElementById("plan-modal");if(!e)return;e.classList.add("opacity-0");const a=e.querySelector("#modal-content-wrapper");a&&(a.classList.remove("translate-y-0","md:scale-100","opacity-100"),a.classList.add("translate-y-full","md:translate-y-8","md:scale-95","opacity-0")),setTimeout(()=>{e.classList.add("hidden"),e.style.display="none",f.tempPlanId=null},300)}async function oe(e){e.preventDefault();const a=document.getElementById("btn-submit-plan"),t=a.innerHTML;a.innerHTML='<div class="loader-small border-white mr-2"></div> Salvando...',a.disabled=!0;const s=[];document.querySelectorAll('input[name="plan-modules"]:checked').forEach(l=>{s.push(l.value)});const r={name:document.getElementById("plan-name").value,price:parseFloat(document.getElementById("plan-price").value),maxEstablishments:parseInt(document.getElementById("plan-max-ests").value,10),features:s};try{f.tempPlanId?(await c(`/api/admin/plans/${f.tempPlanId}`,{method:"PUT",body:JSON.stringify(r)}),d("Sucesso!","Plano atualizado com sucesso.","success")):(await c("/api/admin/plans",{method:"POST",body:JSON.stringify(r)}),d("Sucesso!","Plano criado com sucesso.","success")),z(),await P()}catch(l){console.error("Erro ao salvar plano:",l),d("Erro",l.message||"Erro ao salvar o plano.","error")}finally{a.innerHTML=t,a.disabled=!1}}async function ne(e){if(await L("Desativar Plano","Deseja realmente desativar este plano? Clientes antigos continuarão a utilizá-lo, mas não estará disponível para novas vendas."))try{await c(`/api/admin/plans/${e}`,{method:"DELETE"}),d("Sucesso","Plano desativado.","success"),await P()}catch(t){d("Erro",t.message,"error")}}function de(e){y&&e.removeEventListener("click",y),y=t=>{if(t.target.id==="btn-close-modal"||t.target.id==="btn-cancel-modal"||t.target.id==="plan-modal"){z();return}const s=t.target.closest("[data-action], #btn-new-plan");if(!s)return;if(s.id==="btn-new-plan"){E();return}switch(s.dataset.action){case"edit-plan":t.target.closest('[data-action="delete-plan"]')||E(s.dataset.id);break;case"delete-plan":t.stopPropagation(),ne(s.dataset.id);break}},e.addEventListener("click",y);const a=document.getElementById("plan-form");a&&a.addEventListener("submit",oe)}R();document.getElementById("btn-logout").addEventListener("click",O);const I=document.querySelectorAll(".menu-item"),v=document.getElementById("dynamic-content"),ce=document.getElementById("page-title"),$=["bg-brand-600","text-white","shadow-md","shadow-brand-500/20"],M=["hover:bg-sidebarHover","hover:text-white"];I.forEach(e=>{e.addEventListener("click",async a=>{a.preventDefault(),I.forEach(l=>{l.classList.remove(...$),l.classList.add(...M);const o=l.querySelector("i");o&&o.classList.replace("text-white","text-slate-400")});const t=a.currentTarget;t.classList.remove(...M),t.classList.add(...$);const s=t.querySelector("i");s&&s.classList.replace("text-slate-400","text-white"),ce.innerText=t.innerText.trim(),h&&(document.getElementById("user-role-display").innerText=h);const r=t.getAttribute("href").replace("#","");v.innerHTML='<div class="flex h-full items-center justify-center"><div class="loader"></div></div>',setTimeout(async()=>{r==="dashboard"?await V(v):r==="establishments"?await _(v):r==="financial"?await re(v):v.innerHTML=`
+        `}).join(""),s.classList.remove("hidden"),s.style.display="flex",requestAnimationFrame(()=>{s.classList.remove("opacity-0");const i=s.querySelector("#modal-content-wrapper");i&&(i.classList.remove("translate-y-full","md:translate-y-8","md:scale-95","opacity-0"),i.classList.add("translate-y-0","md:scale-100","opacity-100"))})}function D(){const e=document.getElementById("plan-modal");if(!e)return;e.classList.add("opacity-0");const s=e.querySelector("#modal-content-wrapper");s&&(s.classList.remove("translate-y-0","md:scale-100","opacity-100"),s.classList.add("translate-y-full","md:translate-y-8","md:scale-95","opacity-0")),setTimeout(()=>{e.classList.add("hidden"),e.style.display="none",x.tempPlanId=null},300)}async function ie(e){e.preventDefault();const s=document.getElementById("btn-submit-plan"),a=s.innerHTML;s.innerHTML='<div class="loader-small border-white mr-2"></div> Salvando...',s.disabled=!0;const t=[];document.querySelectorAll('input[name="plan-modules"]:checked').forEach(o=>{t.push(o.value)});const r={name:document.getElementById("plan-name").value,price:parseFloat(document.getElementById("plan-price").value),maxEstablishments:parseInt(document.getElementById("plan-max-ests").value,10),features:t};try{x.tempPlanId?(await p(`/api/admin/plans/${x.tempPlanId}`,{method:"PUT",body:JSON.stringify(r)}),d("Sucesso!","Plano atualizado com sucesso.","success")):(await p("/api/admin/plans",{method:"POST",body:JSON.stringify(r)}),d("Sucesso!","Plano criado com sucesso.","success")),D(),await E()}catch(o){console.error("Erro ao salvar plano:",o),d("Erro",o.message||"Erro ao salvar o plano.","error")}finally{s.innerHTML=a,s.disabled=!1}}async function ne(e){if(await k("Desativar Plano","Deseja realmente desativar este plano? Clientes antigos continuarão a utilizá-lo, mas não estará disponível para novas vendas."))try{await p(`/api/admin/plans/${e}`,{method:"DELETE"}),d("Sucesso","Plano desativado.","success"),await E()}catch(a){d("Erro",a.message,"error")}}function de(e){w&&e.removeEventListener("click",w),w=a=>{if(a.target.id==="btn-close-modal"||a.target.id==="btn-cancel-modal"||a.target.id==="plan-modal"){D();return}const t=a.target.closest("[data-action], #btn-new-plan");if(!t)return;if(t.id==="btn-new-plan"){P();return}switch(t.dataset.action){case"edit-plan":a.target.closest('[data-action="delete-plan"]')||P(t.dataset.id);break;case"delete-plan":a.stopPropagation(),ne(t.dataset.id);break}},e.addEventListener("click",w);const s=document.getElementById("plan-form");s&&s.addEventListener("submit",ie)}R();document.getElementById("btn-logout").addEventListener("click",z);const S=document.querySelectorAll(".menu-item"),g=document.getElementById("dynamic-content"),ce=document.getElementById("page-title"),M=["bg-brand-600","text-white","shadow-md","shadow-brand-500/20"],$=["hover:bg-sidebarHover","hover:text-white"];S.forEach(e=>{e.addEventListener("click",async s=>{s.preventDefault(),S.forEach(o=>{o.classList.remove(...M),o.classList.add(...$);const n=o.querySelector("i");n&&n.classList.replace("text-white","text-slate-400")});const a=s.currentTarget;a.classList.remove(...$),a.classList.add(...M);const t=a.querySelector("i");t&&t.classList.replace("text-slate-400","text-white"),ce.innerText=a.innerText.trim(),v&&(document.getElementById("user-role-display").innerText=v);const r=a.getAttribute("href").replace("#","");g.innerHTML='<div class="flex h-full items-center justify-center"><div class="loader"></div></div>',setTimeout(async()=>{r==="dashboard"?await U(g):r==="establishments"?await V(g):r==="financial"?await oe(g):g.innerHTML=`
                             <div class="flex flex-col items-center justify-center h-full text-slate-400">
                                 <i class="bi bi-tools text-5xl mb-4 opacity-30"></i>
                                 <h3 class="text-lg font-bold text-slate-600">Módulo em Desenvolvimento</h3>

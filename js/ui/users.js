@@ -50,6 +50,7 @@ const roleMap = {
 
 let usersPageClickListener = null;
 let usersPageChangeListener = null;
+let globalContextChangeListener = null; // NOVO: Listener global para o seletor
 let currentHierarchy = null; 
 
 // --- FUNÇÃO DE BUSCA MULTI-EMPRESA ---
@@ -58,7 +59,8 @@ function getActiveEstablishmentsFromHeader() {
     if (checkboxes.length > 0) {
         return Array.from(checkboxes).map(cb => cb.value);
     }
-    return [state.establishmentId];
+    // Suporte robusto para a nova arquitetura de estados
+    return [state.currentViewContext?.id || state.establishmentId];
 }
 
 // --- RENDERIZAR A LISTA DE USUÁRIOS ---
@@ -438,7 +440,6 @@ async function showUserFormView(user = null) {
                     const branchCheckboxes = companyBlock.querySelectorAll('.branch-checkbox');
                     branchCheckboxes.forEach(b => {
                         b.checked = ev.target.checked;
-                        // Anima checkboxes dependentes
                         const dot = b.nextElementSibling.querySelector('.dot');
                         if (dot) {
                             if (ev.target.checked) dot.classList.add('transform', 'translate-x-4');
@@ -578,25 +579,28 @@ async function showUserFormView(user = null) {
     }
 }
 
+// --- FUNÇÃO PARA BUSCAR E RENDERIZAR OS DADOS ---
 async function fetchAndRenderUsers() {
     const listContainer = document.getElementById('usersListContainer');
+    if (!listContainer) return; // Segurança contra atualizações se a view não estiver na tela
+    
     listContainer.innerHTML = '<div class="col-span-full py-16 flex justify-center"><div class="loader"></div></div>';
     try {
         const activeIds = getActiveEstablishmentsFromHeader();
         
-        // Multi-context fetch
+        // Multi-context fetch: Busca para todos os IDs marcados no topo
         const userPromises = activeIds.map(id => usersApi.getUsers(id));
         const profPromises = activeIds.map(id => professionalsApi.getProfessionals(id));
         
         const userResults = await Promise.all(userPromises);
         const profResults = await Promise.all(profPromises);
         
-        // Deduplicate Users
+        // Desduplicar Usuários
         const userMap = new Map();
         userResults.flat().forEach(u => userMap.set(u.id, u));
         state.users = Array.from(userMap.values());
         
-        // Deduplicate Professionals
+        // Desduplicar Profissionais
         const profMap = new Map();
         profResults.flat().forEach(p => profMap.set(p.id, p));
         state.professionals = Array.from(profMap.values());
@@ -654,8 +658,27 @@ export async function loadUsersPage() {
         </div>
     `;
 
+    // Limpar eventos antigos se existirem
     if (usersPageClickListener) contentDiv.removeEventListener('click', usersPageClickListener);
     if (usersPageChangeListener) contentDiv.removeEventListener('change', usersPageChangeListener);
+    if (globalContextChangeListener) {
+        window.removeEventListener('kairos:contextChanged', globalContextChangeListener);
+        document.removeEventListener('change', globalContextChangeListener);
+    }
+
+    // --- NOVO: REAÇÃO AO SELETOR DE MÚLTIPLAS EMPRESAS ---
+    globalContextChangeListener = (e) => {
+        // Se a mudança foi disparada pelo dropdown principal ou pelas checkboxes de contexto
+        if (e.type === 'kairos:contextChanged' || e.target.closest('#multi-context-list')) {
+            // Só atualizar se a visualização principal do utilizador estiver aberta
+            if (document.getElementById('user-list-view') && !document.getElementById('user-list-view').classList.contains('hidden')) {
+                fetchAndRenderUsers();
+            }
+        }
+    };
+    
+    window.addEventListener('kairos:contextChanged', globalContextChangeListener);
+    document.addEventListener('change', globalContextChangeListener);
 
     usersPageClickListener = async (e) => {
         const actionElement = e.target.closest('[data-action]');

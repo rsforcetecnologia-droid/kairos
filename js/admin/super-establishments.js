@@ -36,7 +36,7 @@ function renderBaseLayout(container) {
                     <h2 class="text-2xl font-black text-slate-800 tracking-tight">Clientes (SaaS CRM)</h2>
                     <p class="text-sm text-slate-500 font-medium mt-1">Gira cadastros, planos, faturas e bloqueios dos seus clientes.</p>
                 </div>
-                <button id="btn-open-wizard" class="bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-brand-700 shadow-md shadow-brand-500/30 active:scale-95 transition-all flex items-center gap-2">
+                <button id="btn-open-create-modal" class="bg-brand-600 text-white px-5 py-3 rounded-xl font-bold text-sm hover:bg-brand-700 shadow-md shadow-brand-500/30 active:scale-95 transition-all flex items-center gap-2">
                     <i class="bi bi-building-add text-lg"></i> Novo Cliente
                 </button>
             </div>
@@ -126,7 +126,6 @@ async function fetchTenants() {
 
         const response = await authenticatedFetch(url);
         
-        // Filtramos do frontend os que foram marcados como deletados
         localState.tenants = (response.data || []).filter(t => t.status !== 'deleted');
         localState.totalPages = response.pagination.totalPages || 1;
         
@@ -235,133 +234,85 @@ function renderPagination(container) {
 }
 
 // ============================================================================
-// 🪄 4. MODAL CENTRALIZADO (WIZARD E TABS)
+// 🪄 4. CONTROLO DE MODAIS (CRIAR E EDITAR)
 // ============================================================================
 
+// --- Novo Modal HTML (Criação) ---
+function openCreateModal() {
+    const modal = document.getElementById('modalCreateTenant');
+    const content = document.getElementById('modalCreateTenantContent');
+    const planSelect = document.getElementById('newTenantPlan');
+
+    if(modal && content) {
+        // 🔄 INJEÇÃO DINÂMICA DOS PLANOS
+        if(planSelect && localState.plans.length > 0) {
+            planSelect.innerHTML = '<option value="">Selecione o plano...</option>' + 
+                localState.plans.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+        }
+
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    }
+}
+
+function closeCreateModal() {
+    const modal = document.getElementById('modalCreateTenant');
+    const content = document.getElementById('modalCreateTenantContent');
+    const form = document.getElementById('formCreateTenant');
+    const feedback = document.getElementById('feedbackMsg');
+    
+    if(modal && content) {
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        
+        setTimeout(() => {
+            if(form) form.reset();
+            if(feedback) feedback.classList.add('hidden');
+        }, 300);
+    }
+}
+
+// --- Painel Deslizante Lateral (Visualização e Gestão) ---
 function openPanel(mode, tenantId = null) {
+    if (mode !== 'view' || !tenantId) return;
+
     const overlay = document.getElementById('slide-panel-overlay');
     const panel = document.getElementById('slide-panel');
     const containerModal = document.getElementById('modal-container');
     const title = document.getElementById('panel-title');
-    const content = document.getElementById('panel-content');
     const footer = document.getElementById('panel-footer');
     const tabsContainer = document.getElementById('panel-tabs-container');
 
-    // 1. Mostra o Wrapper
     overlay.classList.remove('hidden');
     panel.classList.remove('hidden');
     panel.classList.add('flex');
 
-    // 2. Aciona Transição Suave
     requestAnimationFrame(() => {
         overlay.classList.remove('opacity-0');
         containerModal.classList.remove('scale-95', 'opacity-0');
         containerModal.classList.add('scale-100', 'opacity-100');
     });
 
+    const tenant = localState.tenants.find(t => t.id === tenantId);
+    if(!tenant) return;
+
     const planOptions = localState.plans.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
 
-    if (mode === 'create') {
-        title.innerText = 'Cadastrar Novo Cliente';
-        tabsContainer.classList.add('hidden'); // Oculta abas na criação
-        containerModal.classList.add('max-w-3xl'); // Menor no modo criação
-        containerModal.classList.remove('max-w-4xl');
-        
-        content.innerHTML = `
-            <form id="wizard-form" class="space-y-6">
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                        <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">1. Perfil da Empresa</h4>
-                        
-                        <div class="mb-4">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Tipo de Cadastro *</label>
-                            <div class="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                <label class="flex-1 cursor-pointer relative">
-                                    <input type="radio" name="wiz-is-network" value="false" checked class="peer sr-only">
-                                    <div class="text-center text-xs font-bold text-slate-500 py-2 rounded-lg peer-checked:bg-white peer-checked:text-brand-600 peer-checked:shadow-sm transition-all">Única Loja</div>
-                                </label>
-                                <label class="flex-1 cursor-pointer relative">
-                                    <input type="radio" name="wiz-is-network" value="true" class="peer sr-only">
-                                    <div class="text-center text-xs font-bold text-slate-500 py-2 rounded-lg peer-checked:bg-white peer-checked:text-indigo-600 peer-checked:shadow-sm transition-all">Rede (Múltiplas)</div>
-                                </label>
-                            </div>
-                        </div>
+    title.innerText = tenant.name;
+    tabsContainer.classList.remove('hidden'); 
+    containerModal.classList.add('max-w-4xl'); 
+    
+    localState.activeTab = 'cadastro';
+    renderViewTabs(tenant, planOptions);
 
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Fantasia / Marca *</label>
-                                <input type="text" id="wiz-company" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                            
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">CNPJ / CPF</label>
-                                <input type="text" id="wiz-doc" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Telefone Principal</label>
-                                <input type="text" id="wiz-phone" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="space-y-6">
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">2. Acesso Master (Dono)</h4>
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Completo do Proprietário *</label>
-                                    <input type="text" id="wiz-name" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail de Login *</label>
-                                    <input type="email" id="wiz-email" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow" autocomplete="new-email">
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Senha Inicial *</label>
-                                    <input type="text" id="wiz-password" required value="kairos123" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-shadow">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-brand-500">
-                            <h4 class="text-[10px] font-black text-brand-600 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2">3. Assinatura SaaS</h4>
-                            <div>
-                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Plano Base *</label>
-                                <select id="wiz-plan" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer transition-shadow">
-                                    <option value="">Selecione o plano...</option>${planOptions}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        `;
-
-        footer.innerHTML = `
-            <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest">Cancelar</button>
-            <button data-action="submit-wizard" class="px-8 py-3 rounded-xl font-black text-sm text-white bg-brand-600 hover:bg-brand-700 shadow-md flex items-center gap-2 active:scale-95 transition-transform uppercase tracking-widest">Criar Ambiente</button>
-        `;
-    } 
-    else if (mode === 'view' && tenantId) {
-        const tenant = localState.tenants.find(t => t.id === tenantId);
-        if(!tenant) return;
-
-        title.innerText = tenant.name;
-        tabsContainer.classList.remove('hidden'); 
-        containerModal.classList.add('max-w-4xl'); 
-        containerModal.classList.remove('max-w-3xl');
-        
-        localState.activeTab = 'cadastro';
-        renderViewTabs(tenant, planOptions);
-
-        footer.innerHTML = `
-            <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest active:scale-95">Fechar Janela</button>
-            <button data-action="update-tenant" data-id="${tenant.id}" class="px-8 py-3 bg-brand-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-brand-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2">
-                <i class="bi bi-save2"></i> Salvar Cadastro
-            </button>
-        `;
-    }
+    footer.innerHTML = `
+        <button data-action="close-panel" class="px-6 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition-colors uppercase tracking-widest active:scale-95">Fechar Janela</button>
+        <button data-action="update-tenant" data-id="${tenant.id}" class="px-8 py-3 bg-brand-600 text-white font-black text-sm uppercase tracking-widest rounded-xl hover:bg-brand-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2">
+            <i class="bi bi-save2"></i> Salvar Cadastro
+        </button>
+    `;
 }
 
 function renderViewTabs(tenant, planOptions) {
@@ -383,7 +334,6 @@ function renderViewTabs(tenant, planOptions) {
     if (localState.activeTab === 'cadastro') {
         content.innerHTML = `
             <form id="tenant-full-form" class="space-y-6">
-                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
                         <div class="flex items-center gap-3 mb-4 border-b border-slate-100 pb-3">
@@ -530,14 +480,12 @@ function closePanel() {
     const panel = document.getElementById('slide-panel');
     const containerModal = document.getElementById('modal-container');
     
-    // Anima a saída
     overlay.classList.add('opacity-0');
     if(containerModal) {
         containerModal.classList.remove('scale-100', 'opacity-100');
         containerModal.classList.add('scale-95', 'opacity-0');
     }
 
-    // Esconde fisicamente após a animação
     setTimeout(() => {
         overlay.classList.add('hidden');
         panel.classList.add('hidden');
@@ -548,39 +496,6 @@ function closePanel() {
 // ============================================================================
 // ⚡ 5. LÓGICA DE AÇÕES (SALVAR E ATUALIZAR)
 // ============================================================================
-
-async function handleCreateTenant(btnElement) {
-    const form = document.getElementById('wizard-form');
-    if (!form.checkValidity()) { form.reportValidity(); return; }
-
-    const isNetworkSelect = document.querySelector('input[name="wiz-is-network"]:checked');
-    const companyRaw = document.getElementById('wiz-company').value;
-
-    const payload = {
-        companyName: companyRaw,
-        documentInfo: document.getElementById('wiz-doc').value,
-        isNetwork: isNetworkSelect ? isNetworkSelect.value : false,
-        phone: document.getElementById('wiz-phone').value,
-        adminName: document.getElementById('wiz-name').value,
-        adminEmail: document.getElementById('wiz-email').value,
-        adminPassword: document.getElementById('wiz-password').value,
-        planId: document.getElementById('wiz-plan').value,
-    };
-
-    const originalHTML = btnElement.innerHTML;
-    btnElement.innerHTML = '<div class="loader-small border-white mr-2"></div> Criando...';
-    btnElement.disabled = true;
-
-    try {
-        await authenticatedFetch('/api/admin/tenants', { method: 'POST', body: JSON.stringify(payload) });
-        showNotification('Fantástico!', `A conta de ${payload.companyName} foi criada com sucesso.`, 'success');
-        closePanel();
-        await fetchTenants();
-    } catch (error) {
-        showNotification('Erro', error.message, 'error');
-        btnElement.innerHTML = originalHTML; btnElement.disabled = false;
-    }
-}
 
 async function handleUpdateTenant(btnElement) {
     const tenantId = btnElement.dataset.id;
@@ -595,14 +510,13 @@ async function handleUpdateTenant(btnElement) {
     };
 
     const originalHTML = btnElement.innerHTML;
-    btnElement.innerHTML = '<div class="loader-small border-white mr-2"></div> Salvando...';
+    btnElement.innerHTML = '<div class="loader border-white mr-2 w-4 h-4"></div> Salvando...';
     btnElement.disabled = true;
 
     try {
         await authenticatedFetch(`/api/admin/tenants/${tenantId}`, { method: 'PUT', body: JSON.stringify(payload) });
         showNotification('Sucesso', 'Cadastro do cliente salvo com sucesso.', 'success');
         
-        // Atualiza estado local e re-renderiza
         const tIdx = localState.tenants.findIndex(t => t.id === tenantId);
         if(tIdx > -1) {
             localState.tenants[tIdx] = { ...localState.tenants[tIdx], ...payload, document: payload.documentInfo };
@@ -651,7 +565,7 @@ async function handleAddManualPayment(companyId) {
         e.preventDefault();
         const btnSubmit = e.target.querySelector('button[type="submit"]');
         const originalText = btnSubmit.innerHTML;
-        btnSubmit.innerHTML = '<div class="loader-small border-white"></div>';
+        btnSubmit.innerHTML = '<div class="loader border-white w-4 h-4"></div>';
         btnSubmit.disabled = true;
 
         const payload = {
@@ -666,8 +580,8 @@ async function handleAddManualPayment(companyId) {
             showNotification('Sucesso', 'Pagamento registado. O vencimento foi adiado em 1 mês.', 'success');
             close();
             
-            await fetchTenants(); // Atualiza vencimentos na tabela
-            fetchPayments(companyId); // Atualiza aba local
+            await fetchTenants(); 
+            fetchPayments(companyId); 
 
         } catch (error) { 
             showNotification('Erro', error.message, 'error'); 
@@ -689,7 +603,6 @@ async function handleDeleteTenant(tenantId) {
         await authenticatedFetch(`/api/admin/tenants/${tenantId}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'deleted' }) });
         showNotification('Sucesso', `Ambiente excluído com sucesso.`, 'success');
         
-        // Remove do estado local e redesenha a tabela sem fechar outras coisas
         localState.tenants = localState.tenants.filter(t => t.id !== tenantId);
         renderTenantsTable();
     } catch (error) {
@@ -705,7 +618,7 @@ async function handleToggleStatus(btnElement) {
     if (!confirmed) return;
 
     const originalHTML = btnElement.innerHTML;
-    btnElement.innerHTML = '<div class="loader-small mx-auto border-white"></div>';
+    btnElement.innerHTML = '<div class="loader mx-auto border-white w-4 h-4"></div>';
     btnElement.disabled = true;
 
     try {
@@ -723,7 +636,7 @@ async function handleToggleStatus(btnElement) {
 async function handleImpersonate(btnElement) {
     const tenantId = btnElement.dataset.id;
     const btnOriginalText = btnElement.innerHTML;
-    btnElement.innerHTML = '<div class="loader-small border-brand-600 mr-2"></div> Acedendo...';
+    btnElement.innerHTML = '<div class="loader border-brand-600 mr-2 w-4 h-4"></div> Acedendo...';
     btnElement.disabled = true;
 
     try {
@@ -743,7 +656,7 @@ async function handleImpersonate(btnElement) {
 }
 
 // ============================================================================
-// 🖱️ 6. DELEGAÇÃO DE EVENTOS GLOBAIS
+// 🖱️ 6. DELEGAÇÃO DE EVENTOS GLOBAIS E SUBMISSÃO DO FORMULÁRIO DE CRIAÇÃO
 // ============================================================================
 
 function setupEventListeners(container) {
@@ -758,10 +671,17 @@ function setupEventListeners(container) {
     });
 
     pageEventListener = (e) => {
-        // Fechar Modal (via Overlay ou botões explícitos)
-        if (e.target.id === 'slide-panel-overlay') { closePanel(); return; }
+        
+        // 1. Abrir Modal de Criação
+        if (e.target.closest('#btn-open-create-modal')) { openCreateModal(); return; }
+        
+        // 2. Fechar Modal de Criação
+        if (e.target.closest('#btnCloseTenantModal') || e.target.closest('#btnCancelTenant')) { closeCreateModal(); return; }
 
-        // Navegação de Abas
+        // 3. Fechar Painel Lateral (via Overlay ou botões explícitos)
+        if (e.target.id === 'slide-panel-overlay' || e.target.closest('#btn-close-panel') || e.target.closest('[data-action="close-panel"]')) { closePanel(); return; }
+
+        // 4. Navegação de Abas no Painel Lateral
         const tabBtn = e.target.closest('.panel-tab');
         if (tabBtn) {
             localState.activeTab = tabBtn.dataset.tab;
@@ -774,18 +694,14 @@ function setupEventListeners(container) {
             return;
         }
 
-        // Botões de Ação
-        const actionBtn = e.target.closest('[data-action], #btn-open-wizard, #btn-refresh-table, #btn-close-panel');
+        // 5. Botões de Ação na Tabela e Painel
+        const actionBtn = e.target.closest('[data-action], #btn-refresh-table');
         if (!actionBtn) return;
 
-        // Botões Básicos Sem Dataset Action
-        if (actionBtn.id === 'btn-open-wizard') { openPanel('create'); return; }
         if (actionBtn.id === 'btn-refresh-table') { fetchTenants(); return; }
-        if (actionBtn.id === 'btn-close-panel') { closePanel(); return; }
 
         const action = actionBtn.dataset.action;
 
-        // Previne bubbling em botões aninhados na tabela
         if (action === 'delete-tenant') {
             e.stopPropagation();
             handleDeleteTenant(actionBtn.dataset.id);
@@ -795,9 +711,7 @@ function setupEventListeners(container) {
         e.preventDefault();
         
         switch(action) {
-            case 'close-panel': closePanel(); break;
             case 'view-tenant': openPanel('view', actionBtn.dataset.id); break;
-            case 'submit-wizard': handleCreateTenant(actionBtn); break;
             case 'update-tenant': handleUpdateTenant(actionBtn); break;
             case 'toggle-status': handleToggleStatus(actionBtn); break;
             case 'impersonate': handleImpersonate(actionBtn); break;
@@ -808,4 +722,58 @@ function setupEventListeners(container) {
     };
 
     container.addEventListener('click', pageEventListener);
+
+    // --- 🔄 NOVA LÓGICA DE SUBMISSÃO COM OS CAMPOS NOVOS ---
+    const formCreateTenant = document.getElementById('formCreateTenant');
+    if (formCreateTenant && !formCreateTenant.dataset.listener) {
+        formCreateTenant.dataset.listener = 'true';
+        
+        formCreateTenant.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btnSubmit = document.getElementById('btnCreateTenant');
+            const feedbackMsg = document.getElementById('feedbackMsg');
+            const originalBtnText = btnSubmit.innerHTML;
+
+            try {
+                btnSubmit.disabled = true;
+                btnSubmit.innerHTML = '<div class="loader border-white mr-2 w-4 h-4" style="display:inline-block"></div> Criando...';
+                feedbackMsg.classList.add('hidden');
+
+                // Lemos a opção de rede dos Radio Buttons
+                const isNetworkSelect = document.querySelector('input[name="newTenantIsNetwork"]:checked');
+
+                // Construímos o Payload exato que o Backend espera
+                const payload = {
+                    establishmentName: document.getElementById('newTenantName').value,
+                    establishmentId: document.getElementById('newTenantId').value,
+                    ownerEmail: document.getElementById('newTenantEmail').value,
+                    ownerPassword: document.getElementById('newTenantPassword').value,
+                    ownerName: document.getElementById('newTenantOwnerName').value,
+                    documentInfo: document.getElementById('newTenantDoc').value,
+                    phone: document.getElementById('newTenantPhone').value,
+                    planId: document.getElementById('newTenantPlan').value,
+                    isNetwork: isNetworkSelect && isNetworkSelect.value === 'true',
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                };
+
+                await authenticatedFetch('/api/public/register', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                showNotification('Fantástico!', 'Ambiente do cliente criado com sucesso!', 'success');
+                closeCreateModal();
+                fetchTenants(); // Recarrega a tabela de clientes para mostrar o novo
+
+            } catch (error) {
+                feedbackMsg.textContent = error.message || 'Ocorreu um erro ao criar o cliente.';
+                feedbackMsg.classList.remove('hidden', 'bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                feedbackMsg.classList.add('bg-rose-50', 'text-rose-700', 'border-rose-200');
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.innerHTML = originalBtnText;
+            }
+        });
+    }
 }
