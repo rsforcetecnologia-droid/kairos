@@ -4,35 +4,37 @@ const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
 const { AggregateField } = require('firebase-admin/firestore');
-
-// 1. IMPORTAMOS OS MIDDLEWARES REAIS AQUI
 const { verifyToken, isSuperAdmin } = require('../middlewares/auth');
 
-// Lista de módulos padrão...
 const defaultModules = {
-    // ... (mantenha o seu código existente aqui) ...
+    agenda: true, comandas: true, relatorios: true, 'sales-report': true,
+    financial: true, servicos: true, produtos: true, suppliers: true,
+    profissionais: true, ausencias: true, clientes: true, packages: true,
+    commissions: true, estabelecimento: true, users: true, mobileApp: true
 };
 
 const masterPermissions = {
-    // ... (mantenha o seu código existente aqui) ...
+    'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
+    'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
+    'relatorios-section': { view: true, create: true, edit: true },
+    'sales-report-section': { view: true, create: true, edit: true },
+    'financial-section': { view: true, create: true, edit: true },
+    'servicos-section': { view: true, create: true, edit: true },
+    'produtos-section': { view: true, create: true, edit: true },
+    'suppliers-section': { view: true, create: true, edit: true },
+    'profissionais-section': { view: true, create: true, edit: true },
+    'ausencias-section': { view: true, create: true, edit: true },
+    'clientes-section': { view: true, create: true, edit: true },
+    'packages-section': { view: true, create: true, edit: true },
+    'commissions-section': { view: true, create: true, edit: true },
+    'estabelecimento-section': { view: true, create: true, edit: true },
+    'users-section': { view: true, create: true, edit: true }
 };
 
-// 2. SUBSTITUÍMOS O MIDDLEWARE FALSO PELOS MIDDLEWARES REAIS
-// O verifyToken extrai o "req.user" do Token. O isSuperAdmin verifica a role.
 router.use(verifyToken, isSuperAdmin);
 
-// --- FUNÇÃO AUXILIAR DE ERRO ---
 function handleFirestoreError(res, error, context) {
     console.error(`Erro em ${context}:`, error);
-    const linkMatch = error.message ? error.message.match(/https:\/\/console\.firebase\.google\.com[^\s]*/) : null;
-    const indexLink = linkMatch ? linkMatch[0] : null;
-
-    if (error.message && error.message.includes('requires an index')) {
-        return res.status(500).json({ 
-            message: `O Firestore precisa de um índice para ${context}.`,
-            createIndexUrl: indexLink || "Link não encontrado automaticamente. Verifique os logs."
-        });
-    }
     res.status(500).json({ message: error.message || `Erro ao processar ${context}.` });
 }
 
@@ -44,10 +46,9 @@ const getSafeDate = (dateVal) => {
 };
 
 // =======================================================================
-// ⚙️ CONFIGURAÇÕES DA PLATAFORMA E DASHBOARD (SAAS)
+// ⚙️ CONFIGURAÇÕES E DASHBOARD
 // =======================================================================
 
-// Config da plataforma (Logo, etc)
 router.get('/config', async (req, res) => {
     try {
         const doc = await req.db.collection('config').doc('plataforma').get();
@@ -55,23 +56,20 @@ router.get('/config', async (req, res) => {
     } catch (e) { res.status(500).json({ message: 'Erro config.' }); }
 });
 
-// Dashboard Analytics
 router.get('/dashboard-stats', async (req, res) => {
     try {
         const { db } = req;
         const now = new Date();
         const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(now.getDate() - 30);
 
-        // 1. Buscar Planos para cálculo do MRR
         const plansSnapshot = await db.collection('saas_plans').get();
         const planPrices = {};
         plansSnapshot.forEach(d => planPrices[d.id] = d.data().price || 0);
 
-        // 2. Executar Queries na coleção de Redes (Companies)
         const [totalAgg, activeAgg, cancelledAgg, activeCompaniesSnap, newCompaniesSnap] = await Promise.all([
             db.collection('companies').count().get(),
             db.collection('companies').where('status', '==', 'active').count().get(),
-            db.collection('companies').where('status', 'in', ['deleted', 'inactive']).count().get(),
+            db.collection('companies').where('status', 'in', ['deleted', 'inactive', 'blocked']).count().get(),
             db.collection('companies').where('status', '==', 'active').select('planId').get(),
             db.collection('companies').where('createdAt', '>=', admin.firestore.Timestamp.fromDate(thirtyDaysAgo)).select('createdAt').get()
         ]);
@@ -80,14 +78,12 @@ router.get('/dashboard-stats', async (req, res) => {
         const activeCount = activeAgg.data().count;
         const cancelledCount = cancelledAgg.data().count;
 
-        // Cálculo MRR
         let mrr = 0;
         activeCompaniesSnap.forEach(doc => {
             const pid = doc.data().planId;
             if (pid && typeof planPrices[pid] === 'number') mrr += planPrices[pid];
         });
 
-        // Gráfico Novos Clientes
         const newSubscribersLast30Days = Array(30).fill(0);
         newCompaniesSnap.forEach(doc => {
             const created = doc.data().createdAt.toDate();
@@ -98,192 +94,272 @@ router.get('/dashboard-stats', async (req, res) => {
         const churnRate = totalCompanies > 0 ? ((cancelledCount / totalCompanies) * 100).toFixed(1) : 0;
 
         res.status(200).json({
-            kpis: { mrr, activeUsers: activeCount, newSubscribersData: newSubscribersLast30Days, churnRate, totalUsers: totalCompanies },
-            attentionList: [] 
+            kpis: { mrr, activeUsers: activeCount, newSubscribersData: newSubscribersLast30Days, churnRate, totalUsers: totalCompanies }
         });
-
-    } catch (error) {
-        handleFirestoreError(res, error, 'dashboard stats');
-    }
+    } catch (error) { handleFirestoreError(res, error, 'dashboard stats'); }
 });
 
 // ============================================================================
 // 📦 1. GESTÃO DE PLANOS SAAS
 // ============================================================================
 
-// Criar Plano
 router.post('/plans', async (req, res) => {
     const { name, price, maxEstablishments, features } = req.body;
-
-    if (!name || maxEstablishments === undefined) {
-        return res.status(400).json({ message: 'Nome e Limite de Empresas (maxEstablishments) são obrigatórios.' });
-    }
+    if (!name || maxEstablishments === undefined) return res.status(400).json({ message: 'Dados obrigatórios ausentes.' });
 
     try {
-        const { db } = req;
-        const planRef = await db.collection('saas_plans').add({
-            name,
-            price: Number(price) || 0,
-            maxEstablishments: Number(maxEstablishments),
-            features: features || [],
-            active: true,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        const planRef = await req.db.collection('saas_plans').add({
+            name, price: Number(price) || 0, maxEstablishments: Number(maxEstablishments),
+            features: features || [], active: true, createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-
         res.status(201).json({ message: 'Plano criado com sucesso!', planId: planRef.id });
-    } catch (error) {
-        handleFirestoreError(res, error, 'criação de plano');
-    }
+    } catch (error) { handleFirestoreError(res, error, 'criação de plano'); }
 });
 
-// Listar Planos (Apenas os ativos)
 router.get('/plans', async (req, res) => {
     try {
-        const { db } = req;
-        const snapshot = await db.collection('saas_plans').where('active', '==', true).get();
-        const plans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        res.status(200).json(plans);
-    } catch (error) {
-        handleFirestoreError(res, error, 'listagem de planos');
-    }
+        const snapshot = await req.db.collection('saas_plans').where('active', '==', true).get();
+        res.status(200).json(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) { handleFirestoreError(res, error, 'listagem de planos'); }
 });
 
-// Atualizar Plano
 router.put('/plans/:id', async (req, res) => {
     const { id } = req.params;
     const { name, price, maxEstablishments, features } = req.body;
-
-    if (!name || maxEstablishments === undefined) {
-        return res.status(400).json({ message: 'Nome e Limite de Empresas são obrigatórios.' });
-    }
-
     try {
-        const { db } = req;
-        await db.collection('saas_plans').doc(id).update({
-            name,
-            price: Number(price) || 0,
-            maxEstablishments: Number(maxEstablishments),
-            features: features || [],
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await req.db.collection('saas_plans').doc(id).update({
+            name, price: Number(price) || 0, maxEstablishments: Number(maxEstablishments),
+            features: features || [], updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-
         res.status(200).json({ message: 'Plano atualizado com sucesso!' });
-    } catch (error) {
-        handleFirestoreError(res, error, 'atualização de plano');
-    }
+    } catch (error) { handleFirestoreError(res, error, 'atualização de plano'); }
 });
 
-// Excluir Plano (Soft Delete para não quebrar clientes antigos)
 router.delete('/plans/:id', async (req, res) => {
-    const { id } = req.params;
     try {
-        const { db } = req;
-        await db.collection('saas_plans').doc(id).update({ active: false });
+        await req.db.collection('saas_plans').doc(req.params.id).update({ active: false });
         res.status(200).json({ message: 'Plano desativado com sucesso!' });
-    } catch (error) {
-        handleFirestoreError(res, error, 'exclusão de plano');
-    }
+    } catch (error) { handleFirestoreError(res, error, 'exclusão de plano'); }
 });
 
 // ============================================================================
-// 🏢 2. WIZARD: CRIAÇÃO DO CLIENTE / REDE / TENANT ATÔMICO
+// 🏢 2. INQUILINOS / REDES / TENANTS
 // ============================================================================
 
 router.post('/tenants', async (req, res) => {
     const { db, auth } = req;
     const { 
-        companyName, documentInfo, 
-        planId, 
-        adminName, adminEmail, adminPassword, adminPhone 
+        companyName, documentInfo, phone, address, isNetwork, // Dados da Empresa
+        planId, // Plano
+        adminName, adminEmail, adminPassword // Dados Master
     } = req.body;
 
     if (!companyName || !planId || !adminEmail || !adminPassword) {
-        return res.status(400).json({ message: 'Dados incompletos para o Setup do Cliente.' });
+        return res.status(400).json({ message: 'Dados essenciais incompletos.' });
     }
 
     try {
         const planDoc = await db.collection('saas_plans').doc(planId).get();
-        if (!planDoc.exists) return res.status(400).json({ message: 'Plano selecionado não existe.' });
+        if (!planDoc.exists) return res.status(400).json({ message: 'Plano não existe.' });
 
-        const urlIdCandidate = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const slugCheck = await db.collection('establishments').where('urlId', '==', urlIdCandidate).get();
-        const finalUrlId = slugCheck.empty ? urlIdCandidate : `${urlIdCandidate}-${Date.now().toString().slice(-4)}`;
+        // Auto-geração silenciosa do Slug interno para a Matriz funcionar sem erros no front do cliente
+        const baseSlug = companyName.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        const slugCheck = await db.collection('establishments').where('urlId', '==', baseSlug).get();
+        const finalUrlId = slugCheck.empty ? baseSlug : `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
         let userRecord;
         try {
-            userRecord = await auth.createUser({
-                email: adminEmail,
-                password: adminPassword,
-                displayName: adminName,
-            });
+            userRecord = await auth.createUser({ email: adminEmail, password: adminPassword, displayName: adminName });
         } catch (authError) {
-            return res.status(400).json({ message: authError.code === 'auth/email-already-exists' ? 'O Email já está em uso.' : `Erro Auth: ${authError.message}` });
+            return res.status(400).json({ message: authError.code === 'auth/email-already-exists' ? 'Email já em uso.' : authError.message });
         }
 
         const companyRef = db.collection('companies').doc();
         const matrizRef = db.collection('establishments').doc();
         const userRef = db.collection('users').doc(userRecord.uid);
 
+        const nextDueDate = new Date();
+        nextDueDate.setDate(nextDueDate.getDate() + 30); // 1 Mês grátis padrão
+
         await db.runTransaction(async (transaction) => {
             transaction.set(companyRef, {
-                name: companyName,
+                name: companyName, 
                 document: documentInfo || '',
-                planId: planId,
-                ownerUid: userRecord.uid,
+                phone: phone || '',
+                address: address || '',
+                isNetwork: isNetwork === true || isNetwork === 'true',
+                planId: planId, 
+                ownerUid: userRecord.uid, 
                 ownerEmail: adminEmail,
                 status: 'active',
+                nextDueDate: nextDueDate.toISOString().split('T')[0],
+                gracePeriodDays: 5, 
+                lastPaymentStatus: 'pending', // pending, paid, overdue
+                lastPaymentDate: null,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
             transaction.set(matrizRef, {
-                companyId: companyRef.id,
-                name: `Matriz - ${companyName}`,
+                companyId: companyRef.id, 
+                name: isNetwork ? `Matriz - ${companyName}` : companyName, 
                 type: 'Matriz',
-                urlId: finalUrlId,
-                status: 'active',
+                urlId: finalUrlId, 
+                status: 'active', 
                 modules: defaultModules,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
             transaction.set(userRef, {
-                email: adminEmail,
-                name: adminName,
-                phone: adminPhone || '',
-                role: 'company_admin', 
-                companyId: companyRef.id,
-                establishmentId: matrizRef.id, 
-                accessibleIn: [matrizRef.id], 
-                permissions: masterPermissions,
-                status: 'active',
-                isOwnerMaster: true,
+                email: adminEmail, name: adminName, phone: phone || '',
+                role: 'company_admin', companyId: companyRef.id,
+                establishmentId: matrizRef.id, accessibleIn: [matrizRef.id], 
+                permissions: masterPermissions, status: 'active', isOwnerMaster: true,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
 
-        await auth.setCustomUserClaims(userRecord.uid, {
-            companyId: companyRef.id,
-            role: 'company_admin'
-        });
-
-        res.status(201).json({ 
-            message: 'Ambiente do Cliente criado com sucesso!', 
-            companyId: companyRef.id,
-            loginUrlSlug: finalUrlId
-        });
+        await auth.setCustomUserClaims(userRecord.uid, { companyId: companyRef.id, role: 'company_admin' });
+        res.status(201).json({ message: 'Cliente criado com sucesso!', companyId: companyRef.id });
 
     } catch (error) {
         if (adminEmail) {
-            try {
-                const u = await admin.auth().getUserByEmail(adminEmail);
-                if (u) await admin.auth().deleteUser(u.uid);
-            } catch (e) {} 
+            try { const u = await admin.auth().getUserByEmail(adminEmail); if (u) await admin.auth().deleteUser(u.uid); } catch (e) {} 
         }
-        handleFirestoreError(res, error, 'criação de tenant (Setup Wizard)');
+        handleFirestoreError(res, error, 'setup wizard');
     }
 });
 
+router.get('/tenants', async (req, res) => {
+    try {
+        const { db } = req;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const search = (req.query.search || '').toLowerCase();
+        
+        let query = db.collection('companies').orderBy('createdAt', 'desc');
+        const snapshot = await query.get();
+        let companies = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        if (search) {
+            companies = companies.filter(c => 
+                (c.name?.toLowerCase().includes(search)) || 
+                (c.document?.toLowerCase().includes(search)) ||
+                (c.ownerEmail?.toLowerCase().includes(search))
+            );
+        }
+
+        const total = companies.length;
+        const paginatedData = companies.slice((page - 1) * limit, page * limit);
+
+        res.status(200).json({ data: paginatedData, pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
+    } catch (error) { handleFirestoreError(res, error, 'listar inquilinos'); }
+});
+
+router.put('/tenants/:companyId', async (req, res) => {
+    const { companyId } = req.params;
+    const { planId, nextDueDate, gracePeriodDays, lastPaymentStatus, isNetwork } = req.body;
+
+    try {
+        const { db } = req;
+        const updateData = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        
+        if (planId !== undefined) updateData.planId = planId;
+        if (nextDueDate !== undefined) updateData.nextDueDate = nextDueDate; 
+        if (gracePeriodDays !== undefined) updateData.gracePeriodDays = Number(gracePeriodDays) || 0;
+        if (lastPaymentStatus !== undefined) updateData.lastPaymentStatus = lastPaymentStatus; 
+        if (isNetwork !== undefined) updateData.isNetwork = isNetwork;
+
+        await db.collection('companies').doc(companyId).update(updateData);
+        res.status(200).json({ message: 'Dados do cliente atualizados com sucesso.' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'atualizar inquilino');
+    }
+});
+
+router.patch('/tenants/:companyId/status', async (req, res) => {
+    const { companyId } = req.params;
+    const { status } = req.body;
+    try {
+        const { db, auth } = req;
+        await db.collection('companies').doc(companyId).update({ status });
+        
+        const ests = await db.collection('establishments').where('companyId', '==', companyId).get();
+        const batch = db.batch();
+        ests.forEach(doc => batch.update(doc.ref, { status }));
+        await batch.commit();
+
+        const usersSnap = await db.collection('users').where('companyId', '==', companyId).get();
+        const disabled = status === 'inactive' || status === 'blocked';
+        await Promise.all(usersSnap.docs.map(d => auth.updateUser(d.id, { disabled }).catch(()=>{})));
+        
+        res.status(200).json({ message: `Status alterado para ${status}.` });
+    } catch (error) { handleFirestoreError(res, error, 'alterar status'); }
+});
+
 // ============================================================================
-// 🏬 3. ADICIONAR FILIAL (COM TRAVA DE UPSELL E LIMITE DE PLANO)
+// 💰 3. HISTÓRICO DE PAGAMENTOS SAAS E FATURAÇÃO
+// ============================================================================
+
+router.get('/tenants/:companyId/payments', async (req, res) => {
+    try {
+        const snapshot = await req.db.collection('saas_payments')
+            .where('companyId', '==', req.params.companyId)
+            .orderBy('paymentDate', 'desc')
+            .get();
+        
+        res.status(200).json(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) { handleFirestoreError(res, error, 'listar pagamentos saas'); }
+});
+
+router.post('/tenants/:companyId/payments', async (req, res) => {
+    const { companyId } = req.params;
+    const { amount, paymentMethod, status, notes, paymentDate } = req.body;
+
+    try {
+        const { db } = req;
+        await db.runTransaction(async (t) => {
+            const companyRef = db.collection('companies').doc(companyId);
+            const compDoc = await t.get(companyRef);
+            if (!compDoc.exists) throw new Error("Cliente não encontrado.");
+
+            const paymentRef = db.collection('saas_payments').doc();
+            t.set(paymentRef, {
+                companyId,
+                amount: Number(amount),
+                paymentMethod: paymentMethod || 'manual',
+                status: status || 'paid',
+                paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+                notes: notes || '',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            if (status === 'paid') {
+                const currentDueDateStr = compDoc.data().nextDueDate;
+                let currentDueDate = currentDueDateStr ? new Date(currentDueDateStr + 'T12:00:00Z') : new Date();
+                
+                currentDueDate.setMonth(currentDueDate.getMonth() + 1);
+                
+                t.update(companyRef, {
+                    lastPaymentDate: paymentDate || new Date().toISOString().split('T')[0],
+                    lastPaymentStatus: 'paid',
+                    nextDueDate: currentDueDate.toISOString().split('T')[0],
+                    status: 'active' 
+                });
+
+                if (compDoc.data().status === 'blocked' || compDoc.data().status === 'inactive') {
+                    const ests = await t.get(db.collection('establishments').where('companyId', '==', companyId));
+                    ests.forEach(doc => t.update(doc.ref, { status: 'active' }));
+                }
+            }
+        });
+        
+        res.status(201).json({ message: 'Pagamento registado com sucesso e faturação atualizada.' });
+    } catch (error) { handleFirestoreError(res, error, 'registar pagamento saas'); }
+});
+
+
+// ============================================================================
+// 🏬 4. ADICIONAR FILIAL (COM TRAVA DE UPSELL E LIMITE DE PLANO)
 // ============================================================================
 
 router.post('/tenants/:companyId/branches', async (req, res) => {
@@ -344,65 +420,9 @@ router.post('/tenants/:companyId/branches', async (req, res) => {
     }
 });
 
-// ============================================================================
-// 👥 4. LISTAR INQUILINOS (COMPANIES / REDES)
-// ============================================================================
-
-router.get('/tenants', async (req, res) => {
-    try {
-        const { db } = req;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const search = (req.query.search || '').toLowerCase();
-        
-        let query = db.collection('companies').orderBy('createdAt', 'desc');
-        const snapshot = await query.get();
-        
-        let companies = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        if (search) {
-            companies = companies.filter(c => 
-                (c.name?.toLowerCase().includes(search)) || 
-                (c.document?.toLowerCase().includes(search)) ||
-                (c.ownerEmail?.toLowerCase().includes(search))
-            );
-        }
-
-        const total = companies.length;
-        const totalPages = Math.ceil(total / limit);
-        const paginatedData = companies.slice((page - 1) * limit, page * limit);
-
-        res.status(200).json({ data: paginatedData, pagination: { total, page, limit, totalPages } });
-    } catch (error) {
-        handleFirestoreError(res, error, 'listar inquilinos');
-    }
-});
-
-router.patch('/tenants/:companyId/status', async (req, res) => {
-    const { companyId } = req.params;
-    const { status } = req.body;
-    try {
-        const { db, auth } = req;
-        
-        await db.collection('companies').doc(companyId).update({ status });
-        
-        const ests = await db.collection('establishments').where('companyId', '==', companyId).get();
-        const batch = db.batch();
-        ests.forEach(doc => batch.update(doc.ref, { status }));
-        await batch.commit();
-
-        const usersSnap = await db.collection('users').where('companyId', '==', companyId).get();
-        const disabled = status === 'inactive' || status === 'blocked';
-        
-        await Promise.all(usersSnap.docs.map(d => auth.updateUser(d.id, { disabled }).catch(()=>{})));
-        
-        res.status(200).json({ message: `Status da rede alterado para ${status}.` });
-    } catch (error) { handleFirestoreError(res, error, 'alterar status da rede'); }
-});
-
 
 // ============================================================================
-// 🕵️ 5. IMPERSONATION (ENTRAR COMO O CLIENTE)
+// 🕵️ 5. IMPERSONATION E OUTRAS ROTAS
 // ============================================================================
 
 router.post('/tenants/:companyId/impersonate', async (req, res) => {
@@ -411,27 +431,18 @@ router.post('/tenants/:companyId/impersonate', async (req, res) => {
         const { companyId } = req.params;
 
         const companyDoc = await db.collection('companies').doc(companyId).get();
-        if (!companyDoc.exists || !companyDoc.data().ownerUid) {
-            return res.status(400).json({ message: 'Rede inválida ou dono não encontrado.' });
-        }
+        if (!companyDoc.exists || !companyDoc.data().ownerUid) return res.status(400).json({ message: 'Rede inválida ou dono não encontrado.' });
 
         const matrizSnap = await db.collection('establishments').where('companyId', '==', companyId).where('type', '==', 'Matriz').limit(1).get();
         const establishmentId = matrizSnap.empty ? companyId : matrizSnap.docs[0].id;
 
         const token = await auth.createCustomToken(companyDoc.data().ownerUid, { 
-            role: 'company_admin', 
-            companyId: companyId,
-            establishmentId: establishmentId, 
-            impersonated: true 
+            role: 'company_admin', companyId, establishmentId, impersonated: true 
         });
         
         res.status(200).json({ token });
     } catch (e) { handleFirestoreError(res, e, 'impersonate company'); }
 });
-
-// ============================================================================
-// 🔐 6. GESTÃO DE USUÁRIOS SUPER ADMIN (Acesso Interno Kairos)
-// ============================================================================
 
 router.post('/users', async (req, res) => {
     try {
@@ -445,7 +456,7 @@ router.post('/users', async (req, res) => {
 router.get('/users', async (req, res) => {
     try {
         const list = await req.auth.listUsers(1000);
-        const admins = list.users.filter(u => u.customClaims?.role === 'super-admin').map(u => ({ uid: u.uid, email: u.email, role: 'super-admin' }));
+        const admins = list.users.filter(u => u.customClaims?.role === 'super-admin' || u.customClaims?.role === 'super_admin').map(u => ({ uid: u.uid, email: u.email }));
         res.status(200).json(admins);
     } catch (error) { res.status(500).json({ message: 'Erro listar admins.' }); }
 });
