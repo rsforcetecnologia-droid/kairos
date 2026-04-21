@@ -26,6 +26,7 @@ let localState = {
     selectedCatalogItem: null, 
     isCashierOpen: false,
     activeCashierSessionId: null,
+    isCashierFromPreviousDay: false, 
     loyaltySettings: null,
     establishmentConfig: null, 
     pendingRedemption: null,
@@ -62,6 +63,13 @@ function debounce(func, wait) {
     };
 }
 
+const getLocalYMD = (dateVal) => {
+    if (!dateVal) return new Date().toISOString().split('T')[0];
+    const d = new Date(dateVal);
+    const tzOffset = d.getTimezoneOffset() * 60000;
+    return new Date(d - tzOffset).toISOString().split('T')[0];
+};
+
 function getDatesForPreset(preset) {
     const today = new Date();
     let start, end;
@@ -80,12 +88,7 @@ function getDatesForPreset(preset) {
         end = new Date();
     }
 
-    const toYMD = (d) => {
-        const tzOffset = d.getTimezoneOffset() * 60000;
-        return new Date(d - tzOffset).toISOString().split('T')[0];
-    };
-
-    return { start: toYMD(start), end: toYMD(end) };
+    return { start: getLocalYMD(start), end: getLocalYMD(end) };
 }
 
 async function executeSaveAction(comanda, nextStep = 'stay') {
@@ -223,7 +226,20 @@ function hideMobileDetail() {
 }
 
 function updateKPIs() {
-    const comandas = localState.allComandas || [];
+    const todayStr = getLocalYMD(new Date());
+    let comandas = localState.allComandas || [];
+
+    if (localState.filterPreset === 'hoje') {
+        comandas = comandas.filter(c => {
+            const cDateStr = getLocalYMD(c.startTime || c.date || c.createdAt);
+            return (c.status !== 'completed' && cDateStr <= todayStr) || (c.status === 'completed' && cDateStr === todayStr);
+        });
+    } else if (localState.filterPreset !== 'custom') {
+        comandas = comandas.filter(c => {
+            const cDateStr = getLocalYMD(c.startTime || c.date || c.createdAt);
+            return cDateStr <= todayStr;
+        });
+    }
     
     const abertas = comandas.filter(c => c.status !== 'completed').length;
     const pagas = comandas.filter(c => c.status === 'completed');
@@ -375,7 +391,22 @@ function updateCashierUIState() {
     const alertBox = document.getElementById('cashier-alert-box');
     const newSaleBtn = document.getElementById('btn-new-sale');
 
-    if (!localState.isCashierOpen) {
+    if (localState.isCashierFromPreviousDay) {
+         if (alertBox) alertBox.innerHTML = `
+            <div class="bg-red-50 border-l-4 border-red-500 p-3 mb-3 rounded-r-xl animate-fade-in mx-1 shadow-sm">
+                <div class="flex items-center">
+                    <i class="bi bi-exclamation-octagon text-red-600 mr-3 text-xl"></i>
+                    <p class="text-xs md:text-sm text-red-800 leading-tight">
+                        <strong>Caixa de Ontem Aberto!</strong> Você esqueceu de fechar o caixa do turno anterior. Encerre-o agora para normalizar o sistema e registrar novas vendas.
+                    </p>
+                </div>
+            </div>
+         `;
+         if (newSaleBtn) {
+             newSaleBtn.classList.add('opacity-50', 'cursor-not-allowed');
+             newSaleBtn.disabled = true;
+         }
+    } else if (!localState.isCashierOpen) {
         if (alertBox) alertBox.innerHTML = `
             <div class="bg-amber-50 border-l-4 border-amber-400 p-3 mb-3 rounded-r-xl animate-fade-in mx-1 shadow-sm">
                 <div class="flex items-center">
@@ -404,7 +435,12 @@ function renderCashierControls() {
     const container = document.getElementById('cashier-controls');
     if (!container) return;
     
-    if (localState.isCashierOpen) {
+    if (localState.isCashierFromPreviousDay) {
+        container.innerHTML = `
+            <span class="hidden sm:inline-block text-[10px] font-bold text-red-700 bg-red-100 py-1.5 px-3 rounded-xl border border-red-200 uppercase tracking-widest shadow-sm"><i class="bi bi-exclamation-octagon"></i> Bloqueado</span>
+            <button data-action="close-cashier" class="py-1.5 px-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 text-[10px] transition shadow-sm uppercase tracking-wider animate-pulse">Fechar Caixa Antigo</button>
+        `;
+    } else if (localState.isCashierOpen) {
         container.innerHTML = `
             <span class="hidden sm:inline-block text-[10px] font-bold text-emerald-700 bg-emerald-100 py-1.5 px-3 rounded-xl border border-emerald-200 uppercase tracking-widest shadow-sm"><i class="bi bi-unlock-fill"></i> Caixa Aberto</span>
             <button data-action="close-cashier" class="py-1.5 px-4 bg-red-50 text-red-700 border border-red-200 font-bold rounded-xl hover:bg-red-100 text-[10px] transition shadow-sm uppercase tracking-wider">Fechar Caixa</button>
@@ -423,23 +459,45 @@ function renderComandaList() {
     
     if (!listContainer) return;
     
-    if (!localState.isCashierOpen && localState.activeFilter === 'abertas') {
+    if ((!localState.isCashierOpen || localState.isCashierFromPreviousDay) && localState.activeFilter === 'abertas') {
         listContainer.innerHTML = `
             <div class="text-center py-12 opacity-60">
                 <i class="bi bi-lock text-4xl text-gray-300 mb-3 block"></i>
-                <p class="text-sm font-bold text-gray-600 uppercase tracking-widest">Caixa Fechado</p>
-                <p class="text-xs text-gray-500 mt-2">Abra o caixa para ver as vendas</p>
+                <p class="text-sm font-bold text-gray-600 uppercase tracking-widest">Acesso Restrito</p>
+                <p class="text-xs text-gray-500 mt-2">Regularize o caixa para ver as vendas pendentes</p>
             </div>
         `;
         if (paginationContainer) paginationContainer.innerHTML = '';
         return;
     }
     
+    const todayStr = getLocalYMD(new Date());
     let filteredComandas = localState.allComandas || [];
-    if(localState.activeFilter === 'abertas') {
-        filteredComandas = filteredComandas.filter(c => c.status !== 'completed');
-    } else if (localState.activeFilter === 'pagas') {
-        filteredComandas = filteredComandas.filter(c => c.status === 'completed');
+    
+    if (localState.filterPreset === 'hoje') {
+         filteredComandas = filteredComandas.filter(c => {
+             const cDateStr = getLocalYMD(c.startTime || c.date || c.createdAt);
+             if (localState.activeFilter === 'abertas') {
+                 return c.status !== 'completed' && cDateStr <= todayStr; 
+             } else if (localState.activeFilter === 'pagas') {
+                 return c.status === 'completed' && cDateStr === todayStr; 
+             } else {
+                 return (c.status !== 'completed' && cDateStr <= todayStr) || (c.status === 'completed' && cDateStr === todayStr);
+             }
+         });
+    } else if (localState.filterPreset !== 'custom') {
+         filteredComandas = filteredComandas.filter(c => {
+             const cDateStr = getLocalYMD(c.startTime || c.date || c.createdAt);
+             if (localState.activeFilter === 'abertas') return c.status !== 'completed' && cDateStr <= todayStr;
+             if (localState.activeFilter === 'pagas') return c.status === 'completed' && cDateStr <= todayStr;
+             return cDateStr <= todayStr;
+         });
+    } else {
+         if(localState.activeFilter === 'abertas') {
+             filteredComandas = filteredComandas.filter(c => c.status !== 'completed');
+         } else if (localState.activeFilter === 'pagas') {
+             filteredComandas = filteredComandas.filter(c => c.status === 'completed');
+         }
     }
 
     updateKPIs(); 
@@ -469,7 +527,7 @@ function renderComandaList() {
 
         const isSelected = String(comanda.id) === String(localState.selectedComandaId);
         
-        const dateObj = new Date(comanda.startTime);
+        const dateObj = new Date(comanda.startTime || comanda.date || comanda.createdAt);
         const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
@@ -617,34 +675,34 @@ function renderQuantityView(comanda, container) {
     let quantity = 1;
     
     const mobileHeaderHTML = `
-        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
-            <button data-action="back-to-add-item" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
-                <i class="bi bi-arrow-left text-xl"></i>
+        <div class="p-3 md:p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 rounded-t-2xl">
+            <button data-action="back-to-add-item" class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner active:scale-90 transition-transform">
+                <i class="bi bi-arrow-left text-lg md:text-xl"></i>
             </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Quantidade</h3>
+            <h3 class="font-black text-sm md:text-base text-gray-800 ml-3 uppercase tracking-wider">Quantidade</h3>
         </div>
     `;
 
     container.innerHTML = `
         ${mobileHeaderHTML}
-        <div class="flex-grow flex flex-col items-center justify-center p-6 bg-slate-50 relative">
-            <div class="text-center bg-white p-8 rounded-3xl shadow-sm border border-gray-200 w-full max-w-sm">
-                <div class="w-20 h-20 bg-indigo-50 text-indigo-500 rounded-full mx-auto flex items-center justify-center text-4xl mb-6 border border-indigo-100 shadow-inner">
+        <div class="flex-grow overflow-y-auto flex flex-col items-center justify-center p-4 bg-slate-50 relative custom-scrollbar">
+            <div class="text-center bg-white p-5 md:p-6 rounded-3xl shadow-sm border border-gray-200 w-full max-w-sm">
+                <div class="w-14 h-14 md:w-16 md:h-16 bg-indigo-50 text-indigo-500 rounded-full mx-auto flex items-center justify-center text-2xl md:text-3xl mb-4 border border-indigo-100 shadow-inner">
                     ${item.type === 'service' ? '<i class="bi bi-scissors"></i>' : (item.type === 'product' ? '<i class="bi bi-box-seam"></i>' : '<i class="bi bi-boxes"></i>')}
                 </div>
-                <h3 class="font-black text-2xl text-gray-900 leading-tight mb-3">${escapeHTML(item.name)}</h3>
-                <p class="text-base text-gray-600 font-bold bg-gray-100 inline-block px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">R$ ${item.price.toFixed(2)} / unidade</p>
+                <h3 class="font-black text-lg md:text-xl text-gray-900 leading-tight mb-2 line-clamp-2">${escapeHTML(item.name)}</h3>
+                <p class="text-xs md:text-sm text-gray-600 font-bold bg-gray-100 inline-block px-3 py-1 rounded-full border border-gray-200 shadow-sm">R$ ${item.price.toFixed(2)} / un</p>
                 
-                <div class="my-10 flex items-center justify-center gap-6">
-                    <button id="quantity-minus-btn" class="w-16 h-16 rounded-2xl bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:hover:bg-white"><i class="bi bi-dash"></i></button>
-                    <span id="quantity-display" class="text-6xl font-black w-24 text-center text-indigo-600 bg-indigo-50 rounded-3xl py-2 border border-indigo-100 shadow-inner">${quantity}</span>
-                    <button id="quantity-plus-btn" class="w-16 h-16 rounded-2xl bg-white border border-gray-300 text-3xl font-black text-gray-600 hover:bg-green-50 hover:text-green-600 hover:border-green-200 shadow-md transition-all active:scale-90"><i class="bi bi-plus"></i></button>
+                <div class="my-6 md:my-8 flex items-center justify-center gap-4 md:gap-6">
+                    <button id="quantity-minus-btn" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-white border border-gray-300 text-2xl font-black text-gray-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 shadow-md transition-all active:scale-90 disabled:opacity-30 disabled:hover:bg-white"><i class="bi bi-dash"></i></button>
+                    <span id="quantity-display" class="text-4xl md:text-5xl font-black w-20 md:w-24 text-center text-indigo-600 bg-indigo-50 rounded-2xl py-1.5 border border-indigo-100 shadow-inner">${quantity}</span>
+                    <button id="quantity-plus-btn" class="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-white border border-gray-300 text-2xl font-black text-gray-600 hover:bg-green-50 hover:text-green-600 hover:border-green-200 shadow-md transition-all active:scale-90"><i class="bi bi-plus"></i></button>
                 </div>
             </div>
         </div>
-        <footer class="p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-safe relative">
-            <button id="confirm-add-qty-btn" class="w-full py-4 bg-indigo-600 text-white font-black text-base rounded-2xl hover:bg-indigo-700 transition-all shadow-lg uppercase tracking-widest active:scale-95 flex justify-center items-center gap-2">
-                <i class="bi bi-cart-plus text-xl"></i> Confirmar Adição
+        <footer class="p-3 md:p-4 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 pb-safe relative">
+            <button id="confirm-add-qty-btn" class="w-full py-3 md:py-3.5 bg-indigo-600 text-white font-black text-sm md:text-base rounded-xl hover:bg-indigo-700 transition-all shadow-md uppercase tracking-widest active:scale-95 flex justify-center items-center gap-2">
+                <i class="bi bi-cart-plus text-lg"></i> Confirmar Adição
             </button>
         </footer>
     `;
@@ -699,7 +757,20 @@ function renderComandaDetail() {
         </div>
     `;
 
-    if (!localState.isCashierOpen) {
+    if (localState.isCashierFromPreviousDay) {
+        detailContainer.innerHTML = `
+            ${mobileHeaderHTML}
+            <div class="flex flex-col items-center justify-center h-full text-center text-red-500 p-6">
+                <div class="bg-red-50 p-6 rounded-full mb-4 border border-red-100 shadow-inner">
+                    <i class="bi bi-exclamation-octagon text-5xl text-red-400"></i>
+                </div>
+                <p class="font-black text-lg text-red-700 uppercase tracking-widest">Caixa de Ontem Pendente</p>
+                <p class="text-sm text-red-500 mt-2 max-w-xs">Feche o caixa do turno anterior para liberar o sistema e pagar esta comanda.</p>
+                <button data-action="close-cashier" class="py-3 px-8 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition shadow-md mt-6 text-sm uppercase tracking-wider animate-pulse">Fechar Caixa Antigo Agora</button>
+            </div>
+        `;
+        return;
+    } else if (!localState.isCashierOpen) {
         detailContainer.innerHTML = `
             ${mobileHeaderHTML}
             <div class="flex flex-col items-center justify-center h-full text-center text-gray-500 p-6">
@@ -749,7 +820,6 @@ function renderComandaDetail() {
 
     const hasUnsaved = comanda._hasUnsavedChanges;
     
-    // FAB do Adicionar (Aparece flutuando no Mobile)
     const mobileAddFab = !isCompleted ? `
         <button data-action="add-item" class="md:hidden fixed bottom-[120px] right-4 w-14 h-14 bg-indigo-600 text-white font-black rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-[60]">
             <i class="bi bi-plus-lg text-2xl"></i>
@@ -782,7 +852,6 @@ function renderComandaDetail() {
         </footer>
     `;
 
-    // Rodapé Mobile Limpo (Strictly Checkout/Salvar)
     const mobileFooter = `
         <footer class="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-15px_30px_-5px_rgba(0,0,0,0.1)] z-50 pb-safe">
             <div class="flex justify-between items-end mb-3 px-1">
@@ -1227,6 +1296,8 @@ async function addRewardToComanda(reward, comanda) {
 
 async function openNewSaleModal(preSelectedClient = null) {
     if (!localState.isCashierOpen) return showNotification('Caixa Fechado', 'Abra o caixa antes de criar uma nova venda.', 'error');
+    if (localState.isCashierFromPreviousDay) return showNotification('Ação Bloqueada', 'Feche o caixa pendente do dia anterior antes de iniciar novas vendas.', 'warning');
+    
     if (!state.professionals || state.professionals.length === 0) {
          try { state.professionals = await professionalsApi.getProfessionals(state.establishmentId); } 
          catch (err) { return showNotification('Erro', 'Não foi possível carregar profissionais.', 'error'); }
@@ -1332,9 +1403,15 @@ async function _comandas_handleClientRegistration(e) {
 
     if (!nameInput.value || !cleanPhone) return showNotification('Erro', 'Nome e Telefone são obrigatórios.', 'error');
 
+    let existingClient = null;
     try {
-        const existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
-        if (existingClient) {
+        existingClient = await clientsApi.getClientByPhone(state.establishmentId, cleanPhone);
+    } catch (err) {
+        console.log("Cliente não encontrado na base, prosseguindo com criação...");
+    }
+
+    try {
+        if (existingClient && existingClient.id) {
             showNotification('Atenção', `Cliente já cadastrado.`, 'info');
             document.getElementById('genericModal').style.display = 'none';
             openNewSaleModal(existingClient); 
@@ -1344,7 +1421,9 @@ async function _comandas_handleClientRegistration(e) {
             document.getElementById('genericModal').style.display = 'none';
             openNewSaleModal(newClient);
         }
-    } catch (error) { showNotification(`Erro`, error.message, 'error'); }
+    } catch (error) { 
+        showNotification(`Erro ao cadastrar`, error.message, 'error'); 
+    }
 }
 
 async function openCashierModal() {
@@ -1367,7 +1446,13 @@ async function openCashierModal() {
         if (isNaN(initialAmount) || initialAmount < 0) return showNotification('Valor Inválido', 'Insira um valor válido.', 'error');
         try {
             const session = await cashierApi.openCashier({ establishmentId: state.establishmentId, initialAmount: parseFloat(initialAmount.toFixed(2)) });
-            localState.isCashierOpen = true; localState.activeCashierSessionId = session.id; document.getElementById('genericModal').style.display = 'none'; showNotification('Sucesso!', `Caixa aberto (R$ ${initialAmount.toFixed(2)})`, 'success'); updateCashierUIState(); await fetchAndDisplayData();
+            localState.isCashierOpen = true; 
+            localState.activeCashierSessionId = session.id; 
+            localState.isCashierFromPreviousDay = false; // Reset da flag caso fosse abertura normal
+            document.getElementById('genericModal').style.display = 'none'; 
+            showNotification('Sucesso!', `Caixa aberto (R$ ${initialAmount.toFixed(2)})`, 'success'); 
+            updateCashierUIState(); 
+            await fetchAndDisplayData();
         } catch (error) { showNotification('Erro', `Falha ao abrir caixa: ${error.message}`, 'error'); }
     });
 }
@@ -1405,7 +1490,13 @@ async function handleOpenCloseCashierModal() {
             if (isNaN(finalAmount) || finalAmount < 0) return showNotification('Valor Inválido', 'Insira um valor final válido.', 'error');
             try {
                 await cashierApi.closeCashier(sessionId, finalAmount);
-                localState.isCashierOpen = false; localState.activeCashierSessionId = null; document.getElementById('genericModal').style.display = 'none'; updateCashierUIState(); await fetchAndDisplayData(); showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
+                localState.isCashierOpen = false; 
+                localState.activeCashierSessionId = null; 
+                localState.isCashierFromPreviousDay = false; // Normalizado
+                document.getElementById('genericModal').style.display = 'none'; 
+                updateCashierUIState(); 
+                await fetchAndDisplayData(); 
+                showNotification('Sucesso!', 'Caixa fechado com sucesso!', 'success');
             } catch (error) { showNotification('Erro', `Falha ao fechar caixa: ${error.message}`, 'error'); }
         });
     } catch (error) { showNotification('Erro', `Falha ao carregar relatório: ${error.message}`, 'error'); }
@@ -1424,7 +1515,7 @@ async function handleFilterClick(filter) {
     const listContainer = document.getElementById('comandas-list');
     if (listContainer) listContainer.innerHTML = '<div class="loader mx-auto mt-10"></div>';
     
-    await fetchAndDisplayData();
+    renderComandaList(); // Apenas recalcula os dados no front sem ir ao firebase novamente
 }
 
 function handleComandaClick(comandaId) {
@@ -1561,8 +1652,6 @@ async function handleFinalizeCheckout(comanda) {
     document.body.appendChild(loadingOverlay);
 
     try {
-        // As APIs de backend (appointmentsApi e salesApi) JÁ FAZEM A INTEGRAÇÃO NO SERVIDOR.
-        // Nenhuma requisição financeira extra deve ser disparada aqui.
         if (isAppointment) {
             await appointmentsApi.checkoutAppointment(comanda.id, data);
         } else {
@@ -1637,6 +1726,16 @@ async function fetchAndDisplayData() {
     let sDate = localState.filterStartDate;
     let eDate = localState.filterEndDate;
     
+    // Modifica a busca na API se o usuário estiver focado no HOJE
+    // Retrocede até 45 dias para encontrar todos os caixas/comandas perdidos.
+    if (localState.filterPreset === 'hoje') {
+        const todayObj = new Date();
+        eDate = getLocalYMD(todayObj);
+        const pastObj = new Date();
+        pastObj.setDate(pastObj.getDate() - 45);
+        sDate = getLocalYMD(pastObj);
+    }
+
     let dateParams;
     if (sDate && eDate && sDate !== eDate) {
          dateParams = { startDate: sDate, endDate: eDate };
@@ -1659,6 +1758,17 @@ async function fetchAndDisplayData() {
 
         localState.isCashierOpen = !!activeSession;
         localState.activeCashierSessionId = activeSession ? activeSession.id : null;
+        localState.isCashierFromPreviousDay = false;
+
+        // VERIFICAÇÃO DE CAIXA ESQUECIDO DO DIA ANTERIOR
+        if (activeSession && activeSession.openedAt) {
+             const openedStr = getLocalYMD(activeSession.openedAt);
+             const todayStr = getLocalYMD(new Date());
+             if (openedStr < todayStr) {
+                 localState.isCashierFromPreviousDay = true;
+             }
+        }
+
         updateCashierUIState();
         
         if (establishmentData && establishmentData.loyaltyProgram) {
