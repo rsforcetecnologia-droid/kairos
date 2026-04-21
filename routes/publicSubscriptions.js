@@ -1,9 +1,11 @@
+// routes/publicSubscriptions.js
+
 const express = require('express');
 const router = express.Router();
-const axios = require('axios'); // Usaremos axios para chamar a API do Pagar.me
+const axios = require('axios'); 
 
-// Autenticação Basic Auth para Pagar.me (API Key + :)
-const pagarmeAuth = Buffer.from(`${process.env.PAGARME_SECRET_KEY}:`).toString('base64');
+// Autenticação Basic Auth para Pagar.me (Mantido para uso futuro se necessário)
+const pagarmeAuth = Buffer.from(`${process.env.PAGARME_SECRET_KEY || ''}:`).toString('base64');
 const pagarmeApi = axios.create({
     baseURL: 'https://api.pagar.me/core/v5',
     headers: {
@@ -12,10 +14,14 @@ const pagarmeApi = axios.create({
     }
 });
 
+// 🔄 ROTA CORRIGIDA: Lista os planos públicos no Site / Landing Page
 router.get('/plans', async (req, res) => {
     try {
         const { db } = req;
-        const snapshot = await db.collection('subscriptionPlans').orderBy('maxProfessionals').get();
+        // Aponta para 'saas_plans' e traz apenas os planos ativos
+        const snapshot = await db.collection('saas_plans')
+            .where('active', '==', true)
+            .get();
         
         const publicPlans = snapshot.docs.map(doc => {
             const data = doc.data();
@@ -23,13 +29,16 @@ router.get('/plans', async (req, res) => {
                 id: doc.id,
                 name: data.name,
                 description: data.description || '',
-                // IMPORTANTE: Você deve ter o 'pagarmePlanId' salvo no Firestore agora, não mais 'stripePriceId'
-                pagarmePlanId: data.pagarmePlanId, 
-                price: data.price,
-                maxProfessionals: data.maxProfessionals,
-                maxUsers: data.maxUsers,
+                pagarmePlanId: data.pagarmePlanId || null, 
+                price: data.price || 0,
+                maxProfessionals: data.maxProfessionals || 999,
+                maxUsers: data.maxUsers || 999,
+                features: data.features || []
             };
         });
+
+        // Ordena os planos por preço (do mais barato ao mais caro) em memória
+        publicPlans.sort((a, b) => a.price - b.price);
 
         res.status(200).json(publicPlans);
     } catch (error) {
@@ -39,8 +48,7 @@ router.get('/plans', async (req, res) => {
 });
 
 /**
- * Cria uma assinatura no Pagar.me
- * Recebe: { planId: 'plan_xyz...', cardToken: 'token_gerado_no_front', customer: { ... }, establishmentId: '...' }
+ * Cria uma assinatura no Pagar.me (Mantida intacta)
  */
 router.post('/create-subscription', async (req, res) => {
     const { pagarmePlanId, cardToken, customerData, establishmentId } = req.body;
@@ -50,29 +58,25 @@ router.post('/create-subscription', async (req, res) => {
     }
 
     try {
-        // 1. Cria a assinatura na API V5
-        // Nota: O Pagar.me V5 permite criar Cliente e Assinatura numa chamada só ou separados.
-        // Aqui faremos a assinatura direta passando os dados do cliente e cartão.
-        
         const subscriptionPayload = {
             plan_id: pagarmePlanId,
             payment_method: 'credit_card',
-            card_token: cardToken, // Token gerado no frontend
+            card_token: cardToken,
             customer: {
                 name: customerData.name,
                 email: customerData.email,
-                document: customerData.document, // CPF/CNPJ (apenas números)
+                document: customerData.document, 
                 type: customerData.document.length > 11 ? 'company' : 'individual',
                 phones: {
                     mobile_phone: {
                         country_code: '55',
-                        area_code: customerData.areaCode, // Ex: '11'
-                        number: customerData.phone // Ex: '999999999'
+                        area_code: customerData.areaCode, 
+                        number: customerData.phone 
                     }
                 }
             },
             metadata: {
-                establishmentId: establishmentId // CRUCIAL para o Webhook identificar
+                establishmentId: establishmentId 
             }
         };
 
@@ -80,7 +84,6 @@ router.post('/create-subscription', async (req, res) => {
         
         const newSubscription = response.data;
 
-        // Retorna sucesso para o frontend
         res.json({ 
             success: true, 
             subscriptionId: newSubscription.id,

@@ -28,27 +28,32 @@ router.post('/', verifyToken, hasAccess, async (req, res) => {
                 throw new Error('Estabelecimento não encontrado.');
             }
 
-            const subscription = establishmentDoc.data().subscription;
-            if (!subscription || !subscription.planId) {
+            // 🔄 CORREÇÃO: Busca o planId de forma robusta (na raiz ou dentro de subscription)
+            const subscription = establishmentDoc.data().subscription || {};
+            const planId = subscription.planId || establishmentDoc.data().planId;
+            
+            if (!planId) {
                 throw new Error('Nenhum plano de assinatura ativo encontrado.');
             }
             
             let planDoc;
-            if (subscription.planId === 'trial') {
-                planDoc = { exists: true, data: () => ({ maxProfessionals: 1, maxUsers: 1 }) };
+            // 🔄 CORREÇÃO: Reconhece admin_manual e trial com limites altos
+            if (planId === 'trial' || planId === 'admin_manual') {
+                planDoc = { exists: true, data: () => ({ maxProfessionals: 999, maxUsers: 999 }) };
             } else {
-                planDoc = await transaction.get(db.collection('subscriptionPlans').doc(subscription.planId));
+                // 🔄 CORREÇÃO: Aponta para a nova tabela 'saas_plans'
+                planDoc = await transaction.get(db.collection('saas_plans').doc(planId));
             }
             
             if (!planDoc.exists) throw new Error('Plano de assinatura inválido.');
 
             const planLimits = planDoc.data();
-            const maxProfessionals = planLimits.maxProfessionals || 0;
+            const maxProfessionals = planLimits.maxProfessionals || 999; // Fallback para não travar se o plano não tiver limite definido
 
             const currentActiveProfessionalsSnapshot = await transaction.get(professionalsRef);
             
             if (currentActiveProfessionalsSnapshot.size >= maxProfessionals) {
-                throw new Error('Limite de profissionais ativos atingido.');
+                throw new Error('Limite de profissionais ativos atingido para o seu plano atual.');
             }
             
             const newProfessionalData = {
