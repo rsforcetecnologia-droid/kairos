@@ -156,7 +156,7 @@
                         <h3 id="month-year-display" class="text-sm font-bold title-text capitalize"></h3>
                         <button id="next-week-btn" class="p-1.5 opacity-60 hover:opacity-100 transition"><i class="bi bi-chevron-right text-lg title-text"></i></button>
                     </div>
-                    <div id="week-container" class="grid grid-cols-7 gap-1.5"></div>
+                    <div id="week-container" class="grid grid-cols-7 w-full p-0 m-0"></div>
                 </div>
 
                 <div id="time-slots-container" class="space-y-5 pb-8">
@@ -314,12 +314,10 @@
             function applyCustomization(data) {
                 const root = document.documentElement;
 
-                // Identificar o template
                 let currentTemplateIndex = data.templateId ? designTemplates.findIndex(t => t.id === data.templateId) : 0;
                 if(currentTemplateIndex === -1) currentTemplateIndex = 0;
                 const t = designTemplates[currentTemplateIndex];
 
-                // Mistura entre o escolhido manualmente e o template base
                 const primaryColor = data.primaryColor || data.themeColor || t.primary;
                 const bgColor = data.backgroundColor || t.bg;
                 const textColor = data.textColor || t.text;
@@ -333,7 +331,6 @@
                     return '0.75rem';
                 };
 
-                // Aplica as variáveis CSS globais
                 root.style.setProperty('--theme-primary', primaryColor);
                 root.style.setProperty('--theme-bg', bgColor);
                 root.style.setProperty('--theme-text', textColor);
@@ -343,7 +340,6 @@
                 root.style.setProperty('--theme-card-bg', t.cardBg);
                 root.style.setProperty('--theme-card-border', t.cardBorder);
 
-                // Aplica Imagem de Fundo (Banner)
                 if (data.backgroundImage) {
                     const bannerImg = document.getElementById('establishmentBanner');
                     bannerImg.src = data.backgroundImage;
@@ -351,13 +347,11 @@
                     document.getElementById('bannerPlaceholder').classList.add('hidden');
                 }
 
-                // Aplica Endereço
                 if (data.address) {
                     document.getElementById('establishmentAddressText').textContent = data.address;
                     document.getElementById('establishmentAddressContainer').classList.remove('hidden');
                 }
 
-                // Redes Sociais (Link na Bio)
                 const socialContainer = document.getElementById('social-links-container');
                 const socialData = data.socialLinks || {};
                 socialContainer.innerHTML = '';
@@ -388,7 +382,7 @@
             const FORCE_DIRECT = urlParams.get('direct') === 'true';
             
             let REAL_ESTABLISHMENT_ID = null; 
-            let currentWeekStart = getStartOfWeek(new Date());
+            let currentWeekStart = null; // Será iniciado após carregamento
             let allServicesData = [];
             let allProfessionalsData = [];
             
@@ -433,11 +427,13 @@
             }
             document.getElementById('modal-ok-btn').addEventListener('click', () => document.getElementById('notificationModal').classList.add('hidden'));
 
-            function getStartOfWeek(date) {
-                const d = new Date(date);
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-                return new Date(d.setDate(diff));
+            // CORREÇÃO TIMEZONE 1: Forçar cálculo ao meio-dia para evitar pulo de dia no fuso
+            function getStartOfWeek(dateObj) {
+                const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 12, 0, 0, 0);
+                const day = d.getDay(); 
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                d.setDate(diff);
+                return d;
             }
 
             const showSection = (sectionName) => {
@@ -448,7 +444,7 @@
                 if (sectionName === 'schedule' && booking.date) {
                     morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
                     afternoonSlotsContainer.innerHTML = '';
-                    loadAvailability(booking.date);
+                    // loadAvailability(booking.date); // Agora é chamado pelo fluxo de busca de dia
                 }
             };
 
@@ -497,7 +493,7 @@
                         document.getElementById('branches-list').innerHTML = todasUnidades.map(unidade => {
                             const destinationUrl = unidade.id === URL_ID ? `?id=${unidade.id}&direct=true` : `?id=${unidade.id}`;
                             return `
-                            <button onclick="window.location.href='${destinationUrl}'" class="theme-card p-4 text-left flex items-center gap-4 group hover:border-[color:var(--theme-primary)] hover:shadow-md">
+                            <button onclick="window.location.href='${destinationUrl}'" class="theme-card p-4 text-left flex items-center gap-4 group hover:border-[color:var(--theme-primary)] hover:shadow-md w-full">
                                 <div class="w-12 h-12 theme-bg-color rounded-full flex items-center justify-center flex-shrink-0 shadow-inner group-hover:scale-105 transition-transform">
                                     <i class="bi bi-geo-alt-fill text-xl text-white"></i>
                                 </div>
@@ -517,7 +513,6 @@
                         REAL_ESTABLISHMENT_ID = establishmentData.id;
                         document.getElementById('establishmentName').innerHTML = establishmentData.name;
                         
-                        // Atualiza as mensagens se existirem
                         if (establishmentData.welcomeMessage) {
                             document.getElementById('establishmentWelcomeMessage').textContent = establishmentData.welcomeMessage;
                         }
@@ -614,11 +609,76 @@
                             </div>
                             <h4 class="font-bold text-xs text-center leading-tight line-clamp-2 title-text">${prof.name.split(' ')[0]}</h4>
                         `;
-                        card.addEventListener('click', () => {
+                        
+                        // EVENTO DE CLIQUE DO PROFISSIONAL (BUSCA INTELIGENTE DE DATAS)
+                        card.addEventListener('click', async () => {
                             booking.professionalId = prof.id;
                             booking.professionalName = prof.name;
-                            renderWeek();
+                            
                             showSection('schedule');
+                            morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
+                            afternoonSlotsContainer.innerHTML = '';
+                            
+                            // Lógica para encontrar a próxima data livre (tenta até 30 dias a partir de hoje)
+                            const findNextAvailableDate = async (startDate, attempt = 0) => {
+                                if (attempt > 30) {
+                                    // Se em 30 dias não achou nada, desiste e mostra na data original
+                                    booking.date = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`;
+                                    currentWeekStart = getStartOfWeek(startDate);
+                                    renderWeek();
+                                    morningSlotsContainer.innerHTML = '<span class="col-span-4 text-[10px] opacity-40 text-center italic p-2 rounded">Indisponível. Tente noutra semana.</span>';
+                                    return;
+                                }
+
+                                const dateStr = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`;
+                                const serviceIds = booking.services.map(s => s.id).join(',');
+                                
+                                try {
+                                    const response = await fetch(`${API_BASE_URL}/api/availability?establishmentId=${REAL_ESTABLISHMENT_ID}&professionalId=${booking.professionalId}&serviceIds=${serviceIds}&date=${dateStr}`);
+                                    if (!response.ok) throw new Error();
+                                    const slots = await response.json();
+                                    
+                                    // Se encontrou slots (e considerando filtro do dia atual se for hoje)
+                                    let hasRealAvailability = false;
+                                    
+                                    if (slots.length > 0) {
+                                        const now = new Date();
+                                        const selectedDateObj = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0);
+                                        const isToday = selectedDateObj.toDateString() === now.toDateString();
+                                        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                                        
+                                        // Verifica se sobrou algum horário livre no dia de hoje
+                                        hasRealAvailability = slots.some(slot => {
+                                            const [h, m] = slot.split(':').map(Number);
+                                            if (isToday) {
+                                                return (h * 60 + m) > currentMinutes;
+                                            }
+                                            return true;
+                                        });
+                                    }
+
+                                    if (hasRealAvailability) {
+                                        // Achou um dia bom! Define e renderiza.
+                                        booking.date = dateStr;
+                                        currentWeekStart = getStartOfWeek(startDate);
+                                        renderWeek();
+                                        await loadAvailability(dateStr);
+                                    } else {
+                                        // Continua procurando no próximo dia
+                                        const nextDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 1, 12, 0, 0, 0);
+                                        await findNextAvailableDate(nextDay, attempt + 1);
+                                    }
+                                } catch (e) {
+                                    // Em caso de erro na rede, interrompe e mostra a semana atual vazia
+                                    booking.date = dateStr;
+                                    currentWeekStart = getStartOfWeek(startDate);
+                                    renderWeek();
+                                    morningSlotsContainer.innerHTML = '<p class="text-red-500 text-xs col-span-4 text-center">Erro ao buscar horários.</p>';
+                                }
+                            };
+
+                            const now = new Date();
+                            await findNextAvailableDate(now);
                         });
                         professionalsContainer.appendChild(card);
                     });
@@ -638,12 +698,13 @@
                     const slots = await response.json();
                     
                     if (slots.length === 0) {
-                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs opacity-50 text-center py-4 theme-card">Totalmente Ocupado</p>';
+                        morningSlotsContainer.innerHTML = '<p class="col-span-4 text-xs opacity-50 text-center py-4 theme-card">Sem horário neste dia.</p>';
                         return;
                     }
 
                     const now = new Date();
-                    const selectedDateObj = new Date(selectedDate + 'T00:00:00');
+                    const [year, month, day] = selectedDate.split('-');
+                    const selectedDateObj = new Date(year, month - 1, day, 0, 0, 0, 0);
                     const isToday = selectedDateObj.toDateString() === now.toDateString();
                     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
@@ -656,7 +717,7 @@
                         }
 
                         const btn = document.createElement('button');
-                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text';
+                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text w-full';
                         btn.textContent = slot;
                         btn.onclick = () => {
                             document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
@@ -678,44 +739,56 @@
                 }
             };
 
+            // CORREÇÃO CLICK: Hitbox ocupando 100% do container
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
                 today.setHours(0,0,0,0);
                 
                 for (let i = 0; i < 7; i++) {
-                    const day = new Date(currentWeekStart);
+                    const day = new Date(currentWeekStart.getFullYear(), currentWeekStart.getMonth(), currentWeekStart.getDate(), 12, 0, 0, 0);
                     day.setDate(day.getDate() + i);
                     
+                    const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+                    const isSelected = booking.date === dateStr;
+                    
+                    // Container (Célula Grid) que remove espaçamentos vazios
+                    const dayWrapper = document.createElement('div');
+                    dayWrapper.className = 'w-full h-full p-0.5';
+
                     const btn = document.createElement('button');
-                    btn.className = 'day-button flex flex-col items-center justify-center p-2 radius-dynamic transition-all border border-transparent';
-                    const isSelected = booking.date === day.toISOString().split('T')[0];
+                    btn.className = 'day-button w-full h-full min-h-[64px] flex flex-col items-center justify-center p-1 sm:p-2 radius-dynamic transition-all border border-transparent select-none touch-manipulation cursor-pointer';
                     
                     if(isSelected) {
                         btn.classList.add('theme-bg-color', 'shadow-md');
                         btn.innerHTML = `
-                            <span class="text-[10px] uppercase font-bold text-white opacity-90">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                            <span class="text-base font-bold text-white mt-0.5">${day.getDate()}</span>
+                            <span class="text-[10px] uppercase font-bold text-white opacity-90 pointer-events-none">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                            <span class="text-base font-bold text-white mt-0.5 pointer-events-none">${day.getDate()}</span>
                         `;
                     } else {
                         btn.classList.add('theme-card', 'hover:border-gray-300');
                         btn.innerHTML = `
-                            <span class="text-[10px] uppercase font-bold opacity-50">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                            <span class="text-base font-bold title-text mt-0.5">${day.getDate()}</span>
+                            <span class="text-[10px] uppercase font-bold opacity-50 pointer-events-none">${day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                            <span class="text-base font-bold title-text mt-0.5 pointer-events-none">${day.getDate()}</span>
                         `;
                     }
 
-                    if (day < today) {
+                    const dayMidnight = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0);
+                    
+                    if (dayMidnight < today) {
                         btn.classList.add('opacity-30', 'cursor-not-allowed');
+                        btn.disabled = true;
                     } else {
-                        btn.onclick = () => {
-                            const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+                        btn.onclick = (e) => {
+                            e.preventDefault();
                             booking.date = dateStr;
-                            renderWeek(); // Re-renderiza para atualizar as cores
-                            loadAvailability(dateStr);
+                            renderWeek(); 
+                            loadAvailability(dateStr); 
                         };
                     }
-                    weekContainer.appendChild(btn);
+                    
+                    dayWrapper.appendChild(btn);
+                    weekContainer.appendChild(dayWrapper);
                 }
                 monthYearDisplay.textContent = currentWeekStart.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             };
@@ -725,7 +798,9 @@
                 document.getElementById('summary-service').textContent = s.name;
                 document.getElementById('summary-professional').textContent = booking.professionalName;
                 
-                const dateObj = new Date(booking.date + 'T00:00:00');
+                const [y, mo, d] = booking.date.split('-');
+                const dateObj = new Date(y, mo - 1, d, 0, 0, 0, 0); 
+                
                 const dateFormatted = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
                 document.getElementById('summary-datetime').textContent = `${dateFormatted} - ${booking.time}`;
                 
@@ -743,13 +818,29 @@
                 btn.disabled = true;
                 btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> Agendando...';
                 
+                const [year, month, day] = booking.date.split('-');
+                const [hour, minute] = booking.time.split(':');
+                const localDateObj = new Date(year, month - 1, day, hour, minute, 0);
+
+                const tzo = -localDateObj.getTimezoneOffset();
+                const dif = tzo >= 0 ? '+' : '-';
+                const pad = (num) => (num < 10 ? '0' : '') + num;
+                const isoStringWithTimezone = localDateObj.getFullYear() +
+                    '-' + pad(localDateObj.getMonth() + 1) +
+                    '-' + pad(localDateObj.getDate()) +
+                    'T' + pad(localDateObj.getHours()) +
+                    ':' + pad(localDateObj.getMinutes()) +
+                    ':' + pad(localDateObj.getSeconds()) +
+                    dif + pad(Math.floor(Math.abs(tzo) / 60)) +
+                    ':' + pad(Math.abs(tzo) % 60);
+
                 const data = {
                     establishmentId: REAL_ESTABLISHMENT_ID, 
                     services: booking.services,
                     professionalId: booking.professionalId,
                     clientName: document.getElementById('clientName').value,
                     clientPhone: document.getElementById('clientPhone').value,
-                    startTime: new Date(`${booking.date}T${booking.time}:00`).toISOString()
+                    startTime: isoStringWithTimezone
                 };
 
                 try {

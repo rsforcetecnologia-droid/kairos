@@ -14,7 +14,6 @@ import { state } from '../state.js';
 let localState = {
     clients: [],
     selectedClient: null,
-    activeTab: 'profile',
     
     // Multi-Unidades
     establishments: [],
@@ -40,16 +39,12 @@ let localState = {
     loading: false,
     
     // Paginação e Histórico
-    historyLimit: 20, 
-    historySearchTerm: '', 
-    historyLoading: false,
+    historyLimit: 50, 
     historyData: {
         appointments: [],
         sales: [],
         loyaltyLog: []
-    },
-    
-    modalOpen: false
+    }
 };
 
 let contentDiv = null;
@@ -82,13 +77,49 @@ const getInitials = (name) => {
     return name.substring(0, 2).toUpperCase();
 };
 
-// --- 3. RENDERIZAÇÃO DO LAYOUT BASE ---
+// --- 3. TROCA DE ECRÃS (MODAL FLUTUANTE DE CLIENTES) ---
+function showClientModal() {
+    const modal = document.getElementById('clients-layout-detail');
+    const modalInner = document.getElementById('client-modal-inner');
+    
+    if (modal && modalInner) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modalInner.classList.remove('scale-95', 'translate-y-4');
+            modalInner.classList.add('scale-100', 'translate-y-0');
+        }, 10);
+        
+        document.body.style.overflow = 'hidden'; 
+    }
+}
+
+function hideClientModal() {
+    const modal = document.getElementById('clients-layout-detail');
+    const modalInner = document.getElementById('client-modal-inner');
+    
+    if (modal && modalInner) {
+        modal.classList.add('opacity-0');
+        modalInner.classList.remove('scale-100', 'translate-y-0');
+        modalInner.classList.add('scale-95', 'translate-y-4');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = ''; 
+        }, 300); 
+    }
+    localState.selectedClient = null;
+}
+
+
+// --- 4. RENDERIZAÇÃO DO LAYOUT BASE ---
 
 export async function loadClientsPage() {
     contentDiv = document.getElementById('content');
     localState.selectedClient = null;
-    localState.historyLimit = 20;
-    localState.modalOpen = false;
     localState.selectedIds.clear();
     localState.filters = { search: '', inactiveDays: '', birthMonth: '', hasLoyalty: false, hasDebt: false, status: 'all' };
     localState.sortConfig = { key: 'name', direction: 'asc' };
@@ -118,34 +149,35 @@ export async function loadClientsPage() {
 
 function renderBaseLayout() {
     const estCheckboxes = localState.establishments.map(est => `
-        <label class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-gray-200 text-gray-600'} rounded-lg cursor-pointer hover:bg-gray-50 transition-all shadow-sm est-label select-none">
-            <input type="checkbox" class="est-filter-checkbox rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
+        <label class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-xl cursor-pointer hover:bg-slate-50 transition-all shadow-sm est-label select-none">
+            <input type="checkbox" class="est-filter-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
             <span class="text-xs font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
         </label>
     `).join('');
 
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative">
+        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative bg-slate-50">
             
-            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-gray-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
+            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
                 <div class="flex items-center gap-3">
-                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-gray-700 rounded-full transition-colors text-gray-300 hover:text-white">
+                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white">
                         <i class="bi bi-x-lg text-lg"></i>
                     </button>
                     <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
                 </div>
-                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm">
+                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm active:scale-95">
                     <i class="bi bi-trash3"></i> Excluir Clientes
                 </button>
             </div>
 
             <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full animate-fade-in">
-                <div></div> <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                    <button id="export-excel-btn" class="py-1.5 px-3 bg-white border border-gray-300 text-green-700 font-semibold rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-2 text-xs" title="Exportar para Excel">
-                        <i class="bi bi-file-earmark-excel-fill text-green-600"></i> Excel
+                <div></div> 
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                    <button data-action="export-excel" class="py-2.5 px-4 bg-white border border-slate-200 text-emerald-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex items-center gap-2 text-xs active:scale-95">
+                        <i class="bi bi-file-earmark-excel-fill text-emerald-600 text-base"></i> Exportar
                     </button>
-                    <button data-action="new-client" class="py-1.5 px-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-2 text-xs flex-1 md:flex-none justify-center">
-                        <i class="bi bi-person-plus-fill"></i> Novo Cliente
+                    <button data-action="new-client" class="py-2.5 px-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition shadow-md shadow-indigo-500/30 flex items-center gap-2 text-xs flex-1 md:flex-none justify-center active:scale-95 uppercase tracking-wider border border-indigo-500">
+                        <i class="bi bi-person-plus-fill text-base"></i> Novo Cliente
                     </button>
                 </div>
             </div>
@@ -158,52 +190,57 @@ function renderBaseLayout() {
             </div>
             ` : ''}
 
-            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 animate-fade-in">
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="all">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Total de Clientes</span>
-                    <span id="kpi-total" class="text-xl font-black text-gray-800 mt-0.5 z-10">0</span>
+            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 animate-fade-in flex-shrink-0">
+                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="all">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">Total de Clientes</span>
+                    <span id="kpi-total" class="text-xl font-black text-slate-800 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-emerald-300 transition-colors" data-filter="novos">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Novos (Este Mês)</span>
+                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-emerald-300 transition-colors" data-filter="novos">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">Novos (Mês)</span>
                     <span id="kpi-novos" class="text-xl font-black text-emerald-600 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-red-300 transition-colors" data-filter="devendo">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Com Débitos (Fiado)</span>
+                <div class="bg-red-50 p-3 rounded-xl border border-red-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-red-300 transition-colors" data-filter="devendo">
+                    <span class="text-[9px] font-bold text-red-500 uppercase tracking-widest z-10">Em Débito</span>
                     <span id="kpi-devendo" class="text-xl font-black text-red-600 mt-0.5 z-10">0</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="aniversariantes">
-                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest z-10">Aniversariantes (Mês)</span>
+                <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="aniversariantes">
+                    <span class="text-[9px] font-bold text-indigo-500 uppercase tracking-widest z-10">Aniversariantes</span>
                     <span id="kpi-niver" class="text-xl font-black text-indigo-600 mt-0.5 z-10">0</span>
                 </div>
             </div>
 
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2 w-full animate-fade-in">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-3 w-full animate-fade-in flex-shrink-0">
                 <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-                    <label class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer transition-all shadow-sm select-none flex-shrink-0 text-xs font-semibold">
-                        <input type="checkbox" id="filter-loyalty" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
+                    <label class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer transition-all shadow-sm select-none flex-shrink-0 text-xs font-bold uppercase tracking-wider">
+                        <input type="checkbox" id="filter-loyalty" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
                         <i class="bi bi-star-fill text-amber-500"></i> Com Pontos
                     </label>
-                    <div class="flex items-center bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm flex-shrink-0 gap-2">
-                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ausente ></span>
-                        <input type="number" id="filter-inactive" placeholder="Dias" class="w-12 bg-gray-50 border border-gray-200 rounded text-xs outline-none font-bold text-indigo-600 text-center py-0.5">
+                    <div class="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex-shrink-0 gap-2">
+                        <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Ausente ></span>
+                        <input type="number" id="filter-inactive" placeholder="Dias" class="w-12 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none font-black text-indigo-600 text-center py-0.5 shadow-inner">
                     </div>
                 </div>
 
                 <div class="flex items-center gap-2 w-full md:w-auto">
-                    <div class="relative flex-shrink-0 w-full md:w-72">
-                        <i class="bi bi-search absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="text" id="search-input" placeholder="Buscar por nome, telefone ou CPF..." class="w-full pl-8 p-1.5 bg-white border border-gray-200 shadow-sm rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none transition-all">
+                    <div class="relative w-full md:w-80 flex-shrink-0">
+                        <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" id="search-input" placeholder="Buscar por nome, telefone, CPF..." class="w-full pl-9 p-2.5 bg-white border border-slate-200 shadow-sm rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                     </div>
                 </div>
             </div>
 
-            <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+            <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in relative">
                 <div id="table-header-container"></div>
                 <div id="list-container" class="flex-1 overflow-y-auto custom-scrollbar pb-24 md:pb-2">
                     <div class="flex justify-center py-20"><div class="loader"></div></div>
                 </div>
             </div>
         </section>
+
+        <div id="clients-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+            <div id="client-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-4xl flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
+                </div>
+        </div>
     `;
 }
 
@@ -217,9 +254,9 @@ function renderTableHeaders() {
     };
 
     headerContainer.innerHTML = `
-        <div class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest items-center bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+        <div class="hidden md:grid grid-cols-12 gap-2 px-4 py-3 text-[9px] font-black text-slate-500 uppercase tracking-widest items-center bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
             <div class="col-span-4 pl-2 flex items-center gap-3">
-                <input type="checkbox" id="select-all-toggle" class="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" ${localState.selectedIds.size > 0 && localState.selectedIds.size === localState.clients.length ? 'checked' : ''}>
+                <input type="checkbox" id="select-all-toggle" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${localState.selectedIds.size > 0 && localState.selectedIds.size === localState.clients.length ? 'checked' : ''}>
                 <div class="cursor-pointer flex items-center hover:text-indigo-700 transition-colors select-none" data-sort="name">
                     Cliente ${getIcon('name')}
                 </div>
@@ -238,12 +275,12 @@ function renderTableHeaders() {
     `;
 }
 
-// --- 4. GESTÃO DE DADOS E RENDERIZAÇÃO DA LISTA ---
+// --- 5. GESTÃO DE DADOS DA LISTA PRINCIPAL ---
 
 async function fetchClients() {
     localState.loading = true;
     const container = document.getElementById('list-container');
-    if(container) container.innerHTML = '<div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-4 text-gray-500 font-medium text-xs">Carregando clientes...</p></div>';
+    if(container) container.innerHTML = '<div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-4 text-slate-500 font-bold text-[10px] uppercase tracking-widest">Carregando clientes...</p></div>';
     
     try {
         const estIds = Array.from(localState.filterEstablishmentIds);
@@ -265,7 +302,7 @@ async function fetchClients() {
     } catch (error) {
         console.error(error);
         showNotification('Erro', 'Falha ao carregar clientes.', 'error');
-        if(container) container.innerHTML = '<div class="text-center py-10 text-red-500 text-sm">Erro ao carregar dados.</div>';
+        if(container) container.innerHTML = '<div class="text-center py-10 text-red-500 font-bold text-sm">Erro ao carregar dados.</div>';
     } finally {
         localState.loading = false;
     }
@@ -370,12 +407,12 @@ function renderList() {
 
     if (filteredList.length === 0) {
         container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-16">
-                <div class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mb-3">
-                    <i class="bi bi-people text-xl text-gray-300"></i>
+            <div class="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-300 shadow-sm m-4">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                    <i class="bi bi-people text-3xl text-slate-300"></i>
                 </div>
-                <h3 class="text-sm font-bold text-gray-600 mb-1">Nenhum cliente encontrado</h3>
-                <p class="text-[10px] text-gray-400 max-w-xs text-center">Tente ajustar a busca ou os filtros ativos.</p>
+                <h3 class="text-base font-black text-slate-800 mb-1">Nenhum cliente encontrado</h3>
+                <p class="text-[10px] text-slate-500 max-w-sm text-center font-bold uppercase tracking-widest mb-6">Tente ajustar a busca ou limpar os filtros.</p>
             </div>`;
         return;
     }
@@ -389,65 +426,65 @@ function renderList() {
         const isSelected = localState.selectedIds.has(client.id);
 
         let tagsHTML = '';
-        if (isBirthday) tagsHTML += `<span class="bg-indigo-50 text-indigo-600 text-[8px] font-bold px-1.5 py-0.5 rounded border border-indigo-100 uppercase tracking-wider">🎂 Niver</span> `;
-        if (client.loyaltyPoints > 0) tagsHTML += `<span class="bg-amber-50 text-amber-600 text-[8px] font-bold px-1.5 py-0.5 rounded border border-amber-100 uppercase tracking-wider"><i class="bi bi-star-fill"></i> ${client.loyaltyPoints} pts</span> `;
+        if (isBirthday) tagsHTML += `<span class="bg-indigo-50 text-indigo-700 text-[8px] font-black px-1.5 py-0.5 rounded border border-indigo-200 uppercase tracking-wider shadow-sm flex items-center gap-1"><i class="bi bi-gift-fill"></i> Niver</span> `;
+        if (client.loyaltyPoints > 0) tagsHTML += `<span class="bg-amber-50 text-amber-700 text-[8px] font-black px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider shadow-sm flex items-center gap-1"><i class="bi bi-star-fill"></i> ${client.loyaltyPoints} pts</span> `;
 
         return `
-        <div class="border-b border-gray-100 hover:bg-gray-50 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-2.5 md:p-2 mb-2 md:mb-0 bg-white md:bg-transparent rounded-xl md:rounded-none shadow-sm md:shadow-none border md:border-b ${hasDebt ? 'border-l-4 border-l-red-400' : 'border-l-4 border-l-transparent hover:border-l-indigo-300'} ${isSelected ? 'bg-indigo-50/40' : ''} cursor-pointer" data-action="open-modal" data-id="${client.id}">
+        <div class="border-b border-slate-100 hover:bg-slate-50 transition-colors relative group flex flex-col md:grid md:grid-cols-12 md:gap-2 md:items-center p-3 md:p-3 mb-2 md:mb-0 bg-white md:bg-transparent rounded-2xl md:rounded-none shadow-sm md:shadow-none border md:border-b md:border-x-0 md:border-t-0 mx-2 md:mx-0 ${hasDebt ? 'border-l-4 border-l-red-400' : 'border-l-4 border-l-transparent hover:border-l-indigo-300'} ${isSelected ? 'bg-indigo-50/40 ring-1 ring-indigo-200 border-indigo-200' : ''} cursor-pointer active:scale-[0.99] md:active:scale-100" data-action="open-modal" data-id="${client.id}">
             
             <div class="flex justify-between items-start md:hidden mb-2 relative">
                 <div class="absolute -top-1 -right-1 z-20">
-                    <input type="checkbox" value="${client.id}" class="item-checkbox w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''}>
+                    <input type="checkbox" value="${client.id}" class="item-checkbox w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" ${isSelected ? 'checked' : ''} data-action-stop-propagation="true">
                 </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-gray-100 text-gray-600 border border-gray-200'} flex items-center justify-center font-bold text-xs flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl ${hasDebt ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-100 text-slate-600 border border-slate-200'} flex items-center justify-center font-black text-sm flex-shrink-0 shadow-sm">
                         ${getInitials(client.name)}
                     </div>
-                    <div class="pr-6">
-                        <p class="font-bold text-xs text-gray-800 truncate max-w-[180px]">${escapeHTML(client.name)}</p>
-                        <p class="text-[9px] text-gray-500 font-medium">${escapeHTML(client.phone || 'Sem contato')}</p>
+                    <div class="pr-6 min-w-0">
+                        <p class="font-black text-sm text-slate-800 truncate max-w-[180px]">${escapeHTML(client.name)}</p>
+                        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">${escapeHTML(client.phone || 'Sem contato')}</p>
                     </div>
                 </div>
-                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-7 h-7 mt-5 bg-[#25D366]/10 text-[#25D366] rounded flex items-center justify-center hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20"><i class="bi bi-whatsapp text-[10px]"></i></button>` : ''}
+                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-8 h-8 mt-5 bg-[#25D366]/10 text-[#25D366] rounded-xl flex items-center justify-center hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20 z-20 active:scale-95"><i class="bi bi-whatsapp text-[12px] pointer-events-none"></i></button>` : ''}
             </div>
 
-            <div class="hidden md:flex md:col-span-4 items-center gap-2 pl-1">
-                <input type="checkbox" value="${client.id}" class="item-checkbox w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm z-20 flex-shrink-0" ${isSelected ? 'checked' : ''}>
-                <div class="w-8 h-8 rounded-full ${hasDebt ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-gray-100 text-gray-600 border border-gray-200'} flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
+            <div class="hidden md:flex md:col-span-4 items-center gap-3 pl-2">
+                <input type="checkbox" value="${client.id}" class="item-checkbox w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm z-20 flex-shrink-0" ${isSelected ? 'checked' : ''} data-action-stop-propagation="true">
+                <div class="w-9 h-9 rounded-xl ${hasDebt ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-100 text-slate-600 border border-slate-200'} flex items-center justify-center font-black text-xs flex-shrink-0 shadow-sm">
                     ${getInitials(client.name)}
                 </div>
-                <div class="min-w-0">
-                    <p class="font-bold text-xs text-gray-800 truncate" title="${escapeHTML(client.name)}">${escapeHTML(client.name)}</p>
-                    <div class="flex gap-1 mt-0.5">${tagsHTML}</div>
+                <div class="min-w-0 flex-1">
+                    <p class="font-black text-sm text-slate-800 truncate" title="${escapeHTML(client.name)}">${escapeHTML(client.name)}</p>
+                    <div class="flex gap-1.5 mt-1">${tagsHTML}</div>
                 </div>
             </div>
 
             <div class="hidden md:block md:col-span-3">
-                <p class="text-[10px] font-bold text-gray-700">${escapeHTML(client.phone || '--')}</p>
-                <p class="text-[9px] text-gray-400 truncate w-full" title="${escapeHTML(client.email || '')}">${escapeHTML(client.email || '--')}</p>
+                <p class="text-[10px] font-black text-slate-700 uppercase tracking-widest">${escapeHTML(client.phone || '--')}</p>
+                <p class="text-[9px] text-slate-400 font-bold truncate w-full mt-0.5" title="${escapeHTML(client.email || '')}">${escapeHTML(client.email || '--')}</p>
             </div>
 
-            <div class="md:col-span-2 md:text-center flex justify-between md:block items-center mb-1 md:mb-0">
-                <span class="md:hidden text-[9px] font-bold text-gray-400 uppercase tracking-widest">Última Visita:</span>
-                <span class="text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 uppercase tracking-wider">
-                    <i class="bi bi-calendar-check opacity-50 mr-1"></i> ${lastVisit}
+            <div class="md:col-span-2 md:text-center flex justify-between md:block items-center mb-2 md:mb-0">
+                <span class="md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-widest">Última Visita:</span>
+                <span class="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 uppercase tracking-wider flex items-center md:justify-center gap-1 shadow-sm w-fit md:w-auto md:mx-auto">
+                    <i class="bi bi-calendar-check text-slate-400"></i> ${lastVisit}
                 </span>
             </div>
 
             <div class="md:col-span-2 md:text-center flex justify-between md:block items-center mb-1 md:mb-0">
-                <span class="md:hidden text-[9px] font-bold text-gray-400 uppercase tracking-widest">Situação:</span>
+                <span class="md:hidden text-[9px] font-bold text-slate-400 uppercase tracking-widest">Situação:</span>
                 ${hasDebt 
-                    ? `<span class="text-[9px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100 uppercase tracking-wider">Débito: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>`
-                    : `<span class="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 uppercase tracking-wider">Em dia</span>`
+                    ? `<span class="text-[9px] font-black text-red-700 bg-red-50 px-2.5 py-0.5 rounded-lg border border-red-200 uppercase tracking-wider shadow-sm flex items-center md:justify-center gap-1 w-fit md:w-auto md:mx-auto"><i class="bi bi-exclamation-circle text-red-500"></i> Dívida: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>`
+                    : `<span class="text-[9px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200 uppercase tracking-wider shadow-sm flex items-center md:justify-center gap-1 w-fit md:w-auto md:mx-auto"><i class="bi bi-check-circle text-emerald-500"></i> Em dia</span>`
                 }
             </div>
 
-            <div class="hidden md:flex md:col-span-1 justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-6 h-6 rounded flex items-center justify-center text-[#25D366] bg-[#25D366]/10 hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20 shadow-sm z-20" title="WhatsApp"><i class="bi bi-whatsapp text-[10px]"></i></button>` : ''}
-                <button class="w-6 h-6 rounded flex items-center justify-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm" title="Editar / Ver Perfil"><i class="bi bi-pencil-fill text-[10px]"></i></button>
+            <div class="hidden md:flex md:col-span-1 justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                ${wappNumber ? `<button data-action="whatsapp" data-phone="${wappNumber}" class="w-8 h-8 rounded-xl flex items-center justify-center text-[#25D366] bg-[#25D366]/10 hover:bg-[#25D366] hover:text-white transition-colors border border-[#25D366]/20 shadow-sm z-20 active:scale-95" title="WhatsApp"><i class="bi bi-whatsapp text-[12px] pointer-events-none"></i></button>` : ''}
+                <button class="w-8 h-8 rounded-xl flex items-center justify-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-sm active:scale-95" title="Editar Perfil"><i class="bi bi-pencil-fill text-[12px] pointer-events-none"></i></button>
             </div>
             
-            <div class="md:hidden flex gap-1 mt-2 border-t border-gray-50 pt-2">
+            <div class="md:hidden flex gap-1 mt-2 border-t border-slate-100 pt-3">
                 ${tagsHTML}
             </div>
         </div>
@@ -455,7 +492,7 @@ function renderList() {
     }).join('');
 }
 
-// --- 5. EVENTOS GERAIS DA TELA E LOTE ---
+// --- 6. EVENTOS GERAIS DA TELA E LOTE ---
 
 function setupEventListeners() {
     if (pageEventListener) contentDiv.removeEventListener('click', pageEventListener);
@@ -463,14 +500,25 @@ function setupEventListeners() {
     pageEventListener = (e) => {
         const target = e.target;
 
-        // Checkbox individual
+        // Checkbox individual (Não abre o modal se clicar nele)
         if (target.classList.contains('item-checkbox')) {
             const id = target.value;
             if(target.checked) localState.selectedIds.add(id);
             else localState.selectedIds.delete(id);
             updateBatchActionBar();
+            
+            const tr = target.closest('div[data-action="open-modal"]');
+            if(target.checked) {
+                tr.classList.add('bg-indigo-50/40', 'ring-1', 'ring-indigo-200', 'border-indigo-200');
+            } else {
+                tr.classList.remove('bg-indigo-50/40', 'ring-1', 'ring-indigo-200', 'border-indigo-200');
+            }
             e.stopPropagation(); 
             return;
+        }
+
+        if (target.dataset.actionStopPropagation === "true") {
+            e.stopPropagation();
         }
 
         // Checkbox de Select All
@@ -481,6 +529,10 @@ function setupEventListeners() {
             allCheckboxes.forEach(cb => {
                 cb.checked = isChecked;
                 if(isChecked) localState.selectedIds.add(cb.value);
+                
+                const tr = cb.closest('div[data-action="open-modal"]');
+                if(isChecked) tr.classList.add('bg-indigo-50/40', 'ring-1', 'ring-indigo-200', 'border-indigo-200');
+                else tr.classList.remove('bg-indigo-50/40', 'ring-1', 'ring-indigo-200', 'border-indigo-200');
             });
             updateBatchActionBar();
             e.stopPropagation();
@@ -515,6 +567,10 @@ function setupEventListeners() {
                 openUnifiedModal(id);
                 return;
             }
+            if (action === 'close-detail-screen') {
+                hideClientModal();
+                return;
+            }
             if (action === 'whatsapp') {
                 e.stopPropagation(); 
                 const phone = actionEl.dataset.phone;
@@ -525,6 +581,12 @@ function setupEventListeners() {
                 handleExportExcel();
                 return;
             }
+        }
+
+        // Modais Clicando Fora
+        if(target.id === 'clients-layout-detail') {
+            hideClientModal();
+            return;
         }
 
         // Filtros (KPIs)
@@ -545,7 +607,11 @@ function setupEventListeners() {
             localState.selectedIds.clear();
             const toggle = document.getElementById('select-all-toggle');
             if(toggle) toggle.checked = false;
-            document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = false);
+            document.querySelectorAll('.item-checkbox').forEach(cb => {
+                cb.checked = false;
+                const tr = cb.closest('div[data-action="open-modal"]');
+                tr.classList.remove('bg-indigo-50/40', 'ring-1', 'ring-indigo-200', 'border-indigo-200');
+            });
             updateBatchActionBar();
         });
     }
@@ -559,11 +625,11 @@ function setupEventListeners() {
             if (e.target.checked) {
                 localState.filterEstablishmentIds.add(e.target.value);
                 label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.remove('border-gray-200', 'text-gray-600');
+                label.classList.remove('border-slate-200', 'text-slate-600');
             } else {
                 localState.filterEstablishmentIds.delete(e.target.value);
                 label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50/20', 'text-indigo-700');
-                label.classList.add('border-gray-200', 'text-gray-600');
+                label.classList.add('border-slate-200', 'text-slate-600');
             }
             fetchClients(); 
         });
@@ -600,7 +666,7 @@ async function handleBatchDelete() {
     const count = localState.selectedIds.size;
     if(count === 0) return;
 
-    const confirmed = await showConfirmation('Excluir Clientes', `Deseja realmente excluir permanentemente ${count} cliente(s)? Esta ação não pode ser desfeita.`);
+    const confirmed = await showConfirmation('Excluir Clientes', `Deseja realmente excluir permanentemente ${count} cliente(s)? O histórico de agendamentos será mantido, mas o cadastro será apagado.`);
     if (!confirmed) return;
 
     try {
@@ -619,7 +685,7 @@ async function handleBatchDelete() {
     }
 }
 
-// --- 6. O MODAL DE CLIENTE PADRONIZADO ---
+// --- 7. O MODAL DE CLIENTE PADRONIZADO ---
 
 function openUnifiedModal(clientId = null) {
     if (clientId) {
@@ -633,347 +699,342 @@ function openUnifiedModal(clientId = null) {
         };
     }
 
-    localState.activeTab = 'profile'; 
     localState.historyData = { appointments: [], sales: [], loyaltyLog: [] };
     
-    let modalOverlay = document.getElementById('client-details-modal-overlay');
-    if (!modalOverlay) {
-        modalOverlay = document.createElement('div');
-        modalOverlay.id = 'client-details-modal-overlay';
-        modalOverlay.className = 'fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-gray-900/60 backdrop-blur-sm sm:p-4 animate-fade-in';
-        modalOverlay.innerHTML = `<div class="bg-gray-50 w-full sm:w-[90vw] h-[90vh] sm:h-auto sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-slide-up sm:animate-scale-in rounded-t-2xl" id="client-modal-content"></div>`;
-        modalOverlay.onclick = (e) => { if(e.target === modalOverlay) closeClientModal(); };
-        document.body.appendChild(modalOverlay);
-        document.body.classList.add('overflow-hidden');
+    const modalInner = document.getElementById('client-modal-content') || document.getElementById('client-modal-inner');
+    if (!modalInner) return;
+
+    buildModalHTML(modalInner, localState.selectedClient);
+    showClientModal();
+
+    // Se for edição, dispara a busca de histórico em background baseado no telefone (chave mestra)
+    if (!localState.selectedClient.isNew) {
+        fetchClientHistory(localState.selectedClient);
     }
-    
-    const modalContent = modalOverlay.querySelector('#client-modal-content');
-    modalContent.innerHTML = getClientDetailsHTML(localState.selectedClient);
-    attachDetailsEvents(modalContent, localState.selectedClient);
 }
 
-function closeClientModal() {
-    const modal = document.getElementById('client-details-modal-overlay');
-    if (modal) modal.remove();
-    document.body.classList.remove('overflow-hidden');
-    localState.modalOpen = false;
-    localState.selectedClient = null;
-    renderList();
-}
-
-function getClientDetailsHTML(client) {
+function buildModalHTML(modalInner, client) {
     const isNew = client.isNew;
+    const safeName = escapeHTML(client.name || '');
 
-    const tabsHTML = `
-        <div class="bg-white border-b border-gray-200 sticky top-0 z-10 w-full flex overflow-x-auto custom-scrollbar gap-2 px-4 sm:px-6 py-2.5">
-            <button class="tab-btn ${localState.activeTab === 'profile' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="profile">👤 Perfil e Dados</button>
+    const mobileHeaderHTML = `
+        <div class="p-4 md:p-5 border-b border-slate-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
+            <button data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 hover:text-slate-800 transition-colors active:scale-95 mr-4 flex-shrink-0">
+                <i class="bi bi-arrow-left text-lg"></i>
+            </button>
+            
+            <div class="w-10 h-10 md:w-12 md:h-12 rounded-full ${client.totalDebt > 0 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-indigo-50 text-indigo-600 border-indigo-200'} border flex items-center justify-center font-black text-sm md:text-base mr-3 flex-shrink-0 shadow-sm">
+                ${isNew ? '<i class="bi bi-person-plus"></i>' : getInitials(client.name)}
+            </div>
+
+            <div class="min-w-0 flex-1">
+                <h3 class="font-black text-sm md:text-base text-slate-800 uppercase tracking-wider truncate leading-tight">${isNew ? 'Novo Cliente' : safeName}</h3>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">${isNew ? 'Ficha Cadastral' : `<i class="bi bi-whatsapp text-[9px] mr-1"></i> ${client.phone || 'Sem Telefone'}`}</p>
+            </div>
+            
             ${!isNew ? `
-            <button class="tab-btn ${localState.activeTab === 'appointments' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="appointments">📅 Agendamentos</button>
-            <button class="tab-btn ${localState.activeTab === 'history' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="history">💰 Finanças</button>
-            <button class="tab-btn ${localState.activeTab === 'loyalty' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all" data-tab="loyalty">⭐ Fidelidade</button>
+                <button data-action="delete-client" class="ml-auto w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100 border border-red-100 transition-colors active:scale-95 flex-shrink-0 shadow-sm" title="Excluir">
+                    <i class="bi bi-trash3 text-base pointer-events-none"></i>
+                </button>
             ` : ''}
         </div>
     `;
 
-    let contentHTML = '';
-    if (localState.activeTab === 'profile') contentHTML = renderProfileTab(client);
-    else if (localState.activeTab === 'appointments') contentHTML = renderAppointmentsTab(client);
-    else if (localState.activeTab === 'history') contentHTML = renderHistoryTab(client);
-    else if (localState.activeTab === 'loyalty') contentHTML = renderLoyaltyTab(client);
-
-    return `
-        <div class="w-full bg-gray-50 min-h-full flex flex-col overflow-hidden">
-            <div class="bg-indigo-600 px-4 py-4 sm:px-6 sm:py-5 text-white relative flex-shrink-0 w-full shadow-md z-20">
-                <button id="btn-close-modal" class="absolute top-4 right-4 text-indigo-200 hover:text-white transition z-50">
-                    <i class="bi bi-x-lg text-xl sm:text-2xl"></i>
-                </button>
-
-                <div class="flex items-center gap-4 sm:gap-5">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white text-indigo-600 flex items-center justify-center text-2xl font-black shadow-lg flex-shrink-0">
-                        ${isNew ? '<i class="bi bi-person-plus-fill"></i>' : getInitials(client.name)}
-                    </div>
-                    <div class="flex-grow min-w-0 pr-8">
-                        <h2 class="text-lg sm:text-xl font-black leading-tight truncate">${isNew ? 'Novo Cliente' : escapeHTML(client.name)}</h2>
-                        <p class="text-xs text-indigo-200 mt-0.5 truncate">
-                            ${isNew ? 'Preencha as informações do novo registo' : `<i class="bi bi-whatsapp mr-1"></i>${client.phone || 'Sem telefone'}`}
-                        </p>
-                        ${(!isNew && client.totalDebt && client.totalDebt > 0) ? `<span class="inline-block mt-1.5 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border border-red-400 shadow-sm">Dívida: R$ ${parseFloat(client.totalDebt).toFixed(2)}</span>` : ''}
-                    </div>
-                </div>
-            </div>
-            
-            ${tabsHTML}
-            
-            <div class="p-4 sm:p-5 flex-grow overflow-y-auto custom-scrollbar relative bg-gray-50 w-full">
-                ${localState.historyLoading ? '<div class="absolute inset-0 bg-white/80 flex items-center justify-center z-20"><div class="loader"></div></div>' : ''}
-                <div class="animate-fade-in w-full pb-10">${contentHTML}</div>
-            </div>
+    const tabsHTML = `
+        <div class="modal-tabs px-2 md:px-6 border-b flex items-center justify-start gap-4 overflow-x-auto bg-slate-50 flex-shrink-0 custom-scrollbar shadow-sm">
+            <button class="tab-link active whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-indigo-600 text-indigo-600 transition-colors uppercase tracking-widest" data-tab="tab-profile">1. Ficha e Perfil</button>
+            ${!isNew ? `
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-appointments">2. Agendamentos</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-history">3. Finanças</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-loyalty">4. Fidelidade</button>
+            ` : ''}
         </div>
     `;
-}
 
-function renderProfileTab(client) {
-    return `
-        <form id="form-edit-client" class="space-y-4">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    modalInner.innerHTML = `
+        ${mobileHeaderHTML}
+        ${tabsHTML}
+        
+        <div class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 p-3 md:p-6 relative">
+            <form id="form-edit-client" class="h-full w-full mx-auto max-w-4xl">
                 
-                <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
-                    <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-3 border-b border-gray-100 pb-2"><i class="bi bi-person-vcard text-indigo-500 mr-2"></i> Dados Pessoais</h3>
-                    
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Nome Completo *</label>
-                        <input type="text" name="name" value="${escapeHTML(client.name)}" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">WhatsApp *</label>
-                            <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">CPF</label>
-                            <input type="text" name="cpf" value="${escapeHTML(client.cpf || '')}" placeholder="000.000.000-00" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">E-mail</label>
-                        <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                    </div>
-                </div>
-
-                <div class="space-y-4">
-                    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-3 border-b border-gray-100 pb-2"><i class="bi bi-info-circle text-indigo-500 mr-2"></i> Adicionais</h3>
+                <div id="tab-profile" class="tab-content active space-y-4 md:space-y-6 animate-fade-in-fast">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                         
-                        <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                            <h3 class="text-xs font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3 flex items-center gap-2"><i class="bi bi-person-vcard text-indigo-500 text-lg"></i> Dados Pessoais</h3>
+                            
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Dia Nasc.</label>
-                                <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 text-center transition-shadow">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome Completo *</label>
+                                <input type="text" name="name" value="${safeName}" required class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner transition-colors">
                             </div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="O Telefone é a chave que unifica o histórico do cliente.">WhatsApp * <i class="bi bi-info-circle text-indigo-400"></i></label>
+                                    <input type="tel" name="phone" value="${escapeHTML(client.phone || '')}" required placeholder="(00) 00000-0000" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner transition-colors">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">CPF</label>
+                                    <input type="text" name="cpf" value="${escapeHTML(client.cpf || '')}" placeholder="000.000.000-00" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner transition-colors">
+                                </div>
+                            </div>
+
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Mês Nasc.</label>
-                                <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 text-center transition-shadow">
+                                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail</label>
+                                <input type="email" name="email" value="${escapeHTML(client.email || '')}" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner transition-colors">
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Gênero</label>
-                                <select name="gender" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                                    <option value="">Não informar</option>
-                                    <option value="F" ${client.gender === 'F' ? 'selected' : ''}>Feminino</option>
-                                    <option value="M" ${client.gender === 'M' ? 'selected' : ''}>Masculino</option>
-                                    <option value="O" ${client.gender === 'O' ? 'selected' : ''}>Outro</option>
-                                </select>
+                        <div class="space-y-4 md:space-y-6">
+                            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                <h3 class="text-xs font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3 flex items-center gap-2"><i class="bi bi-info-circle text-indigo-500 text-lg"></i> Detalhes Adicionais</h3>
+                                
+                                <div class="grid grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Dia Nasc.</label>
+                                        <input type="number" name="dobDay" min="1" max="31" value="${client.dobDay || ''}" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner text-center transition-colors">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Mês Nasc.</label>
+                                        <input type="number" name="dobMonth" min="1" max="12" value="${client.dobMonth || ''}" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner text-center transition-colors">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Gênero</label>
+                                        <select name="gender" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner cursor-pointer transition-colors">
+                                            <option value="">Não informar</option>
+                                            <option value="F" ${client.gender === 'F' ? 'selected' : ''}>Feminino</option>
+                                            <option value="M" ${client.gender === 'M' ? 'selected' : ''}>Masculino</option>
+                                            <option value="O" ${client.gender === 'O' ? 'selected' : ''}>Outro</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Captação</label>
+                                        <select name="source" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner cursor-pointer transition-colors">
+                                            <option value="">Como conheceu?</option>
+                                            <option value="Instagram" ${client.source === 'Instagram' ? 'selected' : ''}>Instagram</option>
+                                            <option value="Indicacao" ${client.source === 'Indicacao' ? 'selected' : ''}>Indicação</option>
+                                            <option value="Passagem" ${client.source === 'Passagem' ? 'selected' : ''}>Fachada</option>
+                                            <option value="Google" ${client.source === 'Google' ? 'selected' : ''}>Google</option>
+                                            <option value="Outros" ${client.source === 'Outros' ? 'selected' : ''}>Outros</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Captação</label>
-                                <select name="source" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow">
-                                    <option value="">Como conheceu?</option>
-                                    <option value="Instagram" ${client.source === 'Instagram' ? 'selected' : ''}>Instagram</option>
-                                    <option value="Indicacao" ${client.source === 'Indicacao' ? 'selected' : ''}>Indicação</option>
-                                    <option value="Passagem" ${client.source === 'Passagem' ? 'selected' : ''}>Fachada</option>
-                                    <option value="Google" ${client.source === 'Google' ? 'selected' : ''}>Google</option>
-                                    <option value="Outros" ${client.source === 'Outros' ? 'selected' : ''}>Outros</option>
-                                </select>
+
+                            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                <h3 class="text-xs font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3 flex items-center gap-2"><i class="bi bi-journal-text text-indigo-500 text-lg"></i> Anotações Internas</h3>
+                                <textarea name="notes" rows="3" class="w-full p-3.5 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 focus:bg-white shadow-inner resize-none transition-colors" placeholder="Histórico de alergias, preferências, observações...">${escapeHTML(client.notes || '')}</textarea>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                        <h3 class="text-xs font-bold text-gray-800 uppercase tracking-wide mb-2 border-b border-gray-100 pb-2"><i class="bi bi-journal-text text-indigo-500 mr-2"></i> Anotações Internas</h3>
-                        <textarea name="notes" rows="2" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white bg-gray-50 transition-shadow resize-none" placeholder="Histórico de alergias, preferências...">${escapeHTML(client.notes || '')}</textarea>
                     </div>
                 </div>
-            </div>
 
-            <div class="flex flex-col sm:flex-row justify-end gap-3 pt-3 border-t border-gray-200 mt-2">
-                <button type="submit" class="w-full sm:w-auto bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-bold shadow hover:bg-indigo-700 transition flex items-center justify-center gap-2 text-xs">
-                    <i class="bi bi-check2-circle text-sm"></i> ${client.isNew ? 'Cadastrar Cliente' : 'Salvar Alterações'}
-                </button>
-            </div>
-        </form>
+                <div id="tab-appointments" class="tab-content hidden space-y-6 animate-fade-in-fast">
+                    <div class="max-w-3xl mx-auto">
+                        <div class="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 mb-6 shadow-sm">
+                            <p class="text-[10px] font-black text-indigo-800 uppercase tracking-widest flex items-center gap-2"><i class="bi bi-link-45deg text-lg"></i> Agendamentos unificados pelo número: ${client.phone || 'N/A'}</p>
+                        </div>
+                        <div id="historico-agendamentos-container">
+                            <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Buscando histórico na base...</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-history" class="tab-content hidden space-y-6 animate-fade-in-fast">
+                    <div class="max-w-3xl mx-auto" id="historico-financeiro-container">
+                        <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Calculando LTV...</p></div>
+                    </div>
+                </div>
+
+                <div id="tab-loyalty" class="tab-content hidden space-y-6 animate-fade-in-fast">
+                    <div class="max-w-xl mx-auto" id="historico-fidelidade-container">
+                        <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Processando pontos...</p></div>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+
+        <footer class="p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] w-full flex-shrink-0 z-50 flex gap-3 justify-end md:rounded-b-3xl">
+            <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-6 bg-slate-100 border border-slate-200 text-slate-600 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm active:scale-95">Cancelar</button>
+            <button type="submit" form="form-edit-client" class="w-full md:w-auto md:px-8 py-3 bg-indigo-600 text-white font-black text-xs md:text-sm rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-500/30 transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider border border-indigo-600">
+                <i class="bi bi-save2 text-lg pointer-events-none"></i> Salvar Cliente
+            </button>
+        </footer>
     `;
+
+    // Tabs logic (Modal)
+    modalInner.querySelectorAll('.tab-link').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            e.preventDefault();
+            modalInner.querySelectorAll('.tab-link').forEach(btn => {
+                btn.classList.remove('active', 'border-indigo-600', 'text-indigo-600');
+                btn.classList.add('border-transparent', 'text-slate-400');
+            });
+            tab.classList.add('active', 'border-indigo-600', 'text-indigo-600');
+            tab.classList.remove('border-transparent', 'text-slate-400');
+            
+            modalInner.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+            modalInner.querySelector('#' + tab.dataset.tab).classList.remove('hidden');
+        });
+    });
+
+    // Form Submit
+    const form = modalInner.querySelector('#form-edit-client');
+    if (form) form.onsubmit = handleSaveClient;
+
+    // Deletar via botão no header
+    const btnDel = modalInner.querySelector('[data-action="delete-client"]');
+    if (btnDel) btnDel.onclick = handleDeleteClient;
 }
 
-function renderAppointmentsTab(client) {
-    let appointments = localState.historyData.appointments || [];
+// --- RENDERS DINÂMICOS PÓS-FETCH DO HISTÓRICO ---
+
+function buildAppointmentsHTML(appointments) {
     appointments.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
 
     return `
-        <div class="space-y-2">
+        <div class="space-y-3">
             ${appointments.length ? appointments.map(appt => {
                 const date = new Date(appt.startTime);
                 const isPast = date < new Date();
-                let statusBadge = isPast ? '<span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-gray-200">Concluído</span>' : '<span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-emerald-200">Agendado</span>';
-                if (appt.status === 'cancelled') statusBadge = '<span class="bg-red-100 text-red-600 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border border-red-200">Cancelado</span>';
+                let statusBadge = isPast ? '<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-slate-200">Concluído</span>' : '<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-emerald-200">Agendado</span>';
+                if (appt.status === 'cancelled') statusBadge = '<span class="bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-red-200">Cancelado</span>';
 
                 return `
-                <div class="bg-white border border-gray-200 rounded-xl p-3 flex gap-3 shadow-sm items-center cursor-pointer hover:bg-gray-50 transition-colors" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
-                    <div class="flex-shrink-0 text-center w-10 border-r border-gray-100 pr-2">
-                        <span class="block text-[8px] font-bold text-gray-400 uppercase">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
-                        <span class="block text-base font-black text-gray-800 leading-none mt-0.5">${date.getDate()}</span>
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 flex gap-4 shadow-sm items-center cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-[0.98]" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
+                    <div class="flex-shrink-0 text-center w-12 border-r border-slate-100 pr-3">
+                        <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
+                        <span class="block text-xl font-black text-slate-800 leading-none mt-1">${date.getDate()}</span>
                     </div>
                     <div class="flex-grow min-w-0">
-                        <p class="font-bold text-xs text-gray-800 truncate">${escapeHTML(appt.serviceName || 'Serviço')}</p>
-                        <p class="text-[9px] text-gray-500 truncate mt-0.5"><i class="bi bi-person mr-1"></i>${escapeHTML(appt.professionalName || 'N/A')} <span class="mx-1">•</span> <i class="bi bi-clock mr-1"></i>${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
+                        <p class="font-black text-sm text-slate-800 truncate">${escapeHTML(appt.serviceName || 'Serviço Variado')}</p>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate mt-1.5 flex items-center gap-1.5"><i class="bi bi-person-fill bg-slate-100 p-1 rounded"></i> ${escapeHTML(appt.professionalName || 'N/A')} <span class="mx-1 text-slate-300">•</span> <i class="bi bi-clock-fill bg-slate-100 p-1 rounded"></i> ${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
                     </div>
                     <div class="flex-shrink-0 text-right">
                         ${statusBadge}
                     </div>
                 </div>`;
-            }).join('') : '<div class="text-center py-10 bg-white rounded-xl border border-gray-200"><p class="text-[10px] text-gray-400 font-medium">Nenhum agendamento encontrado.</p></div>'}
+            }).join('') : `
+                <div class="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 shadow-sm">
+                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3"><i class="bi bi-calendar-x text-xl text-slate-300"></i></div>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Nenhum agendamento encontrado.</p>
+                </div>
+            `}
         </div>
     `;
 }
 
-function renderHistoryTab(client) {
-    let sales = localState.historyData.sales || [];
+function buildHistoryHTML(sales) {
     sales.sort((a, b) => new Date(b.date) - new Date(a.date));
     
     const totalLTV = sales.reduce((acc, s) => acc + (Number(s.totalAmount) || 0), 0);
     const ticketMedio = sales.length > 0 ? (totalLTV / sales.length) : 0;
 
     return `
-        <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-3 mb-2">
-                <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-100 shadow-sm flex flex-col text-center">
-                    <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">LTV (V. Vitalício)</span>
-                    <span class="text-lg font-black text-emerald-700 mt-0.5">${formatCurrency(totalLTV)}</span>
+        <div class="space-y-6">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-emerald-50 p-4 md:p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col text-center justify-center">
+                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-graph-up-arrow"></i> LTV (Valor Vitalício)</span>
+                    <span class="text-2xl md:text-3xl font-black text-emerald-700 mt-1">${formatCurrency(totalLTV)}</span>
                 </div>
-                <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col text-center">
-                    <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Ticket Médio</span>
-                    <span class="text-lg font-black text-gray-800 mt-0.5">${formatCurrency(ticketMedio)}</span>
+                <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col text-center justify-center">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-receipt"></i> Ticket Médio</span>
+                    <span class="text-2xl md:text-3xl font-black text-slate-800 mt-1">${formatCurrency(ticketMedio)}</span>
                 </div>
             </div>
 
-            <div class="space-y-2">
-                <h4 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 pl-1">Histórico de Vendas</h4>
-                ${sales.length ? sales.map(sale => `
-                <div class="bg-white border border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm hover:bg-gray-50 cursor-pointer transition-colors" data-go-comanda="true" data-id="${sale.id}">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-500 text-xs"><i class="bi bi-receipt"></i></div>
-                        <div>
-                            <p class="font-bold text-gray-800 text-[10px] sm:text-xs">Venda #${sale.id.slice(-5).toUpperCase()}</p>
-                            <p class="text-[9px] text-gray-400 mt-0.5">${new Date(sale.date).toLocaleDateString()}</p>
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div class="bg-slate-50 p-4 border-b border-slate-200 flex items-center gap-2">
+                    <i class="bi bi-cart-check text-indigo-500 text-lg"></i>
+                    <h4 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Histórico de Compras e Comandas</h4>
+                </div>
+                <div class="p-3 space-y-2">
+                    ${sales.length ? sales.map(sale => `
+                    <div class="bg-white border border-slate-100 rounded-xl p-4 flex justify-between items-center shadow-sm hover:border-indigo-200 cursor-pointer transition-all active:scale-[0.98]" data-go-comanda="true" data-id="${sale.id}">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 text-sm shadow-sm"><i class="bi bi-receipt-cutoff"></i></div>
+                            <div>
+                                <p class="font-black text-slate-800 text-xs uppercase tracking-wider">Comanda #${sale.id.slice(-5).toUpperCase()}</p>
+                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">${new Date(sale.date).toLocaleDateString()}</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="text-right">
-                        <p class="font-black text-emerald-600 text-xs">${formatCurrency(sale.totalAmount)}</p>
-                        <p class="text-[8px] text-indigo-500 font-bold uppercase mt-0.5 hover:underline">Ver Comanda <i class="bi bi-chevron-right"></i></p>
-                    </div>
-                </div>`).join('') : '<div class="text-center py-8 bg-white rounded-xl border border-gray-200"><p class="text-[10px] text-gray-400">Nenhum histórico financeiro.</p></div>'}
+                        <div class="text-right">
+                            <p class="font-black text-emerald-600 text-sm bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">${formatCurrency(sale.totalAmount)}</p>
+                            <p class="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1 justify-end">Abrir Comanda <i class="bi bi-chevron-right"></i></p>
+                        </div>
+                    </div>`).join('') : `
+                        <div class="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 m-2">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nenhum histórico financeiro.</p>
+                        </div>
+                    `}
+                </div>
             </div>
         </div>
     `;
 }
 
-function renderLoyaltyTab(client) {
-    const log = localState.historyData.loyaltyLog || [];
+function buildLoyaltyHTML(client, log) {
     log.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return `
-        <div class="space-y-4">
-            <div class="bg-amber-400 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center">
-                <div class="absolute right-[-20px] top-[-20px] opacity-20"><i class="bi bi-star-fill text-9xl"></i></div>
-                <p class="text-amber-100 font-bold uppercase tracking-wider text-[10px] mb-1 z-10">Saldo de Pontos</p>
-                <h1 class="text-5xl font-black z-10 drop-shadow-md">${client.loyaltyPoints || 0}</h1>
+        <div class="space-y-6">
+            <div class="bg-amber-400 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden flex flex-col items-center justify-center text-center shadow-amber-500/30">
+                <div class="absolute -right-4 -top-4 opacity-20 transform rotate-12"><i class="bi bi-star-fill text-9xl"></i></div>
+                <p class="text-amber-100 font-bold uppercase tracking-widest text-[10px] mb-2 z-10">Saldo de Pontos de Fidelidade</p>
+                <h1 class="text-6xl font-black z-10 drop-shadow-md tracking-tighter">${client.loyaltyPoints || 0}</h1>
                 
-                <button id="btn-manual-redeem" type="button" class="mt-4 bg-white/20 hover:bg-white/30 text-white text-[10px] font-bold uppercase tracking-wider py-1.5 px-4 rounded-lg backdrop-blur-sm transition border border-white/30 flex items-center gap-2 z-10 shadow-sm">
+                <button type="button" data-action="manual-redeem" class="mt-6 bg-white text-amber-600 text-[10px] font-black uppercase tracking-widest py-2.5 px-6 rounded-xl transition hover:bg-amber-50 shadow-lg active:scale-95 flex items-center gap-2 z-10 border border-white">
                     <i class="bi bi-sliders"></i> Ajuste Manual
                 </button>
             </div>
 
-            <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div class="bg-gray-50 p-2.5 border-b border-gray-200"><h4 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-1">Extrato de Pontos</h4></div>
-                <div class="p-2 space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                <div class="bg-slate-50 p-4 border-b border-slate-200 flex items-center gap-2">
+                    <i class="bi bi-card-list text-indigo-500 text-lg"></i>
+                    <h4 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Extrato de Movimentações</h4>
+                </div>
+                <div class="p-3 space-y-1 max-h-80 overflow-y-auto custom-scrollbar">
                     ${log.length > 0 ? log.map(entry => {
                         const isRedemption = entry.type === 'redemption';
                         return `
-                        <div class="flex justify-between items-center py-2 px-3 border-b border-gray-100 last:border-0">
+                        <div class="flex justify-between items-center py-3 px-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors rounded-xl">
                             <div>
-                                <p class="text-[10px] font-bold text-gray-800">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
-                                <p class="text-[9px] text-gray-400 mt-0.5">${new Date(entry.date).toLocaleDateString()}</p>
+                                <p class="text-[10px] font-black text-slate-800 uppercase tracking-wider">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
+                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">${new Date(entry.date).toLocaleDateString()}</p>
                             </div>
-                            <span class="font-black text-xs ${isRedemption ? 'text-red-500' : 'text-amber-500'}">
+                            <span class="font-black text-sm px-3 py-1 rounded-lg border ${isRedemption ? 'text-red-600 bg-red-50 border-red-100' : 'text-amber-600 bg-amber-50 border-amber-100'} shadow-sm">
                                 ${isRedemption ? '-' : '+'}${entry.points}
                             </span>
                         </div>`;
-                    }).join('') : '<p class="text-center text-gray-400 py-6 text-[10px]">Sem movimentações.</p>'}
+                    }).join('') : `
+                        <div class="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 m-2">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sem movimentações de pontos.</p>
+                        </div>
+                    `}
                 </div>
             </div>
         </div>
     `;
 }
 
-// --- INTEGRAÇÃO DO MODAL COM EVENTOS ---
+// --- 8. ROTINAS DE HISTÓRICO E SALVAMENTO ---
 
-function attachDetailsEvents(modalContent, client) {
-    modalContent.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = async () => {
-            const newTab = btn.dataset.tab;
-            if (localState.activeTab === newTab) return;
-            localState.activeTab = newTab;
-            
-            const modalDOM = document.getElementById('client-modal-content');
-            if(modalDOM) {
-                modalDOM.innerHTML = getClientDetailsHTML(client);
-                attachDetailsEvents(modalDOM, client);
-            }
-
-            if (newTab !== 'profile' && !localState.historyLoading && localState.historyData.appointments.length === 0) {
-                 await fetchClientHistory(client.id);
-            }
-        };
-    });
-
-    if (localState.activeTab === 'profile') {
-        const form = modalContent.querySelector('#form-edit-client');
-        if(form) form.onsubmit = handleSaveClient;
-        const btnDel = modalContent.querySelector('#btn-delete-client');
-        if(btnDel) btnDel.onclick = handleDeleteClient;
-    }
-    
-    if (localState.activeTab === 'loyalty') {
-        const btnRedeem = modalContent.querySelector('#btn-manual-redeem');
-        if(btnRedeem) btnRedeem.onclick = () => openManualRedemptionModal(client);
-    }
-
-    modalContent.querySelectorAll('[data-go-agenda]').forEach(btn => {
-        btn.onclick = () => {
-            closeClientModal(); 
-            navigateTo('agenda-section', { targetDate: new Date(btn.dataset.date), scrollToAppointmentId: btn.dataset.id });
-        };
-    });
-
-    modalContent.querySelectorAll('[data-go-comanda]').forEach(btn => {
-        btn.onclick = () => {
-            closeClientModal();
-            navigateTo('comandas-section', { selectedAppointmentId: btn.dataset.id, initialFilter: 'finalizadas' });
-        };
-    });
-
-    const btnClose = modalContent.querySelector('#btn-close-modal');
-    if(btnClose) btnClose.onclick = closeClientModal;
-}
-
-async function fetchClientHistory(clientId) {
-    const client = localState.selectedClient;
+async function fetchClientHistory(client) {
     if (!client || !client.phone) return; 
-
-    localState.historyLoading = true;
-    const modalDOM = document.getElementById('client-modal-content');
-    if(modalDOM) {
-        modalDOM.innerHTML = getClientDetailsHTML(client);
-        attachDetailsEvents(modalDOM, client);
-    }
     
+    // O Telefone é a chave mestra para buscar na API de Appointments
+    const phoneToSearch = cleanPhone(client.phone);
+
     try {
         const end = new Date(); end.setMonth(end.getMonth() + 12); 
         const start = new Date(); start.setFullYear(start.getFullYear() - 5); 
 
-        let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}&clientPhone=${encodeURIComponent(cleanPhone(client.phone))}&limit=50`;
+        let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}&clientPhone=${encodeURIComponent(phoneToSearch)}&limit=100`;
         const clientAppts = await authenticatedFetch(url);
         
         localState.historyData.appointments = clientAppts;
@@ -981,24 +1042,71 @@ async function fetchClientHistory(clientId) {
 
         const loyaltyLog = [];
         clientAppts.forEach(appt => {
-            if (appt.status === 'completed' && appt.loyaltyPointsEarned > 0) loyaltyLog.push({ type: 'earn', points: appt.loyaltyPointsEarned, date: appt.startTime, description: 'Venda finalizada' });
+            if (appt.status === 'completed' && appt.loyaltyPointsEarned > 0) loyaltyLog.push({ type: 'earn', points: appt.loyaltyPointsEarned, date: appt.startTime, description: 'Serviço / Venda concluída' });
             if (appt.loyaltyRedemption) loyaltyLog.push({ type: 'redemption', points: appt.loyaltyRedemption.cost || 0, date: appt.startTime, description: `Resgate: ${appt.loyaltyRedemption.name}` });
         });
         localState.historyData.loyaltyLog = loyaltyLog;
+        
+        // Renderiza nas abas se existirem
+        const apptContainer = document.getElementById('historico-agendamentos-container');
+        if (apptContainer) apptContainer.innerHTML = buildAppointmentsHTML(localState.historyData.appointments);
+        
+        const finContainer = document.getElementById('historico-financeiro-container');
+        if (finContainer) finContainer.innerHTML = buildHistoryHTML(localState.historyData.sales);
+        
+        const loyContainer = document.getElementById('historico-fidelidade-container');
+        if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(client, localState.historyData.loyaltyLog);
+        
+        // Adiciona eventos aos novos elementos gerados (Ir para agenda, comanda, e botão manual)
+        attachDynamicEvents(client);
+
     } catch (e) {
-        console.error("Erro histórico", e);
-    } finally {
-        localState.historyLoading = false;
-        const modalDOMFinal = document.getElementById('client-modal-content');
-        if(modalDOMFinal && localState.selectedClient) {
-            modalDOMFinal.innerHTML = getClientDetailsHTML(localState.selectedClient);
-            attachDetailsEvents(modalDOMFinal, localState.selectedClient);
-        }
+        console.error("Erro ao buscar histórico via telefone", e);
+        const errHtml = '<div class="text-center py-6 text-red-500 font-bold text-[10px] uppercase bg-red-50 rounded-xl m-2 border border-red-100">Falha na busca. O Telefone está preenchido corretamente?</div>';
+        
+        const apptContainer = document.getElementById('historico-agendamentos-container');
+        if(apptContainer) apptContainer.innerHTML = errHtml;
+        const finContainer = document.getElementById('historico-financeiro-container');
+        if(finContainer) finContainer.innerHTML = errHtml;
+        const loyContainer = document.getElementById('historico-fidelidade-container');
+        if(loyContainer) loyContainer.innerHTML = errHtml;
+    } 
+}
+
+function attachDynamicEvents(client) {
+    const modalContent = document.getElementById('client-modal-inner');
+    if (!modalContent) return;
+
+    modalContent.querySelectorAll('[data-go-agenda]').forEach(btn => {
+        btn.onclick = () => {
+            hideClientModal(); 
+            navigateTo('agenda-section', { targetDate: new Date(btn.dataset.date), scrollToAppointmentId: btn.dataset.id });
+        };
+    });
+
+    modalContent.querySelectorAll('[data-go-comanda]').forEach(btn => {
+        btn.onclick = () => {
+            hideClientModal();
+            navigateTo('comandas-section', { selectedAppointmentId: btn.dataset.id, initialFilter: 'finalizadas' });
+        };
+    });
+
+    const btnRedeem = modalContent.querySelector('[data-action="manual-redeem"]');
+    if(btnRedeem) {
+        btnRedeem.onclick = (e) => {
+            e.preventDefault();
+            openManualRedemptionModal(client);
+        };
     }
 }
 
 async function handleSaveClient(e) {
     e.preventDefault();
+    const btnSubmit = e.target.querySelector('button[type="submit"]');
+    const originalText = btnSubmit.innerHTML;
+    btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Gravando...';
+    btnSubmit.disabled = true;
+
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
     data.establishmentId = state.establishmentId; 
@@ -1011,36 +1119,34 @@ async function handleSaveClient(e) {
             const newClient = await clientsApi.createClient(data);
             localState.clients.unshift(newClient); 
             showNotification('Sucesso', 'Cliente cadastrado com sucesso!', 'success');
-            
-            localState.selectedClient = newClient;
-            openUnifiedModal(newClient.id);
-            
+            hideClientModal();
         } else {
             await clientsApi.updateClient(localState.selectedClient.id, data);
             Object.assign(localState.selectedClient, data);
             const idx = localState.clients.findIndex(c => c.id === localState.selectedClient.id);
             if (idx !== -1) localState.clients[idx] = localState.selectedClient;
             showNotification('Sucesso', 'Dados salvos com sucesso!', 'success');
-            
-            const modalDOM = document.getElementById('client-modal-content');
-            if(modalDOM) {
-                modalDOM.innerHTML = getClientDetailsHTML(localState.selectedClient);
-                attachDetailsEvents(modalDOM, localState.selectedClient);
-            }
+            hideClientModal();
         }
         updateKPIs();
         renderList();
-    } catch (err) { showNotification('Erro', err.message, 'error'); }
+    } catch (err) { 
+        showNotification('Erro', err.message, 'error'); 
+        btnSubmit.innerHTML = originalText;
+        btnSubmit.disabled = false;
+    }
 }
 
-async function handleDeleteClient() {
-    if (!await showConfirmation('Excluir Cliente', 'Tem certeza? O histórico será apagado e não pode ser desfeito.')) return;
+async function handleDeleteClient(e) {
+    e.preventDefault();
+    const confirmed = await showConfirmation('Excluir Cliente', 'Tem certeza? O histórico financeiro será mantido de forma anônima, mas a ficha cadastral será perdida permanentemente.');
+    if (!confirmed) return;
+    
     try {
         await clientsApi.deleteClient(localState.selectedClient.id);
         localState.clients = localState.clients.filter(c => c.id !== localState.selectedClient.id);
-        localState.selectedClient = null;
         showNotification('Sucesso', 'Cliente removido com sucesso.', 'success');
-        closeClientModal();
+        hideClientModal();
         updateKPIs();
         renderList();
     } catch (err) { showNotification('Erro', err.message, 'error'); }
@@ -1049,33 +1155,35 @@ async function handleDeleteClient() {
 function openManualRedemptionModal(client) {
     const currentPoints = client.loyaltyPoints || 0;
     const contentHTML = `
-        <div class="text-center mb-4">
-            <p class="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Saldo Atual</p>
-            <h2 class="text-3xl font-black text-amber-500">${currentPoints}</h2>
+        <div class="text-center mb-6">
+            <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1">Saldo Atual</p>
+            <h2 class="text-4xl font-black text-amber-500">${currentPoints}</h2>
         </div>
-        <form id="manual-redeem-form" class="space-y-3">
+        <form id="manual-redeem-form" class="space-y-4">
             <div>
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Ação</label>
-                <select id="redeem-action" class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50">
-                    <option value="debit">Remover Pontos (Resgate)</option>
-                    <option value="credit">Adicionar Pontos (Bônus)</option>
+                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Ação Desejada</label>
+                <select id="redeem-action" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 shadow-inner cursor-pointer">
+                    <option value="debit">Remover Pontos (Resgate / Punição)</option>
+                    <option value="credit">Adicionar Pontos (Bônus / Erro)</option>
                 </select>
             </div>
             <div>
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Quantidade</label>
-                <input type="number" id="redeem-points" min="1" required class="w-full p-2 border border-gray-300 rounded-lg text-sm font-black text-gray-900 text-center outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50" placeholder="Ex: 50">
+                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Quantidade de Pontos</label>
+                <input type="number" id="redeem-points" min="1" required class="w-full p-4 border border-slate-300 rounded-xl text-2xl font-black text-slate-800 text-center outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 shadow-inner" placeholder="Ex: 50">
             </div>
             <div>
-                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Motivo/Obs</label>
-                <input type="text" id="redeem-reason" required class="w-full p-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-800 outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50" placeholder="Ex: Brinde especial">
+                <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Motivo / Observação *</label>
+                <input type="text" id="redeem-reason" required class="w-full p-3 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 shadow-inner" placeholder="Ex: Brinde especial de Natal">
             </div>
-            <div class="pt-2">
-                <button type="submit" class="w-full bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-bold shadow-sm hover:bg-indigo-700 active:scale-95 transition text-xs">Confirmar Ajuste</button>
+            <div class="pt-4">
+                <button type="submit" class="w-full bg-indigo-600 text-white px-4 py-3.5 rounded-xl font-black shadow-md hover:bg-indigo-700 active:scale-95 transition-transform text-xs uppercase tracking-wider border border-indigo-500 flex items-center justify-center gap-2">
+                    <i class="bi bi-check2-circle text-lg pointer-events-none"></i> Confirmar Ajuste
+                </button>
             </div>
         </form>
     `;
 
-    const { modalElement, close } = showGenericModal({ title: "Ajuste de Pontos", contentHTML: contentHTML, maxWidth: 'w-[90%] max-w-xs' });
+    const { modalElement, close } = showGenericModal({ title: "Ajuste de Pontos", contentHTML: contentHTML, maxWidth: 'max-w-xs' });
 
     modalElement.querySelector('form').onsubmit = async (e) => {
         e.preventDefault();
@@ -1084,7 +1192,12 @@ function openManualRedemptionModal(client) {
         const reason = document.getElementById('redeem-reason').value;
 
         if (!pointsInput || pointsInput <= 0) return showNotification('Erro', 'Qtd inválida.', 'error');
-        if (action === 'debit' && pointsInput > currentPoints) return showNotification('Erro', 'Saldo insuficiente.', 'error');
+        if (action === 'debit' && pointsInput > currentPoints) return showNotification('Erro', 'Saldo insuficiente na carteira do cliente.', 'error');
+
+        const btn = e.target.querySelector('button[type="submit"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled = true;
 
         try {
             let newBalance = currentPoints;
@@ -1097,24 +1210,28 @@ function openManualRedemptionModal(client) {
             }
 
             localState.selectedClient.loyaltyPoints = newBalance;
-            localState.historyData.loyaltyLog.unshift({ type: action === 'debit' ? 'redemption' : 'earn', points: pointsInput, date: new Date().toISOString(), description: reason + ' (Manual)' });
+            localState.historyData.loyaltyLog.unshift({ type: action === 'debit' ? 'redemption' : 'earn', points: pointsInput, date: new Date().toISOString(), description: reason + ' (Ajuste Manual)' });
 
-            showNotification('Sucesso', 'Saldo atualizado.', 'success');
+            showNotification('Sucesso', 'Saldo de pontos atualizado.', 'success');
             close();
             
-            const modalDOM = document.getElementById('client-modal-content');
-            if(modalDOM && localState.selectedClient) {
-                modalDOM.innerHTML = getClientDetailsHTML(localState.selectedClient);
-                attachDetailsEvents(modalDOM, localState.selectedClient);
-            }
-            renderList();
+            // Re-renderizar a tela de fidelidade
+            const loyContainer = document.getElementById('historico-fidelidade-container');
+            if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(localState.selectedClient, localState.historyData.loyaltyLog);
+            attachDynamicEvents(localState.selectedClient);
 
-        } catch (error) { showNotification('Erro', error.message, 'error'); }
+            renderList(); // Atualiza na tabela geral
+
+        } catch (error) { 
+            showNotification('Erro', error.message, 'error'); 
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
     };
 }
 
 function handleExportExcel() {
-    if (typeof XLSX === 'undefined') return showNotification('Erro', 'Biblioteca de exportação não carregada.', 'error');
+    if (typeof XLSX === 'undefined') return showNotification('Erro', 'Biblioteca de exportação não carregada. Atualize a página.', 'error');
     if (localState.clients.length === 0) return showNotification('Aviso', 'Nenhum cliente para exportar.', 'info');
 
     const exportData = localState.clients.map(c => ({
@@ -1137,5 +1254,6 @@ function handleExportExcel() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Clientes");
         XLSX.writeFile(workbook, `KAIROS_Clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
-    } catch (e) { showNotification('Erro', 'Falha ao gerar o ficheiro.', 'error'); }
+        showNotification('Sucesso', 'Exportação gerada e descarregada.', 'success');
+    } catch (e) { showNotification('Erro', 'Falha ao gerar o ficheiro Excel.', 'error'); }
 }

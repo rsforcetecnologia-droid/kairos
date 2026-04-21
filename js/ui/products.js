@@ -19,6 +19,7 @@ let localState = {
     categories: [],
     suppliers: [],
     hierarchyCache: [],
+    allMovements: [], // Guarda as movimentações carregadas no relatório
     
     // UI State
     currentTab: 'catalogo', 
@@ -30,6 +31,7 @@ let localState = {
     isAdvancedFilterOpen: false,
     
     selectedIds: new Set(),
+    selectedMovementIds: new Set(), // Seleção para exclusão em lote de movimentos
     tempProduct: null,
     tempSupplierIds: new Set()
 };
@@ -138,6 +140,7 @@ function hideMovementModal() {
 
 export async function loadProductsPage() {
     localState.selectedIds.clear();
+    localState.selectedMovementIds.clear();
     localState.currentTab = 'catalogo';
     localState.products = null;
     
@@ -171,12 +174,12 @@ function renderBaseLayout() {
             </section>
         </div>
 
-        <div id="products-layout-detail" class="hidden fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+        <div id="products-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
             <div id="product-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-4xl flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
             </div>
         </div>
 
-        <div id="movement-layout-detail" class="hidden fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+        <div id="movement-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
             <div id="movement-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-lg flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
             </div>
         </div>
@@ -265,6 +268,18 @@ function renderCurrentTab() {
         const catOptions = (localState.categories || []).map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
 
         container.innerHTML = `
+            <div id="movement-batch-action-bar" class="hidden absolute top-0 left-0 right-0 z-30 bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down mb-4 mx-4 md:mx-0">
+                <div class="flex items-center gap-3">
+                    <button id="cancel-mov-selection-btn" class="p-1.5 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white">
+                        <i class="bi bi-x-lg text-lg"></i>
+                    </button>
+                    <span class="font-bold text-sm tracking-wide"><span id="mov-selected-count" class="text-indigo-400">0</span> Selecionados</span>
+                </div>
+                <button data-action="batch-delete-movements" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm active:scale-95">
+                    <i class="bi bi-arrow-counterclockwise"></i> Estornar e Excluir
+                </button>
+            </div>
+
             <div class="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-fade-in">
                 <div class="bg-white px-5 py-5 border-b border-slate-100 flex flex-col md:flex-row md:justify-between md:items-center gap-4 flex-shrink-0">
                     <div>
@@ -393,6 +408,23 @@ function updateBatchActionBar() {
     const bar = document.getElementById('batch-action-bar');
     const countSpan = document.getElementById('selected-count');
     const count = localState.selectedIds.size;
+
+    if (!bar || !countSpan) return;
+
+    if (count > 0) {
+        countSpan.textContent = count;
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+}
+
+function updateMovementBatchActionBar() {
+    const bar = document.getElementById('movement-batch-action-bar');
+    const countSpan = document.getElementById('mov-selected-count');
+    const count = localState.selectedMovementIds.size;
 
     if (!bar || !countSpan) return;
 
@@ -1284,6 +1316,64 @@ function openProductEditor(productId) {
     showMobileDetail();
 }
 
+// --- LÓGICA DE EXCLUSÃO EM LOTE (PRODUTOS) ---
+async function handleBatchDelete() {
+    if (localState.selectedIds.size === 0) return;
+    
+    const confirmed = await showConfirmation('Excluir Produtos', `Tem a certeza que deseja excluir ${localState.selectedIds.size} produtos do seu inventário?`);
+    if (!confirmed) return;
+    
+    try {
+        const promises = Array.from(localState.selectedIds).map(id => productsApi.deleteProduct(id));
+        await Promise.all(promises);
+        
+        showNotification('Sucesso', 'Produtos excluídos com sucesso.', 'success');
+        localState.selectedIds.clear();
+        updateBatchActionBar();
+        await fetchAndDisplayData();
+    } catch(error) {
+        showNotification('Erro', 'Não foi possível apagar os produtos: ' + error.message, 'error');
+    }
+}
+
+// --- LÓGICA DE EXCLUSÃO EM LOTE E ESTORNO (MOVIMENTAÇÕES) ---
+async function handleBatchDeleteMovements() {
+    if (localState.selectedMovementIds.size === 0) return;
+    
+    const confirmed = await showConfirmation('Estornar e Excluir', `Deseja excluir as ${localState.selectedMovementIds.size} movimentações selecionadas? O saldo de stock será estornado/devolvido ao sistema automaticamente.`);
+    if (!confirmed) return;
+    
+    try {
+        const promises = Array.from(localState.selectedMovementIds).map(async movId => {
+            const mov = localState.allMovements.find(m => m.id === movId);
+            if (!mov) return;
+            
+            // 1. Estornar o stock para o valor que tinha antes
+            await productsApi.adjustStock(mov.productId, {
+                change: -mov.change, // Inverte a quantidade para estornar
+                reason: 'Estorno automático de exclusão em lote',
+                establishmentId: mov.establishmentId
+            });
+            
+            // 2. Excluir o documento do movimento
+            if (typeof productsApi.deleteMovement === 'function') {
+                await productsApi.deleteMovement(mov.id, mov.productId, mov.establishmentId);
+            } else if (typeof productsApi.deleteStockMovement === 'function') {
+                await productsApi.deleteStockMovement(mov.id, mov.productId, mov.establishmentId);
+            }
+        });
+        
+        await Promise.all(promises);
+        
+        showNotification('Sucesso', 'Movimentações excluídas e stocks estornados.', 'success');
+        localState.selectedMovementIds.clear();
+        updateMovementBatchActionBar();
+        generateStockReport();
+    } catch(error) {
+        showNotification('Erro', 'Ocorreu um erro ao estornar em lote: ' + error.message, 'error');
+    }
+}
+
 // --- 8. ABA RELATÓRIO DE MOVIMENTAÇÕES MULTI-EMPRESA ---
 
 async function generateStockReport() {
@@ -1291,6 +1381,10 @@ async function generateStockReport() {
     if (!resultsContainer) return;
     
     resultsContainer.innerHTML = '<div class="flex items-center justify-center h-full"><div class="loader"></div></div>';
+    
+    // Limpar seleção anterior
+    localState.selectedMovementIds.clear();
+    updateMovementBatchActionBar();
 
     const filters = {
         startDate: document.getElementById('reportStartDate')?.value || '',
@@ -1317,6 +1411,9 @@ async function generateStockReport() {
 
         allMovements.sort((a, b) => parseSafeDate(b.date) - parseSafeDate(a.date));
         
+        // Guardar as movimentações a nível local para podermos estornar com precisão depois
+        localState.allMovements = allMovements;
+        
         if (allMovements.length === 0) {
             resultsContainer.innerHTML = `
                 <div class="flex flex-col items-center justify-center h-full py-16">
@@ -1330,17 +1427,19 @@ async function generateStockReport() {
         }
 
         const tableHTML = `
-            <div class="overflow-y-auto custom-scrollbar h-full">
+            <div class="overflow-y-auto custom-scrollbar h-full relative">
                 <table class="min-w-full text-left border-collapse">
                     <thead class="bg-slate-50 sticky top-0 shadow-sm z-10">
                         <tr>
+                            <th class="px-5 py-4 w-10 text-center border-b border-slate-200">
+                                <input type="checkbox" id="selectAllMovements" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm">
+                            </th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 whitespace-nowrap">Data e Hora</th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 whitespace-nowrap">Produto</th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 text-center whitespace-nowrap">Movimento</th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 text-center whitespace-nowrap">Qtd. Após</th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 whitespace-nowrap">Motivo / Obs</th>
                             <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 whitespace-nowrap">Lançado por</th>
-                            <th class="px-5 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-200 whitespace-nowrap text-right">Ação</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -1349,12 +1448,18 @@ async function generateStockReport() {
                             const changeColor = isPositive ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200';
                             const changeIcon = isPositive ? '<i class="bi bi-arrow-down-left"></i>' : '<i class="bi bi-arrow-up-right"></i>';
                             
+                            const isSelected = localState.selectedMovementIds.has(item.id);
+                            const rowColor = isSelected ? 'bg-indigo-50/30' : 'hover:bg-slate-50/50';
+                            
                             const d = parseSafeDate(item.date);
                             const dateStr = d.toLocaleDateString('pt-BR');
                             const timeStr = d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
 
                             return `
-                            <tr class="hover:bg-slate-50/50 transition-colors">
+                            <tr class="transition-colors ${rowColor}">
+                                <td class="px-5 py-3 w-10 text-center">
+                                    <input type="checkbox" class="movement-checkbox w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm" data-id="${item.id}" ${isSelected ? 'checked' : ''}>
+                                </td>
                                 <td class="px-5 py-3 whitespace-nowrap">
                                     <p class="text-xs font-black text-slate-700">${dateStr}</p>
                                     <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${timeStr}</p>
@@ -1370,11 +1475,6 @@ async function generateStockReport() {
                                 <td class="px-5 py-3 whitespace-nowrap text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                                     <div class="w-6 h-6 rounded-md bg-slate-200 flex items-center justify-center text-slate-500 flex-shrink-0"><i class="bi bi-person-fill text-xs"></i></div>
                                     ${escapeHTML(item.user)}
-                                </td>
-                                <td class="px-5 py-3 whitespace-nowrap text-right">
-                                    <button data-action="delete-movement" data-id="${item.id}" data-product-id="${item.productId}" data-est-id="${item.establishmentId}" class="text-slate-400 hover:text-red-500 w-8 h-8 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100 transition-colors inline-flex items-center justify-center shadow-sm active:scale-95" title="Apagar Movimento">
-                                        <i class="bi bi-trash3 pointer-events-none text-sm"></i>
-                                    </button>
                                 </td>
                             </tr>`;
                         }).join('')}
@@ -1410,16 +1510,96 @@ function setupEventListeners() {
         if (mainTabBtn) {
             localState.currentTab = mainTabBtn.dataset.mainTab;
             renderBaseLayout(); 
+            
+            // Corrige o bug do loop de carregamento quando regressa à aba "Catálogo"
+            if (localState.currentTab === 'catalogo') {
+                if (localState.products !== null) {
+                    populateCategoryFilter();
+                    filterAndRenderProducts();
+                }
+            }
             return;
         }
 
-        // Checkboxes de Seleção em Lote
+        // Checkboxes de Seleção em Lote (PRODUTOS)
         if (e.target.classList.contains('product-checkbox')) {
             const id = e.target.dataset.id;
             if(e.target.checked) localState.selectedIds.add(id);
             else localState.selectedIds.delete(id);
             updateBatchActionBar();
             e.stopPropagation();
+            return;
+        }
+        
+        // Cancelar Seleção em Lote (PRODUTOS)
+        const cancelSelectionBtn = e.target.closest('#cancel-selection-btn');
+        if(cancelSelectionBtn) {
+            localState.selectedIds.clear();
+            updateBatchActionBar();
+            filterAndRenderProducts(); 
+            return;
+        }
+
+        // Checkboxes de Seleção em Lote (MOVIMENTAÇÕES)
+        if (e.target.classList.contains('movement-checkbox')) {
+            const id = e.target.dataset.id;
+            if(e.target.checked) localState.selectedMovementIds.add(id);
+            else localState.selectedMovementIds.delete(id);
+            updateMovementBatchActionBar();
+            
+            // Opcional: Atualizar linha da tabela se pretender cor condicional
+            const tr = e.target.closest('tr');
+            if(e.target.checked) {
+                tr.classList.add('bg-indigo-50/30');
+                tr.classList.remove('hover:bg-slate-50/50');
+            } else {
+                tr.classList.remove('bg-indigo-50/30');
+                tr.classList.add('hover:bg-slate-50/50');
+            }
+            e.stopPropagation();
+            return;
+        }
+
+        // Selecionar Todas as Movimentações
+        if (e.target.id === 'selectAllMovements') {
+            const checkboxes = document.querySelectorAll('.movement-checkbox');
+            const isChecked = e.target.checked;
+            
+            checkboxes.forEach(cb => {
+                cb.checked = isChecked;
+                const id = cb.dataset.id;
+                if(isChecked) localState.selectedMovementIds.add(id);
+                else localState.selectedMovementIds.delete(id);
+                
+                const tr = cb.closest('tr');
+                if(isChecked) {
+                    tr.classList.add('bg-indigo-50/30');
+                    tr.classList.remove('hover:bg-slate-50/50');
+                } else {
+                    tr.classList.remove('bg-indigo-50/30');
+                    tr.classList.add('hover:bg-slate-50/50');
+                }
+            });
+            updateMovementBatchActionBar();
+            e.stopPropagation();
+            return;
+        }
+
+        // Cancelar Seleção em Lote (MOVIMENTAÇÕES)
+        const cancelMovSelectionBtn = e.target.closest('#cancel-mov-selection-btn');
+        if(cancelMovSelectionBtn) {
+            localState.selectedMovementIds.clear();
+            updateMovementBatchActionBar();
+            
+            const selectAll = document.getElementById('selectAllMovements');
+            if(selectAll) selectAll.checked = false;
+            
+            document.querySelectorAll('.movement-checkbox').forEach(cb => {
+                cb.checked = false;
+                const tr = cb.closest('tr');
+                tr.classList.remove('bg-indigo-50/30');
+                tr.classList.add('hover:bg-slate-50/50');
+            });
             return;
         }
 
@@ -1517,7 +1697,7 @@ function setupEventListeners() {
         
         const action = actionBtn.dataset.action;
 
-        if (['close-detail-screen', 'close-movement-modal', 'delete-product', 'manage-categories', 'open-product-editor', 'batch-delete', 'open-new-movement-modal', 'delete-movement'].includes(action)) {
+        if (['close-detail-screen', 'close-movement-modal', 'delete-product', 'manage-categories', 'open-product-editor', 'batch-delete', 'open-new-movement-modal', 'batch-delete-movements'].includes(action)) {
             e.stopPropagation();
         }
 
@@ -1542,6 +1722,10 @@ function setupEventListeners() {
                 handleBatchDelete();
                 break;
                 
+            case 'batch-delete-movements':
+                handleBatchDeleteMovements();
+                break;
+                
             case 'open-new-movement-modal':
                 openNewMovementModal();
                 break;
@@ -1553,10 +1737,24 @@ function setupEventListeners() {
                 
                 if (!movId) return;
                 
-                const confirmed = await showConfirmation('Apagar Movimentação', 'Tem certeza que deseja excluir esta movimentação? O histórico será limpo, mas o saldo de estoque não será revertido automaticamente nesta ação.');
+                // Encontrar o movimento para saber a quantidade exata para o estorno
+                const mov = localState.allMovements.find(m => m.id === movId);
+                if (!mov) {
+                    showNotification('Aviso', 'Não foi possível ler os detalhes desta movimentação.', 'warning');
+                    return;
+                }
+                
+                const confirmed = await showConfirmation('Estornar e Apagar Movimentação', 'Tem a certeza que deseja excluir esta movimentação? O saldo de stock será devolvido ao produto de forma automática.');
                 if (confirmed) {
                     try {
-                        // Verifica se a API implementa a função para deletar. Se não, avisa o admin.
+                        // 1. Efectuar o estorno (inverter o valor de "change")
+                        await productsApi.adjustStock(prodId, {
+                            change: -mov.change,
+                            reason: 'Estorno automático de exclusão de movimento',
+                            establishmentId: estId
+                        });
+                        
+                        // 2. Apagar o histórico
                         if (typeof productsApi.deleteMovement === 'function') {
                             await productsApi.deleteMovement(movId, prodId, estId);
                         } else if (typeof productsApi.deleteStockMovement === 'function') {
@@ -1565,11 +1763,11 @@ function setupEventListeners() {
                              throw new Error("A função de excluir movimentação ainda não está implementada no servidor.");
                         }
                         
-                        logAction(state.establishmentId, getCurrentUserForLog(), 'Estoque', 'Excluiu Movimento', `Excluiu a movimentação ID: ${movId}`);
-                        showNotification('Sucesso', 'Movimentação excluída do histórico.', 'success');
+                        logAction(state.establishmentId, getCurrentUserForLog(), 'Estoque', 'Excluiu Movimento', `Excluiu e estornou a movimentação ID: ${movId}`);
+                        showNotification('Sucesso', 'Movimentação excluída e saldo de stock estornado.', 'success');
                         await fetchAndDisplayData(); 
                     } catch (error) {
-                        showNotification('Aviso', error.message, 'warning');
+                        showNotification('Erro', error.message, 'error');
                     }
                 }
                 break;
