@@ -20,12 +20,11 @@ let localState = {
     filterEstablishmentIds: new Set(),
     
     // Filtros e Ordenação
+    isAdvancedFilterOpen: false, // Controla o painel inline (Desktop)
     filters: {
         search: '',
         inactiveDays: '',
-        birthMonth: '',
         hasLoyalty: false,
-        hasDebt: false,
         status: 'all' // all, novos, devendo, aniversariantes
     },
     sortConfig: {
@@ -49,6 +48,7 @@ let localState = {
 
 let contentDiv = null;
 let pageEventListener = null;
+let pageInputListener = null;
 
 // --- FUNÇÕES AUXILIARES ---
 
@@ -121,7 +121,8 @@ export async function loadClientsPage() {
     contentDiv = document.getElementById('content');
     localState.selectedClient = null;
     localState.selectedIds.clear();
-    localState.filters = { search: '', inactiveDays: '', birthMonth: '', hasLoyalty: false, hasDebt: false, status: 'all' };
+    localState.isAdvancedFilterOpen = false;
+    localState.filters = { search: '', inactiveDays: '', hasLoyalty: false, status: 'all' };
     localState.sortConfig = { key: 'name', direction: 'asc' };
     
     try {
@@ -156,90 +157,156 @@ function renderBaseLayout() {
     `).join('');
 
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 md:p-4 md:pl-6 w-full relative bg-slate-50">
-            
-            <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
-                <div class="flex items-center gap-3">
-                    <button id="cancel-selection-btn" class="p-1.5 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white">
-                        <i class="bi bi-x-lg text-lg"></i>
+        <div class="h-full flex w-full relative overflow-hidden bg-slate-50">
+            <section class="flex-1 flex flex-col p-4 md:pl-6 md:pr-6 md:pt-6 w-full relative overflow-y-auto custom-scrollbar">
+                
+                <div id="batch-action-bar" class="hidden absolute top-4 left-4 right-4 z-30 bg-slate-900 text-white rounded-xl shadow-2xl p-2.5 items-center justify-between animate-fade-in-down">
+                    <div class="flex items-center gap-3">
+                        <button id="cancel-selection-btn" class="p-1.5 hover:bg-slate-700 rounded-full transition-colors text-slate-300 hover:text-white">
+                            <i class="bi bi-x-lg text-lg"></i>
+                        </button>
+                        <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
+                    </div>
+                    <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm active:scale-95">
+                        <i class="bi bi-trash3"></i> Excluir Clientes
                     </button>
-                    <span class="font-bold text-sm tracking-wide"><span id="selected-count" class="text-indigo-400">0</span> Selecionados</span>
                 </div>
-                <button id="batch-delete-btn" class="flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg text-sm active:scale-95">
-                    <i class="bi bi-trash3"></i> Excluir Clientes
+
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3 animate-fade-in w-full">
+                    
+                    <div class="flex items-center gap-2 w-full md:w-96 flex-shrink-0">
+                        <div class="relative w-full">
+                            <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
+                            <input type="text" id="searchInput" value="${localState.filters.search}" placeholder="Buscar nome, telefone, CPF..." class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 shadow-sm rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                        </div>
+                        
+                        <button id="open-mob-filter-btn" class="md:hidden flex-shrink-0 w-11 h-11 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm active:scale-95">
+                            <i class="bi bi-funnel-fill text-lg pointer-events-none"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:flex md:flex-wrap items-center gap-2 w-full md:w-auto">
+                        <button id="toggle-dsk-filter-btn" class="hidden md:flex py-2.5 px-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm items-center justify-center gap-2 text-xs active:scale-95 ${localState.isAdvancedFilterOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : ''}">
+                            <i class="bi bi-funnel text-base"></i> Filtros
+                        </button>
+                        <button data-action="export-excel" class="hidden md:flex py-2.5 px-3 bg-white border border-slate-200 text-emerald-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm items-center justify-center gap-2 text-xs active:scale-95">
+                            <i class="bi bi-file-earmark-excel-fill text-base"></i> Exportar
+                        </button>
+                        <button data-action="new-client" class="py-2.5 px-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition shadow-md shadow-indigo-500/30 flex items-center justify-center gap-2 text-xs active:scale-95 uppercase tracking-wider border border-indigo-500 w-full md:w-auto">
+                            <i class="bi bi-person-plus-fill text-base"></i> Novo Cliente
+                        </button>
+                    </div>
+                </div>
+
+                ${localState.establishments.length > 1 ? `
+                <div class="mb-3 animate-fade-in">
+                    <div class="flex flex-wrap gap-2" id="establishment-filters-container">
+                        ${estCheckboxes}
+                    </div>
+                </div>
+                ` : ''}
+
+                <div id="desktop-filter-panel" class="${localState.isAdvancedFilterOpen ? 'hidden md:block' : 'hidden'} mb-4 bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm animate-fade-in w-full">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                        <div>
+                            <label class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Ordenar Por</label>
+                            <select id="dsk-filter-sort" class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-slate-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-colors">
+                                <option value="name_asc" ${localState.sortConfig.key === 'name' && localState.sortConfig.direction === 'asc' ? 'selected' : ''}>Ordem Alfabética (A-Z)</option>
+                                <option value="name_desc" ${localState.sortConfig.key === 'name' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Ordem Alfabética (Z-A)</option>
+                                <option value="lastVisit_desc" ${localState.sortConfig.key === 'lastVisit' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Visita Recente</option>
+                                <option value="lastVisit_asc" ${localState.sortConfig.key === 'lastVisit' && localState.sortConfig.direction === 'asc' ? 'selected' : ''}>Ausentes há mais tempo</option>
+                                <option value="financial_desc" ${localState.sortConfig.key === 'financial' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Maiores Devedores</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Filtro de Ausência</label>
+                            <div class="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-inner h-[38px]">
+                                <span class="text-xs font-bold text-slate-600 mr-2">> </span>
+                                <input type="number" id="dsk-filter-inactive-days" value="${localState.filters.inactiveDays}" placeholder="Ex: 30" class="w-full bg-transparent border-none text-xs font-black text-indigo-600 text-center outline-none p-0">
+                                <span class="text-xs font-bold text-slate-600 ml-2">dias</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center h-[38px] pb-0.5">
+                             <label class="flex items-center justify-between cursor-pointer w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors h-full shadow-inner">
+                                <span class="text-xs font-bold text-slate-700 flex items-center gap-2"><i class="bi bi-star-fill text-amber-500"></i> Com Pontos</span>
+                                <input type="checkbox" id="dsk-filter-loyalty" ${localState.filters.hasLoyalty ? 'checked' : ''} class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 shadow-sm">
+                            </label>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="dsk-clear-filters-btn" class="w-full px-4 py-2.5 bg-slate-100 text-slate-700 font-black rounded-lg hover:bg-slate-200 transition-colors text-xs uppercase tracking-wider border border-slate-200">Limpar</button>
+                            <button id="dsk-apply-filter-btn" class="w-full px-4 py-2.5 bg-indigo-600 text-white font-black rounded-lg shadow-md hover:bg-indigo-700 active:scale-95 transition-all text-xs uppercase tracking-wider">Aplicar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="summary-section" class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 animate-fade-in flex-shrink-0 w-full"></div>
+
+                <div class="flex gap-2 overflow-x-auto pb-2 w-full custom-scrollbar mb-2 animate-fade-in flex-shrink-0">
+                    <button data-status="all" class="status-filter-btn px-4 py-2 text-xs font-black rounded-xl border uppercase tracking-wider transition whitespace-nowrap shadow-sm ${localState.filters.status === 'all' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">Todos</button>
+                    <button data-status="novos" class="status-filter-btn px-4 py-2 text-xs font-black rounded-xl border uppercase tracking-wider transition whitespace-nowrap shadow-sm ${localState.filters.status === 'novos' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">Novos (Mês)</button>
+                    <button data-status="devendo" class="status-filter-btn px-4 py-2 text-xs font-black rounded-xl border uppercase tracking-wider transition whitespace-nowrap shadow-sm ${localState.filters.status === 'devendo' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">Em Débito</button>
+                    <button data-status="aniversariantes" class="status-filter-btn px-4 py-2 text-xs font-black rounded-xl border uppercase tracking-wider transition whitespace-nowrap shadow-sm ${localState.filters.status === 'aniversariantes' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">Aniversariantes</button>
+                </div>
+
+                <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in relative z-10">
+                    <div id="table-header-container"></div>
+                    <div id="list-container" class="flex-1 overflow-y-auto custom-scrollbar pb-24 md:pb-2">
+                        <div class="flex justify-center py-20"><div class="loader"></div></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="mob-filter-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300 md:hidden" style="z-index: 99998;"></div>
+        <div id="mob-filter-sheet" class="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl flex flex-col max-h-[85vh] transition-transform duration-300 transform translate-y-full md:hidden" style="z-index: 99999;">
+            <div class="flex items-center justify-between p-5 border-b border-slate-100">
+                <h3 class="font-black text-slate-800 text-lg flex items-center gap-2"><i class="bi bi-funnel text-indigo-500"></i> Filtros e Ordem</h3>
+                <button id="close-mob-filter-sheet" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors">
+                    <i class="bi bi-x-lg"></i>
                 </button>
             </div>
-
-            <div class="flex flex-col md:flex-row justify-between items-center mb-3 gap-3 w-full animate-fade-in">
-                <div></div> 
-                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                    <button data-action="export-excel" class="py-2.5 px-4 bg-white border border-slate-200 text-emerald-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex items-center gap-2 text-xs active:scale-95">
-                        <i class="bi bi-file-earmark-excel-fill text-emerald-600 text-base"></i> Exportar
-                    </button>
-                    <button data-action="new-client" class="py-2.5 px-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition shadow-md shadow-indigo-500/30 flex items-center gap-2 text-xs flex-1 md:flex-none justify-center active:scale-95 uppercase tracking-wider border border-indigo-500">
-                        <i class="bi bi-person-plus-fill text-base"></i> Novo Cliente
-                    </button>
-                </div>
-            </div>
-
-            ${localState.establishments.length > 1 ? `
-            <div class="mb-3 animate-fade-in">
-                <div class="flex flex-wrap gap-2" id="establishment-filters-container">
-                    ${estCheckboxes}
-                </div>
-            </div>
-            ` : ''}
-
-            <div id="kpi-section" class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-4 animate-fade-in flex-shrink-0">
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="all">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">Total de Clientes</span>
-                    <span id="kpi-total" class="text-xl font-black text-slate-800 mt-0.5 z-10">0</span>
-                </div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-emerald-300 transition-colors" data-filter="novos">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest z-10">Novos (Mês)</span>
-                    <span id="kpi-novos" class="text-xl font-black text-emerald-600 mt-0.5 z-10">0</span>
-                </div>
-                <div class="bg-red-50 p-3 rounded-xl border border-red-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-red-300 transition-colors" data-filter="devendo">
-                    <span class="text-[9px] font-bold text-red-500 uppercase tracking-widest z-10">Em Débito</span>
-                    <span id="kpi-devendo" class="text-xl font-black text-red-600 mt-0.5 z-10">0</span>
-                </div>
-                <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100 shadow-sm flex flex-col relative overflow-hidden group cursor-pointer hover:border-indigo-300 transition-colors" data-filter="aniversariantes">
-                    <span class="text-[9px] font-bold text-indigo-500 uppercase tracking-widest z-10">Aniversariantes</span>
-                    <span id="kpi-niver" class="text-xl font-black text-indigo-600 mt-0.5 z-10">0</span>
-                </div>
-            </div>
-
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-3 gap-3 w-full animate-fade-in flex-shrink-0">
-                <div class="flex gap-2 overflow-x-auto pb-1 w-full md:w-auto custom-scrollbar">
-                    <label class="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer transition-all shadow-sm select-none flex-shrink-0 text-xs font-bold uppercase tracking-wider">
-                        <input type="checkbox" id="filter-loyalty" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
-                        <i class="bi bi-star-fill text-amber-500"></i> Com Pontos
+            
+            <div class="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Características</label>
+                    <label class="flex items-center justify-between p-4 border border-slate-200 rounded-xl cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                        <span class="text-sm font-bold text-slate-700 flex items-center gap-2"><i class="bi bi-star-fill text-amber-500"></i> Têm Pontos de Fidelidade</span>
+                        <input type="checkbox" id="mob-filter-loyalty" class="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 shadow-sm" ${localState.filters.hasLoyalty ? 'checked' : ''}>
                     </label>
-                    <div class="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm flex-shrink-0 gap-2">
-                        <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Ausente ></span>
-                        <input type="number" id="filter-inactive" placeholder="Dias" class="w-12 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none font-black text-indigo-600 text-center py-0.5 shadow-inner">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Filtro de Ausência</label>
+                    <div class="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 shadow-inner">
+                        <span class="text-sm font-bold text-slate-600 mr-3">Sem visitar há > </span>
+                        <input type="number" id="mob-filter-inactive-days" value="${localState.filters.inactiveDays}" placeholder="Ex: 30" class="flex-1 bg-white border border-slate-300 rounded-lg text-sm font-black text-indigo-600 text-center py-1.5 outline-none focus:ring-2 focus:ring-indigo-500">
+                        <span class="text-sm font-bold text-slate-600 ml-3">dias</span>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 w-full md:w-auto">
-                    <div class="relative w-full md:w-80 flex-shrink-0">
-                        <i class="bi bi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
-                        <input type="text" id="search-input" placeholder="Buscar por nome, telefone, CPF..." class="w-full pl-9 p-2.5 bg-white border border-slate-200 shadow-sm rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                    </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Ordenar Por</label>
+                    <select id="mob-filter-sort" class="w-full p-3.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm">
+                        <option value="name_asc" ${localState.sortConfig.key === 'name' && localState.sortConfig.direction === 'asc' ? 'selected' : ''}>Ordem Alfabética (A-Z)</option>
+                        <option value="name_desc" ${localState.sortConfig.key === 'name' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Ordem Alfabética (Z-A)</option>
+                        <option value="lastVisit_desc" ${localState.sortConfig.key === 'lastVisit' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Visita Recente</option>
+                        <option value="lastVisit_asc" ${localState.sortConfig.key === 'lastVisit' && localState.sortConfig.direction === 'asc' ? 'selected' : ''}>Ausentes há mais tempo</option>
+                        <option value="financial_desc" ${localState.sortConfig.key === 'financial' && localState.sortConfig.direction === 'desc' ? 'selected' : ''}>Maiores Devedores</option>
+                    </select>
                 </div>
             </div>
-
-            <div class="flex-1 flex flex-col min-h-0 w-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-fade-in relative">
-                <div id="table-header-container"></div>
-                <div id="list-container" class="flex-1 overflow-y-auto custom-scrollbar pb-24 md:pb-2">
-                    <div class="flex justify-center py-20"><div class="loader"></div></div>
-                </div>
+            
+            <div class="p-4 border-t border-slate-100 bg-white">
+                <button id="apply-mob-filters" class="w-full py-3.5 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-all active:scale-95 flex justify-center items-center gap-2">
+                    <i class="bi bi-check2-all text-lg"></i> Aplicar Filtros
+                </button>
+                <div class="w-full" style="height: 80px;"></div>
             </div>
-        </section>
+        </div>
 
-        <div id="clients-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+        <div id="clients-layout-detail" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300" style="z-index: 99999;">
             <div id="client-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-4xl flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
-                </div>
+            </div>
         </div>
     `;
 }
@@ -297,7 +364,6 @@ async function fetchClients() {
         allClients.forEach(c => uniqueClients.set(c.id, c));
         localState.clients = Array.from(uniqueClients.values());
         
-        updateKPIs();
         renderList();
     } catch (error) {
         console.error(error);
@@ -308,15 +374,19 @@ async function fetchClients() {
     }
 }
 
-function updateKPIs() {
+function renderKPIs(filteredList) {
+    const section = document.getElementById('summary-section');
+    if (!section) return;
+
     const currentMonth = new Date().getMonth() + 1;
     const currentYear = new Date().getFullYear();
     
+    const total = filteredList.length;
     let kpiNovos = 0;
     let kpiDevendo = 0;
     let kpiNiver = 0;
 
-    localState.clients.forEach(c => {
+    filteredList.forEach(c => {
         if (c.totalDebt && parseFloat(c.totalDebt) > 0) kpiDevendo++;
         if (c.dobMonth == currentMonth) kpiNiver++;
         if (c.createdAt) {
@@ -325,10 +395,24 @@ function updateKPIs() {
         }
     });
 
-    document.getElementById('kpi-total').textContent = localState.clients.length;
-    document.getElementById('kpi-novos').textContent = kpiNovos;
-    document.getElementById('kpi-devendo').textContent = kpiDevendo;
-    document.getElementById('kpi-niver').textContent = kpiNiver;
+    section.innerHTML = `
+        <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-100 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+            <span class="text-[9px] md:text-[10px] font-bold text-indigo-500 uppercase tracking-widest w-full truncate">Total Exibidos</span>
+            <span class="text-xl md:text-2xl font-black text-indigo-700 mt-0.5 w-full truncate">${total}</span>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+            <span class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest w-full truncate">Novos (Mês)</span>
+            <span class="text-xl md:text-2xl font-black text-emerald-600 mt-0.5 w-full truncate">${kpiNovos}</span>
+        </div>
+        <div class="bg-red-50 p-3 rounded-xl border border-red-100 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+            <span class="text-[9px] md:text-[10px] font-bold text-red-500 uppercase tracking-widest w-full truncate">Em Débito</span>
+            <span class="text-xl md:text-2xl font-black text-red-600 mt-0.5 w-full truncate">${kpiDevendo}</span>
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center md:items-start text-center md:text-left overflow-hidden">
+            <span class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest w-full truncate">Aniversariantes</span>
+            <span class="text-xl md:text-2xl font-black text-amber-500 mt-0.5 w-full truncate">${kpiNiver}</span>
+        </div>
+    `;
 }
 
 function renderList() {
@@ -337,7 +421,7 @@ function renderList() {
     const container = document.getElementById('list-container');
     let filteredList = localState.clients;
 
-    // Filtros
+    // Filtros de Pesquisa
     if (localState.filters.search) {
         const query = localState.filters.search.toLowerCase();
         filteredList = filteredList.filter(c => 
@@ -346,6 +430,8 @@ function renderList() {
             (c.cpf && c.cpf.includes(query))
         );
     }
+    
+    // Filtros de Status (Pílulas)
     if (localState.filters.status === 'devendo') {
         filteredList = filteredList.filter(c => c.totalDebt && parseFloat(c.totalDebt) > 0);
     } else if (localState.filters.status === 'aniversariantes') {
@@ -360,6 +446,8 @@ function renderList() {
             return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
         });
     }
+    
+    // Filtros Avançados
     if (localState.filters.hasLoyalty) {
         filteredList = filteredList.filter(c => c.loyaltyPoints && c.loyaltyPoints > 0);
     }
@@ -405,13 +493,16 @@ function renderList() {
         return 0;
     });
 
+    // Renderiza KPIs dinâmicos baseados na lista já filtrada
+    renderKPIs(filteredList);
+
     if (filteredList.length === 0) {
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-300 shadow-sm m-4">
                 <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
                     <i class="bi bi-people text-3xl text-slate-300"></i>
                 </div>
-                <h3 class="text-base font-black text-slate-800 mb-1">Nenhum cliente encontrado</h3>
+                <h3 class="text-base font-black text-slate-800 mb-1">Nenhum resultado</h3>
                 <p class="text-[10px] text-slate-500 max-w-sm text-center font-bold uppercase tracking-widest mb-6">Tente ajustar a busca ou limpar os filtros.</p>
             </div>`;
         return;
@@ -496,11 +587,12 @@ function renderList() {
 
 function setupEventListeners() {
     if (pageEventListener) contentDiv.removeEventListener('click', pageEventListener);
+    if (pageInputListener) contentDiv.removeEventListener('input', pageInputListener);
 
     pageEventListener = (e) => {
         const target = e.target;
 
-        // Checkbox individual (Não abre o modal se clicar nele)
+        // Checkbox individual da Tabela
         if (target.classList.contains('item-checkbox')) {
             const id = target.value;
             if(target.checked) localState.selectedIds.add(id);
@@ -521,7 +613,7 @@ function setupEventListeners() {
             e.stopPropagation();
         }
 
-        // Checkbox de Select All
+        // Checkbox de Select All (Header Tabela)
         if (target.id === 'select-all-toggle') {
             const isChecked = target.checked;
             const allCheckboxes = document.querySelectorAll('.item-checkbox');
@@ -539,7 +631,7 @@ function setupEventListeners() {
             return;
         }
 
-        // Ordenação
+        // Ordenação por Colunas (Header Tabela)
         const sortEl = target.closest('[data-sort]');
         if (sortEl) {
             const key = sortEl.dataset.sort;
@@ -553,7 +645,77 @@ function setupEventListeners() {
             return;
         }
 
-        // Ações Rápidas
+        // --- Filtros de Status (Pílulas acima da lista) ---
+        const statusBtn = target.closest('.status-filter-btn');
+        if (statusBtn) {
+            localState.filters.status = statusBtn.dataset.status;
+            document.querySelectorAll('.status-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-600');
+                btn.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+            });
+            statusBtn.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+            statusBtn.classList.add('bg-indigo-600', 'text-white', 'border-indigo-600');
+            renderList();
+            return;
+        }
+
+        // --- Toggle Painel de Filtros (Desktop) ---
+        const toggleDskFilterBtn = target.closest('#toggle-dsk-filter-btn');
+        if (toggleDskFilterBtn) {
+            e.preventDefault();
+            localState.isAdvancedFilterOpen = !localState.isAdvancedFilterOpen;
+            const filterPanel = document.getElementById('desktop-filter-panel');
+            if(localState.isAdvancedFilterOpen) {
+                filterPanel.classList.remove('hidden');
+                filterPanel.classList.add('md:block');
+                toggleDskFilterBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+            } else {
+                filterPanel.classList.add('hidden');
+                filterPanel.classList.remove('md:block');
+                toggleDskFilterBtn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+            }
+            return;
+        }
+
+        // --- Limpar Filtros (Desktop) ---
+        if (target.id === 'dsk-clear-filters-btn') {
+            e.preventDefault();
+            document.getElementById('dsk-filter-sort').value = 'name_asc';
+            document.getElementById('dsk-filter-inactive-days').value = '';
+            document.getElementById('dsk-filter-loyalty').checked = false;
+            
+            localState.filters.inactiveDays = '';
+            localState.filters.hasLoyalty = false;
+            localState.sortConfig.key = 'name';
+            localState.sortConfig.direction = 'asc';
+            renderList();
+            return;
+        }
+
+        // --- Aplicar Filtros (Desktop) ---
+        if (target.id === 'dsk-apply-filter-btn') {
+            e.preventDefault();
+            localState.filters.inactiveDays = document.getElementById('dsk-filter-inactive-days').value;
+            localState.filters.hasLoyalty = document.getElementById('dsk-filter-loyalty').checked;
+            
+            const sortVal = document.getElementById('dsk-filter-sort').value;
+            const [key, dir] = sortVal.split('_');
+            localState.sortConfig.key = key;
+            localState.sortConfig.direction = dir;
+            
+            // Sincroniza com as inputs do Mobile (se precisarem ser abertas depois)
+            const mobLoyalty = document.getElementById('mob-filter-loyalty');
+            const mobInactive = document.getElementById('mob-filter-inactive-days');
+            const mobSort = document.getElementById('mob-filter-sort');
+            if(mobLoyalty) mobLoyalty.checked = localState.filters.hasLoyalty;
+            if(mobInactive) mobInactive.value = localState.filters.inactiveDays;
+            if(mobSort) mobSort.value = sortVal;
+
+            renderList();
+            return;
+        }
+
+        // Ações Rápidas (Novo Cliente, Exportar, Zap, etc)
         const actionEl = target.closest('[data-action]');
         if (actionEl) {
             const action = actionEl.dataset.action;
@@ -583,24 +745,82 @@ function setupEventListeners() {
             }
         }
 
-        // Modais Clicando Fora
+        // Fechar Modal Clicando Fora
         if(target.id === 'clients-layout-detail') {
             hideClientModal();
             return;
         }
+    };
 
-        // Filtros (KPIs)
-        const filterKpi = target.closest('[data-filter]');
-        if (filterKpi) {
-            document.querySelectorAll('[data-filter]').forEach(el => el.classList.remove('ring-2', 'ring-offset-1', 'ring-indigo-400', 'border-indigo-300'));
-            filterKpi.classList.add('ring-2', 'ring-offset-1', 'ring-indigo-400', 'border-indigo-300');
-            localState.filters.status = filterKpi.dataset.filter;
+    pageInputListener = (e) => {
+        if (e.target.id === 'searchInput') {
+            localState.filters.search = e.target.value;
             renderList();
         }
     };
 
     contentDiv.addEventListener('click', pageEventListener);
+    contentDiv.addEventListener('input', pageInputListener);
 
+    // ==========================================
+    // LOGICAS DO BOTTOM SHEET (APENAS MOBILE)
+    // ==========================================
+    const mobFilterOverlay = document.getElementById('mob-filter-overlay');
+    const mobFilterSheet = document.getElementById('mob-filter-sheet');
+    const openMobFilterBtn = document.getElementById('open-mob-filter-btn');
+    const closeMobFilterBtn = document.getElementById('close-mob-filter-sheet');
+    const applyMobFilterBtn = document.getElementById('apply-mob-filters');
+
+    const closeMobSheet = () => {
+        if(mobFilterSheet) {
+            mobFilterSheet.classList.remove('translate-y-0');
+            mobFilterSheet.classList.add('translate-y-full');
+        }
+        if(mobFilterOverlay) {
+            mobFilterOverlay.classList.add('opacity-0');
+            setTimeout(() => { mobFilterOverlay.classList.add('hidden'); }, 300);
+        }
+    };
+
+    if (openMobFilterBtn) {
+        openMobFilterBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            mobFilterOverlay.classList.remove('hidden');
+            setTimeout(() => {
+                mobFilterOverlay.classList.remove('opacity-0');
+                mobFilterSheet.classList.remove('translate-y-full');
+                mobFilterSheet.classList.add('translate-y-0');
+            }, 10);
+        });
+    }
+
+    if (closeMobFilterBtn) closeMobFilterBtn.addEventListener('click', closeMobSheet);
+    if (mobFilterOverlay) mobFilterOverlay.addEventListener('click', closeMobSheet);
+
+    if (applyMobFilterBtn) {
+        applyMobFilterBtn.addEventListener('click', () => {
+            localState.filters.hasLoyalty = document.getElementById('mob-filter-loyalty').checked;
+            localState.filters.inactiveDays = document.getElementById('mob-filter-inactive-days').value;
+            
+            const sortVal = document.getElementById('mob-filter-sort').value;
+            const [key, dir] = sortVal.split('_');
+            localState.sortConfig.key = key;
+            localState.sortConfig.direction = dir;
+
+            // Sincroniza com as inputs do Desktop
+            const dskLoyalty = document.getElementById('dsk-filter-loyalty');
+            const dskInactive = document.getElementById('dsk-filter-inactive-days');
+            const dskSort = document.getElementById('dsk-filter-sort');
+            if(dskLoyalty) dskLoyalty.checked = localState.filters.hasLoyalty;
+            if(dskInactive) dskInactive.value = localState.filters.inactiveDays;
+            if(dskSort) dskSort.value = sortVal;
+
+            renderList();
+            closeMobSheet();
+        });
+    }
+
+    // Cancelar Seleção Múltipla
     const cancelBtn = document.getElementById('cancel-selection-btn');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
@@ -616,9 +836,11 @@ function setupEventListeners() {
         });
     }
 
+    // Excluir em Lote
     const batchDeleteBtn = document.getElementById('batch-delete-btn');
     if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', handleBatchDelete);
 
+    // Filtros de Filiais (Header)
     document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
         cb.addEventListener('change', (e) => {
             const label = e.target.closest('label');
@@ -634,15 +856,6 @@ function setupEventListeners() {
             fetchClients(); 
         });
     });
-
-    const searchInput = document.getElementById('search-input');
-    if(searchInput) searchInput.addEventListener('input', (e) => { localState.filters.search = e.target.value; renderList(); });
-
-    const inactiveInput = document.getElementById('filter-inactive');
-    if(inactiveInput) inactiveInput.addEventListener('input', (e) => { localState.filters.inactiveDays = e.target.value; renderList(); });
-
-    const loyaltyCheck = document.getElementById('filter-loyalty');
-    if(loyaltyCheck) loyaltyCheck.addEventListener('change', (e) => { localState.filters.hasLoyalty = e.target.checked; renderList(); });
 }
 
 function updateBatchActionBar() {
@@ -859,11 +1072,14 @@ function buildModalHTML(modalInner, client) {
             </form>
         </div>
 
-        <footer class="p-4 bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] w-full flex-shrink-0 z-50 flex gap-3 justify-end md:rounded-b-3xl">
-            <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-6 bg-slate-100 border border-slate-200 text-slate-600 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm active:scale-95">Cancelar</button>
-            <button type="submit" form="form-edit-client" class="w-full md:w-auto md:px-8 py-3 bg-indigo-600 text-white font-black text-xs md:text-sm rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-500/30 transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider border border-indigo-600">
-                <i class="bi bi-save2 text-lg pointer-events-none"></i> Salvar Cliente
-            </button>
+        <footer class="bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] w-full flex-shrink-0 md:rounded-b-3xl" style="z-index: 50;">
+            <div class="p-4 flex gap-3 justify-end">
+                <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-6 bg-slate-100 border border-slate-200 text-slate-600 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm active:scale-95">Cancelar</button>
+                <button type="submit" form="form-edit-client" class="w-full md:w-auto md:px-8 py-3 bg-indigo-600 text-white font-black text-xs md:text-sm rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-500/30 transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider border border-indigo-600">
+                    <i class="bi bi-save2 text-lg pointer-events-none"></i> Salvar Cliente
+                </button>
+            </div>
+            <div class="w-full md:hidden" style="height: 80px;"></div>
         </footer>
     `;
 
@@ -1128,7 +1344,6 @@ async function handleSaveClient(e) {
             showNotification('Sucesso', 'Dados salvos com sucesso!', 'success');
             hideClientModal();
         }
-        updateKPIs();
         renderList();
     } catch (err) { 
         showNotification('Erro', err.message, 'error'); 
@@ -1147,7 +1362,6 @@ async function handleDeleteClient(e) {
         localState.clients = localState.clients.filter(c => c.id !== localState.selectedClient.id);
         showNotification('Sucesso', 'Cliente removido com sucesso.', 'success');
         hideClientModal();
-        updateKPIs();
         renderList();
     } catch (err) { showNotification('Erro', err.message, 'error'); }
 }
