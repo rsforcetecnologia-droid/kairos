@@ -156,7 +156,7 @@
                         <h3 id="month-year-display" class="text-sm font-bold title-text capitalize"></h3>
                         <button id="next-week-btn" class="p-1.5 opacity-60 hover:opacity-100 transition"><i class="bi bi-chevron-right text-lg title-text"></i></button>
                     </div>
-                    <div id="week-container" class="grid grid-cols-7 w-full p-0 m-0"></div>
+                    <div id="week-container" class="grid grid-cols-7 gap-1 w-full p-0 m-0"></div>
                 </div>
 
                 <div id="time-slots-container" class="space-y-5 pb-8">
@@ -382,7 +382,7 @@
             const FORCE_DIRECT = urlParams.get('direct') === 'true';
             
             let REAL_ESTABLISHMENT_ID = null; 
-            let currentWeekStart = null; // Será iniciado após carregamento
+            let currentWeekStart = null; 
             let allServicesData = [];
             let allProfessionalsData = [];
             
@@ -427,7 +427,6 @@
             }
             document.getElementById('modal-ok-btn').addEventListener('click', () => document.getElementById('notificationModal').classList.add('hidden'));
 
-            // CORREÇÃO TIMEZONE 1: Forçar cálculo ao meio-dia para evitar pulo de dia no fuso
             function getStartOfWeek(dateObj) {
                 const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 12, 0, 0, 0);
                 const day = d.getDay(); 
@@ -444,11 +443,9 @@
                 if (sectionName === 'schedule' && booking.date) {
                     morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
                     afternoonSlotsContainer.innerHTML = '';
-                    // loadAvailability(booking.date); // Agora é chamado pelo fluxo de busca de dia
                 }
             };
 
-            // VERIFICAÇÃO MULTI-TENANT E LOAD INICIAL
             const checkNetworkAndLoad = async () => {
                 try {
                     const estRes = await fetch(`${API_BASE_URL}/api/establishments/${URL_ID}`);
@@ -474,7 +471,6 @@
                     const branches = branchesRes.ok ? await branchesRes.json() : [];
 
                     if (branches && branches.length > 0 && !FORCE_DIRECT) {
-                        // MENU DE FILIAIS
                         document.getElementById('booking-view').classList.add('hidden');
                         branchSelectorView.classList.remove('hidden');
                         branchSelectorView.classList.add('flex');
@@ -506,7 +502,6 @@
                         }).join('');
 
                     } else {
-                        // AGENDA DIRETA
                         branchSelectorView.classList.add('hidden');
                         bookingView.classList.remove('hidden');
 
@@ -610,7 +605,6 @@
                             <h4 class="font-bold text-xs text-center leading-tight line-clamp-2 title-text">${prof.name.split(' ')[0]}</h4>
                         `;
                         
-                        // EVENTO DE CLIQUE DO PROFISSIONAL (BUSCA INTELIGENTE DE DATAS)
                         card.addEventListener('click', async () => {
                             booking.professionalId = prof.id;
                             booking.professionalName = prof.name;
@@ -619,10 +613,8 @@
                             morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
                             afternoonSlotsContainer.innerHTML = '';
                             
-                            // Lógica para encontrar a próxima data livre (tenta até 30 dias a partir de hoje)
                             const findNextAvailableDate = async (startDate, attempt = 0) => {
                                 if (attempt > 30) {
-                                    // Se em 30 dias não achou nada, desiste e mostra na data original
                                     booking.date = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-${String(startDate.getDate()).padStart(2,'0')}`;
                                     currentWeekStart = getStartOfWeek(startDate);
                                     renderWeek();
@@ -638,7 +630,6 @@
                                     if (!response.ok) throw new Error();
                                     const slots = await response.json();
                                     
-                                    // Se encontrou slots (e considerando filtro do dia atual se for hoje)
                                     let hasRealAvailability = false;
                                     
                                     if (slots.length > 0) {
@@ -647,7 +638,6 @@
                                         const isToday = selectedDateObj.toDateString() === now.toDateString();
                                         const currentMinutes = now.getHours() * 60 + now.getMinutes();
                                         
-                                        // Verifica se sobrou algum horário livre no dia de hoje
                                         hasRealAvailability = slots.some(slot => {
                                             const [h, m] = slot.split(':').map(Number);
                                             if (isToday) {
@@ -658,18 +648,15 @@
                                     }
 
                                     if (hasRealAvailability) {
-                                        // Achou um dia bom! Define e renderiza.
                                         booking.date = dateStr;
                                         currentWeekStart = getStartOfWeek(startDate);
                                         renderWeek();
                                         await loadAvailability(dateStr);
                                     } else {
-                                        // Continua procurando no próximo dia
                                         const nextDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 1, 12, 0, 0, 0);
                                         await findNextAvailableDate(nextDay, attempt + 1);
                                     }
                                 } catch (e) {
-                                    // Em caso de erro na rede, interrompe e mostra a semana atual vazia
                                     booking.date = dateStr;
                                     currentWeekStart = getStartOfWeek(startDate);
                                     renderWeek();
@@ -717,9 +704,12 @@
                         }
 
                         const btn = document.createElement('button');
-                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text w-full';
+                        // Usando propriedades mobile-friendly e type="button"
+                        btn.type = 'button';
+                        btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text w-full appearance-none outline-none touch-manipulation select-none';
                         btn.textContent = slot;
-                        btn.onclick = () => {
+                        btn.onclick = (e) => {
+                            e.preventDefault();
                             document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('time-slot-selected'));
                             btn.classList.add('time-slot-selected');
                             booking.time = slot;
@@ -739,7 +729,7 @@
                 }
             };
 
-            // CORREÇÃO CLICK: Hitbox ocupando 100% do container
+            // Nova função renderWeek refatorada para mobile hitbox
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
@@ -752,12 +742,10 @@
                     const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
                     const isSelected = booking.date === dateStr;
                     
-                    // Container (Célula Grid) que remove espaçamentos vazios
-                    const dayWrapper = document.createElement('div');
-                    dayWrapper.className = 'w-full h-full p-0.5';
-
                     const btn = document.createElement('button');
-                    btn.className = 'day-button w-full h-full min-h-[64px] flex flex-col items-center justify-center p-1 sm:p-2 radius-dynamic transition-all border border-transparent select-none touch-manipulation cursor-pointer';
+                    // type="button" garante que não hajam conflitos de formulário, e classes como touch-manipulation e appearance-none otimizam área clicável
+                    btn.type = 'button'; 
+                    btn.className = 'day-button w-full h-full min-h-[64px] flex flex-col items-center justify-center p-1 sm:p-2 radius-dynamic transition-colors border border-transparent select-none touch-manipulation cursor-pointer appearance-none outline-none';
                     
                     if(isSelected) {
                         btn.classList.add('theme-bg-color', 'shadow-md');
@@ -787,8 +775,7 @@
                         };
                     }
                     
-                    dayWrapper.appendChild(btn);
-                    weekContainer.appendChild(dayWrapper);
+                    weekContainer.appendChild(btn);
                 }
                 monthYearDisplay.textContent = currentWeekStart.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             };
@@ -868,7 +855,6 @@
                 }
             });
 
-            // GESTÃO DE AGENDAMENTOS DO CLIENTE
             document.getElementById('myAppointmentsBtn').addEventListener('click', () => {
                 myAppointmentsView.classList.remove('hidden');
                 document.getElementById('booking-view').classList.add('hidden');
@@ -979,7 +965,6 @@
                 }
             };
 
-            // START!
             checkNetworkAndLoad();
             
             prevWeekBtn.onclick = () => { currentWeekStart.setDate(currentWeekStart.getDate() - 7); renderWeek(); };

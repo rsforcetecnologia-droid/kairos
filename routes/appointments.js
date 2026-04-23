@@ -182,7 +182,7 @@ router.post('/', async (req, res) => {
                 clientName, clientPhone, 
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
-                status: 'confirmed', createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'aguardando_confirmacao', // ✅ NOVO STATUS
                 hasRewards,
                 totalAmount: totalAmount 
             };
@@ -245,7 +245,7 @@ router.get('/:contextId', async (req, res) => {
         let query = db.collection('appointments')
             .where('startTime', '>=', start)
             .where('startTime', '<=', end)
-            .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed']);
+            .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed', 'aguardando_confirmacao']); // <-- AJUSTE AQUI
 
         // Filtro Base dependendo da Visão do Utilizador
         if (contextId === 'ALL') {
