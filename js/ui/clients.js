@@ -150,7 +150,7 @@ export async function loadClientsPage() {
 
 function renderBaseLayout() {
     const estCheckboxes = localState.establishments.map(est => `
-        <label class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-xl cursor-pointer hover:bg-slate-50 transition-all shadow-sm est-label select-none">
+        <label class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50/20 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-xl cursor-pointer hover:bg-slate-50 transition-all shadow-sm est-label select-none active:scale-95">
             <input type="checkbox" class="est-filter-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
             <span class="text-xs font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building mr-1"></i>' : '<i class="bi bi-shop mr-1"></i>'} ${est.name}</span>
         </label>
@@ -743,6 +743,13 @@ function setupEventListeners() {
                 handleExportExcel();
                 return;
             }
+            // --- NOVO: Ação do Ajuste Manual ---
+            if (action === 'manual-redeem') {
+                e.stopPropagation();
+                e.preventDefault();
+                openManualRedemptionModal(localState.selectedClient);
+                return;
+            }
         }
 
         // Fechar Modal Clicando Fora
@@ -955,11 +962,11 @@ function buildModalHTML(modalInner, client) {
 
     const tabsHTML = `
         <div class="modal-tabs px-2 md:px-6 border-b flex items-center justify-start gap-4 overflow-x-auto bg-slate-50 flex-shrink-0 custom-scrollbar shadow-sm">
-            <button class="tab-link active whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-indigo-600 text-indigo-600 transition-colors uppercase tracking-widest" data-tab="tab-profile">1. Ficha e Perfil</button>
+            <button class="tab-link active whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-indigo-600 text-indigo-600 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-profile">1. Ficha e Perfil</button>
             ${!isNew ? `
-            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-appointments">2. Agendamentos</button>
-            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-history">3. Finanças</button>
-            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest" data-tab="tab-loyalty">4. Fidelidade</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-appointments">2. Agendamentos</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-history">3. Finanças</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-loyalty">4. Fidelidade</button>
             ` : ''}
         </div>
     `;
@@ -969,7 +976,7 @@ function buildModalHTML(modalInner, client) {
         ${tabsHTML}
         
         <div class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 p-3 md:p-6 relative">
-            <form id="form-edit-client" class="h-full w-full mx-auto max-w-4xl">
+            <form id="form-edit-client" class="h-full w-full mx-auto max-w-4xl pb-32 md:pb-6">
                 
                 <div id="tab-profile" class="tab-content active space-y-4 md:space-y-6 animate-fade-in-fast">
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -1072,14 +1079,13 @@ function buildModalHTML(modalInner, client) {
             </form>
         </div>
 
-        <footer class="bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] w-full flex-shrink-0 md:rounded-b-3xl" style="z-index: 50;">
-            <div class="p-4 flex gap-3 justify-end">
+        <footer class="bg-white border-t border-slate-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] w-full flex-shrink-0 md:rounded-b-3xl fixed md:relative bottom-0 left-0 right-0 z-50">
+            <div class="p-4 flex gap-3 justify-end items-center h-full">
                 <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-6 bg-slate-100 border border-slate-200 text-slate-600 font-black text-xs uppercase tracking-wider rounded-xl hover:bg-slate-200 transition-colors shadow-sm active:scale-95">Cancelar</button>
-                <button type="submit" form="form-edit-client" class="w-full md:w-auto md:px-8 py-3 bg-indigo-600 text-white font-black text-xs md:text-sm rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-500/30 transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider border border-indigo-600">
+                <button type="submit" form="form-edit-client" class="w-full md:w-auto md:px-8 py-3.5 md:py-3 bg-indigo-600 text-white font-black text-xs md:text-sm rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-500/30 transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider border border-indigo-600 mb-safe">
                     <i class="bi bi-save2 text-lg pointer-events-none"></i> Salvar Cliente
                 </button>
             </div>
-            <div class="w-full md:hidden" style="height: 80px;"></div>
         </footer>
     `;
 
@@ -1111,79 +1117,106 @@ function buildModalHTML(modalInner, client) {
 // --- RENDERS DINÂMICOS PÓS-FETCH DO HISTÓRICO ---
 
 function buildAppointmentsHTML(appointments) {
-    appointments.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+    const now = new Date();
+    
+    // Separa futuros e passados
+    const futuros = appointments.filter(a => new Date(a.date) >= now && a.status !== 'cancelled').sort((a, b) => new Date(a.date) - new Date(b.date));
+    const passados = appointments.filter(a => new Date(a.date) < now || a.status === 'cancelled').sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const renderCard = (appt, isPast) => {
+        const date = new Date(appt.date);
+        
+        let statusBadge = isPast ? '<span class="text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-slate-200 shadow-sm">Concluído</span>' : '<span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-emerald-200 shadow-sm">Confirmado</span>';
+        if (appt.status === 'cancelled') statusBadge = '<span class="text-red-600 bg-red-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-red-200 shadow-sm">Cancelado</span>';
+        
+        const unitName = localState.establishments.find(e => e.id === appt.establishmentId)?.name || 'Unidade Local';
+
+        return `
+        <div class="bg-white border border-slate-200 rounded-2xl p-3 flex gap-3 shadow-sm items-center cursor-pointer active:scale-[0.98] transition-transform hover:border-indigo-300" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.date}" data-est="${appt.establishmentId}">
+            <div class="flex-shrink-0 text-center w-12 border-r border-slate-100 pr-2">
+                <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
+                <span class="block text-xl font-black text-slate-800 leading-none mt-1">${date.getDate()}</span>
+            </div>
+            <div class="flex-grow min-w-0">
+                <p class="font-black text-sm text-slate-800 truncate">${escapeHTML(appt.description || 'Serviço Variado')}</p>
+                <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span class="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded"><i class="bi bi-clock"></i> ${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
+                    <span class="text-[9px] font-bold text-indigo-500 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded truncate max-w-[120px]"><i class="bi bi-geo-alt"></i> ${unitName}</span>
+                </div>
+            </div>
+            <div class="flex-shrink-0 text-right flex flex-col justify-center gap-2">
+                ${statusBadge}
+                <i class="bi bi-chevron-right text-slate-300 text-xs ml-auto pr-1"></i>
+            </div>
+        </div>`;
+    };
 
     return `
-        <div class="space-y-3">
-            ${appointments.length ? appointments.map(appt => {
-                const date = new Date(appt.startTime);
-                const isPast = date < new Date();
-                let statusBadge = isPast ? '<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-slate-200">Concluído</span>' : '<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-emerald-200">Agendado</span>';
-                if (appt.status === 'cancelled') statusBadge = '<span class="bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border border-red-200">Cancelado</span>';
-
-                return `
-                <div class="bg-white border border-slate-200 rounded-2xl p-4 flex gap-4 shadow-sm items-center cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-[0.98]" data-go-agenda="true" data-id="${appt.id}" data-date="${appt.startTime}">
-                    <div class="flex-shrink-0 text-center w-12 border-r border-slate-100 pr-3">
-                        <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest">${date.toLocaleDateString('pt-BR', {month:'short'})}</span>
-                        <span class="block text-xl font-black text-slate-800 leading-none mt-1">${date.getDate()}</span>
-                    </div>
-                    <div class="flex-grow min-w-0">
-                        <p class="font-black text-sm text-slate-800 truncate">${escapeHTML(appt.serviceName || 'Serviço Variado')}</p>
-                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate mt-1.5 flex items-center gap-1.5"><i class="bi bi-person-fill bg-slate-100 p-1 rounded"></i> ${escapeHTML(appt.professionalName || 'N/A')} <span class="mx-1 text-slate-300">•</span> <i class="bi bi-clock-fill bg-slate-100 p-1 rounded"></i> ${date.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
-                    </div>
-                    <div class="flex-shrink-0 text-right">
-                        ${statusBadge}
-                    </div>
-                </div>`;
-            }).join('') : `
-                <div class="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 shadow-sm">
-                    <div class="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3"><i class="bi bi-calendar-x text-xl text-slate-300"></i></div>
-                    <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Nenhum agendamento encontrado.</p>
+        <div class="space-y-6">
+            ${futuros.length > 0 ? `
+                <div>
+                    <h4 class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-2"><i class="bi bi-calendar-event text-sm"></i> Próximos Agendamentos</h4>
+                    <div class="space-y-2">${futuros.map(a => renderCard(a, false)).join('')}</div>
                 </div>
-            `}
+            ` : ''}
+
+            <div>
+                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><i class="bi bi-clock-history text-sm"></i> Histórico Passado</h4>
+                ${passados.length > 0 ? `<div class="space-y-2">${passados.map(a => renderCard(a, true)).join('')}</div>` : `<div class="text-center py-10 border border-dashed border-slate-200 rounded-2xl bg-white"><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Nenhum histórico passado.</p></div>`}
+            </div>
         </div>
     `;
 }
 
-function buildHistoryHTML(sales) {
-    sales.sort((a, b) => new Date(b.date) - new Date(a.date));
+function buildHistoryHTML(salesAndFinances) {
+    salesAndFinances.sort((a, b) => new Date(b.date) - new Date(a.date));
     
-    const totalLTV = sales.reduce((acc, s) => acc + (Number(s.totalAmount) || 0), 0);
-    const ticketMedio = sales.length > 0 ? (totalLTV / sales.length) : 0;
+    // LTV Real - Transversal à Rede
+    const totalLTV = salesAndFinances.reduce((acc, s) => acc + (Number(s.value) || 0), 0);
+    const ticketMedio = salesAndFinances.length > 0 ? (totalLTV / salesAndFinances.length) : 0;
 
     return `
         <div class="space-y-6">
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-2 gap-3">
                 <div class="bg-emerald-50 p-4 md:p-5 rounded-2xl border border-emerald-100 shadow-sm flex flex-col text-center justify-center">
-                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-graph-up-arrow"></i> LTV (Valor Vitalício)</span>
-                    <span class="text-2xl md:text-3xl font-black text-emerald-700 mt-1">${formatCurrency(totalLTV)}</span>
+                    <span class="text-[9px] md:text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-graph-up-arrow"></i> LTV (Gasto Total)</span>
+                    <span class="text-2xl md:text-3xl font-black text-emerald-700 mt-1 truncate">${formatCurrency(totalLTV)}</span>
                 </div>
                 <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col text-center justify-center">
-                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-receipt"></i> Ticket Médio</span>
-                    <span class="text-2xl md:text-3xl font-black text-slate-800 mt-1">${formatCurrency(ticketMedio)}</span>
+                    <span class="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest flex justify-center items-center gap-1"><i class="bi bi-receipt"></i> Ticket Médio</span>
+                    <span class="text-2xl md:text-3xl font-black text-slate-800 mt-1 truncate">${formatCurrency(ticketMedio)}</span>
                 </div>
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div class="bg-slate-50 p-4 border-b border-slate-200 flex items-center gap-2">
                     <i class="bi bi-cart-check text-indigo-500 text-lg"></i>
-                    <h4 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Histórico de Compras e Comandas</h4>
+                    <h4 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Linha do Tempo de Compras</h4>
                 </div>
-                <div class="p-3 space-y-2">
-                    ${sales.length ? sales.map(sale => `
-                    <div class="bg-white border border-slate-100 rounded-xl p-4 flex justify-between items-center shadow-sm hover:border-indigo-200 cursor-pointer transition-all active:scale-[0.98]" data-go-comanda="true" data-id="${sale.id}">
-                        <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 text-sm shadow-sm"><i class="bi bi-receipt-cutoff"></i></div>
-                            <div>
-                                <p class="font-black text-slate-800 text-xs uppercase tracking-wider">Comanda #${sale.id.slice(-5).toUpperCase()}</p>
-                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">${new Date(sale.date).toLocaleDateString()}</p>
+                <div class="p-2 md:p-3 space-y-2 max-h-96 overflow-y-auto custom-scrollbar overscroll-contain">
+                    ${salesAndFinances.length ? salesAndFinances.map(item => {
+                        const unitName = localState.establishments.find(e => e.id === item.establishmentId)?.name || 'Unidade Local';
+                        const isSale = item.type === 'sale';
+                        
+                        return `
+                        <div class="bg-white border border-slate-100 rounded-xl p-3 flex justify-between items-center shadow-sm hover:border-indigo-200 cursor-pointer transition-all active:scale-[0.98]" data-go-comanda="true" data-id="${item.id}" data-est="${item.establishmentId}">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full ${isSale ? 'bg-indigo-50 text-indigo-500 border border-indigo-100' : 'bg-slate-50 text-slate-500 border border-slate-200'} flex flex-shrink-0 items-center justify-center text-sm shadow-sm">
+                                    <i class="bi ${isSale ? 'bi-receipt-cutoff' : 'bi-calendar-check'}"></i>
+                                </div>
+                                <div class="min-w-0 pr-2">
+                                    <p class="font-black text-slate-800 text-xs uppercase tracking-wider truncate">${item.description}</p>
+                                    <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest truncate">
+                                        ${new Date(item.date).toLocaleDateString()} • <span class="text-indigo-400">${unitName}</span>
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-black text-emerald-600 text-sm bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">${formatCurrency(sale.totalAmount)}</p>
-                            <p class="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-1.5 flex items-center gap-1 justify-end">Abrir Comanda <i class="bi bi-chevron-right"></i></p>
-                        </div>
-                    </div>`).join('') : `
+                            <div class="text-right flex-shrink-0">
+                                <p class="font-black text-emerald-600 text-sm md:text-base">${formatCurrency(item.value)}</p>
+                                <p class="text-[8px] text-indigo-500 font-bold uppercase tracking-widest mt-1 flex items-center justify-end gap-1">Ver <i class="bi bi-chevron-right"></i></p>
+                            </div>
+                        </div>`
+                    }).join('') : `
                         <div class="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 m-2">
                             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nenhum histórico financeiro.</p>
                         </div>
@@ -1204,9 +1237,38 @@ function buildLoyaltyHTML(client, log) {
                 <p class="text-amber-100 font-bold uppercase tracking-widest text-[10px] mb-2 z-10">Saldo de Pontos de Fidelidade</p>
                 <h1 class="text-6xl font-black z-10 drop-shadow-md tracking-tighter">${client.loyaltyPoints || 0}</h1>
                 
-                <button type="button" data-action="manual-redeem" class="mt-6 bg-white text-amber-600 text-[10px] font-black uppercase tracking-widest py-2.5 px-6 rounded-xl transition hover:bg-amber-50 shadow-lg active:scale-95 flex items-center gap-2 z-10 border border-white">
+                <button type="button" data-action="toggle-adjustment" class="mt-6 bg-white text-amber-600 text-[10px] font-black uppercase tracking-widest py-2.5 px-6 rounded-xl transition hover:bg-amber-50 shadow-lg active:scale-95 flex items-center gap-2 z-10 border border-white">
                     <i class="bi bi-sliders"></i> Ajuste Manual
                 </button>
+            </div>
+
+            <div id="inline-adjustment-container" class="hidden bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden animate-fade-in-down mb-4">
+                <div class="bg-amber-50 p-4 border-b border-amber-100 flex justify-between items-center">
+                    <h4 class="text-[10px] font-black text-amber-700 uppercase tracking-widest">Movimentação Manual</h4>
+                    <button type="button" data-action="toggle-adjustment" class="text-amber-600 hover:text-amber-800"><i class="bi bi-x-circle"></i></button>
+                </div>
+                <div class="p-4 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Tipo</label>
+                            <select id="redeem-action" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 bg-slate-50">
+                                <option value="credit">Adicionar (+)</option>
+                                <option value="debit">Remover (-)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Pontos</label>
+                            <input type="number" id="redeem-points" min="1" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-black text-slate-800 bg-slate-50" placeholder="0">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Motivo</label>
+                        <input type="text" id="redeem-reason" class="w-full p-3 border border-slate-300 rounded-xl text-sm font-semibold text-slate-800 bg-slate-50" placeholder="Ex: Bónus de aniversário">
+                    </div>
+                    <button type="button" id="confirm-adjustment-btn" class="w-full bg-amber-500 text-white py-3.5 rounded-xl font-black shadow-md hover:bg-amber-600 active:scale-95 transition-all text-xs uppercase tracking-wider">
+                        Confirmar Movimentação
+                    </button>
+                </div>
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -1214,24 +1276,20 @@ function buildLoyaltyHTML(client, log) {
                     <i class="bi bi-card-list text-indigo-500 text-lg"></i>
                     <h4 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Extrato de Movimentações</h4>
                 </div>
-                <div class="p-3 space-y-1 max-h-80 overflow-y-auto custom-scrollbar">
+                <div class="p-3 space-y-1 max-h-80 overflow-y-auto custom-scrollbar overscroll-contain">
                     ${log.length > 0 ? log.map(entry => {
-                        const isRedemption = entry.type === 'redemption';
+                        const isRedemption = entry.points < 0;
                         return `
                         <div class="flex justify-between items-center py-3 px-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors rounded-xl">
                             <div>
                                 <p class="text-[10px] font-black text-slate-800 uppercase tracking-wider">${escapeHTML(entry.description || (isRedemption ? 'Resgate' : 'Acúmulo'))}</p>
-                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">${new Date(entry.date).toLocaleDateString()}</p>
+                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase">${new Date(entry.date).toLocaleDateString()}</p>
                             </div>
-                            <span class="font-black text-sm px-3 py-1 rounded-lg border ${isRedemption ? 'text-red-600 bg-red-50 border-red-100' : 'text-amber-600 bg-amber-50 border-amber-100'} shadow-sm">
-                                ${isRedemption ? '-' : '+'}${entry.points}
+                            <span class="font-black text-sm px-3 py-1 rounded-lg border ${isRedemption ? 'text-red-600 bg-red-50 border-red-100' : 'text-amber-600 bg-amber-50 border-amber-100'}">
+                                ${entry.points > 0 ? '+' : ''}${entry.points}
                             </span>
                         </div>`;
-                    }).join('') : `
-                        <div class="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200 m-2">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sem movimentações de pontos.</p>
-                        </div>
-                    `}
+                    }).join('') : `<div class="text-center py-10 text-[10px] font-bold text-slate-400 uppercase">Sem movimentações.</div>`}
                 </div>
             </div>
         </div>
@@ -1243,37 +1301,35 @@ function buildLoyaltyHTML(client, log) {
 async function fetchClientHistory(client) {
     if (!client || !client.phone) return; 
     
-    // O Telefone é a chave mestra para buscar na API de Appointments
+    // O Telefone é a chave mestra para buscar na API
     const phoneToSearch = cleanPhone(client.phone);
 
     try {
-        const end = new Date(); end.setMonth(end.getMonth() + 12); 
-        const start = new Date(); start.setFullYear(start.getFullYear() - 5); 
-
-        let url = `/api/appointments/${state.establishmentId}?startDate=${start.toISOString()}&endDate=${end.toISOString()}&clientPhone=${encodeURIComponent(phoneToSearch)}&limit=100`;
-        const clientAppts = await authenticatedFetch(url);
+        // Puxa Appointments, Sales e Loyalty da rede inteira (baseado no filtro do utilizador)
+        const estIds = Array.from(localState.filterEstablishmentIds);
+        const fullHistory = await clientsApi.getFullHistory(estIds, phoneToSearch);
         
-        localState.historyData.appointments = clientAppts;
-        localState.historyData.sales = clientAppts.filter(a => a.status === 'completed').map(a => ({ id: a.id, date: a.startTime, totalAmount: a.totalAmount || 0, items: a.comandaItems || a.services || [] }));
+        // Separa os dados para as abas
+        const appointments = fullHistory.filter(item => item.type === 'appointment');
+// Filtra APENAS as comandas (sales) para a aba Finanças, pois elas já contêm o valor total real
+const salesAndFinances = fullHistory.filter(item => item.type === 'sale');
+const loyaltyLog = fullHistory.filter(item => item.type === 'loyalty');
 
-        const loyaltyLog = [];
-        clientAppts.forEach(appt => {
-            if (appt.status === 'completed' && appt.loyaltyPointsEarned > 0) loyaltyLog.push({ type: 'earn', points: appt.loyaltyPointsEarned, date: appt.startTime, description: 'Serviço / Venda concluída' });
-            if (appt.loyaltyRedemption) loyaltyLog.push({ type: 'redemption', points: appt.loyaltyRedemption.cost || 0, date: appt.startTime, description: `Resgate: ${appt.loyaltyRedemption.name}` });
-        });
+        localState.historyData.appointments = appointments;
+        localState.historyData.sales = salesAndFinances;
         localState.historyData.loyaltyLog = loyaltyLog;
         
-        // Renderiza nas abas se existirem
+        // Renderiza as abas
         const apptContainer = document.getElementById('historico-agendamentos-container');
-        if (apptContainer) apptContainer.innerHTML = buildAppointmentsHTML(localState.historyData.appointments);
+        if (apptContainer) apptContainer.innerHTML = buildAppointmentsHTML(appointments);
         
         const finContainer = document.getElementById('historico-financeiro-container');
-        if (finContainer) finContainer.innerHTML = buildHistoryHTML(localState.historyData.sales);
+        if (finContainer) finContainer.innerHTML = buildHistoryHTML(salesAndFinances);
         
         const loyContainer = document.getElementById('historico-fidelidade-container');
-        if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(client, localState.historyData.loyaltyLog);
+        if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(client, loyaltyLog);
         
-        // Adiciona eventos aos novos elementos gerados (Ir para agenda, comanda, e botão manual)
+        // Anexa os eventos de clique
         attachDynamicEvents(client);
 
     } catch (e) {
@@ -1293,6 +1349,7 @@ function attachDynamicEvents(client) {
     const modalContent = document.getElementById('client-modal-inner');
     if (!modalContent) return;
 
+    // Navegação para Agenda e Comandas
     modalContent.querySelectorAll('[data-go-agenda]').forEach(btn => {
         btn.onclick = () => {
             hideClientModal(); 
@@ -1307,11 +1364,58 @@ function attachDynamicEvents(client) {
         };
     });
 
-    const btnRedeem = modalContent.querySelector('[data-action="manual-redeem"]');
-    if(btnRedeem) {
-        btnRedeem.onclick = (e) => {
+    // --- LOGICA DO AJUSTE MANUAL INLINE ---
+    const toggleBtns = modalContent.querySelectorAll('[data-action="toggle-adjustment"]');
+    const container = modalContent.querySelector('#inline-adjustment-container');
+    const confirmBtn = modalContent.querySelector('#confirm-adjustment-btn');
+
+    toggleBtns.forEach(btn => {
+        btn.onclick = (e) => {
             e.preventDefault();
-            openManualRedemptionModal(client);
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        };
+    });
+
+    if (confirmBtn) {
+        confirmBtn.onclick = async (e) => {
+            e.preventDefault();
+            const action = modalContent.querySelector('#redeem-action').value;
+            const pointsInput = parseInt(modalContent.querySelector('#redeem-points').value, 10);
+            const reason = modalContent.querySelector('#redeem-reason').value;
+            const currentPoints = client.loyaltyPoints || 0;
+
+            if (!pointsInput || pointsInput <= 0) return showNotification('Aviso', 'Indique a quantidade de pontos.', 'info');
+            if (action === 'debit' && pointsInput > currentPoints) return showNotification('Erro', 'Saldo insuficiente.', 'error');
+            if (!reason) return showNotification('Aviso', 'Indique o motivo do ajuste.', 'info');
+
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Gravando...';
+
+            try {
+                let newBalance = currentPoints;
+                if (action === 'debit') {
+                    await clientsApi.redeemReward(state.establishmentId, client.phone, pointsInput, reason);
+                    newBalance -= pointsInput;
+                } else {
+                    newBalance += pointsInput;
+                    await clientsApi.updateClient(client.id, { loyaltyPoints: newBalance });
+                }
+
+                localState.selectedClient.loyaltyPoints = newBalance;
+                
+                // Atualiza a aba e o histórico local
+                showNotification('Sucesso', 'Pontos atualizados com sucesso!', 'success');
+                fetchClientHistory(localState.selectedClient); // Recarrega os dados e re-renderiza a aba
+                renderList(); // Atualiza a tabela ao fundo
+
+            } catch (error) { 
+                showNotification('Erro', error.message, 'error'); 
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = 'Confirmar Movimentação';
+            }
         };
     }
 }

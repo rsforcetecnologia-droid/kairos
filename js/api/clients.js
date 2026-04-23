@@ -5,7 +5,7 @@ import { authenticatedFetch } from './apiService.js';
 // --- UTILS ---
 const cleanPhone = (phone) => {
     if (!phone) return '';
-    return String(phone).replace(/\D/g, ''); // Remove tudo que não for número
+    return String(phone).replace(/\D/g, ''); // Remove tudo o que não for número
 };
 
 /**
@@ -51,18 +51,26 @@ export const saveClient = (clientData) => {
 };
 
 /**
- * ALIASES PARA COMPATIBILIDADE COM O BUILD (Resolução do Erro)
- * Agenda.js e Clients.js (UI) chamam esses nomes especificamente
+ * ALIASES PARA COMPATIBILIDADE COM O BUILD
+ * Agenda.js e Clients.js (UI) chamam estes nomes especificamente
  */
 export const createClient = saveClient;
 export const updateClient = (clientId, clientData) => saveClient({ ...clientData, id: clientId });
 
 /**
- * Busca histórico completo
+ * Busca histórico completo unificado (ADAPTADO PARA MULTI-EMPRESA)
+ * @param {string|Array|Set} establishmentIds - ID único, Array de IDs ou Set de IDs
+ * @param {string} clientPhone - Telefone do cliente (Chave Mestra)
  */
-export const getFullHistory = (establishmentId, clientPhone) => {
+export const getFullHistory = (establishmentIds, clientPhone) => {
     const id = cleanPhone(clientPhone);
-    return authenticatedFetch(`/api/clients/full-history/${establishmentId}?phone=${id}`);
+    
+    // Formata os IDs: se for Array ou Set, junta com vírgula. Se for string isolada, mantém.
+    const idsParam = (Array.isArray(establishmentIds) || establishmentIds instanceof Set)
+        ? Array.from(establishmentIds).join(',')
+        : establishmentIds;
+
+    return authenticatedFetch(`/api/clients/full-history/${idsParam}?phone=${id}`);
 };
 
 /**
@@ -76,7 +84,7 @@ export const deleteClient = (clientId) => {
 };
 
 /**
- * Resgatar Prêmios
+ * Resgatar Prémios
  */
 export const redeemReward = (establishmentId, clientPhone, points, rewardName) => {
     return authenticatedFetch('/api/clients/redeem', {

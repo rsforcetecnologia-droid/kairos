@@ -55,10 +55,8 @@ const handleError = (res, error, message) => {
 router.get('/:establishmentId', async (req, res) => {
     try {
         const { establishmentId } = req.params;
-        const { search, limit, hasLoyalty, birthMonth, inactiveDays, hasDebt } = req.query; // [NOVO] hasDebt
+        const { search, limit, hasLoyalty, birthMonth, inactiveDays, hasDebt } = req.query; 
         
-        // Se houver filtros de memória (data/mês), aumentamos o limite da busca no banco 
-        // para garantir que tenhamos candidatos suficientes após a filtragem.
         const isFilteringInMemory = birthMonth || inactiveDays;
         const limitVal = isFilteringInMemory ? 500 : (parseInt(limit) || 20);
 
@@ -66,39 +64,29 @@ router.get('/:establishmentId', async (req, res) => {
             .where('establishmentId', '==', establishmentId);
 
         // --- ESTRATÉGIA DE BUSCA NO BANCO ---
-
-        // 1. Otimização: Se filtrar APENAS por fidelidade (sem busca textual)
         if (hasLoyalty === 'true' && !search) {
             query = query.where('loyaltyPoints', '>', 0).orderBy('loyaltyPoints', 'desc');
         } 
-        // 2. Otimização: Se filtrar APENAS por débito (sem busca textual)
         else if (hasDebt === 'true' && !search) {
             query = query.where('totalDebt', '>', 0).orderBy('totalDebt', 'desc');
         }
-        // 3. Busca textual (Nome ou ID)
         else if (search && search.trim()) {
             const term = search.trim();
-            // Busca numérica direta (Telefone ID)
             if (/^\d+$/.test(term)) {
                 const doc = await db.collection('clients').doc(term).get();
                 if (doc.exists && doc.data().establishmentId === establishmentId) {
                      let result = [{ id: doc.id, ...doc.data() }];
-                     // Aplica os filtros de memória no resultado único
                      return res.json(applyMemoryFilters(result, hasLoyalty, birthMonth, inactiveDays, hasDebt)); 
                 }
-                // Fallback: tenta buscar por phone range se não achar ID direto (para casos de prefixo)
                 query = query.orderBy('phone').startAt(term).endAt(term + '\uf8ff');
             } else {
-                // Busca textual por nome (Case Insensitive parcial - primeira letra maiúscula)
                 let searchTerm = term;
                 if (searchTerm.length > 0 && searchTerm === searchTerm.toLowerCase()) {
                     searchTerm = searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1);
                 }
-
                 query = query.orderBy('name').startAt(searchTerm).endAt(searchTerm + '\uf8ff');
             }
         } else {
-            // 4. Padrão: Ordena por nome se não caiu nas otimizações
             if (!(hasLoyalty === 'true' && !search) && !(hasDebt === 'true' && !search)) {
                 query = query.orderBy('name');
             }
@@ -107,7 +95,6 @@ router.get('/:establishmentId', async (req, res) => {
         const snapshot = await query.limit(limitVal).get();
         let clients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // --- FILTRAGEM EM MEMÓRIA (REFINAMENTO) ---
         clients = applyMemoryFilters(clients, hasLoyalty, birthMonth, inactiveDays, hasDebt);
 
         res.json(clients);
@@ -116,70 +103,52 @@ router.get('/:establishmentId', async (req, res) => {
     }
 });
 
-// --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA (CORRIGIDA) ---
+// --- FUNÇÃO AUXILIAR DE FILTROS EM MEMÓRIA ---
 function applyMemoryFilters(list, hasLoyalty, birthMonth, inactiveDays, hasDebt) {
     if (!hasLoyalty && !birthMonth && !inactiveDays && !hasDebt) return list;
 
     return list.filter(c => {
         let pass = true;
 
-        // 1. Filtro Fidelidade
         if (hasLoyalty === 'true') {
             if (!c.loyaltyPoints || c.loyaltyPoints <= 0) pass = false;
         }
 
-        // 2. Filtro Débito (Fiado)
         if (hasDebt === 'true') {
             if (!c.totalDebt || c.totalDebt <= 0) pass = false;
         }
 
-        // 3. Filtro Mês de Aniversário [CORRIGIDO PARA ACEITAR NÚMERO E TEXTO]
         if (pass && birthMonth) {
             const filterMonth = parseInt(birthMonth, 10);
-            
-            // Prioridade: Campo explícito 'dobMonth' (ex: salvo como número 5 ou string "5")
             if (c.dobMonth) {
                 const clientMonth = parseInt(c.dobMonth, 10);
                 if (clientMonth !== filterMonth) pass = false;
             } 
-            // Fallback: Campo 'birthDate' (ex: "2000-05-20")
             else if (c.birthDate) {
                 const parts = c.birthDate.split('-');
                 if (parts.length >= 2) {
-                    const clientMonth = parseInt(parts[1], 10); // "05" vira 5
+                    const clientMonth = parseInt(parts[1], 10);
                     if (clientMonth !== filterMonth) pass = false;
                 } else {
-                    pass = false; // Formato inválido
+                    pass = false; 
                 }
             } else {
-                pass = false; // Sem data de nascimento
+                pass = false; 
             }
         }
 
-        // 4. Filtro de Inatividade (Dias sem visita) [CORRIGIDO COM PARSE DATE]
         if (pass && inactiveDays) {
             const daysLimit = parseInt(inactiveDays);
-            
-            // Busca qualquer registro de data de interação
             const rawDate = c.lastServiceDate || c.lastVisit || c.updatedAt || c.createdAt;
-            
-            // Usa o helper para converter Timestamp/String em objeto Date válido
             const lastDate = parseFirestoreDate(rawDate);
             
             if (!lastDate) {
-                // Se não tem data nenhuma, assumimos que é inativo (nunca veio) -> Passa no filtro
                 pass = true; 
             } else {
                 const now = new Date();
                 const diffTime = Math.abs(now - lastDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                
-                // Lógica: Queremos clientes "Ausentes há X dias".
-                // Se diffDays (dias desde a visita) for MENOR que o limite, ele veio recentemente.
-                // Logo, devemos DESCARTAR (pass = false) pois ele é ATIVO.
-                if (diffDays < daysLimit) {
-                    pass = false; 
-                }
+                if (diffDays < daysLimit) pass = false; 
             }
         }
 
@@ -214,19 +183,17 @@ router.put('/:id', async (req, res) => {
 
         if (!data.establishmentId) return res.status(400).json({ error: 'ID do estabelecimento obrigatório' });
 
-        const now = admin.firestore.FieldValue.serverTimestamp(); // Usa Timestamp do servidor
+        const now = admin.firestore.FieldValue.serverTimestamp(); 
         
-        // Prepara dados de atualização
         const updateData = {
             ...data,
             id: id,
             phone: id,
-            updatedAt: now // Atualiza a data de modificação
+            updatedAt: now 
         };
 
-        // Usa set com merge para criar ou atualizar
         await db.collection('clients').doc(id).set({
-            createdAt: now, // Só define se o doc não existir (devido ao merge)
+            createdAt: now, 
             ...updateData
         }, { merge: true });
         
@@ -250,96 +217,141 @@ router.delete('/:id', async (req, res) => {
 });
 
 // =======================================================================
-// 5. HISTÓRICO UNIFICADO
+// 5. HISTÓRICO UNIFICADO (ADAPTADO PARA MULTI-EMPRESAS)
 // =======================================================================
-router.get('/full-history/:establishmentId', async (req, res) => {
+router.get('/full-history/:establishmentIds', async (req, res) => {
     try {
-        const { establishmentId } = req.params;
+        // Pode receber um ID único ou vários separados por vírgula (Matriz + Filiais)
+        const estIds = req.params.establishmentIds.split(',').filter(id => id.trim() !== '');
         const { phone } = req.query; 
 
-        if (!phone) return res.status(400).json([]);
+        if (!phone || estIds.length === 0) return res.status(400).json([]);
 
         const phoneVariations = getPhoneVariations(phone);
         
-        const [appointmentsSnap, salesSnap, loyaltySnap] = await Promise.all([
-            // Busca Agendamentos
+        // Como o Firestore só permite um 'in' por query e já o usamos nos telefones,
+        // geramos as buscas paralelamente para cada estabelecimento selecionado.
+        const apptPromises = estIds.map(eid => 
             db.collection('appointments')
-                .where('establishmentId', '==', establishmentId)
+                .where('establishmentId', '==', eid)
                 .where('clientPhone', 'in', phoneVariations) 
                 .limit(50) 
-                .get(),
+                .get()
+        );
 
-            // Busca Vendas
+        const salesPromises = estIds.map(eid => 
             db.collection('sales')
-                .where('establishmentId', '==', establishmentId)
+                .where('establishmentId', '==', eid)
                 .where('clientPhone', 'in', phoneVariations)
                 .limit(50)
-                .get(),
+                .get()
+        );
 
-            // Busca Fidelidade
-            db.collection('clients').doc(phone).collection('loyaltyHistory')
-                .orderBy('date', 'desc').limit(50).get()
+        // Fidelidade é vinculada ao cliente (Telefone), buscamos 1 vez.
+        const loyaltyPromise = db.collection('clients').doc(phone).collection('loyaltyHistory')
+            .orderBy('date', 'desc').limit(50).get();
+
+        const [apptSnaps, salesSnaps, loyaltySnap] = await Promise.all([
+            Promise.all(apptPromises),
+            Promise.all(salesPromises),
+            loyaltyPromise
         ]);
 
         const history = [];
 
-        // Processa Agendamentos
-        appointmentsSnap.forEach(doc => {
-            const d = doc.data();
-            const dateIso = parseFirestoreDate(d.startTime); 
+        // Processa Agendamentos (Extrai establishmentId de cada doc para o UI saber a origem)
+        apptSnaps.forEach(snap => {
+            snap.forEach(doc => {
+                const d = doc.data();
+                const dateIso = parseFirestoreDate(d.startTime); 
 
-            if (dateIso) {
-                history.push({
-                    type: 'appointment',
-                    date: dateIso.toISOString(),
-                    description: (d.services && d.services[0]) ? d.services[0].name : (d.serviceName || 'Agendamento'),
-                    status: d.status,
-                    value: d.totalAmount || 0,
-                    id: doc.id
-                });
-            }
-        });
+                if (dateIso) {
+                    history.push({
+                        type: 'appointment',
+                        date: dateIso.toISOString(),
+                        description: (d.services && d.services[0]) ? d.services[0].name : (d.serviceName || 'Agendamento'),
+                        status: d.status,
+                        value: d.totalAmount || 0,
+                        id: doc.id,
+                        establishmentId: d.establishmentId
+                    });
 
-        // Processa Vendas
-        salesSnap.forEach(doc => {
-            const d = doc.data();
-            const dateIso = parseFirestoreDate(d.createdAt); 
-
-            if (dateIso) {
-                history.push({
-                    type: 'sale',
-                    date: dateIso.toISOString(),
-                    description: 'Venda / Comanda',
-                    status: 'paid',
-                    value: d.totalAmount || 0,
-                    id: doc.id
-                });
-            }
-        });
-
-        // Processa Fidelidade
-        loyaltySnap.forEach(doc => {
-            const d = doc.data();
-            const dateVal = parseFirestoreDate(d.date || d.timestamp);
-            
-            history.push({
-                type: 'loyalty',
-                date: dateVal ? dateVal.toISOString() : new Date().toISOString(),
-                description: d.rewardName || (d.points > 0 ? 'Acúmulo Manual' : 'Resgate'),
-                status: 'completed',
-                value: d.points,
-                isPoints: true,
-                id: doc.id
+                    // --- Captura os pontos ganhos neste agendamento ---
+                    if (d.status === 'completed' && d.loyaltyPointsEarned > 0) {
+                        history.push({
+                            type: 'loyalty',
+                            date: dateIso.toISOString(),
+                            description: 'Pontos de Agendamento',
+                            points: d.loyaltyPointsEarned, // Valor positivo
+                            id: doc.id + '_earn',
+                            establishmentId: d.establishmentId
+                        });
+                    }
+                    
+                    // --- Captura os pontos resgatados (deduzidos) neste agendamento ---
+                    if (d.loyaltyRedemption) {
+                        history.push({
+                            type: 'loyalty',
+                            date: dateIso.toISOString(),
+                            description: `Resgate: ${d.loyaltyRedemption.name || 'Prêmio'}`,
+                            points: -(d.loyaltyRedemption.cost || 0), // Valor negativo (Deduz)
+                            id: doc.id + '_redeem',
+                            establishmentId: d.establishmentId
+                        });
+                    }
+                }
             });
         });
 
-        // Ordenação Final em Memória
+        // Processa Vendas / Comandas
+        salesSnaps.forEach(snap => {
+            snap.forEach(doc => {
+                const d = doc.data();
+                const dateIso = parseFirestoreDate(d.createdAt); 
+
+                if (dateIso) {
+                    history.push({
+                        type: 'sale',
+                        date: dateIso.toISOString(),
+                        description: 'Venda / Comanda',
+                        status: 'paid',
+                        value: d.totalAmount || 0,
+                        id: doc.id,
+                        establishmentId: d.establishmentId
+                    });
+                    
+                    // A captura de pontos de fidelidade (earn/redeem) foi removida daqui
+                    // para evitar duplicação com a captura já feita no processamento de Agendamentos.
+                }
+            });
+        });
+
+        // Processa Fidelidade (Ajustes manuais e outros registos antigos diretos no cliente)
+        if (loyaltySnap) {
+            loyaltySnap.forEach(doc => {
+                const d = doc.data();
+                const dateVal = parseFirestoreDate(d.date || d.timestamp);
+                
+                history.push({
+                    type: 'loyalty',
+                    date: dateVal ? dateVal.toISOString() : new Date().toISOString(),
+                    description: d.rewardName || (d.points > 0 ? 'Acúmulo Manual' : 'Resgate'),
+                    status: 'completed',
+                    value: d.points,
+                    isPoints: true,
+                    id: doc.id,
+                    establishmentId: d.establishmentId || estIds[0]
+                });
+            });
+        }
+
+        // Ordenação Final em Memória (Mais recentes primeiro)
         history.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.json(history);
 
     } catch (error) {
-        handleError(res, error, 'Falha ao buscar histórico');
+        handleError(res, error, 'Falha ao buscar histórico unificado');
     }
 });
 
@@ -360,7 +372,6 @@ router.post('/redeem', async (req, res) => {
 
             if (currentPoints < cost) throw new Error(`Saldo insuficiente.`);
 
-            // Atualiza pontos e data de última interação (importante para filtro de inatividade)
             t.update(clientRef, { 
                 loyaltyPoints: currentPoints - cost,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
