@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Agendamento Online</title>
+    <title>Agendamento e Assinaturas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -78,13 +78,20 @@
             animation: spin 1s linear infinite;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Estilo da tab de navegação (Serviços / Planos) */
+        .nav-tab {
+            flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 700;
+            color: var(--theme-text); border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.3s;
+        }
+        .nav-tab.active { color: var(--theme-primary); border-bottom-color: var(--theme-primary); }
     </style>
 </head>
 <body class="antialiased">
 
     <div class="fixed top-4 right-4 z-40">
         <button id="myAppointmentsBtn" class="text-xs font-semibold shadow-md px-4 py-2 rounded-full transition-transform hover:scale-105 flex items-center gap-2 theme-card" style="color: var(--theme-title-color);">
-            <i class="bi bi-calendar2-check theme-text-color"></i> Minhas Reservas
+            <i class="bi bi-person-circle theme-text-color"></i> Minha Conta
         </button>
     </div>
 
@@ -97,8 +104,7 @@
             <h1 id="networkName" class="text-3xl font-bold title-text mb-2">Bem-vindo(a)</h1>
             <p class="font-medium mb-8 opacity-80">Por favor, escolha em qual das nossas unidades deseja ser atendido hoje:</p>
             
-            <div id="branches-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
-                </div>
+            <div id="branches-list" class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left"></div>
         </div>
     </div>
 
@@ -126,8 +132,12 @@
                 </div>
             </div>
 
-            <div class="flex justify-center gap-3 mb-6 w-full hidden" id="social-links-container">
-                </div>
+            <div class="flex justify-center gap-3 mb-4 w-full hidden" id="social-links-container"></div>
+
+            <div class="flex w-full border-b border-gray-200 border-opacity-30 mb-6" id="main-tabs-container">
+                <button class="nav-tab active" data-target="services">Agendar Serviço</button>
+                <button class="nav-tab hidden" data-target="plans" id="tab-plans">Clubes VIP <i class="bi bi-star-fill text-yellow-500 ml-1"></i></button>
+            </div>
 
             <section id="services-section" class="w-full text-left fade-in">
                 <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 mb-3 ml-2 title-text">Serviços Disponíveis</h2>
@@ -136,7 +146,62 @@
                 </div>
             </section>
 
-            <section id="professionals-section" class="w-full text-left hidden">
+            <section id="plans-section" class="w-full text-left fade-in hidden">
+                <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 mb-3 ml-2 title-text">Nossos Clubes de Benefícios</h2>
+                <div id="plans-container" class="space-y-4 pb-8">
+                    <div class="flex justify-center py-10"><div class="loader"></div></div>
+                </div>
+            </section>
+
+            <section id="plan-checkout-section" class="w-full text-left fade-in hidden">
+                <div class="flex items-center justify-between mb-4 px-2">
+                    <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Checkout Seguro</h2>
+                    <button id="plan-checkout-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Cancelar</button>
+                </div>
+
+                <div class="theme-card p-5 mb-5 border-l-4 theme-border-color">
+                    <h3 id="checkout-plan-name" class="font-black text-xl title-text mb-1"></h3>
+                    <div class="flex items-end gap-1 mb-3">
+                        <span class="text-sm font-bold title-text opacity-70">R$</span>
+                        <span id="checkout-plan-price" class="text-3xl font-black title-text"></span>
+                        <span id="checkout-plan-cycle" class="text-xs font-semibold title-text opacity-60">/mês</span>
+                    </div>
+                    <p class="text-xs opacity-70"><i class="bi bi-shield-check text-green-500 mr-1"></i> Pagamento seguro processado via Pagar.me</p>
+                </div>
+
+                <form id="plan-checkout-form" class="space-y-5 pb-8">
+                    <div class="space-y-3">
+                        <h4 class="text-xs font-bold uppercase tracking-widest opacity-50 title-text ml-1">Seus Dados</h4>
+                        <input type="text" id="subName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Nome Completo" required>
+                        <input type="email" id="subEmail" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Seu melhor E-mail" required>
+                        <div class="grid grid-cols-2 gap-3">
+                            <input type="tel" id="subDocument" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="CPF" required>
+                            <input type="tel" id="subPhone" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Celular / WhatsApp" required>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 pt-3 border-t border-[var(--theme-card-border)]">
+                        <div class="flex justify-between items-center ml-1">
+                            <h4 class="text-xs font-bold uppercase tracking-widest opacity-50 title-text">Cartão de Crédito</h4>
+                            <div class="flex gap-1 text-gray-400 text-lg"><i class="bi bi-credit-card-2-front-fill"></i></div>
+                        </div>
+                        <input type="text" id="cardName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text uppercase" placeholder="Nome impresso no cartão" required>
+                        <input type="tel" id="cardNumber" maxlength="19" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text tracking-widest" placeholder="0000 0000 0000 0000" required>
+                        
+                        <div class="grid grid-cols-3 gap-3">
+                            <input type="tel" id="cardExpMonth" maxlength="2" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text text-center" placeholder="Mês (01)" required>
+                            <input type="tel" id="cardExpYear" maxlength="2" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text text-center" placeholder="Ano (28)" required>
+                            <input type="tel" id="cardCvv" maxlength="4" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text text-center" placeholder="CVV" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="btn-submit-subscription" class="w-full theme-bg-color font-bold text-base py-4 radius-dynamic shadow-md hover:shadow-lg hover:opacity-90 active:scale-[0.98] transition-all mt-4 flex justify-center items-center gap-2">
+                        <i class="bi bi-lock-fill"></i> Assinar Agora
+                    </button>
+                </form>
+            </section>
+
+            <section id="professionals-section" class="w-full text-left hidden fade-in">
                 <div class="flex items-center justify-between mb-3 px-2">
                     <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Escolha o Profissional</h2>
                     <button id="professionals-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
@@ -144,7 +209,7 @@
                 <div id="professionals-container" class="grid grid-cols-3 gap-3 pb-8"></div>
             </section>
 
-            <section id="schedule-section" class="w-full text-left hidden">
+            <section id="schedule-section" class="w-full text-left hidden fade-in">
                 <div class="flex items-center justify-between mb-3 px-2">
                     <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Data e Hora</h2>
                     <button id="schedule-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
@@ -171,7 +236,7 @@
                 </div>
             </section>
 
-            <section id="confirmation-section" class="w-full text-left hidden">
+            <section id="confirmation-section" class="w-full text-left hidden fade-in">
                 <div class="flex items-center justify-between mb-3 px-2">
                     <h2 class="text-sm font-bold uppercase tracking-wider opacity-60 title-text">Finalizar Agendamento</h2>
                     <button id="confirmation-back-btn" class="text-xs font-bold theme-text-color hover:opacity-70"><i class="bi bi-arrow-left"></i> Voltar</button>
@@ -238,17 +303,6 @@
                             <span class="text-xs font-bold title-text">Rafael Costa</span>
                         </div>
                     </div>
-                    
-                    <div class="theme-card p-5 min-w-[260px] max-w-[280px] sm:min-w-[300px] sm:max-w-[320px] snap-center shrink-0 flex flex-col whitespace-normal">
-                        <div class="flex gap-1 text-yellow-400 text-xs mb-3">
-                            <i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-half"></i>
-                        </div>
-                        <p class="text-sm italic opacity-80 mb-4 title-text flex-grow text-left leading-relaxed">"Profissionais super qualificados. O resultado final superou as minhas expectativas. O ambiente também é ótimo."</p>
-                        <div class="flex items-center gap-3 mt-auto pt-3 border-t border-gray-200 border-opacity-20">
-                            <div class="w-8 h-8 rounded-full theme-bg-color flex items-center justify-center text-xs font-bold text-white shadow-sm">LA</div>
-                            <span class="text-xs font-bold title-text">Lucas Almeida</span>
-                        </div>
-                    </div>
                 </div>
             </section>
 
@@ -308,7 +362,34 @@
                 });
             }
 
+            function setupCardMask(inputId) {
+                const input = document.getElementById(inputId);
+                if (!input) return;
+                input.addEventListener('input', (e) => {
+                    let v = e.target.value.replace(/\D/g, '');
+                    v = v.replace(/(\d{4})/g, '$1 ').trim();
+                    e.target.value = v;
+                });
+            }
+
+            function setupCPFMaks(inputId) {
+                const input = document.getElementById(inputId);
+                if(!input) return;
+                input.addEventListener('input', (e) => {
+                    let v = e.target.value.replace(/\D/g, '');
+                    if (v.length > 11) v = v.substring(0,11);
+                    if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+                    else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
+                    else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2");
+                    e.target.value = v;
+                });
+            }
+
             setupPhoneMask('clientPhone');
+            setupPhoneMask('subPhone');
+            setupPhoneMask('lookupPhone');
+            setupCardMask('cardNumber');
+            setupCPFMaks('subDocument');
 
             // --- APLICAÇÃO DO TEMA E LAYOUT ---
             function applyCustomization(data) {
@@ -385,6 +466,8 @@
             let currentWeekStart = null; 
             let allServicesData = [];
             let allProfessionalsData = [];
+            let allPlansData = [];
+            let selectedPlanToCheckout = null;
             
             const booking = { professionalId: null, professionalName: null, services: [], date: null, time: null };
 
@@ -393,32 +476,61 @@
             const myAppointmentsView = document.getElementById('my-appointments-view');
             const myAppointmentsContent = document.getElementById('appointments-content');
             
+            // Containers
             const servicesContainer = document.getElementById('services-container');
+            const plansContainer = document.getElementById('plans-container');
             const professionalsContainer = document.getElementById('professionals-container');
             const morningSlotsContainer = document.getElementById('morning-slots');
             const afternoonSlotsContainer = document.getElementById('afternoon-slots');
             const weekContainer = document.getElementById('week-container');
             
+            // Forms e botões
             const confirmationForm = document.getElementById('confirmation-form');
+            const planCheckoutForm = document.getElementById('plan-checkout-form');
             const prevWeekBtn = document.getElementById('prev-week-btn');
             const nextWeekBtn = document.getElementById('next-week-btn');
             const monthYearDisplay = document.getElementById('month-year-display');
             
+            // Navegação e Tabs
+            const sections = { 
+                services: document.getElementById('services-section'), 
+                plans: document.getElementById('plans-section'),
+                planCheckout: document.getElementById('plan-checkout-section'),
+                professionals: document.getElementById('professionals-section'), 
+                schedule: document.getElementById('schedule-section'), 
+                confirmation: document.getElementById('confirmation-section') 
+            };
+
+            const showSection = (sectionName) => {
+                Object.keys(sections).forEach(key => sections[key].classList.add('hidden'));
+                sections[sectionName].classList.remove('hidden');
+                sections[sectionName].classList.add('fade-in');
+
+                if (sectionName === 'schedule' && booking.date) {
+                    morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
+                    afternoonSlotsContainer.innerHTML = '';
+                }
+            };
+
+            // Gestão das Tabs
+            const tabs = document.querySelectorAll('.nav-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    showSection(tab.dataset.target);
+                });
+            });
+
             document.getElementById('professionals-back-btn').addEventListener('click', () => showSection('services'));
             document.getElementById('schedule-back-btn').addEventListener('click', () => showSection('professionals'));
             document.getElementById('confirmation-back-btn').addEventListener('click', () => showSection('schedule'));
+            document.getElementById('plan-checkout-back-btn').addEventListener('click', () => showSection('plans'));
 
             if (!URL_ID) {
                 document.body.innerHTML = '<div class="flex h-screen items-center justify-center p-4 text-center text-gray-500 font-bold">Link da loja não encontrado. Peça o link correto ao estabelecimento.</div>';
                 return;
             }
-
-            const sections = { 
-                services: document.getElementById('services-section'), 
-                professionals: document.getElementById('professionals-section'), 
-                schedule: document.getElementById('schedule-section'), 
-                confirmation: document.getElementById('confirmation-section') 
-            };
 
             function showNotificationModal(title, message) {
                 document.getElementById('modal-title').textContent = title;
@@ -434,17 +546,6 @@
                 d.setDate(diff);
                 return d;
             }
-
-            const showSection = (sectionName) => {
-                Object.keys(sections).forEach(key => sections[key].classList.add('hidden'));
-                sections[sectionName].classList.remove('hidden');
-                sections[sectionName].classList.add('fade-in');
-
-                if (sectionName === 'schedule' && booking.date) {
-                    morningSlotsContainer.innerHTML = '<div class="loader mx-auto col-span-4 mt-4"></div>';
-                    afternoonSlotsContainer.innerHTML = '';
-                }
-            };
 
             const checkNetworkAndLoad = async () => {
                 try {
@@ -518,6 +619,7 @@
                         }
                         
                         loadServices(); 
+                        loadPlans(); // 🚀 Carrega os Planos de Assinatura
                     }
 
                 } catch(error) {
@@ -574,6 +676,150 @@
                     servicesContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Erro ao carregar serviços.</p>';
                 }
             };
+
+            // 🚀 NOVA FUNÇÃO: CARREGAR PLANOS DE ASSINATURA
+            const loadPlans = async () => {
+                plansContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/public/subscriptions/plans/${REAL_ESTABLISHMENT_ID}`);
+                    if (!response.ok) throw new Error();
+                    const plans = await response.json();
+                    allPlansData = plans;
+                    plansContainer.innerHTML = '';
+                    
+                    if (plans.length > 0) {
+                        // Mostra a Tab se existirem planos
+                        document.getElementById('tab-plans').classList.remove('hidden');
+                    } else {
+                        plansContainer.innerHTML = '<div class="text-center py-10 theme-card"><i class="bi bi-star text-3xl opacity-30"></i><p class="mt-2 text-sm font-medium opacity-70">Nenhum clube disponível de momento.</p></div>';
+                        return;
+                    }
+
+                    const translateCycle = { 'monthly': 'mês', 'quarterly': 'trimestre', 'semiannual': 'semestre', 'yearly': 'ano' };
+
+                    plans.forEach(plan => {
+                        const card = document.createElement('div');
+                        card.className = 'theme-card p-5 cursor-pointer hover:border-[color:var(--theme-primary)] hover:shadow-md transition-all group overflow-hidden relative';
+                        
+                        const cycleStr = translateCycle[plan.billingCycle] || plan.billingCycle;
+                        
+                        card.innerHTML = `
+                            <div class="absolute -right-6 -top-6 w-20 h-20 rounded-full theme-bg-color opacity-10 group-hover:scale-150 transition-transform duration-500"></div>
+                            
+                            <div class="flex justify-between items-start mb-3 relative z-10">
+                                <div>
+                                    <h3 class="font-black text-lg title-text leading-tight">${plan.name}</h3>
+                                    <p class="text-[11px] opacity-70 mt-1">${plan.description || 'Assinatura Premium'}</p>
+                                </div>
+                                <div class="w-10 h-10 radius-dynamic theme-bg-color flex-shrink-0 flex items-center justify-center text-white shadow-sm">
+                                    <i class="bi bi-star-fill text-lg"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-4 relative z-10 flex items-baseline gap-1 theme-text-color">
+                                <span class="font-bold text-sm">R$</span>
+                                <span class="font-black text-3xl tracking-tight">${plan.price.toFixed(2).replace('.', ',')}</span>
+                                <span class="text-[11px] opacity-70 font-semibold">/${cycleStr}</span>
+                            </div>
+                            
+                            <div class="space-y-1.5 mb-5 relative z-10">
+                                <div class="flex items-center text-xs opacity-80 title-text">
+                                    <i class="bi bi-check2-circle text-green-500 mr-2 text-sm"></i>
+                                    <span>${plan.servicesIncluded.length} Serviços Inclusos</span>
+                                </div>
+                                <div class="flex items-center text-xs opacity-80 title-text">
+                                    <i class="bi bi-check2-circle text-green-500 mr-2 text-sm"></i>
+                                    <span>${plan.usageLimit ? `Até ${plan.usageLimit} usos no ${cycleStr}` : 'Usos Ilimitados'}</span>
+                                </div>
+                                <div class="flex items-center text-xs opacity-80 title-text">
+                                    <i class="bi bi-check2-circle text-green-500 mr-2 text-sm"></i>
+                                    <span>Renovação Automática</span>
+                                </div>
+                            </div>
+
+                            <button class="w-full py-3 theme-bg-color font-bold text-sm radius-dynamic shadow-sm group-hover:shadow-md transition-all relative z-10">
+                                Quero Assinar
+                            </button>
+                        `;
+                        
+                        card.addEventListener('click', () => {
+                            selectedPlanToCheckout = plan;
+                            
+                            // Popula resumo do Checkout
+                            document.getElementById('checkout-plan-name').textContent = plan.name;
+                            document.getElementById('checkout-plan-price').textContent = plan.price.toFixed(2).replace('.', ',');
+                            document.getElementById('checkout-plan-cycle').textContent = `/${cycleStr}`;
+                            
+                            showSection('planCheckout');
+                        });
+                        plansContainer.appendChild(card);
+                    });
+                } catch {
+                    plansContainer.innerHTML = '<p class="text-red-500 text-center font-bold">Erro ao carregar planos.</p>';
+                }
+            };
+
+            // 🚀 SUBMETER O CHECKOUT DA ASSINATURA (CARTÃO DE CRÉDITO)
+            planCheckoutForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btn = document.getElementById('btn-submit-subscription');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> Processando pagamento...';
+
+                // Prepara dados conforme esperado pelo Pagar.me V5 (roteado no backend)
+                const customerData = {
+                    name: document.getElementById('subName').value,
+                    email: document.getElementById('subEmail').value,
+                    document: document.getElementById('subDocument').value,
+                    phone: document.getElementById('subPhone').value
+                };
+
+                const cardData = {
+                    number: document.getElementById('cardNumber').value,
+                    holder_name: document.getElementById('cardName').value,
+                    exp_month: document.getElementById('cardExpMonth').value,
+                    exp_year: document.getElementById('cardExpYear').value,
+                    cvv: document.getElementById('cardCvv').value
+                };
+
+                const payload = {
+                    establishmentId: REAL_ESTABLISHMENT_ID,
+                    planId: selectedPlanToCheckout.id,
+                    customer: customerData,
+                    card: cardData
+                };
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/public/subscriptions/checkout`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.details || data.message || 'Erro ao processar pagamento.');
+                    }
+
+                    // Sucesso!
+                    document.querySelector('main').innerHTML = `
+                        <div class="text-center py-12 fade-in">
+                            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border-4 border-white">
+                                <i class="bi bi-star-fill text-4xl text-green-500"></i>
+                            </div>
+                            <h2 class="text-2xl font-bold title-text mb-3">Bem-vindo(a) ao Clube!</h2>
+                            <p class="opacity-80 px-4 mb-8">A sua assinatura foi processada com sucesso. Já pode começar a usufruir dos seus benefícios.</p>
+                            <button onclick="location.reload()" class="theme-bg-color font-bold py-3 px-8 radius-dynamic hover:opacity-80 transition-opacity shadow-md">Voltar ao Início</button>
+                        </div>
+                    `;
+
+                } catch (error) {
+                    showNotificationModal('Pagamento Recusado', error.message);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-lock-fill"></i> Tentar Novamente';
+                }
+            });
             
             const loadProfessionalsForService = async () => {
                 professionalsContainer.innerHTML = '<div class="loader mx-auto col-span-3 my-10"></div>';
@@ -704,7 +950,6 @@
                         }
 
                         const btn = document.createElement('button');
-                        // Usando propriedades mobile-friendly e type="button"
                         btn.type = 'button';
                         btn.className = 'time-slot-btn py-2.5 text-xs font-bold theme-card hover:border-[color:var(--theme-primary)] hover:text-[color:var(--theme-primary)] transition shadow-sm title-text w-full appearance-none outline-none touch-manipulation select-none';
                         btn.textContent = slot;
@@ -729,7 +974,6 @@
                 }
             };
 
-            // Nova função renderWeek refatorada para mobile hitbox
             const renderWeek = () => {
                 weekContainer.innerHTML = '';
                 const today = new Date();
@@ -743,7 +987,6 @@
                     const isSelected = booking.date === dateStr;
                     
                     const btn = document.createElement('button');
-                    // type="button" garante que não hajam conflitos de formulário, e classes como touch-manipulation e appearance-none otimizam área clicável
                     btn.type = 'button'; 
                     btn.className = 'day-button w-full h-full min-h-[64px] flex flex-col items-center justify-center p-1 sm:p-2 radius-dynamic transition-colors border border-transparent select-none touch-manipulation cursor-pointer appearance-none outline-none';
                     

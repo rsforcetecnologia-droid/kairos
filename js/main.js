@@ -52,6 +52,9 @@ import { loadPackagesPage } from './ui/packages.js';
 import { loadMyProfilePage } from './ui/my-profile.js'; 
 import { renderHierarchyScreen } from './ui/hierarchy.js'; 
 
+// 🚀 NOVO MÓDULO IMPORTADO: Gestão de Planos e Assinaturas
+import { loadSubscriptionPlansPage } from './ui/subscriptionPlans.js';
+
 // --- 2. REFERÊNCIAS AO DOM ---
 const loadingScreen = document.getElementById('loadingScreen');
 const dashboardContent = document.getElementById('dashboardContent');
@@ -113,6 +116,9 @@ const pageLoader = {
     'my-profile-section': loadMyProfilePage,
     'hierarquia-section': () => renderHierarchyScreen(contentDiv),
     'establishments-section': () => renderHierarchyScreen(contentDiv),
+    
+    // 🚀 NOVA ROTA Mapeada
+    'planos-assinatura-section': loadSubscriptionPlansPage
 };
 
 const pageTitles = {
@@ -134,7 +140,10 @@ const pageTitles = {
     'packages-section': 'Pacotes',
     'my-profile-section': 'Meu Perfil',
     'hierarquia-section': 'Rede / Filiais',
-    'establishments-section': 'Rede / Filiais'
+    'establishments-section': 'Rede / Filiais',
+    
+    // 🚀 NOVO TÍTULO Mapeado
+    'planos-assinatura-section': 'Clubes e Planos'
 };
 
 // --- 4. FUNÇÕES DE TEMA (DARK / LIGHT MODE) ---
@@ -365,6 +374,7 @@ export function navigateTo(sectionId, params = {}) {
     const moduleKey = sectionId.replace('-section', '');
     if (sectionId !== 'my-profile-section') {
         const isHierarchyOrConfig = ['hierarquia-section', 'establishments-section', 'estabelecimento-section', 'dashboard-section'].includes(sectionId);
+        // Assumimos que o módulo de planos está liberado se o estabelecimento estiver liberado, ou crie a lógica de módulo
         const isModuleEnabled = state.enabledModules?.[moduleKey] !== false;
         const hasEmployeePermission = state.userPermissions === null || state.userPermissions[sectionId]?.view === true;
         

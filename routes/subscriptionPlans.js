@@ -42,7 +42,6 @@ function getAccessibleEstablishmentIds(req, requestedIdsStr) {
 /**
  * ROTA: POST /api/subscription-plans
  * OBJETIVO: Criar um novo plano de assinatura
- * PERMISSÃO: Apenas Donos (isOwner)
  */
 router.post('/', verifyToken, isOwner, async (req, res) => {
     const { db } = req;
@@ -54,7 +53,6 @@ router.post('/', verifyToken, isOwner, async (req, res) => {
     }
 
     try {
-        // Obter os IDs de Grupo e Companhia para manter a integridade Multi-Tenant
         const estDoc = await db.collection('establishments').doc(estId).get();
         const groupId = estDoc.exists ? (estDoc.data().groupId || null) : null;
         const companyId = estDoc.exists ? (estDoc.data().companyId || null) : null;
@@ -66,9 +64,9 @@ router.post('/', verifyToken, isOwner, async (req, res) => {
             name,
             description: description || '',
             price: Number(price),
-            billingCycle, // Ex: 'monthly', 'yearly', 'weekly'
-            servicesIncluded: Array.isArray(servicesIncluded) ? servicesIncluded : [], // IDs dos serviços cobertos
-            usageLimit: usageLimit ? Number(usageLimit) : null, // Qtd. de serviços que o cliente pode fazer por ciclo
+            billingCycle,
+            servicesIncluded: Array.isArray(servicesIncluded) ? servicesIncluded : [],
+            usageLimit: usageLimit ? Number(usageLimit) : null,
             active: active !== undefined ? active : true,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -90,7 +88,6 @@ router.post('/', verifyToken, isOwner, async (req, res) => {
 /**
  * ROTA: GET /api/subscription-plans/:contextId
  * OBJETIVO: Listar os planos da unidade/rede
- * PERMISSÃO: Funcionários e Donos (hasAccess)
  */
 router.get('/:contextId', verifyToken, hasAccess, async (req, res) => {
     const { contextId } = req.params;
@@ -105,21 +102,29 @@ router.get('/:contextId', verifyToken, hasAccess, async (req, res) => {
         // Filtrar pelas unidades permitidas
         if (validEstIds.length === 1) {
             query = query.where('establishmentId', '==', validEstIds[0]);
-        } else {
+        } else if (validEstIds.length > 0) {
             query = query.where('establishmentId', 'in', validEstIds.slice(0, 10));
         }
 
-        // Se passar a query string ?activeOnly=true, traz só os ativos (bom para o checkout)
+        // Se passar a query string ?activeOnly=true, traz só os ativos
         if (activeOnly === 'true') {
             query = query.where('active', '==', true);
         }
 
-        const snapshot = await query.orderBy('createdAt', 'desc').get();
+        // 🚀 CORREÇÃO AQUI: Removemos o .orderBy() para não dar erro de índice
+        const snapshot = await query.get();
         
         const plans = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
+
+        // 🚀 CORREÇÃO AQUI: Ordenamos em memória (JavaScript) do mais recente para o mais antigo
+        plans.sort((a, b) => {
+            const dateA = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate() : new Date(0);
+            const dateB = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(0);
+            return dateB - dateA;
+        });
 
         res.status(200).json(plans);
 
@@ -130,15 +135,13 @@ router.get('/:contextId', verifyToken, hasAccess, async (req, res) => {
 
 /**
  * ROTA: PUT /api/subscription-plans/:planId
- * OBJETIVO: Atualizar um plano (ex: mudar preço, desativar)
- * PERMISSÃO: Apenas Donos (isOwner)
+ * OBJETIVO: Atualizar um plano
  */
 router.put('/:planId', verifyToken, isOwner, async (req, res) => {
     const { planId } = req.params;
     const { db } = req;
     const updateData = req.body;
 
-    // Remover campos que não devem ser alterados diretamente via PUT genérico
     delete updateData.establishmentId;
     delete updateData.groupId;
     delete updateData.companyId;
@@ -152,7 +155,6 @@ router.put('/:planId', verifyToken, isOwner, async (req, res) => {
             return res.status(404).json({ message: "Plano não encontrado." });
         }
 
-        // Garantir que o preço e limite são números se existirem no payload
         if (updateData.price !== undefined) updateData.price = Number(updateData.price);
         if (updateData.usageLimit !== undefined) updateData.usageLimit = updateData.usageLimit ? Number(updateData.usageLimit) : null;
 
@@ -170,7 +172,6 @@ router.put('/:planId', verifyToken, isOwner, async (req, res) => {
 /**
  * ROTA: DELETE /api/subscription-plans/:planId
  * OBJETIVO: Apagar um plano de assinatura
- * PERMISSÃO: Apenas Donos (isOwner)
  */
 router.delete('/:planId', verifyToken, isOwner, async (req, res) => {
     const { planId } = req.params;
@@ -183,11 +184,7 @@ router.delete('/:planId', verifyToken, isOwner, async (req, res) => {
         if (!planDoc.exists) {
             return res.status(404).json({ message: "Plano não encontrado." });
         }
-
-        // Nota: Idealmente, num sistema financeiro, faz-se "Soft Delete" (active: false).
-        // Mas como criámos o PUT acima, o utilizador pode desativar. Aqui fazemos Hard Delete.
         
-        // Regra de Ouro: Verificar se há assinaturas ativas com este plano antes de apagar
         const activeSubscriptions = await db.collection('client_subscriptions')
             .where('planId', '==', planId)
             .where('status', '==', 'active')
