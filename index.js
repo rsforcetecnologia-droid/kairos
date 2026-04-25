@@ -88,13 +88,14 @@ const packagesRoutes = require('./routes/packages');
 const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
 const publicRegisterRoutes = require('./routes/publicRegister'); 
 
-// 🔄 ALTERAÇÃO: Trocando Stripe por Pagar.me
-// const stripeWebhookRoutes = require('./routes/stripeWebhook'); // (Comentado/Removido)
-//const pagarmeWebhookRoutes = require('./routes/pagarmeWebhook'); // (Novo arquivo que criamos)
+// 🚀 NOVAS IMPORTAÇÕES: Integração Pagar.me & Assinaturas
+const pagarmeRecipientRoutes = require('./routes/pagarmeRecipient'); 
+const subscriptionPlansRoutes = require('./routes/subscriptionPlans'); 
+const pagarmeWebhookRoutes = require('./routes/pagarmeWebhook'); 
 
 // --- 0. ROTAS DE WEBHOOK ---
-// app.use('/api/webhook/stripe', addFirebaseInstances, stripeWebhookRoutes); // (Comentado/Removido)
-//app.use('/api/webhook/pagarme', addFirebaseInstances, pagarmeWebhookRoutes); // (Nova rota)
+// IMPORTANTE: Webhooks não usam verifyToken pois as chamadas vêm dos servidores do Pagar.me
+app.use('/api/webhook/pagarme', addFirebaseInstances, pagarmeWebhookRoutes); 
 
 // --- 1. ROTA DE UPLOAD DE LOGOTIPO ---
 const storage = multer.memoryStorage();
@@ -170,6 +171,10 @@ app.use('/api/comandas', verifyToken, checkSubscription, hasAccess, comandasRout
 app.use('/api/financial', verifyToken, checkSubscription, hasAccess, financialRoutes);
 app.use('/api/commissions', verifyToken, checkSubscription, hasAccess, commissionsRoutes); 
 app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRoutes); 
+
+// 🚀 NOVAS ROTAS: Integração Pagar.me & Planos de Assinatura (Protegidas)
+app.use('/api/pagarme', pagarmeRecipientRoutes);
+app.use('/api/subscription-plans', verifyToken, hasAccess, subscriptionPlansRoutes);
 
 // Rotas Híbridas/Públicas
 app.use('/api/establishments', establishmentRoutes); 

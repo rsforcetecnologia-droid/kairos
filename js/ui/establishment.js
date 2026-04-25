@@ -12,6 +12,9 @@ import { updatePassword, updateProfile, verifyBeforeUpdateEmail, reauthenticateW
 import { navigateTo } from '../main.js';
 import { escapeHTML } from '../utils.js'; 
 
+// 🚀 IMPORTAÇÃO DO MÓDULO PAGAR.ME
+import { loadPagarmeConfig } from './pagarmeConfig.js'; 
+
 const contentDiv = document.getElementById('content');
 const daysOfWeek = { monday: 'Segunda', tuesday: 'Terça', wednesday: 'Quarta', thursday: 'Quinta', friday: 'Sexta', saturday: 'Sábado', sunday: 'Domingo' };
 
@@ -61,6 +64,8 @@ function getMenuItems() {
         { id: 'whatsapp-bot', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', label: 'Atendente Virtual (WhatsApp)' },
         { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
         { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
+        // 🚀 ADICIONADO AQUI: Novo Módulo de Pagamentos
+        { id: 'pagarme', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z', label: 'Pagamentos (Pagar.me)' },
         { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
         { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
         { id: 'support', icon: 'M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z', label: 'Suporte e Ajuda' },
@@ -511,6 +516,12 @@ function renderBrandingSection(data, container) {
                                     </div>
                                 </div>
                             </div>
+                            
+                            <div class="absolute bottom-4 left-4 right-4 py-3 px-4 shadow-lg flex justify-between items-center z-20" style="background-color: var(--preview-primary); color: white; border-radius: var(--preview-btn-radius);">
+                                <span class="text-xs font-semibold">1 serviço</span>
+                                <span class="text-sm font-bold flex items-center gap-1">Continuar <i class="bi bi-arrow-right"></i></span>
+                            </div>
+
                         </div>
                     </form>
                 </div>
@@ -1542,6 +1553,8 @@ async function showSettingsDetailView(sectionId) {
         case 'whatsapp-bot': renderWhatsAppSection(establishmentData, detailContainer); break;
         case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; 
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
+        // 🚀 ROTEAMENTO PARA A TELA DE PAGAMENTOS PAGAR.ME
+        case 'pagarme': loadPagarmeConfig(detailContainer); break;
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
         case 'cancellation': renderCancellationSection(establishmentData, detailContainer); break;
         default: detailContainer.innerHTML = `<div class="p-4 text-center">Módulo em construção.</div>`;

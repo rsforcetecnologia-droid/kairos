@@ -10,7 +10,7 @@ const EVOLUTION_API_URL = "https://kinghost-evolution-api.tm5bar.easypanel.host"
 const EVOLUTION_API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
 // Crie um workflow no n8n com o nó "Webhook" (POST), copie a URL de Teste/Produção e cole aqui:
-const N8N_WEBHOOK_URL = "https://kinghost-n8n.tm5bar.easypanel.host/webhook-test/cf0f4c80-7c98-4c3f-876b-a0ffba5c4567"; 
+const N8N_WEBHOOK_URL = "https://kinghost-n8n.tm5bar.easypanel.host/webhook/cf0f4c80-7c98-4c3f-876b-a0ffba5c4567"; 
 
 // 1. Rota para Criar Instância, Configurar Webhook e Gerar QR Code
 router.post('/connect', async (req, res) => {
