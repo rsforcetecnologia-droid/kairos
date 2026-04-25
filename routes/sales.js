@@ -19,10 +19,8 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, uid } = req.user;
-    // Extraímos loyaltyRedemption do corpo da requisição
-    const { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId, discount, loyaltyRedemption } = req.body;
+    let { items, totalAmount, payments, clientName, clientPhone, professionalId, cashierSessionId, discount, loyaltyRedemption } = req.body;
 
-    // Log de auditoria para monitoramento
     console.log(`>>> [AUDITORIA] Iniciando Nova Venda Avulsa (R$ ${totalAmount})`);
 
     if (!items || items.length === 0 || totalAmount === undefined || !payments) {
@@ -30,6 +28,7 @@ router.post('/', async (req, res) => {
     }
     
     const paidAtTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    const safeClientId = cleanId(clientPhone);
 
     try {
         let professionalName = 'Indefinido';
@@ -46,77 +45,91 @@ router.post('/', async (req, res) => {
         
         const financialIntegration = establishmentData.financialIntegration || {};
         const { defaultNaturezaId, defaultCentroDeCustoId } = financialIntegration;
-        
-        // Configurações de Fidelidade
         const loyaltyProgram = establishmentData.loyaltyProgram || {};
 
-        // 2. Calcular Pontos de Fidelidade (Regra Fixa por Visita)
         let pointsToAward = 0;
-        if (loyaltyProgram.enabled) {
-            const rawPoints = loyaltyProgram.pointsPerVisit;
-            pointsToAward = parseInt(rawPoints);
-            
-            // Garante pelo menos 1 ponto se a configuração for inválida
-            if (isNaN(pointsToAward) || pointsToAward <= 0) {
-                pointsToAward = 1;
-            }
-        }
-
-        // >>> REGRA DE EXCEÇÃO: Se houver resgate, NÃO gera pontos de visita <<<
-        if (loyaltyRedemption) {
-            console.log(">>> [AUDITORIA] Resgate de prémio detectado. Pontos desta venda foram zerados (0).");
-            pointsToAward = 0;
-        }
-
-        console.log("--- CÁLCULO FINAL ---");
-        console.log("Pontos a serem atribuídos:", pointsToAward);
-        
-        const safeClientId = cleanId(clientPhone);
-
-        const saleData = {
-            type: 'walk-in',
-            establishmentId,
-            items,
-            totalAmount: Number(totalAmount),
-            discount: discount || null, 
-            clientName: clientName || "Cliente Avulso",
-            clientPhone: clientPhone || null,
-            clientId: safeClientId || null,
-            professionalId: professionalId || null,
-            professionalName: professionalName,
-            cashierSessionId: cashierSessionId || null,
-            createdBy: uid,
-            status: 'completed', 
-            startTime: paidAtTimestamp,
-            loyaltyPointsEarned: pointsToAward, 
-            // Salva o objeto de resgate se existir
-            loyaltyRedemption: loyaltyRedemption || null,
-            transaction: {
-                paidAt: paidAtTimestamp,
-                payments: payments,
-                totalAmount: Number(totalAmount),
-                discount: discount || null 
-            }
-        };
-        
         const saleRef = db.collection('sales').doc();
 
         await db.runTransaction(async (transaction) => {
-            const productsToUpdate = items.filter(item => item.type === 'product');
             
-            // 3. Validar e Atualizar Estoque
+            // 🚀 NOVA LÓGICA: INTERCEÇÃO DE PLANOS VIP NO PDV
+            let coveredByPlan = false;
+            let subscriptionId = null;
+            let planDiscount = 0;
+
+            if (safeClientId) {
+                const subQuery = await transaction.get(
+                    db.collection('client_subscriptions')
+                      .where('clientId', '==', safeClientId)
+                      .where('status', '==', 'active')
+                );
+
+                if (!subQuery.empty) {
+                    const subDoc = subQuery.docs[0];
+                    const subscription = subDoc.data();
+
+                    // Verifica se existem SERVIÇOS na venda que estão cobertos pelo plano
+                    const coveredItems = items.filter(item => 
+                        item.type === 'service' && 
+                        subscription.servicesIncluded.includes(item.id || item.itemId)
+                    );
+
+                    if (coveredItems.length > 0) {
+                        const limit = subscription.usageLimit;
+                        const currentUsage = subscription.usageCurrentMonth || 0;
+
+                        if (!limit || currentUsage < limit) {
+                            coveredByPlan = true;
+                            subscriptionId = subDoc.id;
+
+                            // Calcula o desconto apenas sobre os serviços cobertos
+                            coveredItems.forEach(item => {
+                                const itemPrice = Number(item.price || item.salePrice || 0);
+                                const itemQty = Number(item.quantity || 1);
+                                planDiscount += (itemPrice * itemQty);
+                            });
+
+                            // Garante que o desconto do plano não é maior que o total da venda
+                            if (planDiscount > totalAmount) planDiscount = totalAmount;
+
+                            totalAmount = Number(totalAmount) - planDiscount;
+
+                            // Incrementa o uso
+                            transaction.update(subDoc.ref, {
+                                usageCurrentMonth: admin.firestore.FieldValue.increment(1)
+                            });
+
+                            console.log(`[ASSINATURAS] Venda PDV. Cliente ${safeClientId} usou Clube VIP. Desconto: R$ ${planDiscount}`);
+                        }
+                    }
+                }
+            }
+
+            // 2. Calcular Pontos de Fidelidade
+            if (loyaltyProgram.enabled) {
+                // Não ganha pontos de visita se resgatou prémio OU se a venda saiu 100% grátis pelo plano VIP
+                if (loyaltyRedemption || (coveredByPlan && totalAmount === 0)) {
+                    pointsToAward = 0;
+                } else {
+                    const rawPoints = loyaltyProgram.pointsPerVisit;
+                    pointsToAward = parseInt(rawPoints) > 0 ? parseInt(rawPoints) : 1;
+                }
+            }
+
+            // 3. Validar e Atualizar Estoque (Produtos)
+            const productsToUpdate = items.filter(item => item.type === 'product');
             if (productsToUpdate.length > 0) {
                 const realProducts = productsToUpdate.filter(item => item.id && !String(item.id).startsWith('reward-'));
 
                 if (realProducts.length > 0) {
-                    const productRefs = realProducts.map(item => db.collection('products').doc(item.id));
+                    const productRefs = realProducts.map(item => db.collection('products').doc(item.id || item.itemId));
                     const productDocs = await transaction.getAll(...productRefs);
                     const updates = [];
 
                     for (let i = 0; i < productDocs.length; i++) {
                         const productDoc = productDocs[i];
                         const productItem = realProducts[i];
-                        if (!productDoc.exists) throw new Error(`Produto ${productItem.name} não encontrado no stock.`);
+                        if (!productDoc.exists) throw new Error(`Produto não encontrado no stock.`);
                         const newStock = (productDoc.data().currentStock || 0) - (productItem.quantity || 1); 
                         updates.push({ ref: productDoc.ref, newStock: newStock });
                     }
@@ -125,50 +138,35 @@ router.post('/', async (req, res) => {
                 }
             }
             
-            // 4. ATUALIZAR PONTOS DO CLIENTE
+            // 4. Atualizar Cliente (Pontos e Dívidas)
             if (safeClientId) {
                 const clientRef = db.collection('clients').doc(safeClientId);
                 const clientDoc = await transaction.get(clientRef);
                 
                 if (clientDoc.exists) {
-                    // CENÁRIO A: Resgate de Prémio (DÉBITO)
                     if (loyaltyRedemption) {
                         const cost = Number(loyaltyRedemption.cost || 0);
                         if (cost > 0) {
-                            console.log(`[DB WRITE] Debitando ${cost} pontos do cliente ${safeClientId} pelo resgate.`);
-                            
                             transaction.update(clientRef, { 
                                 loyaltyPoints: admin.firestore.FieldValue.increment(-cost),
                                 lastVisit: paidAtTimestamp
                             });
-
                             const historyRef = clientRef.collection('loyaltyHistory').doc();
                             transaction.set(historyRef, {
-                                type: 'redeem', // Tipo 'resgate'
-                                points: -cost,
-                                source: 'sale',
+                                type: 'redeem', points: -cost, source: 'sale',
                                 description: `Resgate: ${loyaltyRedemption.name || 'Prémio'}`,
-                                transactionId: saleRef.id,
-                                timestamp: paidAtTimestamp
+                                transactionId: saleRef.id, timestamp: paidAtTimestamp
                             });
                         }
-                    } 
-                    // CENÁRIO B: Ganho de Pontos (CRÉDITO)
-                    else if (pointsToAward > 0) {
-                        console.log(`[DB WRITE] Incrementando ${pointsToAward} pontos para o cliente ${safeClientId}`);
-                        
+                    } else if (pointsToAward > 0) {
                         transaction.update(clientRef, { 
                             loyaltyPoints: admin.firestore.FieldValue.increment(pointsToAward),
                             lastVisit: paidAtTimestamp
                         });
-
                         const historyRef = clientRef.collection('loyaltyHistory').doc();
                         transaction.set(historyRef, {
-                            type: 'earn', // Tipo 'ganho'
-                            points: pointsToAward,
-                            source: 'sale', 
-                            description: 'Compra Avulsa (PDV)',
-                            transactionId: saleRef.id,
+                            type: 'earn', points: pointsToAward, source: 'sale', 
+                            description: 'Compra Avulsa (PDV)', transactionId: saleRef.id,
                             timestamp: paidAtTimestamp
                         });
                     }
@@ -176,94 +174,93 @@ router.post('/', async (req, res) => {
             }
 
             // 5. Criar Registro de Venda
+            const saleData = {
+                type: 'walk-in',
+                establishmentId,
+                items,
+                totalAmount: Number(totalAmount),
+                discount: discount || null, 
+                clientName: clientName || "Cliente Avulso",
+                clientPhone: clientPhone || null,
+                clientId: safeClientId || null,
+                professionalId: professionalId || null,
+                professionalName: professionalName,
+                cashierSessionId: cashierSessionId || null,
+                createdBy: uid,
+                status: 'completed', 
+                startTime: paidAtTimestamp,
+                loyaltyPointsEarned: pointsToAward, 
+                loyaltyRedemption: loyaltyRedemption || null,
+                // 🚀 ADICIONADO DADOS DO PLANO AQUI
+                coveredByPlan,
+                subscriptionId,
+                planDiscount,
+                transaction: {
+                    paidAt: paidAtTimestamp,
+                    payments: payments,
+                    totalAmount: Number(totalAmount),
+                    discount: discount || null 
+                }
+            };
+            
             transaction.set(saleRef, saleData);
 
-            // 6. INTEGRAÇÃO FINANCEIRA
-            payments.forEach(payment => {
-                // Se não vier definido parcelas, assume 1
-                const installmentCount = (payment.installments && payment.installments > 1) ? payment.installments : 1;
-                const paymentMethod = payment.method.toLowerCase();
-                const paidDate = new Date().toISOString().split('T')[0];
+            // 6. INTEGRAÇÃO FINANCEIRA SÓ SE HOUVER VALOR A COBRAR
+            if (Number(totalAmount) > 0 && payments && payments.length > 0) {
+                payments.forEach(payment => {
+                    const installmentCount = (payment.installments && payment.installments > 1) ? payment.installments : 1;
+                    const paymentMethod = payment.method.toLowerCase();
+                    const paidDate = new Date().toISOString().split('T')[0];
 
-                // CRÉDITO
-                if (paymentMethod === 'credito') {
-                    const financialRef = db.collection('financial_receivables').doc();
-                    const notes = installmentCount > 1 
-                        ? `Parcelado em ${installmentCount}x no cartão de crédito`
-                        : 'Pagamento à vista no cartão de crédito';
-
-                    transaction.set(financialRef, {
-                        establishmentId,
-                        description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Crédito ${installmentCount}x)`,
-                        amount: payment.value,
-                        dueDate: paidDate, 
-                        paymentDate: paidDate,
-                        status: 'paid',
-                        transactionId: saleRef.id,
-                        createdAt: paidAtTimestamp,
-                        naturezaId: defaultNaturezaId || null,
-                        centroDeCustoId: defaultCentroDeCustoId || null,
-                        notes: notes,
-                        paymentDetails: { method: 'credito', installments: installmentCount }
-                    });
-                    return;
-                }
-
-                // --- MODIFICAÇÃO AQUI: CREDIÁRIO E FIADO ---
-                // Ambos entram aqui para gerar parcelas (ou parcela única) PENDENTES
-                if (paymentMethod === 'crediario' || paymentMethod === 'fiado') {
-                    const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
-                    let totalButLast = installmentValue * (installmentCount - 1);
-                    
-                    const typeLabel = paymentMethod === 'fiado' ? 'Fiado' : 'Crediário';
-
-                    for (let i = 1; i <= installmentCount; i++) {
-                        // Ajuste de centavos na última parcela
-                        const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
-                        
-                        // Lógica de Datas:
-                        // i=1: Data de hoje (Entrada/Primeira parcela)
-                        // i=2: Data de hoje + 1 mês
-                        const dueDate = new Date();
-                        if (i > 1) {
-                            dueDate.setMonth(dueDate.getMonth() + (i - 1));
-                        }
-                        const dueDateString = dueDate.toISOString().split('T')[0];
-                        
-                        const description = `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Parcela ${i}/${installmentCount} - ${typeLabel})`;
+                    if (paymentMethod === 'credito') {
                         const financialRef = db.collection('financial_receivables').doc();
-                        
+                        const notes = installmentCount > 1 
+                            ? `Parcelado em ${installmentCount}x no cartão de crédito`
+                            : 'Pagamento à vista no cartão de crédito';
+
                         transaction.set(financialRef, {
                             establishmentId,
-                            description,
-                            amount: currentInstallmentValue,
-                            dueDate: dueDateString,
-                            paymentDate: null, // Fica NULL pois é pendente
-                            status: 'pending', // Status PENDENTE para aparecer na cobrança
-                            transactionId: saleRef.id,
-                            createdAt: paidAtTimestamp,
-                            naturezaId: defaultNaturezaId || null,
-                            centroDeCustoId: defaultCentroDeCustoId || null,
+                            description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Crédito ${installmentCount}x)`,
+                            amount: payment.value, dueDate: paidDate, paymentDate: paidDate, status: 'paid',
+                            transactionId: saleRef.id, createdAt: paidAtTimestamp,
+                            naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
+                            notes: notes, paymentDetails: { method: 'credito', installments: installmentCount }
                         });
+                        return;
                     }
-                    return;
-                }
 
-                // OUTROS (Dinheiro, PIX, Débito) - Pagamentos imediatos
-                const financialRef = db.collection('financial_receivables').doc();
-                transaction.set(financialRef, {
-                    establishmentId,
-                    description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (${payment.method})`,
-                    amount: payment.value,
-                    dueDate: paidDate, 
-                    paymentDate: paidDate,
-                    status: 'paid', // Baixa automática
-                    transactionId: saleRef.id,
-                    createdAt: paidAtTimestamp,
-                    naturezaId: defaultNaturezaId || null,
-                    centroDeCustoId: defaultCentroDeCustoId || null,
+                    if (paymentMethod === 'crediario' || paymentMethod === 'fiado') {
+                        const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
+                        let totalButLast = installmentValue * (installmentCount - 1);
+                        const typeLabel = paymentMethod === 'fiado' ? 'Fiado' : 'Crediário';
+
+                        for (let i = 1; i <= installmentCount; i++) {
+                            const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
+                            const dueDate = new Date();
+                            if (i > 1) dueDate.setMonth(dueDate.getMonth() + (i - 1));
+                            
+                            const financialRef = db.collection('financial_receivables').doc();
+                            transaction.set(financialRef, {
+                                establishmentId,
+                                description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (Parcela ${i}/${installmentCount} - ${typeLabel})`,
+                                amount: currentInstallmentValue, dueDate: dueDate.toISOString().split('T')[0],
+                                paymentDate: null, status: 'pending', transactionId: saleRef.id, createdAt: paidAtTimestamp,
+                                naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
+                            });
+                        }
+                        return;
+                    }
+
+                    const financialRef = db.collection('financial_receivables').doc();
+                    transaction.set(financialRef, {
+                        establishmentId,
+                        description: `Venda Avulsa: ${clientName || 'Cliente Avulso'} (${payment.method})`,
+                        amount: payment.value, dueDate: paidDate, paymentDate: paidDate, status: 'paid',
+                        transactionId: saleRef.id, createdAt: paidAtTimestamp,
+                        naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
+                    });
                 });
-            });
+            }
         });
         
         res.status(201).json({ message: 'Venda criada com sucesso!', saleId: saleRef.id, pointsEarned: pointsToAward });
@@ -290,6 +287,12 @@ router.post('/:saleId/reopen', async (req, res) => {
             const saleData = saleDoc.data();
             if (saleData.type !== 'walk-in') throw new Error("Esta função só pode ser usada para reabrir vendas avulsas.");
 
+            // 🚀 NOVA LÓGICA: Devolver o Uso do Plano de Assinatura
+            if (saleData.coveredByPlan && saleData.subscriptionId) {
+                const subRef = db.collection('client_subscriptions').doc(saleData.subscriptionId);
+                transaction.update(subRef, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
+            }
+
             // Buscar lançamentos financeiros para deletar
             const financialSnapshot = await db.collection('financial_receivables')
                 .where('transactionId', '==', saleId)
@@ -301,7 +304,7 @@ router.post('/:saleId/reopen', async (req, res) => {
             if (productsToRestock.length > 0) {
                 const productRefs = productsToRestock
                     .filter(item => item.id && !String(item.id).startsWith('reward-'))
-                    .map(item => db.collection('products').doc(item.id));
+                    .map(item => db.collection('products').doc(item.id || item.itemId));
                 
                 if (productRefs.length > 0) {
                     const productDocs = await transaction.getAll(...productRefs);
@@ -319,7 +322,6 @@ router.post('/:saleId/reopen', async (req, res) => {
                 const clientRef = db.collection('clients').doc(saleData.clientId);
                 const clientDoc = await transaction.get(clientRef);
                 if (clientDoc.exists) {
-                    // 1. Reverter Pontos GANHOS
                     if (saleData.loyaltyPointsEarned > 0) {
                         transaction.update(clientRef, { 
                             loyaltyPoints: admin.firestore.FieldValue.increment(-saleData.loyaltyPointsEarned) 
@@ -336,7 +338,6 @@ router.post('/:saleId/reopen', async (req, res) => {
                         });
                     }
 
-                    // 2. Devolver Pontos GASTOS (se houve resgate)
                     if (saleData.loyaltyRedemption && saleData.loyaltyRedemption.cost > 0) {
                         const pointsToRefund = Number(saleData.loyaltyRedemption.cost);
                         
@@ -399,11 +400,17 @@ router.delete('/:saleId', async (req, res) => {
             if (saleData.type !== 'walk-in') throw new Error("Exclua agendamentos pela agenda.");
             if (saleData.status === 'completed') throw new Error("Venda finalizada: Use 'Reabrir' para estornar valores corretamente.");
 
+            // 🚀 NOVA LÓGICA: Devolver o Uso do Plano de Assinatura
+            if (saleData.coveredByPlan && saleData.subscriptionId) {
+                const subRef = db.collection('client_subscriptions').doc(saleData.subscriptionId);
+                transaction.update(subRef, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
+            }
+
             const productsToRestock = (saleData.items || []).filter(item => item.type === 'product');
             if (productsToRestock.length > 0) {
                 const productRefs = productsToRestock
                     .filter(i => i.id && !String(i.id).startsWith('reward-'))
-                    .map(item => db.collection('products').doc(item.id));
+                    .map(item => db.collection('products').doc(item.id || item.itemId));
                 
                 if (productRefs.length > 0) {
                     const productDocs = await transaction.getAll(...productRefs);

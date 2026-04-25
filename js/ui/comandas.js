@@ -245,7 +245,14 @@ function updateKPIs() {
     const pagas = comandas.filter(c => c.status === 'completed');
     
     const totalVendasHoje = pagas.reduce((acc, c) => {
-        let val = c.totalAmount !== undefined ? Number(c.totalAmount) : getSafeAllItems(c).reduce((s, i) => s + Number(i.price || 0), 0);
+        let val = 0;
+        if (c.totalAmount !== undefined && c.totalAmount !== null) {
+            val = Number(c.totalAmount);
+        } else {
+            let tempSub = getSafeAllItems(c).reduce((s, i) => s + Number(i.price || 0), 0);
+            // Considera o desconto do plano VIP na totalização caso falhe a info original
+            val = Math.max(0, tempSub - Number(c.planDiscount || 0));
+        }
         return acc + val;
     }, 0);
     
@@ -517,13 +524,18 @@ function renderComandaList() {
         if (comanda.status === 'completed' && comanda.totalAmount !== undefined && comanda.totalAmount !== null) {
             displayTotal = Number(comanda.totalAmount);
         } else {
-            displayTotal = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+            const tempSub = allItems.reduce((acc, item) => acc + Number(item.price || 0), 0);
+            displayTotal = Math.max(0, tempSub - Number(comanda.planDiscount || 0));
         }
 
         const hasReward = comanda.loyaltyRedemption || (comanda.discount && comanda.discount.reason && String(comanda.discount.reason).toLowerCase().includes('fidelidade'));
         const rewardIndicator = hasReward 
             ? `<span class="inline-flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full w-5 h-5 ml-1.5 text-xs shadow-sm border border-yellow-200" title="Prémio Resgatado">🎁</span>` 
             : '';
+
+        // 🚀 INDICADOR DE PLANO VIP
+        const isVIP = comanda.coveredByPlan;
+        const vipIndicator = isVIP ? `<span class="inline-flex items-center justify-center bg-indigo-100 text-indigo-700 rounded-md px-2 py-0.5 text-[9px] font-black border border-indigo-200 uppercase tracking-wider shadow-sm ml-1.5" title="Clube VIP"><i class="bi bi-gem mr-1"></i> VIP</span>` : '';
 
         const isSelected = String(comanda.id) === String(localState.selectedComandaId);
         
@@ -552,7 +564,7 @@ function renderComandaList() {
         div.dataset.comandaId = comanda.id;
         div.innerHTML = `
             <div class="flex justify-between items-start mb-2.5 pointer-events-none">
-                <p class="font-bold text-gray-900 truncate flex-1 min-w-0 pr-2 text-base">${safeClientName}</p>
+                <p class="font-bold text-gray-900 truncate flex-1 min-w-0 pr-2 text-base">${safeClientName} ${vipIndicator}</p>
                 <div class="flex items-center flex-shrink-0">
                     <p class="font-black ${isCompleted ? 'text-emerald-600' : 'text-gray-900'} text-base">R$ ${displayTotal.toFixed(2)}</p>
                     ${rewardIndicator}
@@ -814,12 +826,19 @@ function renderComandaDetail() {
         return acc;
     }, {});
     
-    const total = Object.values(groupedItems).reduce((acc, item) => acc + Number(item.price || 0) * item.quantity, 0);
+    const planDiscount = Number(comanda.planDiscount || 0);
+    const subtotal = Object.values(groupedItems).reduce((acc, item) => acc + Number(item.price || 0) * item.quantity, 0);
+    const total = Math.max(0, subtotal - planDiscount);
+    
     const safeClientName = escapeHTML(comanda.clientName || 'Cliente sem nome');
     const safeProfName = escapeHTML(comanda.professionalName || 'Profissional não atribuído');
 
     const hasUnsaved = comanda._hasUnsavedChanges;
     
+    // 🚀 INDICADOR VIP ABAIXO DO NOME
+    const isVIP = comanda.coveredByPlan;
+    const vipBadge = isVIP ? `<span class="mt-2 inline-block px-2 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 bg-indigo-100 border border-indigo-200 rounded-md shadow-sm"><i class="bi bi-gem"></i> Clube VIP Aplicado</span>` : '';
+
     const mobileAddFab = !isCompleted ? `
         <button data-action="add-item" class="md:hidden fixed bottom-[120px] right-4 w-14 h-14 bg-indigo-600 text-white font-black rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform z-[60]">
             <i class="bi bi-plus-lg text-2xl"></i>
@@ -887,6 +906,7 @@ function renderComandaDetail() {
                     <p class="text-sm text-gray-500 flex items-center gap-1.5 mt-1 font-semibold">
                         <i class="bi bi-person text-indigo-400"></i> ${safeProfName}
                     </p>
+                    ${vipBadge}
                     ${!isWalkIn ? 
                         `<button data-action="go-to-appointment" data-id="${comanda.id}" data-date="${comanda.startTime}" class="text-indigo-600 text-xs font-black uppercase tracking-widest hover:text-indigo-800 flex items-center gap-1 mt-3 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition-colors w-max shadow-sm">
                              <i class="bi bi-calendar-check"></i> Ver Agenda
@@ -958,6 +978,7 @@ function renderComandaDetail() {
 }
 
 function renderCheckoutView(comanda, container) {
+    const planDiscount = Number(comanda.planDiscount || 0);
     const rawItems = getSafeAllItems(comanda);
     const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const checkoutState = localState.checkoutState;
@@ -970,7 +991,8 @@ function renderCheckoutView(comanda, container) {
         discountValue = discount.value;
     }
     if (discountValue > subtotal) discountValue = subtotal;
-    const totalFinal = subtotal - discountValue;
+    
+    const totalFinal = Math.max(0, subtotal - discountValue - planDiscount);
     
     const totalPaid = checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
     const remaining = Math.max(0, totalFinal - totalPaid);
@@ -1016,7 +1038,14 @@ function renderCheckoutView(comanda, container) {
                      <input type="text" id="discount-reason" class="w-full max-w-[280px] p-3 text-sm border-2 border-gray-200 rounded-xl text-center focus:border-indigo-400 outline-none text-gray-700 bg-gray-50 font-medium transition-colors" placeholder="Motivo do desconto (opcional)" value="${checkoutState.discountReason || ''}">
                 </div>
 
-                <p class="text-5xl font-black text-gray-900 mt-6 mb-2 relative z-10 tracking-tight" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
+                ${planDiscount > 0 ? `
+                    <div class="flex justify-between items-center mt-3 relative z-10 text-indigo-600 font-bold text-sm bg-indigo-50 px-3 py-2 rounded-lg border border-indigo-100">
+                        <span><i class="bi bi-gem"></i> Coberto pelo Plano VIP</span>
+                        <span>- R$ ${planDiscount.toFixed(2)}</span>
+                    </div>
+                ` : ''}
+
+                <p class="text-5xl font-black text-gray-900 mt-4 mb-2 relative z-10 tracking-tight" id="checkout-total-display">R$ ${totalFinal.toFixed(2)}</p>
                 
                 <div id="checkout-status-msg" class="mt-4 bg-gray-50 py-3 rounded-xl border border-gray-100 relative z-10 shadow-inner">
                     ${remaining <= 0.01 
@@ -1091,7 +1120,7 @@ function renderCheckoutView(comanda, container) {
         let cDiscount = (dType === 'percent') ? (subtotal * dVal) / 100 : dVal;
         if (cDiscount > subtotal) cDiscount = subtotal;
         
-        const cFinal = subtotal - cDiscount;
+        const cFinal = Math.max(0, subtotal - cDiscount - planDiscount);
         const cPaid = localState.checkoutState.payments.reduce((acc, p) => acc + p.value, 0);
         const cRemaining = Math.max(0, cFinal - cPaid);
 
@@ -1592,12 +1621,14 @@ async function handleRemoveItemFromComanda(itemId, itemType) {
 async function handleFinalizeCheckout(comanda) {
     if (localState.isProcessing) return;
     
+    const planDiscount = Number(comanda.planDiscount || 0);
     const rawItems = getSafeAllItems(comanda);
     const subtotal = rawItems.reduce((acc, item) => acc + Number(item.price || 0) * (item.quantity || 1), 0);
     const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
     let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
     if (discountValue > subtotal) discountValue = subtotal;
-    const totalAmount = subtotal - discountValue;
+    
+    const totalAmount = Math.max(0, subtotal - discountValue - planDiscount);
 
     const { payments } = localState.checkoutState;
     const totalPaid = payments.reduce((acc, p) => acc + p.value, 0);
@@ -1627,7 +1658,8 @@ async function handleFinalizeCheckout(comanda) {
     let pointsToAward = 0;
     const settings = localState.loyaltySettings;
 
-    if (settings && settings.enabled) {
+    // Só dá ponto de visita se a comanda não for 100% coberta pelo plano
+    if (settings && settings.enabled && (!comanda.coveredByPlan || totalAmount > 0)) {
         pointsToAward = parseInt(settings.pointsPerVisit || 1, 10);
     }
 
@@ -1943,13 +1975,16 @@ export async function loadComandasPage(params = {}) {
                 case 'add-payment-checkout':
                     const amountInput = document.getElementById('checkout-amount');
                     let value = parseFloat(amountInput.value);
-                    const rawItems = getSafeAllItems(comanda);
                     
+                    const planDiscount = Number(comanda.planDiscount || 0);
+                    const rawItems = getSafeAllItems(comanda);
                     const subtotal = rawItems.reduce((acc, item) => acc + (item.price || 0), 0);
+                    
                     const discount = localState.checkoutState.discount || { type: 'real', value: 0 };
                     let discountValue = (discount.type === 'percent') ? (subtotal * discount.value) / 100 : discount.value;
                     if (discountValue > subtotal) discountValue = subtotal;
-                    const total = subtotal - discountValue;
+                    
+                    const total = Math.max(0, subtotal - discountValue - planDiscount);
 
                     const currentPaid = localState.checkoutState.payments.reduce((acc,p)=>acc+p.value,0);
                     const remaining = total - currentPaid;

@@ -1,4 +1,4 @@
-// routes/appointments.js (Otimizado para Arquitetura Enterprise 3-Tier)
+// routes/appointments.js (Otimizado para Arquitetura Enterprise 3-Tier e Assinaturas)
 
 const express = require('express');
 const router = express.Router();
@@ -96,7 +96,7 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
 // 🔓 ROTA PÚBLICA (SEM LOGIN NECESSÁRIO)
 // =======================================================================
 
-// 1. CRIAR AGENDAMENTO (Cliente Final)
+// 1. CRIAR AGENDAMENTO (Cliente Final & Rececionista)
 router.post('/', async (req, res) => {
     const { db } = req;
     const { establishmentId, services, professionalId, clientName, clientPhone, startTime, redeemedReward } = req.body;
@@ -159,12 +159,8 @@ router.post('/', async (req, res) => {
 
             if (!clientDoc.exists) {
                 transaction.set(clientRef, {
-                    establishmentId, 
-                    groupId,   
-                    companyId, 
-                    name: clientName, 
-                    phone: clientPhone, 
-                    id: safeClientId, 
+                    establishmentId, groupId, companyId, 
+                    name: clientName, phone: clientPhone, id: safeClientId, 
                     createdAt: admin.firestore.FieldValue.serverTimestamp(), 
                     loyaltyPoints: 0
                 });
@@ -173,20 +169,60 @@ router.post('/', async (req, res) => {
                     transaction.update(clientRef, { name: clientName });
                 }
             }
+
+            // 🚀 NOVA LÓGICA: INTERCEÇÃO DE PLANOS DE ASSINATURA VIP
+            let coveredByPlan = false;
+            let subscriptionId = null;
+            let planDiscount = 0;
+
+            const subQuery = await transaction.get(
+                db.collection('client_subscriptions')
+                  .where('clientId', '==', safeClientId)
+                  .where('status', '==', 'active') // Apenas se o cartão/PIX estiver em dia!
+            );
+
+            if (!subQuery.empty) {
+                const subDoc = subQuery.docs[0];
+                const subscription = subDoc.data();
+
+                // Verifica se TODOS os serviços agendados estão inclusos no plano do cliente
+                const isServiceCovered = servicesDetails.length > 0 && servicesDetails.every(s => subscription.servicesIncluded.includes(s.id));
+
+                if (isServiceCovered) {
+                    const limit = subscription.usageLimit;
+                    const currentUsage = subscription.usageCurrentMonth || 0;
+
+                    if (!limit || currentUsage < limit) {
+                        coveredByPlan = true;
+                        subscriptionId = subDoc.id;
+                        planDiscount = totalAmount; // Regista o valor que foi descontado
+                        totalAmount = 0; // 🚀 ZERA O CUSTO DA COMANDA
+
+                        // Incrementa o uso do plano no mês atual
+                        transaction.update(subDoc.ref, {
+                            usageCurrentMonth: admin.firestore.FieldValue.increment(1)
+                        });
+                        console.log(`[ASSINATURAS] Desconto aplicado ao cliente ${safeClientId}. Usos: ${currentUsage + 1}/${limit || 'Ilimitado'}`);
+                    }
+                }
+            }
             
             let newAppointment = {
-                establishmentId, 
-                groupId,   
-                companyId, 
+                establishmentId, groupId, companyId, 
                 services: servicesDetails, professionalId, professionalName,
                 clientName, clientPhone, 
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
-                status: 'aguardando_confirmacao', // ✅ NOVO STATUS
+                status: 'aguardando_confirmacao', 
                 hasRewards,
-                totalAmount: totalAmount 
+                totalAmount: totalAmount,
+                // Novos campos para a Assinatura
+                coveredByPlan,
+                subscriptionId,
+                planDiscount
             };
 
+            // Fidelidade Convencional
             if (redeemedReward && redeemedReward.points > 0) {
                 if (!clientDoc.exists) throw new Error("Cliente novo não pode resgatar pontos.");
                 const currentPoints = clientDoc.data().loyaltyPoints || 0;
@@ -245,9 +281,8 @@ router.get('/:contextId', async (req, res) => {
         let query = db.collection('appointments')
             .where('startTime', '>=', start)
             .where('startTime', '<=', end)
-            .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed', 'aguardando_confirmacao']); // <-- AJUSTE AQUI
+            .where('status', 'in', ['confirmed', 'awaiting_payment', 'completed', 'aguardando_confirmacao']);
 
-        // Filtro Base dependendo da Visão do Utilizador
         if (contextId === 'ALL') {
             console.warn("Aviso: Tentativa de busca 'ALL' genérica sem contexto.");
         } else if (contextType === 'GROUP') {
@@ -273,7 +308,6 @@ router.get('/:contextId', async (req, res) => {
         const appointmentsSnapshot = await query.get();
         if (appointmentsSnapshot.empty) return res.status(200).json([]);
 
-        // 🔥 CORREÇÃO: Dupla Query (Legacy + Rede) para encontrar o Nome do Profissional
         const professionalsMap = new Map();
         if (contextType === 'GROUP') {
             const snap = await db.collection('professionals').where('groupId', '==', contextId).get();
@@ -308,7 +342,6 @@ router.get('/:contextId', async (req, res) => {
                 }
             }
 
-            // 🔥 CORREÇÃO: Prioridade ao nome já salvo, ou fallback inteligente na rede
             return {
                 id: doc.id, ...data,
                 startTime: data.startTime.toDate(),
@@ -370,6 +403,15 @@ router.delete('/:appointmentId', async (req, res) => {
             if (!doc.exists) throw new Error("Não encontrado.");
             
             const data = doc.data();
+            
+            // 🚀 NOVA LÓGICA: Devolver o uso do plano se for apagado
+            if (data.coveredByPlan && data.subscriptionId) {
+                const subRef = db.collection('client_subscriptions').doc(data.subscriptionId);
+                transaction.update(subRef, { 
+                    usageCurrentMonth: admin.firestore.FieldValue.increment(-1) 
+                });
+            }
+
             notificationData = {
                 establishmentId: data.establishmentId,
                 clientName: data.clientName || 'Cliente',
@@ -432,6 +474,14 @@ router.put('/:appointmentId', async (req, res) => {
             if (!oldDoc.exists) throw new Error("Não encontrado.");
             const oldData = oldDoc.data();
 
+            // 🚀 NOVA LÓGICA: Reverter uso antigo do plano
+            let currentUsageOffset = 0;
+            if (oldData.coveredByPlan && oldData.subscriptionId) {
+                const oldSubRef = db.collection('client_subscriptions').doc(oldData.subscriptionId);
+                transaction.update(oldSubRef, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
+                currentUsageOffset = -1; // Para descontar na validação em memória abaixo
+            }
+
             const conflicts = await transaction.get(
                 db.collection('appointments').where('professionalId', '==', professionalId).where('startTime', '<', admin.firestore.Timestamp.fromDate(end))
             );
@@ -448,13 +498,53 @@ router.put('/:appointmentId', async (req, res) => {
 
             let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
             
+            // 🚀 NOVA LÓGICA: Avaliar nova cobertura do plano
+            let coveredByPlan = false;
+            let subscriptionId = null;
+            let planDiscount = 0;
+
+            const subQuery = await transaction.get(
+                db.collection('client_subscriptions')
+                  .where('clientId', '==', safeClientId)
+                  .where('status', '==', 'active')
+            );
+
+            if (!subQuery.empty) {
+                const subDoc = subQuery.docs[0];
+                const subscription = subDoc.data();
+                const isServiceCovered = servicesDetails.length > 0 && servicesDetails.every(s => subscription.servicesIncluded.includes(s.id));
+
+                if (isServiceCovered) {
+                    const limit = subscription.usageLimit;
+                    let currentUsage = subscription.usageCurrentMonth || 0;
+                    
+                    // Ajusta o uso em memória caso tenha sido revertido no bloco acima
+                    if (oldData.coveredByPlan && oldData.subscriptionId === subDoc.id) {
+                        currentUsage += currentUsageOffset; 
+                    }
+
+                    if (!limit || currentUsage < limit) {
+                        coveredByPlan = true;
+                        subscriptionId = subDoc.id;
+                        planDiscount = totalAmount;
+                        totalAmount = 0; // O serviço volta a sair de graça
+
+                        transaction.update(subDoc.ref, { usageCurrentMonth: admin.firestore.FieldValue.increment(1) });
+                    }
+                }
+            }
+
             const updatePayload = {
                 clientName, clientPhone, professionalId, professionalName: profDoc.data().name,
                 startTime: admin.firestore.Timestamp.fromDate(start), endTime: admin.firestore.Timestamp.fromDate(end),
                 services: servicesDetails, redeemedReward: redeemedReward || null, hasRewards,
-                totalAmount: totalAmount 
+                totalAmount: totalAmount,
+                coveredByPlan,
+                subscriptionId,
+                planDiscount
             };
 
+            // Fidelidade
             if (redeemedReward && !oldData.redeemedReward) {
                 if (clientDoc.exists) {
                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
@@ -472,6 +562,7 @@ router.put('/:appointmentId', async (req, res) => {
 
 // 6. ATUALIZAR COMANDA (ITENS)
 router.post('/:appointmentId/comanda', async (req, res) => {
+    // ... [MANTIDO O MESMO CÓDIGO ANTERIOR] ...
     const { appointmentId } = req.params;
     const { items: newItems } = req.body;
     if (!Array.isArray(newItems)) return res.status(400).json({ message: 'Items inválidos.' });
@@ -517,6 +608,7 @@ router.post('/:appointmentId/comanda', async (req, res) => {
 
 // 7. CHECKOUT 
 router.post('/:appointmentId/checkout', async (req, res) => {
+    // ... [MANTIDO O MESMO CÓDIGO ANTERIOR DO CHECKOUT] ...
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount, loyaltyRedemption } = req.body;
     const { db } = req;
@@ -559,7 +651,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
             const establishmentData = establishmentDoc.data() || {};
             
             const loyaltyProgram = establishmentData.loyaltyProgram || {};
-            if (loyaltyProgram.enabled && !loyaltyRedemption) {
+            if (loyaltyProgram.enabled && !loyaltyRedemption && !apptData.coveredByPlan) { // Não ganha ponto se foi grátis pelo plano
                 pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
             }
 
@@ -663,56 +755,58 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 }
             });
 
-            // --- INTEGRAÇÃO FINANCEIRA ---
-            payments.forEach(payment => {
-                const installmentCount = (payment.installments && payment.installments > 1) ? payment.installments : 1;
-                const paymentMethod = payment.method.toLowerCase();
-                
-                if (paymentMethod === 'credito') {
-                     const financialRef = db.collection('financial_receivables').doc();
-                     transaction.set(financialRef, {
-                        establishmentId, groupId, companyId, 
-                        description: `Venda: ${apptData.clientName} (Crédito ${installmentCount}x)`,
-                        amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
-                        transactionId: saleRef.id, createdAt: paidAtTimestamp,
-                        naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
-                        paymentDetails: { method: 'credito', installments: installmentCount }
-                    });
-                    return;
-                }
-
-                if (paymentMethod === 'crediario' || paymentMethod === 'fiado') {
-                    const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
-                    let totalButLast = installmentValue * (installmentCount - 1);
-                    const typeLabel = paymentMethod === 'fiado' ? 'Fiado' : 'Crediário';
-
-                    for (let i = 1; i <= installmentCount; i++) {
-                        const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
-                        const dueDateObj = new Date();
-                        if (i > 1) dueDateObj.setMonth(dueDateObj.getMonth() + (i - 1));
-                        const dueDateString = dueDateObj.toISOString().split('T')[0];
-                        
-                        const financialRef = db.collection('financial_receivables').doc();
-                        transaction.set(financialRef, {
+            // INTEGRAÇÃO FINANCEIRA SÓ OCORRE SE O VALOR FOR > 0
+            if (Number(totalAmount) > 0 && payments && payments.length > 0 && payments[0].method !== 'plano_assinatura') {
+                payments.forEach(payment => {
+                    const installmentCount = (payment.installments && payment.installments > 1) ? payment.installments : 1;
+                    const paymentMethod = payment.method.toLowerCase();
+                    
+                    if (paymentMethod === 'credito') {
+                         const financialRef = db.collection('financial_receivables').doc();
+                         transaction.set(financialRef, {
                             establishmentId, groupId, companyId, 
-                            description: `Venda: ${apptData.clientName} (Parcela ${i}/${installmentCount} - ${typeLabel})`,
-                            amount: currentInstallmentValue, dueDate: dueDateString, paymentDate: null, status: 'pending', 
+                            description: `Venda: ${apptData.clientName} (Crédito ${installmentCount}x)`,
+                            amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
                             transactionId: saleRef.id, createdAt: paidAtTimestamp,
                             naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
+                            paymentDetails: { method: 'credito', installments: installmentCount }
                         });
+                        return;
                     }
-                    return;
-                }
 
-                const finRef = db.collection('financial_receivables').doc();
-                transaction.set(finRef, {
-                    establishmentId, groupId, companyId, 
-                    description: `Venda: ${apptData.clientName} (${payment.method})`,
-                    amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
-                    transactionId: saleRef.id, createdAt: paidAtTimestamp,
-                    naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null
+                    if (paymentMethod === 'crediario' || paymentMethod === 'fiado') {
+                        const installmentValue = parseFloat((payment.value / installmentCount).toFixed(2));
+                        let totalButLast = installmentValue * (installmentCount - 1);
+                        const typeLabel = paymentMethod === 'fiado' ? 'Fiado' : 'Crediário';
+
+                        for (let i = 1; i <= installmentCount; i++) {
+                            const currentInstallmentValue = (i === installmentCount) ? payment.value - totalButLast : installmentValue;
+                            const dueDateObj = new Date();
+                            if (i > 1) dueDateObj.setMonth(dueDateObj.getMonth() + (i - 1));
+                            const dueDateString = dueDateObj.toISOString().split('T')[0];
+                            
+                            const financialRef = db.collection('financial_receivables').doc();
+                            transaction.set(financialRef, {
+                                establishmentId, groupId, companyId, 
+                                description: `Venda: ${apptData.clientName} (Parcela ${i}/${installmentCount} - ${typeLabel})`,
+                                amount: currentInstallmentValue, dueDate: dueDateString, paymentDate: null, status: 'pending', 
+                                transactionId: saleRef.id, createdAt: paidAtTimestamp,
+                                naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null,
+                            });
+                        }
+                        return;
+                    }
+
+                    const finRef = db.collection('financial_receivables').doc();
+                    transaction.set(finRef, {
+                        establishmentId, groupId, companyId, 
+                        description: `Venda: ${apptData.clientName} (${payment.method})`,
+                        amount: payment.value, dueDate: paidDate, status: 'paid', paymentDate: paidDate,
+                        transactionId: saleRef.id, createdAt: paidAtTimestamp,
+                        naturezaId: defaultNaturezaId || null, centroDeCustoId: defaultCentroDeCustoId || null
+                    });
                 });
-            });
+            }
         });
 
         res.status(200).json({ message: 'Checkout realizado.', pointsEarned: pointsToAward });
@@ -721,6 +815,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
 
 // 8. REABRIR COMANDA (COM ESTORNO)
 router.post('/:appointmentId/reopen', async (req, res) => {
+    // ... [MANTIDO O MESMO CÓDIGO] ...
     const { appointmentId } = req.params;
     const { db } = req;
     try {
@@ -808,11 +903,20 @@ router.patch('/:appointmentId/status', async (req, res) => {
         const { status } = req.body;
         const ref = req.db.collection('appointments').doc(appointmentId);
         
+        // Buscar os dados ANTES de atualizar
+        const doc = await ref.get();
+        const data = doc.data();
+
         await ref.update({ status }); 
 
         if (status === 'cancelled') {
-            const doc = await ref.get();
-            const data = doc.data();
+            // 🚀 NOVA LÓGICA: Devolver o uso do plano se for cancelado
+            if (data && data.coveredByPlan && data.subscriptionId) {
+                await req.db.collection('client_subscriptions').doc(data.subscriptionId).update({
+                    usageCurrentMonth: admin.firestore.FieldValue.increment(-1)
+                });
+            }
+
             if (data && data.establishmentId) {
                 const dateStr = data.startTime.toDate().toLocaleDateString('pt-BR');
                 const timeStr = data.startTime.toDate().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});

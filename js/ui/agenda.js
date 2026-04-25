@@ -192,6 +192,9 @@ function renderWeekView(allEvents) {
                 const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd' };
                 const isCompleted = event.status === 'completed';
                 const isChecked = localState.selectedItems.has(event.id);
+                
+                // 🚀 DETEÇÃO DE PLANO VIP
+                const isVIP = event.coveredByPlan;
 
                 if (event.type === 'blockage') {
                     return `<div class="week-event-chip bg-red-50 border-l-4 border-red-500 rounded-md p-2 mb-2">
@@ -214,7 +217,10 @@ function renderWeekView(allEvents) {
                     data-action="edit-appointment" data-appointment='${dataStr}'>
                     ${checkboxHtml}
                     <div class="text-xs font-bold text-gray-900">${timeStr}</div>
-                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2">${esc(event.clientName)}</div>
+                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2">
+                        ${esc(event.clientName)} 
+                        ${isVIP ? '<i class="bi bi-gem text-indigo-500 ml-1" title="Cliente VIP"></i>' : ''}
+                    </div>
                     <div class="text-[0.65rem] text-gray-500 leading-tight mt-0.5">${esc(event.serviceName)} <br/> <span class="font-medium text-indigo-600">${esc((event.professionalName || '').split(' ')[0])}</span></div>
                 </div>`;
             }).join('');
@@ -297,7 +303,15 @@ function renderListView(allEvents) {
         }
 
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
-        const serviceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.totalPrice || 0) || Number(event.servicePrice || 0);
+        
+        // 🚀 CÁLCULO DE PREÇO COM VALIDAÇÃO VIP
+        const baseServiceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.servicePrice || 0);
+        // Se o totalAmount existir, usa-o (ele vem zerado do backend se for coberto pelo plano)
+        const displayValue = event.totalAmount !== undefined ? Number(event.totalAmount) : baseServiceValue;
+        
+        const isVIP = event.coveredByPlan;
+        const vipBadge = isVIP ? `<span class="bg-indigo-100 text-indigo-700 text-[9px] px-1.5 py-0.5 rounded border border-indigo-200 font-black uppercase tracking-wider ml-1 flex-shrink-0" title="Coberto pelo Plano VIP"><i class="bi bi-gem mr-0.5"></i> VIP</span>` : '';
+
         const paymentState = event.paymentStatus || (event.status === 'completed' ? 'Finalizado' : 'Agendado');
         const professionalShort = esc((event.professionalName || '').split(' ')[0]);
 
@@ -313,11 +327,14 @@ function renderListView(allEvents) {
             </div>
             
             <div class="flex-1 pl-3.5 flex flex-col justify-center min-w-0">
-                <h3 class="font-bold text-gray-900 text-[0.95rem] truncate">${esc(event.clientName)}</h3>
+                <div class="flex items-center">
+                    <h3 class="font-bold text-gray-900 text-[0.95rem] truncate">${esc(event.clientName)}</h3>
+                    ${vipBadge}
+                </div>
                 <p class="text-xs text-gray-600 mt-0.5 truncate">${esc(event.serviceName)} <span class="font-bold text-indigo-600 px-1">·</span> ${professionalShort}</p>
                 
                 <div class="flex flex-wrap gap-1.5 mt-2.5">
-                    <span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">R$ ${serviceValue.toFixed(2).replace('.', ',')}</span>
+                    <span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">R$ ${displayValue.toFixed(2).replace('.', ',')}</span>
                     ${event.clientPhone ? `<span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold flex items-center gap-1"><i class="bi bi-telephone-fill opacity-70"></i> ${esc(event.clientPhone)}</span>` : ''}
                     <span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold ${isCompleted ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">${esc(paymentState)}</span>
                 </div>

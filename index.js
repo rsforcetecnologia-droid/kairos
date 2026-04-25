@@ -63,6 +63,7 @@ const {
 } = require('./middlewares/auth');
 
 // --- IMPORTAÇÃO DAS ROTAS ---
+const clientSubscriptionsRoutes = require('./routes/clientSubscriptions');
 const adminRoutes = require('./routes/admin');
 const analyticsRoutes = require('./routes/analytics');
 const appointmentRoutes = require('./routes/appointments');
@@ -139,6 +140,8 @@ app.post('/api/admin/config/logo',
 // --- PARSER JSON E API ---
 app.use(express.json({ limit: '10mb' })); 
 app.use('/api', addFirebaseInstances); 
+
+app.use('/api/client-subscriptions', verifyToken, hasAccess, clientSubscriptionsRoutes);
 
 // ======================================================================
 // CONFIGURAÇÃO DE ARQUIVOS ESTÁTICOS (CRUCIAL PARA O SITE FUNCIONAR)

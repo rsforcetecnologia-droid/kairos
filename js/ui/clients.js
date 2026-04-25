@@ -42,7 +42,8 @@ let localState = {
     historyData: {
         appointments: [],
         sales: [],
-        loyaltyLog: []
+        loyaltyLog: [],
+        subscriptions: [] // 🚀 NOVO: Armazena as assinaturas do cliente
     }
 };
 
@@ -743,7 +744,6 @@ function setupEventListeners() {
                 handleExportExcel();
                 return;
             }
-            // --- NOVO: Ação do Ajuste Manual ---
             if (action === 'manual-redeem') {
                 e.stopPropagation();
                 e.preventDefault();
@@ -919,7 +919,7 @@ function openUnifiedModal(clientId = null) {
         };
     }
 
-    localState.historyData = { appointments: [], sales: [], loyaltyLog: [] };
+    localState.historyData = { appointments: [], sales: [], loyaltyLog: [], subscriptions: [] };
     
     const modalInner = document.getElementById('client-modal-content') || document.getElementById('client-modal-inner');
     if (!modalInner) return;
@@ -967,6 +967,7 @@ function buildModalHTML(modalInner, client) {
             <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-appointments">2. Agendamentos</button>
             <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-history">3. Finanças</button>
             <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-loyalty">4. Fidelidade</button>
+            <button class="tab-link whitespace-nowrap text-[10px] md:text-xs font-black py-4 px-4 border-b-2 border-transparent text-slate-400 hover:text-indigo-500 transition-colors uppercase tracking-widest active:scale-95" data-tab="tab-subscriptions">5. Clubes VIP</button>
             ` : ''}
         </div>
     `;
@@ -1073,6 +1074,12 @@ function buildModalHTML(modalInner, client) {
                 <div id="tab-loyalty" class="tab-content hidden space-y-6 animate-fade-in-fast">
                     <div class="max-w-xl mx-auto" id="historico-fidelidade-container">
                         <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Processando pontos...</p></div>
+                    </div>
+                </div>
+
+                <div id="tab-subscriptions" class="tab-content hidden space-y-6 animate-fade-in-fast">
+                    <div class="max-w-3xl mx-auto" id="historico-assinaturas-container">
+                        <div class="text-center py-16"><div class="loader mx-auto"></div><p class="mt-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Buscando assinaturas...</p></div>
                     </div>
                 </div>
 
@@ -1296,30 +1303,95 @@ function buildLoyaltyHTML(client, log) {
     `;
 }
 
+// 🚀 NOVA FUNÇÃO: RENDERIZAR ABAS DE ASSINATURAS
+function buildSubscriptionsHTML(subscriptions, client) {
+    if (!subscriptions || subscriptions.length === 0) {
+        return `<div class="text-center py-10 border border-dashed border-slate-200 rounded-2xl bg-white"><p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">O cliente não possui nenhum plano VIP ativo.</p></div>`;
+    }
+
+    return `<div class="space-y-4">
+        ${subscriptions.map(sub => {
+            const isPastDue = sub.status === 'past_due';
+            const isActive = sub.status === 'active';
+            const isCanceled = sub.status === 'canceled';
+            
+            const statusColor = isActive ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : (isPastDue ? 'text-red-700 bg-red-50 border-red-200' : 'text-gray-700 bg-gray-50 border-gray-200');
+            const statusText = isActive ? 'Ativo' : (isPastDue ? 'Pagamento Atrasado' : 'Cancelado');
+            const icon = isActive ? 'bi-check-circle-fill text-emerald-500' : (isPastDue ? 'bi-exclamation-circle-fill text-red-500' : 'bi-x-circle-fill text-gray-500');
+            
+            let endDate = 'N/A';
+            if (sub.currentPeriodEnd) {
+                const dateObj = typeof sub.currentPeriodEnd === 'object' && sub.currentPeriodEnd._seconds 
+                    ? new Date(sub.currentPeriodEnd._seconds * 1000) 
+                    : new Date(sub.currentPeriodEnd);
+                if (!isNaN(dateObj.getTime())) {
+                    endDate = dateObj.toLocaleDateString('pt-BR');
+                }
+            }
+            
+            const limitText = sub.usageLimit ? `${sub.usageCurrentMonth || 0} / ${sub.usageLimit}` : `${sub.usageCurrentMonth || 0} (Ilimitado)`;
+            
+            const whatsappLink = `https://wa.me/55${cleanPhone(client.phone)}?text=${encodeURIComponent('Olá ' + client.name.split(' ')[0] + ', notamos uma pendência na renovação do seu ' + sub.planName + '. Podemos ajudar?')}`;
+
+            return `
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                <div class="flex justify-between items-start mb-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <h4 class="font-black text-lg text-slate-800 flex items-center gap-2"><i class="bi bi-gem text-indigo-500"></i> ${escapeHTML(sub.planName)}</h4>
+                        <p class="text-xs text-slate-500 mt-1">Assinatura ${sub.gatewaySubscriptionId || '#N/A'}</p>
+                    </div>
+                    <span class="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-md border ${statusColor} flex items-center gap-1">
+                        <i class="bi ${icon}"></i> ${statusText}
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-5 bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-inner">
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Uso neste ciclo</p>
+                        <p class="font-black text-slate-700 text-base">${limitText} serviços</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Próxima Renovação</p>
+                        <p class="font-black text-slate-700 text-base">${endDate}</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2">
+                    ${isPastDue ? `<a href="${whatsappLink}" target="_blank" class="px-4 py-2 bg-green-50 text-green-700 font-bold rounded-lg hover:bg-green-100 transition border border-green-200 text-xs shadow-sm flex items-center gap-1.5"><i class="bi bi-whatsapp"></i> Cobrar Cliente</a>` : ''}
+                    ${isActive || isPastDue ? `<button data-action="cancel-subscription" data-sub-id="${sub.id}" class="px-4 py-2 bg-white text-red-600 font-bold rounded-lg border border-slate-200 hover:border-red-200 hover:bg-red-50 transition text-xs shadow-sm">Cancelar Plano</button>` : ''}
+                </div>
+            </div>
+            `;
+        }).join('')}
+    </div>`;
+}
+
 // --- 8. ROTINAS DE HISTÓRICO E SALVAMENTO ---
 
 async function fetchClientHistory(client) {
     if (!client || !client.phone) return; 
     
-    // O Telefone é a chave mestra para buscar na API
     const phoneToSearch = cleanPhone(client.phone);
 
     try {
-        // Puxa Appointments, Sales e Loyalty da rede inteira (baseado no filtro do utilizador)
         const estIds = Array.from(localState.filterEstablishmentIds);
-        const fullHistory = await clientsApi.getFullHistory(estIds, phoneToSearch);
         
-        // Separa os dados para as abas
+        // 🚀 AGORA BUSCA TAMBÉM AS ASSINATURAS DO CLIENTE
+        const [fullHistory, subscriptions] = await Promise.all([
+            clientsApi.getFullHistory(estIds, phoneToSearch),
+            // Rota que criaremos no backend futuramente para consultar as assinaturas
+            authenticatedFetch(`/api/client-subscriptions/client/${phoneToSearch}`).catch(() => []) 
+        ]);
+        
         const appointments = fullHistory.filter(item => item.type === 'appointment');
-// Filtra APENAS as comandas (sales) para a aba Finanças, pois elas já contêm o valor total real
-const salesAndFinances = fullHistory.filter(item => item.type === 'sale');
-const loyaltyLog = fullHistory.filter(item => item.type === 'loyalty');
+        const salesAndFinances = fullHistory.filter(item => item.type === 'sale');
+        const loyaltyLog = fullHistory.filter(item => item.type === 'loyalty');
 
         localState.historyData.appointments = appointments;
         localState.historyData.sales = salesAndFinances;
         localState.historyData.loyaltyLog = loyaltyLog;
+        localState.historyData.subscriptions = subscriptions || [];
         
-        // Renderiza as abas
         const apptContainer = document.getElementById('historico-agendamentos-container');
         if (apptContainer) apptContainer.innerHTML = buildAppointmentsHTML(appointments);
         
@@ -1329,7 +1401,10 @@ const loyaltyLog = fullHistory.filter(item => item.type === 'loyalty');
         const loyContainer = document.getElementById('historico-fidelidade-container');
         if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(client, loyaltyLog);
         
-        // Anexa os eventos de clique
+        // 🚀 RENDERIZA A NOVA ABA DE ASSINATURAS
+        const subContainer = document.getElementById('historico-assinaturas-container');
+        if (subContainer) subContainer.innerHTML = buildSubscriptionsHTML(localState.historyData.subscriptions, client);
+        
         attachDynamicEvents(client);
 
     } catch (e) {
@@ -1342,6 +1417,8 @@ const loyaltyLog = fullHistory.filter(item => item.type === 'loyalty');
         if(finContainer) finContainer.innerHTML = errHtml;
         const loyContainer = document.getElementById('historico-fidelidade-container');
         if(loyContainer) loyContainer.innerHTML = errHtml;
+        const subContainer = document.getElementById('historico-assinaturas-container');
+        if(subContainer) subContainer.innerHTML = errHtml;
     } 
 }
 
@@ -1349,7 +1426,6 @@ function attachDynamicEvents(client) {
     const modalContent = document.getElementById('client-modal-inner');
     if (!modalContent) return;
 
-    // Navegação para Agenda e Comandas
     modalContent.querySelectorAll('[data-go-agenda]').forEach(btn => {
         btn.onclick = () => {
             hideClientModal(); 
@@ -1364,7 +1440,29 @@ function attachDynamicEvents(client) {
         };
     });
 
-    // --- LOGICA DO AJUSTE MANUAL INLINE ---
+    // --- LÓGICA DE CANCELAMENTO DE ASSINATURA ---
+    modalContent.querySelectorAll('[data-action="cancel-subscription"]').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.preventDefault();
+            const subId = btn.dataset.subId;
+            const confirmed = await showConfirmation('Cancelar Plano', 'Tem a certeza que deseja cancelar a assinatura deste cliente? A cobrança será interrompida imediatamente no cartão do cliente.');
+            if (confirmed) {
+                try {
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Cancelando...';
+                    // Rota de cancelamento que configuraremos no backend de Webhooks/Assinaturas
+                    await authenticatedFetch(`/api/client-subscriptions/cancel/${subId}`, { method: 'POST' });
+                    showNotification('Sucesso', 'Assinatura cancelada com sucesso.', 'success');
+                    fetchClientHistory(localState.selectedClient);
+                } catch(err) {
+                    showNotification('Erro', err.message, 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = 'Cancelar Plano';
+                }
+            }
+        };
+    });
+
     const toggleBtns = modalContent.querySelectorAll('[data-action="toggle-adjustment"]');
     const container = modalContent.querySelector('#inline-adjustment-container');
     const confirmBtn = modalContent.querySelector('#confirm-adjustment-btn');
@@ -1406,10 +1504,9 @@ function attachDynamicEvents(client) {
 
                 localState.selectedClient.loyaltyPoints = newBalance;
                 
-                // Atualiza a aba e o histórico local
                 showNotification('Sucesso', 'Pontos atualizados com sucesso!', 'success');
-                fetchClientHistory(localState.selectedClient); // Recarrega os dados e re-renderiza a aba
-                renderList(); // Atualiza a tabela ao fundo
+                fetchClientHistory(localState.selectedClient); 
+                renderList(); 
 
             } catch (error) { 
                 showNotification('Erro', error.message, 'error'); 
@@ -1533,12 +1630,11 @@ function openManualRedemptionModal(client) {
             showNotification('Sucesso', 'Saldo de pontos atualizado.', 'success');
             close();
             
-            // Re-renderizar a tela de fidelidade
             const loyContainer = document.getElementById('historico-fidelidade-container');
             if (loyContainer) loyContainer.innerHTML = buildLoyaltyHTML(localState.selectedClient, localState.historyData.loyaltyLog);
             attachDynamicEvents(localState.selectedClient);
 
-            renderList(); // Atualiza na tabela geral
+            renderList(); 
 
         } catch (error) { 
             showNotification('Erro', error.message, 'error'); 
