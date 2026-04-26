@@ -185,11 +185,11 @@
                 <form id="plan-checkout-form" class="space-y-5 pb-8">
                     <div class="space-y-3">
                         <h4 class="text-xs font-bold uppercase tracking-widest opacity-50 title-text ml-1">Seus Dados</h4>
-                        <input type="text" id="subName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Nome Completo" required readonly>
-                        <input type="email" id="subEmail" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Seu melhor E-mail" required readonly>
+                        <input type="text" id="subName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Nome Completo" required readonly>
+                        <input type="email" id="subEmail" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Seu melhor E-mail" required readonly>
                         <div class="grid grid-cols-2 gap-3">
-                            <input type="tel" id="subDocument" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="CPF" required readonly>
-                            <input type="tel" id="subPhone" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Celular / WhatsApp" required readonly>
+                            <input type="tel" id="subDocument" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="CPF" required readonly>
+                            <input type="tel" id="subPhone" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Celular / WhatsApp" required readonly>
                         </div>
                     </div>
 
@@ -377,6 +377,30 @@
         </div>
     </div>
 
+    <div id="profileEditModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 hidden backdrop-blur-sm">
+        <div class="theme-card w-full max-w-sm p-6 relative fade-in">
+            <button id="closeProfileEdit" class="absolute top-4 right-4 text-gray-400 hover:text-red-500"><i class="bi bi-x-lg"></i></button>
+            
+            <div class="w-16 h-16 theme-bg-color rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-xl shadow-md">
+                <i class="bi bi-person"></i>
+            </div>
+            <h3 class="text-xl font-bold title-text mb-1 text-center">Os Seus Dados</h3>
+            <p class="text-xs opacity-70 mb-6 text-center">Mantenha os seus dados atualizados para facilitar os agendamentos.</p>
+            
+            <div class="space-y-3 mb-6">
+                <input type="text" id="editName" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Nome Completo">
+                <input type="tel" id="editPhone" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Seu WhatsApp">
+                <input type="tel" id="editDocument" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Seu CPF">
+                <input type="date" id="editBirth" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring">
+            </div>
+            
+            <div class="space-y-2">
+                <button id="btnUpdateProfile" class="w-full theme-bg-color py-3 radius-dynamic font-bold shadow-md hover:opacity-90 transition-opacity">Atualizar Dados</button>
+                <button id="btnLogout" class="w-full bg-red-50 text-red-600 border border-red-200 py-3 radius-dynamic font-bold hover:bg-red-100 transition-colors">Sair da Conta</button>
+            </div>
+        </div>
+    </div>
+
     <div id="profileCompleteModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 hidden backdrop-blur-sm">
         <div class="theme-card w-full max-w-sm p-6 text-center">
             <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -466,11 +490,64 @@
 
             document.getElementById('closeAuthModal').onclick = () => document.getElementById('authModal').classList.add('hidden');
             
+            // Ação do botão superior de Autenticação/Perfil
             document.getElementById('authBtn').onclick = () => {
                 if (auth.currentUser) {
-                    if (confirm('Deseja sair da sua conta?')) auth.signOut();
+                    if (currentUserProfile) {
+                        document.getElementById('editName').value = currentUserProfile.name || auth.currentUser.displayName || '';
+                        document.getElementById('editPhone').value = currentUserProfile.phone || '';
+                        document.getElementById('editDocument').value = currentUserProfile.document || '';
+                        document.getElementById('editBirth').value = currentUserProfile.birthDate || '';
+                    } else {
+                        document.getElementById('editName').value = auth.currentUser.displayName || '';
+                    }
+                    document.getElementById('profileEditModal').classList.remove('hidden');
                 } else {
                     showAuthModal();
+                }
+            };
+
+            // Lógicas do Modal de Edição de Perfil
+            document.getElementById('closeProfileEdit').onclick = () => document.getElementById('profileEditModal').classList.add('hidden');
+
+            document.getElementById('btnLogout').onclick = () => {
+                if (confirm('Deseja realmente sair da sua conta?')) {
+                    auth.signOut();
+                    document.getElementById('profileEditModal').classList.add('hidden');
+                    window.location.reload();
+                }
+            };
+
+            document.getElementById('btnUpdateProfile').onclick = async () => {
+                const btn = document.getElementById('btnUpdateProfile');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> A guardar...';
+                
+                try {
+                    const idToken = await auth.currentUser.getIdToken();
+                    const profileData = {
+                        name: document.getElementById('editName').value,
+                        phone: document.getElementById('editPhone').value,
+                        document: document.getElementById('editDocument').value,
+                        birthDate: document.getElementById('editBirth').value,
+                        establishmentId: REAL_ESTABLISHMENT_ID
+                    };
+
+                    const response = await fetch(`${window.location.origin}/api/client-portal/profile`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        body: JSON.stringify(profileData)
+                    });
+
+                    if (!response.ok) throw new Error('Falha ao guardar os dados');
+                    
+                    await fetchProfile(); // Atualiza em memória
+                    document.getElementById('profileEditModal').classList.add('hidden');
+                    showNotificationModal('Sucesso', 'Os seus dados foram atualizados com sucesso!');
+                } catch (e) { 
+                    showNotificationModal('Erro', e.message); 
+                } finally {
+                    btn.innerHTML = originalText;
                 }
             };
 
@@ -543,6 +620,10 @@
                     return; 
                 }
 
+                const btn = document.getElementById('btnSaveProfile');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> Processando...';
+
                 try {
                     const idToken = await auth.currentUser.getIdToken();
                     const profileData = {
@@ -565,16 +646,25 @@
                     }
 
                     document.getElementById('profileCompleteModal').classList.add('hidden');
-                    await fetchProfile();
                     
-                    // Continua pro checkout
-                    document.getElementById('subName').value = currentUserProfile.name || auth.currentUser.displayName || '';
+                    // Atualiza o perfil, mas não depende totalmente dele caso haja delay na DB
+                    await fetchProfile(); 
+                    
+                    // 🚀 CORREÇÃO DO ERRO AQUI: Usamos ?. para não dar erro se for null 
+                    // e usamos as variáveis locais (doc, phone) como garantia!
+                    document.getElementById('subName').value = currentUserProfile?.name || auth.currentUser.displayName || '';
                     document.getElementById('subEmail').value = auth.currentUser.email || '';
-                    document.getElementById('subDocument').value = currentUserProfile.document || '';
-                    document.getElementById('subPhone').value = currentUserProfile.phone || '';
+                    document.getElementById('subDocument').value = currentUserProfile?.document || doc || '';
+                    document.getElementById('subPhone').value = currentUserProfile?.phone || phone || '';
+                    
                     showSection('planCheckout');
 
-                } catch (e) { showNotificationModal('Erro', e.message); }
+                } catch (e) { 
+                    showNotificationModal('Erro', e.message); 
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Salvar e Continuar';
+                }
             };
             // --- FIM DA LÓGICA DE AUTENTICAÇÃO ---
 
@@ -634,11 +724,13 @@
             setupPhoneMask('subPhone');
             setupPhoneMask('lookupPhone');
             setupPhoneMask('regPhone');
-            setupPhoneMask('completePhone'); // <--- Adicionado para a máscara nova
+            setupPhoneMask('completePhone'); 
+            setupPhoneMask('editPhone'); // Máscara adicionada
             setupCardMask('cardNumber');
             setupCPFMaks('subDocument');
             setupCPFMaks('regDocument');
             setupCPFMaks('completeDocument');
+            setupCPFMaks('editDocument'); // Máscara adicionada
 
             // --- APLICAÇÃO DO TEMA E LAYOUT ---
             function applyCustomization(data) {
@@ -1335,6 +1427,7 @@
                     professionalId: booking.professionalId,
                     clientName: document.getElementById('clientName').value,
                     clientPhone: document.getElementById('clientPhone').value,
+                    clientUid: auth.currentUser ? auth.currentUser.uid : null, // 🚀 Ajuste do erro 500
                     startTime: isoStringWithTimezone
                 };
 

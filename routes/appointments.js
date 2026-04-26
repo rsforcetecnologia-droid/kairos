@@ -99,7 +99,8 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
 // 1. CRIAR AGENDAMENTO (Cliente Final & Rececionista)
 router.post('/', async (req, res) => {
     const { db } = req;
-    const { establishmentId, services, professionalId, clientName, clientPhone, startTime, redeemedReward } = req.body;
+    // Capturamos o clientUid, que nos foi enviado pelo frontend corrigido
+    const { establishmentId, services, professionalId, clientName, clientPhone, startTime, redeemedReward, clientUid } = req.body;
     
     if (!establishmentId || !services || !professionalId || !clientName || !clientPhone || !startTime) {
         return res.status(400).json({ message: 'Campos obrigatórios faltando.' });
@@ -138,54 +139,52 @@ router.post('/', async (req, res) => {
         const endDate = new Date(startDate.getTime() + totalDuration * 60000);
         const newAppointmentRef = db.collection('appointments').doc();
         
-        const safeClientId = cleanId(clientPhone);
+        // Identificação segura usando o UID se existir
+        const safeClientId = clientUid || cleanId(clientPhone);
         const hasRewards = await checkClientRewards(db, clientName, safeClientId, establishmentId);
         
         let notificationTitle = "", notificationBody = "";
 
         await db.runTransaction(async (transaction) => {
+            // -------------------------------------------------------------
+            // FASE 1: LEITURAS (READS) - OBRIGATÓRIO SER A PRIMEIRA COISA
+            // -------------------------------------------------------------
             const clientRef = db.collection('clients').doc(safeClientId);
             const clientDoc = await transaction.get(clientRef);
             
             const conflictQuery = db.collection('appointments')
                 .where('professionalId', '==', professionalId)
                 .where('startTime', '<', admin.firestore.Timestamp.fromDate(endDate));
-            
             const potentialConflicts = await transaction.get(conflictQuery);
+
+            const subQuery = await transaction.get(
+                db.collection('client_subscriptions')
+                  .where('clientId', '==', safeClientId)
+                  .where('status', '==', 'active')
+            );
+
+            // -------------------------------------------------------------
+            // FASE 2: LÓGICA DE NEGÓCIO E VALIDAÇÕES (Nenhuma escrita aqui)
+            // -------------------------------------------------------------
             const actualConflicts = potentialConflicts.docs.filter(doc => 
                 doc.data().endTime.toDate() > startDate && doc.data().status !== 'cancelled'
             );
             if (actualConflicts.length > 0) throw new Error('Horário indisponível.');
 
-            if (!clientDoc.exists) {
-                transaction.set(clientRef, {
-                    establishmentId, groupId, companyId, 
-                    name: clientName, phone: clientPhone, id: safeClientId, 
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(), 
-                    loyaltyPoints: 0
-                });
-            } else {
-                if (clientDoc.data().name !== clientName) {
-                    transaction.update(clientRef, { name: clientName });
-                }
+            if (redeemedReward && redeemedReward.points > 0) {
+                if (!clientDoc.exists) throw new Error("Cliente novo não pode resgatar pontos.");
+                const currentPoints = clientDoc.data().loyaltyPoints || 0;
+                if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes.");
             }
 
-            // 🚀 NOVA LÓGICA: INTERCEÇÃO DE PLANOS DE ASSINATURA VIP
             let coveredByPlan = false;
             let subscriptionId = null;
             let planDiscount = 0;
-
-            const subQuery = await transaction.get(
-                db.collection('client_subscriptions')
-                  .where('clientId', '==', safeClientId)
-                  .where('status', '==', 'active') // Apenas se o cartão/PIX estiver em dia!
-            );
+            let subDocToUpdate = null; // Guardamos a referência, mas só escrevemos na FASE 3
 
             if (!subQuery.empty) {
                 const subDoc = subQuery.docs[0];
                 const subscription = subDoc.data();
-
-                // Verifica se TODOS os serviços agendados estão inclusos no plano do cliente
                 const isServiceCovered = servicesDetails.length > 0 && servicesDetails.every(s => subscription.servicesIncluded.includes(s.id));
 
                 if (isServiceCovered) {
@@ -195,18 +194,43 @@ router.post('/', async (req, res) => {
                     if (!limit || currentUsage < limit) {
                         coveredByPlan = true;
                         subscriptionId = subDoc.id;
-                        planDiscount = totalAmount; // Regista o valor que foi descontado
-                        totalAmount = 0; // 🚀 ZERA O CUSTO DA COMANDA
-
-                        // Incrementa o uso do plano no mês atual
-                        transaction.update(subDoc.ref, {
-                            usageCurrentMonth: admin.firestore.FieldValue.increment(1)
-                        });
-                        console.log(`[ASSINATURAS] Desconto aplicado ao cliente ${safeClientId}. Usos: ${currentUsage + 1}/${limit || 'Ilimitado'}`);
+                        planDiscount = totalAmount;
+                        totalAmount = 0; 
+                        subDocToUpdate = subDoc.ref;
                     }
                 }
             }
+
+            // -------------------------------------------------------------
+            // FASE 3: ESCRITAS (WRITES) - TUDO ACONTECE AQUI
+            // -------------------------------------------------------------
             
+            // 3.1 Registar ou atualizar cliente
+            if (!clientDoc.exists) {
+                transaction.set(clientRef, {
+                    establishmentId, groupId, companyId, 
+                    name: clientName, phone: clientPhone, id: safeClientId, 
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(), 
+                    loyaltyPoints: 0
+                });
+            } else if (clientDoc.data().name !== clientName) {
+                transaction.update(clientRef, { name: clientName });
+            }
+
+            // 3.2 Descontar pontos de fidelidade
+            if (redeemedReward && redeemedReward.points > 0) {
+                transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
+                transaction.set(clientRef.collection('loyaltyHistory').doc(), {
+                    type: 'redeem', points: -redeemedReward.points, reward: redeemedReward.reward, timestamp: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+
+            // 3.3 Atualizar uso da assinatura
+            if (subDocToUpdate) {
+                transaction.update(subDocToUpdate, { usageCurrentMonth: admin.firestore.FieldValue.increment(1) });
+            }
+
+            // 3.4 Criar o agendamento final
             let newAppointment = {
                 establishmentId, groupId, companyId, 
                 services: servicesDetails, professionalId, professionalName,
@@ -214,30 +238,16 @@ router.post('/', async (req, res) => {
                 startTime: admin.firestore.Timestamp.fromDate(startDate),
                 endTime: admin.firestore.Timestamp.fromDate(endDate),
                 status: 'aguardando_confirmacao', 
-                hasRewards,
+                hasRewards: (redeemedReward && redeemedReward.points > 0 && clientDoc.exists) ? (clientDoc.data().loyaltyPoints - redeemedReward.points > 0) : hasRewards,
                 totalAmount: totalAmount,
-                // Novos campos para a Assinatura
                 coveredByPlan,
                 subscriptionId,
-                planDiscount
+                planDiscount,
+                ...(redeemedReward && redeemedReward.points > 0 ? { redeemedReward } : {})
             };
-
-            // Fidelidade Convencional
-            if (redeemedReward && redeemedReward.points > 0) {
-                if (!clientDoc.exists) throw new Error("Cliente novo não pode resgatar pontos.");
-                const currentPoints = clientDoc.data().loyaltyPoints || 0;
-                if (currentPoints < redeemedReward.points) throw new Error("Pontos insuficientes.");
-                
-                transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
-                transaction.set(clientRef.collection('loyaltyHistory').doc(), {
-                    type: 'redeem', points: -redeemedReward.points, reward: redeemedReward.reward, timestamp: admin.firestore.FieldValue.serverTimestamp()
-                });
-                newAppointment.redeemedReward = redeemedReward;
-                newAppointment.hasRewards = (currentPoints - redeemedReward.points) > 0; 
-            }
-            
             transaction.set(newAppointmentRef, newAppointment);
 
+            // 3.5 Criar notificação do estabelecimento
             const dateString = startDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: timezone });
             const timeString = startDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
             const serviceNames = servicesDetails.map(s => s.name).join(', ');
@@ -404,7 +414,6 @@ router.delete('/:appointmentId', async (req, res) => {
             
             const data = doc.data();
             
-            // 🚀 NOVA LÓGICA: Devolver o uso do plano se for apagado
             if (data.coveredByPlan && data.subscriptionId) {
                 const subRef = db.collection('client_subscriptions').doc(data.subscriptionId);
                 transaction.update(subRef, { 
@@ -445,11 +454,11 @@ router.delete('/:appointmentId', async (req, res) => {
     } catch (error) { handleFirestoreError(res, error, 'excluir agendamento'); }
 });
 
-// 5. ATUALIZAR AGENDAMENTO
+// 5. ATUALIZAR AGENDAMENTO (Refatorado para as regras de transação)
 router.put('/:appointmentId', async (req, res) => {
     const { db } = req;
     const { appointmentId } = req.params;
-    const { services, professionalId, clientName, clientPhone, startTime, redeemedReward } = req.body;
+    const { services, professionalId, clientName, clientPhone, startTime, redeemedReward, clientUid } = req.body;
     try {
         const profDoc = await db.collection('professionals').doc(professionalId).get();
         if (!profDoc.exists) throw new Error('Profissional inválido.');
@@ -469,45 +478,48 @@ router.put('/:appointmentId', async (req, res) => {
         const end = new Date(start.getTime() + duration * 60000);
 
         await db.runTransaction(async (transaction) => {
+            // -------------------------------------------------------------
+            // FASE 1: LEITURAS (READS)
+            // -------------------------------------------------------------
             const ref = db.collection('appointments').doc(appointmentId);
             const oldDoc = await transaction.get(ref);
             if (!oldDoc.exists) throw new Error("Não encontrado.");
             const oldData = oldDoc.data();
 
-            // 🚀 NOVA LÓGICA: Reverter uso antigo do plano
-            let currentUsageOffset = 0;
-            if (oldData.coveredByPlan && oldData.subscriptionId) {
-                const oldSubRef = db.collection('client_subscriptions').doc(oldData.subscriptionId);
-                transaction.update(oldSubRef, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
-                currentUsageOffset = -1; // Para descontar na validação em memória abaixo
-            }
+            const conflictsQuery = db.collection('appointments')
+                .where('professionalId', '==', professionalId)
+                .where('startTime', '<', admin.firestore.Timestamp.fromDate(end));
+            const conflicts = await transaction.get(conflictsQuery);
 
-            const conflicts = await transaction.get(
-                db.collection('appointments').where('professionalId', '==', professionalId).where('startTime', '<', admin.firestore.Timestamp.fromDate(end))
-            );
-            const hasConflict = conflicts.docs.some(d => d.id !== appointmentId && d.data().endTime.toDate() > start && d.data().status !== 'cancelled');
-            if (hasConflict) throw new Error('Horário indisponível.');
-
-            const safeClientId = cleanId(clientPhone);
+            const safeClientId = clientUid || cleanId(clientPhone);
             const clientRef = db.collection('clients').doc(safeClientId);
             const clientDoc = await transaction.get(clientRef);
-            
-            if (clientDoc.exists && clientDoc.data().name !== clientName) {
-                transaction.update(clientRef, { name: clientName });
-            }
-
-            let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
-            
-            // 🚀 NOVA LÓGICA: Avaliar nova cobertura do plano
-            let coveredByPlan = false;
-            let subscriptionId = null;
-            let planDiscount = 0;
 
             const subQuery = await transaction.get(
                 db.collection('client_subscriptions')
                   .where('clientId', '==', safeClientId)
                   .where('status', '==', 'active')
             );
+
+            // -------------------------------------------------------------
+            // FASE 2: LÓGICA DE NEGÓCIO E VALIDAÇÕES
+            // -------------------------------------------------------------
+            const hasConflict = conflicts.docs.some(d => d.id !== appointmentId && d.data().endTime.toDate() > start && d.data().status !== 'cancelled');
+            if (hasConflict) throw new Error('Horário indisponível.');
+
+            let hasRewards = await checkClientRewards(db, clientName, clientPhone, oldData.establishmentId);
+
+            let currentUsageOffset = 0;
+            let subDocToRevert = null; 
+            if (oldData.coveredByPlan && oldData.subscriptionId) {
+                subDocToRevert = db.collection('client_subscriptions').doc(oldData.subscriptionId);
+                currentUsageOffset = -1;
+            }
+
+            let coveredByPlan = false;
+            let subscriptionId = null;
+            let planDiscount = 0;
+            let subDocToIncrement = null;
 
             if (!subQuery.empty) {
                 const subDoc = subQuery.docs[0];
@@ -518,7 +530,6 @@ router.put('/:appointmentId', async (req, res) => {
                     const limit = subscription.usageLimit;
                     let currentUsage = subscription.usageCurrentMonth || 0;
                     
-                    // Ajusta o uso em memória caso tenha sido revertido no bloco acima
                     if (oldData.coveredByPlan && oldData.subscriptionId === subDoc.id) {
                         currentUsage += currentUsageOffset; 
                     }
@@ -527,10 +538,28 @@ router.put('/:appointmentId', async (req, res) => {
                         coveredByPlan = true;
                         subscriptionId = subDoc.id;
                         planDiscount = totalAmount;
-                        totalAmount = 0; // O serviço volta a sair de graça
-
-                        transaction.update(subDoc.ref, { usageCurrentMonth: admin.firestore.FieldValue.increment(1) });
+                        totalAmount = 0;
+                        subDocToIncrement = subDoc.ref;
                     }
+                }
+            }
+
+            // -------------------------------------------------------------
+            // FASE 3: ESCRITAS (WRITES)
+            // -------------------------------------------------------------
+            if (subDocToRevert && (!subDocToIncrement || subDocToRevert.id !== subDocToIncrement.id)) {
+                transaction.update(subDocToRevert, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
+            }
+
+            if (clientDoc.exists && clientDoc.data().name !== clientName) {
+                transaction.update(clientRef, { name: clientName });
+            }
+
+            if (subDocToIncrement) {
+                // Lidar com caso em que estorno e incremento é no mesmo doc
+                const finalIncrement = (subDocToRevert && subDocToRevert.id === subDocToIncrement.id) ? 0 : 1;
+                if (finalIncrement !== 0) {
+                    transaction.update(subDocToIncrement, { usageCurrentMonth: admin.firestore.FieldValue.increment(finalIncrement) });
                 }
             }
 
@@ -544,7 +573,6 @@ router.put('/:appointmentId', async (req, res) => {
                 planDiscount
             };
 
-            // Fidelidade
             if (redeemedReward && !oldData.redeemedReward) {
                 if (clientDoc.exists) {
                     transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(-redeemedReward.points) });
@@ -562,7 +590,6 @@ router.put('/:appointmentId', async (req, res) => {
 
 // 6. ATUALIZAR COMANDA (ITENS)
 router.post('/:appointmentId/comanda', async (req, res) => {
-    // ... [MANTIDO O MESMO CÓDIGO ANTERIOR] ...
     const { appointmentId } = req.params;
     const { items: newItems } = req.body;
     if (!Array.isArray(newItems)) return res.status(400).json({ message: 'Items inválidos.' });
@@ -608,7 +635,6 @@ router.post('/:appointmentId/comanda', async (req, res) => {
 
 // 7. CHECKOUT 
 router.post('/:appointmentId/checkout', async (req, res) => {
-    // ... [MANTIDO O MESMO CÓDIGO ANTERIOR DO CHECKOUT] ...
     const { appointmentId } = req.params;
     const { payments, totalAmount, cashierSessionId, items, discount, loyaltyRedemption } = req.body;
     const { db } = req;
@@ -651,7 +677,7 @@ router.post('/:appointmentId/checkout', async (req, res) => {
             const establishmentData = establishmentDoc.data() || {};
             
             const loyaltyProgram = establishmentData.loyaltyProgram || {};
-            if (loyaltyProgram.enabled && !loyaltyRedemption && !apptData.coveredByPlan) { // Não ganha ponto se foi grátis pelo plano
+            if (loyaltyProgram.enabled && !loyaltyRedemption && !apptData.coveredByPlan) {
                 pointsToAward = parseInt(loyaltyProgram.pointsPerVisit || 1);
             }
 
@@ -755,7 +781,6 @@ router.post('/:appointmentId/checkout', async (req, res) => {
                 }
             });
 
-            // INTEGRAÇÃO FINANCEIRA SÓ OCORRE SE O VALOR FOR > 0
             if (Number(totalAmount) > 0 && payments && payments.length > 0 && payments[0].method !== 'plano_assinatura') {
                 payments.forEach(payment => {
                     const installmentCount = (payment.installments && payment.installments > 1) ? payment.installments : 1;
@@ -815,7 +840,6 @@ router.post('/:appointmentId/checkout', async (req, res) => {
 
 // 8. REABRIR COMANDA (COM ESTORNO)
 router.post('/:appointmentId/reopen', async (req, res) => {
-    // ... [MANTIDO O MESMO CÓDIGO] ...
     const { appointmentId } = req.params;
     const { db } = req;
     try {
@@ -903,14 +927,12 @@ router.patch('/:appointmentId/status', async (req, res) => {
         const { status } = req.body;
         const ref = req.db.collection('appointments').doc(appointmentId);
         
-        // Buscar os dados ANTES de atualizar
         const doc = await ref.get();
         const data = doc.data();
 
         await ref.update({ status }); 
 
         if (status === 'cancelled') {
-            // 🚀 NOVA LÓGICA: Devolver o uso do plano se for cancelado
             if (data && data.coveredByPlan && data.subscriptionId) {
                 await req.db.collection('client_subscriptions').doc(data.subscriptionId).update({
                     usageCurrentMonth: admin.firestore.FieldValue.increment(-1)

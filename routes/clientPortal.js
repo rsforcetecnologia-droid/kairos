@@ -272,7 +272,7 @@ router.get('/me', verifyClientToken, async (req, res) => {
             return res.status(200).json(clientDoc.data());
         }
 
-        res.status(404).json({ message: 'Perfil não encontrado. O registro precisa ser concluído.' });
+        res.status(200).json(null); // Retorna sucesso (200), mas diz que o perfil é nulo
     } catch (error) {
         console.error("[PORTAL CLIENTE] Erro ao buscar perfil:", error);
         res.status(500).json({ message: 'Erro interno de servidor.' });
