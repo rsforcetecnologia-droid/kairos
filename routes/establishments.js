@@ -164,7 +164,12 @@ router.post('/', isOwner, async (req, res) => {
                 'financial-section': true, 'reports-section': true
             },
             loyaltyProgram: { enabled: false, pointsPerVisit: 1, tiers: [] },
-            financialIntegration: { defaultNaturezaId: null, defaultCentroDeCustoId: null }
+            financialIntegration: { defaultNaturezaId: null, defaultCentroDeCustoId: null },
+            whatsappAutomations: { 
+                reminder: { enabled: false, hoursBefore: 1, template: "" },
+                birthday: { enabled: false, template: "" },
+                reengagement: { enabled: false, daysInactive: 30, template: "" }
+            } // Inicia com estrutura base de automações
         };
 
         await db.runTransaction(async (transaction) => {
@@ -284,7 +289,28 @@ router.put('/:id/loyalty', isOwner, async (req, res) => {
     }
 });
 
-// 8. Atualizar Dados Gerais de um Estabelecimento
+// 8. Salvar Configurações de Automação de WhatsApp (NOVA ROTA)
+router.put('/:id/whatsapp-automations', isOwner, async (req, res) => {
+    const { id } = req.params;
+    const { whatsappAutomations } = req.body;
+
+    if (!whatsappAutomations) {
+        return res.status(400).json({ message: 'Os dados de automação do WhatsApp são obrigatórios.' });
+    }
+
+    try {
+        const { db } = req;
+        await db.collection('establishments').doc(id).update({
+            whatsappAutomations,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        res.status(200).json({ message: 'Automações de WhatsApp atualizadas com sucesso.' });
+    } catch (error) {
+        handleFirestoreError(res, error, 'salvar automações de WhatsApp');
+    }
+});
+
+// 9. Atualizar Dados Gerais de um Estabelecimento
 router.put('/:id', isOwner, async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
