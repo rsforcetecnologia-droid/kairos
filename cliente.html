@@ -11,6 +11,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     
     <style>
         :root {
@@ -85,13 +88,23 @@
             color: var(--theme-text); border-bottom: 2px solid transparent; cursor: pointer; transition: all 0.3s;
         }
         .nav-tab.active { color: var(--theme-primary); border-bottom-color: var(--theme-primary); }
+
+        /* Tabs do Modal de Auth */
+        .auth-tab {
+            padding: 12px; font-weight: 600; font-size: 14px; text-align: center;
+            flex: 1; cursor: pointer; border-bottom: 2px solid transparent; opacity: 0.5;
+        }
+        .auth-tab.active { border-bottom-color: var(--theme-primary); color: var(--theme-primary); opacity: 1; }
     </style>
 </head>
 <body class="antialiased">
 
-    <div class="fixed top-4 right-4 z-40">
+    <div class="fixed top-4 right-4 z-40 flex gap-2">
         <button id="myAppointmentsBtn" class="text-xs font-semibold shadow-md px-4 py-2 rounded-full transition-transform hover:scale-105 flex items-center gap-2 theme-card" style="color: var(--theme-title-color);">
-            <i class="bi bi-person-circle theme-text-color"></i> Minha Conta
+            <i class="bi bi-calendar-check theme-text-color"></i> Reservas
+        </button>
+        <button id="authBtn" class="text-xs font-semibold shadow-md px-4 py-2 rounded-full transition-transform hover:scale-105 flex items-center gap-2 theme-card" style="color: var(--theme-title-color);">
+            <i class="bi bi-person-circle theme-text-color"></i> <span id="authBtnLabel">Entrar</span>
         </button>
     </div>
 
@@ -172,11 +185,11 @@
                 <form id="plan-checkout-form" class="space-y-5 pb-8">
                     <div class="space-y-3">
                         <h4 class="text-xs font-bold uppercase tracking-widest opacity-50 title-text ml-1">Seus Dados</h4>
-                        <input type="text" id="subName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Nome Completo" required>
-                        <input type="email" id="subEmail" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Seu melhor E-mail" required>
+                        <input type="text" id="subName" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Nome Completo" required readonly>
+                        <input type="email" id="subEmail" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Seu melhor E-mail" required readonly>
                         <div class="grid grid-cols-2 gap-3">
-                            <input type="tel" id="subDocument" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="CPF" required>
-                            <input type="tel" id="subPhone" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text" placeholder="Celular / WhatsApp" required>
+                            <input type="tel" id="subDocument" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="CPF" required readonly>
+                            <input type="tel" id="subPhone" class="w-full p-4 theme-card text-sm focus:ring-2 theme-ring outline-none transition-all title-text bg-gray-50" placeholder="Celular / WhatsApp" required readonly>
                         </div>
                     </div>
 
@@ -323,6 +336,65 @@
         <div id="appointments-content" class="flex-grow p-4 overflow-y-auto"></div>
     </div>
     
+    <div id="authModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 hidden backdrop-blur-sm">
+        <div class="theme-card w-full max-w-sm overflow-hidden flex flex-col fade-in">
+            <div class="flex bg-gray-50 border-b border-gray-100">
+                <div class="auth-tab active" data-tab="login">Login</div>
+                <div class="auth-tab" data-tab="register">Cadastro</div>
+                <button id="closeAuthModal" class="p-3 text-gray-400 hover:text-red-500"><i class="bi bi-x-lg"></i></button>
+            </div>
+
+            <div id="auth-login-pane" class="p-6 space-y-4">
+                <input type="email" id="loginEmail" class="w-full p-4 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="E-mail">
+                <input type="password" id="loginPassword" class="w-full p-4 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Senha">
+                <button id="btnLogin" class="w-full theme-bg-color py-3 radius-dynamic font-bold shadow-md hover:opacity-90">Entrar</button>
+                
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-gray-200"></div>
+                    <span class="flex-shrink mx-4 text-gray-400 text-xs font-bold uppercase">Ou</span>
+                    <div class="flex-grow border-t border-gray-200"></div>
+                </div>
+
+                <button id="btnGoogle" class="w-full py-3 bg-white border border-gray-200 radius-dynamic font-bold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors shadow-sm text-sm">
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5 h-5"> Continuar com Google
+                </button>
+            </div>
+
+            <div id="auth-register-pane" class="p-6 space-y-3 hidden">
+                <input type="text" id="regName" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Nome Completo">
+                <input type="email" id="regEmail" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="E-mail">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="password" id="regPassword" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Senha">
+                    <input type="tel" id="regPhone" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="WhatsApp">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="tel" id="regDocument" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="CPF">
+                    <input type="date" id="regBirth" class="w-full p-3 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Nascimento">
+                </div>
+                <p class="text-[10px] opacity-60 px-1">Ao cadastrar-se, você concorda com nossos termos.</p>
+                <button id="btnRegister" class="w-full theme-bg-color py-3 radius-dynamic font-bold shadow-md hover:opacity-90">Criar Conta</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="profileCompleteModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 hidden backdrop-blur-sm">
+        <div class="theme-card w-full max-w-sm p-6 text-center">
+            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="bi bi-person-vcard text-2xl text-blue-600"></i>
+            </div>
+            <h3 class="text-lg font-bold title-text mb-2">Quase lá!</h3>
+            <p class="text-sm opacity-70 mb-6">Para assinar um plano, precisamos de mais alguns dados obrigatórios para emissão da fatura.</p>
+            
+            <div class="space-y-3 mb-6">
+                <input type="tel" id="completePhone" class="w-full p-4 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Seu WhatsApp">
+                <input type="tel" id="completeDocument" class="w-full p-4 theme-card text-sm outline-none focus:ring-2 theme-ring" placeholder="Seu CPF">
+                <input type="date" id="completeBirth" class="w-full p-4 theme-card text-sm outline-none focus:ring-2 theme-ring">
+            </div>
+            
+            <button id="btnSaveProfile" class="w-full theme-bg-color py-3 radius-dynamic font-bold shadow-md">Salvar e Continuar</button>
+        </div>
+    </div>
+
     <div id="notificationModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-6 hidden backdrop-blur-sm">
         <div class="theme-card p-6 text-center max-w-sm w-full animate-[bounce_0.2s_ease-out]">
           <h3 id="modal-title" class="text-lg font-bold title-text mb-2"></h3>
@@ -331,8 +403,181 @@
         </div>
     </div>
 
+    <script type="module">
+        import { firebaseConfig } from './js/firebase-config.js';
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+    </script>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+
+            // --- INÍCIO DA LÓGICA DE AUTENTICAÇÃO FIREBASE ---
+            const auth = firebase.auth();
+            let currentUserProfile = null;
+
+            const fetchProfile = async () => {
+                const user = auth.currentUser;
+                if (!user) return null;
+                try {
+                    const idToken = await user.getIdToken();
+                    const res = await fetch(`${window.location.origin}/api/client-portal/me`, {
+                        headers: { 'Authorization': `Bearer ${idToken}` }
+                    });
+                    if (res.ok) {
+                        currentUserProfile = await res.json();
+                        return currentUserProfile;
+                    }
+                } catch (e) { console.error("Erro fetch profile", e); }
+                return null;
+            };
+
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    document.getElementById('authBtnLabel').textContent = user.displayName?.split(' ')[0] || 'Sua Conta';
+                    await fetchProfile();
+                } else {
+                    document.getElementById('authBtnLabel').textContent = 'Entrar';
+                    currentUserProfile = null;
+                }
+            });
+
+            const showAuthModal = (tab = 'login') => {
+                document.getElementById('authModal').classList.remove('hidden');
+                switchAuthTab(tab);
+            };
+
+            const switchAuthTab = (tab) => {
+                document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                document.querySelector(`.auth-tab[data-tab="${tab}"]`).classList.add('active');
+                if (tab === 'login') {
+                    document.getElementById('auth-login-pane').classList.remove('hidden');
+                    document.getElementById('auth-register-pane').classList.add('hidden');
+                } else {
+                    document.getElementById('auth-login-pane').classList.add('hidden');
+                    document.getElementById('auth-register-pane').classList.remove('hidden');
+                }
+            };
+
+            document.querySelectorAll('.auth-tab').forEach(tab => {
+                tab.addEventListener('click', () => switchAuthTab(tab.dataset.tab));
+            });
+
+            document.getElementById('closeAuthModal').onclick = () => document.getElementById('authModal').classList.add('hidden');
+            
+            document.getElementById('authBtn').onclick = () => {
+                if (auth.currentUser) {
+                    if (confirm('Deseja sair da sua conta?')) auth.signOut();
+                } else {
+                    showAuthModal();
+                }
+            };
+
+            document.getElementById('btnGoogle').onclick = async () => {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                try {
+                    await auth.signInWithPopup(provider);
+                    document.getElementById('authModal').classList.add('hidden');
+                    showNotificationModal('Sucesso', 'Login realizado com sucesso!');
+                } catch (e) { showNotificationModal('Erro', e.message); }
+            };
+
+            document.getElementById('btnRegister').onclick = async () => {
+                const email = document.getElementById('regEmail').value;
+                const pass = document.getElementById('regPassword').value;
+                const name = document.getElementById('regName').value;
+                const phone = document.getElementById('regPhone').value;
+                const doc = document.getElementById('regDocument').value;
+                const birth = document.getElementById('regBirth').value;
+
+                if (!email || !pass || !name || !phone || !doc || !birth) {
+                    showNotificationModal('Atenção', 'Preencha todos os campos.'); return;
+                }
+
+                try {
+                    const userCred = await auth.createUserWithEmailAndPassword(email, pass);
+                    const idToken = await userCred.user.getIdToken();
+                    
+                    await fetch(`${window.location.origin}/api/client-portal/profile`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        body: JSON.stringify({ name, phone, document: doc, birthDate: birth, establishmentId: REAL_ESTABLISHMENT_ID })
+                    });
+
+                    document.getElementById('authModal').classList.add('hidden');
+                    showNotificationModal('Sucesso', 'Conta criada!');
+                } catch (e) { showNotificationModal('Erro', e.message); }
+            };
+
+            document.getElementById('btnLogin').onclick = async () => {
+                const email = document.getElementById('loginEmail').value;
+                const pass = document.getElementById('loginPassword').value;
+                try {
+                    await auth.signInWithEmailAndPassword(email, pass);
+                    document.getElementById('authModal').classList.add('hidden');
+                } catch (e) { showNotificationModal('Erro', 'Usuário ou senha inválidos.'); }
+            };
+
+            const checkAndCompleteProfile = async () => {
+                const profile = await fetchProfile();
+                if (profile && profile.document && profile.birthDate && profile.phone) return true;
+                
+                // Se falta algo, preenchemos o form com o que já temos
+                if (profile) {
+                    if (profile.phone) document.getElementById('completePhone').value = profile.phone;
+                    if (profile.document) document.getElementById('completeDocument').value = profile.document;
+                }
+
+                document.getElementById('profileCompleteModal').classList.remove('hidden');
+                return false;
+            };
+
+            document.getElementById('btnSaveProfile').onclick = async () => {
+                const phone = document.getElementById('completePhone').value;
+                const doc = document.getElementById('completeDocument').value;
+                const birth = document.getElementById('completeBirth').value;
+                
+                if (!phone || !doc || !birth) { 
+                    showNotificationModal('Erro', 'Preencha WhatsApp, CPF e Data de Nascimento.'); 
+                    return; 
+                }
+
+                try {
+                    const idToken = await auth.currentUser.getIdToken();
+                    const profileData = {
+                        name: auth.currentUser.displayName || 'Cliente',
+                        phone: phone,
+                        document: doc,
+                        birthDate: birth,
+                        establishmentId: REAL_ESTABLISHMENT_ID
+                    };
+
+                    const response = await fetch(`${window.location.origin}/api/client-portal/profile`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        body: JSON.stringify(profileData)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || 'Falha ao salvar dados');
+                    }
+
+                    document.getElementById('profileCompleteModal').classList.add('hidden');
+                    await fetchProfile();
+                    
+                    // Continua pro checkout
+                    document.getElementById('subName').value = currentUserProfile.name || auth.currentUser.displayName || '';
+                    document.getElementById('subEmail').value = auth.currentUser.email || '';
+                    document.getElementById('subDocument').value = currentUserProfile.document || '';
+                    document.getElementById('subPhone').value = currentUserProfile.phone || '';
+                    showSection('planCheckout');
+
+                } catch (e) { showNotificationModal('Erro', e.message); }
+            };
+            // --- FIM DA LÓGICA DE AUTENTICAÇÃO ---
+
             
             // --- TEMPLATES PREDEFINIDOS (10 OPÇÕES) ---
             const designTemplates = [
@@ -388,8 +633,12 @@
             setupPhoneMask('clientPhone');
             setupPhoneMask('subPhone');
             setupPhoneMask('lookupPhone');
+            setupPhoneMask('regPhone');
+            setupPhoneMask('completePhone'); // <--- Adicionado para a máscara nova
             setupCardMask('cardNumber');
             setupCPFMaks('subDocument');
+            setupCPFMaks('regDocument');
+            setupCPFMaks('completeDocument');
 
             // --- APLICAÇÃO DO TEMA E LAYOUT ---
             function applyCustomization(data) {
@@ -677,7 +926,7 @@
                 }
             };
 
-            // 🚀 NOVA FUNÇÃO: CARREGAR PLANOS DE ASSINATURA
+            // 🚀 FUNÇÃO: CARREGAR PLANOS DE ASSINATURA
             const loadPlans = async () => {
                 plansContainer.innerHTML = '<div class="loader mx-auto my-10"></div>';
                 try {
@@ -688,7 +937,6 @@
                     plansContainer.innerHTML = '';
                     
                     if (plans.length > 0) {
-                        // Mostra a Tab se existirem planos
                         document.getElementById('tab-plans').classList.remove('hidden');
                     } else {
                         plansContainer.innerHTML = '<div class="text-center py-10 theme-card"><i class="bi bi-star text-3xl opacity-30"></i><p class="mt-2 text-sm font-medium opacity-70">Nenhum clube disponível de momento.</p></div>';
@@ -742,15 +990,28 @@
                             </button>
                         `;
                         
-                        card.addEventListener('click', () => {
+                        // 🚀 MODIFICAÇÃO: Verifica autenticação antes de ir para o checkout
+                        card.addEventListener('click', async () => {
                             selectedPlanToCheckout = plan;
                             
-                            // Popula resumo do Checkout
-                            document.getElementById('checkout-plan-name').textContent = plan.name;
-                            document.getElementById('checkout-plan-price').textContent = plan.price.toFixed(2).replace('.', ',');
-                            document.getElementById('checkout-plan-cycle').textContent = `/${cycleStr}`;
-                            
-                            showSection('planCheckout');
+                            if (!auth.currentUser) {
+                                showAuthModal('register');
+                                return;
+                            }
+
+                            const profileOk = await checkAndCompleteProfile();
+                            if (profileOk) {
+                                document.getElementById('checkout-plan-name').textContent = plan.name;
+                                document.getElementById('checkout-plan-price').textContent = plan.price.toFixed(2).replace('.', ',');
+                                document.getElementById('checkout-plan-cycle').textContent = `/${cycleStr}`;
+                                
+                                document.getElementById('subName').value = currentUserProfile.name || auth.currentUser.displayName || '';
+                                document.getElementById('subEmail').value = auth.currentUser.email || '';
+                                document.getElementById('subDocument').value = currentUserProfile.document || '';
+                                document.getElementById('subPhone').value = currentUserProfile.phone || '';
+
+                                showSection('planCheckout');
+                            }
                         });
                         plansContainer.appendChild(card);
                     });
@@ -766,7 +1027,8 @@
                 btn.disabled = true;
                 btn.innerHTML = '<i class="bi bi-hourglass-split animate-spin"></i> Processando pagamento...';
 
-                // Prepara dados conforme esperado pelo Pagar.me V5 (roteado no backend)
+                const idToken = await auth.currentUser.getIdToken();
+
                 const customerData = {
                     name: document.getElementById('subName').value,
                     email: document.getElementById('subEmail').value,
@@ -792,7 +1054,10 @@
                 try {
                     const response = await fetch(`${API_BASE_URL}/api/public/subscriptions/checkout`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${idToken}` 
+                        },
                         body: JSON.stringify(payload)
                     });
 

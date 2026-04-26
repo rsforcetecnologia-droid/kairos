@@ -47,9 +47,10 @@ setPersistence(auth, browserLocalPersistence)
         console.error("Erro ao ativar persistência:", error);
     });
 
-// --- EXPORTAÇÕES (O ERRO ESTAVA AQUI) ---
-// Agora incluímos setPersistence e browserLocalPersistence na lista
+// --- EXPORTAÇÕES CORRIGIDAS ---
+// Agora incluímos firebaseConfig na lista de exportação
 export { 
+    firebaseConfig,          // <--- Correção aqui
     auth, 
     db, 
     storage, 
@@ -57,8 +58,8 @@ export {
     getToken, 
     onMessage,
     onAuthStateChanged,
-    setPersistence,          // <--- Adicionado
-    browserLocalPersistence, // <--- Adicionado
+    setPersistence,
+    browserLocalPersistence,
     collection,
     addDoc,
     getDocs,

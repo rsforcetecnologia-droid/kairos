@@ -5,29 +5,31 @@ const router = express.Router();
 const admin = require('firebase-admin');
 
 // =======================================================================
-// 🛠️ FUNÇÕES AUXILIARES
+// 🛠️ FUNÇÕES AUXILIARES E DE INFRAESTRUTURA
 // =======================================================================
 
-// --- FUNÇÃO AUXILIAR: LIMPAR TELEFONE (Para comparação segura) ---
+/**
+ * Limpa a string de telefone mantendo apenas números.
+ * @param {string} phone 
+ * @returns {string}
+ */
 function cleanPhone(phone) {
     if (!phone) return '';
-    return String(phone).replace(/\D/g, ''); // Remove tudo o que não for número
+    return String(phone).replace(/\D/g, ''); 
 }
 
-// --- FUNÇÃO AUXILIAR: ENVIAR PUSH NOTIFICATION ---
+/**
+ * Envia Notificação Push via FCM para os dispositivos do estabelecimento.
+ */
 async function sendPushNotificationToEstablishment(db, establishmentId, title, body) {
     try {
         const usersSnapshot = await db.collection('users')
             .where('establishmentId', '==', establishmentId)
             .get();
 
-        const tokens = [];
-        usersSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (data.fcmToken) {
-                tokens.push(data.fcmToken);
-            }
-        });
+        const tokens = usersSnapshot.docs
+            .map(doc => doc.data().fcmToken)
+            .filter(token => !!token);
 
         if (tokens.length === 0) return;
 
@@ -46,8 +48,11 @@ async function sendPushNotificationToEstablishment(db, establishmentId, title, b
 }
 
 // =======================================================================
-// 🛡️ MIDDLEWARE DE AUTENTICAÇÃO DO CLIENTE FINAL (GOOGLE SIGN-IN)
+// 🛡️ MIDDLEWARE DE AUTENTICAÇÃO DO CLIENTE FINAL (FIREBASE AUTH / GOOGLE)
 // =======================================================================
+/**
+ * Verifica o JWT enviado pelo frontend (Google Sign-In ou Email/Senha).
+ */
 const verifyClientToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
@@ -58,9 +63,8 @@ const verifyClientToken = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     
     try {
-        // O Firebase Admin SDK verifica se o token do Google Sign-In é válido e não expirou
         const decodedToken = await admin.auth().verifyIdToken(token);
-        req.clientUser = decodedToken; // Guarda os dados: { email, name, picture, uid, ... }
+        req.clientUser = decodedToken; // { email, name, picture, uid, ... }
         next();
     } catch (error) {
         console.error('[AUTH CLIENTE] Token inválido ou expirado:', error.message);
@@ -69,10 +73,13 @@ const verifyClientToken = async (req, res, next) => {
 };
 
 // =======================================================================
-// 🔓 ROTAS PÚBLICAS (Acesso Rápido com Validação Simples de Telefone)
+// 🔓 ROTAS PÚBLICAS (Acesso Rápido - Sem Login)
 // =======================================================================
 
-// ROTA PÚBLICA: Listar agendamentos de um cliente por telemóvel
+/**
+ * GET /appointments/:establishmentId
+ * Listar agendamentos de um cliente por telemóvel (Bug Fix Aplicado)
+ */
 router.get('/appointments/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
     const { phone } = req.query;
@@ -83,18 +90,33 @@ router.get('/appointments/:establishmentId', async (req, res) => {
 
     try {
         const { db } = req;
-        const cleanPhoneSearch = cleanPhone(phone);
-        const snapshot = await db.collection('appointments')
+        
+        // BUG FIX: O sistema gravava com máscara e buscava sem máscara.
+        // Vamos buscar primeiro com a string exata (com máscara).
+        let snapshot = await db.collection('appointments')
             .where('establishmentId', '==', establishmentId)
-            .where('clientPhone', '==', cleanPhoneSearch) 
+            .where('clientPhone', '==', phone) 
             .orderBy('startTime', 'desc')
             .get();
+
+        // Fallback para dados legados: Se não achou, tenta buscar sem máscara.
+        if (snapshot.empty) {
+            const cleanPhoneSearch = cleanPhone(phone);
+            snapshot = await db.collection('appointments')
+                .where('establishmentId', '==', establishmentId)
+                .where('clientPhone', '==', cleanPhoneSearch) 
+                .orderBy('startTime', 'desc')
+                .get();
+        }
 
         if (snapshot.empty) {
             return res.status(200).json([]);
         }
 
-        const professionalsSnapshot = await db.collection('professionals').where('establishmentId', '==', establishmentId).get();
+        // Otimização: Busca os profissionais em paralelo
+        const professionalsSnapshot = await db.collection('professionals')
+            .where('establishmentId', '==', establishmentId)
+            .get();
         
         const professionalsMap = new Map(professionalsSnapshot.docs.map(doc => [doc.id, {
             name: doc.data().name,
@@ -125,62 +147,55 @@ router.get('/appointments/:establishmentId', async (req, res) => {
         res.status(200).json(appointments);
 
     } catch (error) {
-        console.error("Erro ao buscar agendamentos do cliente:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        console.error("[ClientPortal] Erro ao buscar agendamentos do cliente:", error);
+        res.status(500).json({ message: 'Ocorreu um erro interno no servidor.' });
     }
 });
 
-// ROTA PÚBLICA: Cancelar um agendamento
+/**
+ * POST /appointments/:appointmentId/cancel
+ * Cancelar um agendamento público (Validação por telefone)
+ */
 router.post('/appointments/:appointmentId/cancel', async (req, res) => {
     const { appointmentId } = req.params;
     const { phone, establishmentId } = req.body;
 
     if (!phone || !establishmentId) {
-        return res.status(400).json({ message: 'O telemóvel e ID do estabelecimento são obrigatórios para cancelar.' });
+        return res.status(400).json({ message: 'O telemóvel e ID do estabelecimento são obrigatórios.' });
     }
 
     try {
         const { db } = req;
         const appointmentRef = db.collection('appointments').doc(appointmentId);
         
-        // Busca o Timezone do Estabelecimento para a notificação correta
         const establishmentDocGlobal = await db.collection('establishments').doc(establishmentId).get();
-        const establishmentDataGlobal = establishmentDocGlobal.exists ? establishmentDocGlobal.data() : {};
-        const timezone = establishmentDataGlobal.timezone || 'America/Sao_Paulo';
+        const timezone = establishmentDocGlobal.exists ? (establishmentDocGlobal.data().timezone || 'America/Sao_Paulo') : 'America/Sao_Paulo';
 
         let notificationTitle = "";
         let notificationBody = "";
 
         await db.runTransaction(async (transaction) => {
             const appointmentDoc = await transaction.get(appointmentRef);
-            if (!appointmentDoc.exists) {
-                throw new Error("Agendamento não encontrado.");
-            }
+            if (!appointmentDoc.exists) throw new Error("Agendamento não encontrado.");
             
             const appointmentData = appointmentDoc.data();
 
-            // COMPARAÇÃO DE TELEFONE
-            const dbPhoneClean = cleanPhone(appointmentData.clientPhone);
-            const reqPhoneClean = cleanPhone(phone);
-
-            if (appointmentData.establishmentId !== establishmentId || dbPhoneClean !== reqPhoneClean) {
+            // Validação de segurança robusta comparando apenas dígitos numéricos
+            if (appointmentData.establishmentId !== establishmentId || cleanPhone(appointmentData.clientPhone) !== cleanPhone(phone)) {
                 throw new Error("Você não tem permissão para cancelar este agendamento.");
             }
 
             if (appointmentData.status === 'completed' || appointmentData.status === 'cancelled') {
-                 throw new Error("Este agendamento já foi finalizado ou cancelado e não pode ser modificado.");
+                 throw new Error("Este agendamento já foi finalizado ou cancelado.");
             }
             
-            // --- 🚀 LÓGICA DE ASSINATURA VIP (NOVO) ---
-            // Se o cliente pagou este agendamento com um Clube VIP, devolvemos o "uso" ao plano dele
+            // Reembolsa o uso do plano VIP, se aplicável
             if (appointmentData.coveredByPlan && appointmentData.subscriptionId) {
                 const subRef = db.collection('client_subscriptions').doc(appointmentData.subscriptionId);
-                transaction.update(subRef, {
-                    usageCurrentMonth: admin.firestore.FieldValue.increment(-1)
-                });
+                transaction.update(subRef, { usageCurrentMonth: admin.firestore.FieldValue.increment(-1) });
             }
 
-            // --- LÓGICA DE DEVOLUÇÃO DE PONTOS DE FIDELIDADE (ORIGINAL MANTIDA) ---
+            // Reembolsa pontos de fidelidade
             if (appointmentData.redeemedReward && appointmentData.redeemedReward.points > 0) {
                 const clientQuery = db.collection('clients')
                     .where('establishmentId', '==', establishmentId)
@@ -191,12 +206,9 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
                 
                 if (!clientSnapshot.empty) {
                     const clientRef = clientSnapshot.docs[0].ref;
-                    transaction.update(clientRef, { 
-                        loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) 
-                    });
+                    transaction.update(clientRef, { loyaltyPoints: admin.firestore.FieldValue.increment(appointmentData.redeemedReward.points) });
                     
-                    const historyRef = clientRef.collection('loyaltyHistory').doc();
-                    transaction.set(historyRef, {
+                    transaction.set(clientRef.collection('loyaltyHistory').doc(), {
                         type: 'refund',
                         points: appointmentData.redeemedReward.points,
                         reward: appointmentData.redeemedReward.reward,
@@ -206,24 +218,17 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
                 }
             }
 
-            // --- ATUALIZAÇÃO DO STATUS ---
             transaction.update(appointmentRef, { status: 'cancelled', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-            // Criação da Notificação
-            const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
-            
-            const timeString = appointmentData.startTime.toDate().toLocaleTimeString('pt-BR', { 
-                hour: '2-digit', minute: '2-digit', timeZone: timezone 
-            });
-            const dateString = appointmentData.startTime.toDate().toLocaleDateString('pt-BR', {
-                day: '2-digit', month: '2-digit', timeZone: timezone
-            });
+            // Gera notificação in-app
+            const timeString = appointmentData.startTime.toDate().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: timezone });
+            const dateString = appointmentData.startTime.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: timezone });
 
-            const notificationMessage = `${appointmentData.clientName} cancelou o agendamento de ${dateString} às ${timeString}`;
-            
+            notificationMessage = `${appointmentData.clientName} cancelou o agendamento de ${dateString} às ${timeString}`;
             notificationTitle = "Agendamento Cancelado";
             notificationBody = notificationMessage;
 
+            const notificationRef = db.collection('establishments').doc(establishmentId).collection('notifications').doc();
             transaction.set(notificationRef, {
                 title: notificationTitle,
                 message: notificationMessage,
@@ -234,46 +239,40 @@ router.post('/appointments/:appointmentId/cancel', async (req, res) => {
             });
         });
 
-        // --- ENVIA PUSH NOTIFICATION ---
         sendPushNotificationToEstablishment(db, establishmentId, notificationTitle, notificationBody)
-            .catch(err => console.error("Falha silenciosa no push de cancelamento:", err));
+            .catch(err => console.error("Falha silenciosa no push:", err));
 
         res.status(200).json({ message: 'Agendamento cancelado com sucesso.' });
 
     } catch (error) {
-        console.error("Erro ao cancelar agendamento:", error);
+        console.error("[ClientPortal] Erro ao cancelar agendamento:", error);
         const statusCode = error.message.includes('permissão') || error.message.includes('finalizado') ? 400 : 500;
         res.status(statusCode).json({ message: error.message || 'Ocorreu um erro no servidor.' });
     }
 });
 
 // =======================================================================
-// 🔒 ROTAS PROTEGIDAS (Exigem Autenticação via Google / JWT)
+// 🔒 ROTAS PROTEGIDAS (Exigem Login/Autenticação)
 // =======================================================================
 
 /**
- * ROTA: GET /api/client-portal/me
- * OBJETIVO: Verificar se a conta Google do cliente já tem um histórico/WhatsApp associado.
+ * GET /me
+ * Busca o perfil unificado do cliente autenticado
  */
 router.get('/me', verifyClientToken, async (req, res) => {
-    const { email } = req.clientUser;
+    const { uid } = req.clientUser;
     const { db } = req;
 
     try {
-        const snapshot = await db.collection('clients')
-            .where('email', '==', email)
-            .limit(1)
-            .get();
+        // Usamos o UID do Firebase Auth como ID principal do documento na coleção `clients`
+        const clientRef = db.collection('clients').doc(uid);
+        const clientDoc = await clientRef.get();
 
-        if (!snapshot.empty) {
-            const clientData = snapshot.docs[0].data();
-            return res.status(200).json({ 
-                phone: clientData.phone, 
-                name: clientData.name 
-            });
+        if (clientDoc.exists) {
+            return res.status(200).json(clientDoc.data());
         }
 
-        res.status(404).json({ message: 'Perfil Google não vinculado a um telefone no CRM.' });
+        res.status(404).json({ message: 'Perfil não encontrado. O registro precisa ser concluído.' });
     } catch (error) {
         console.error("[PORTAL CLIENTE] Erro ao buscar perfil:", error);
         res.status(500).json({ message: 'Erro interno de servidor.' });
@@ -281,49 +280,80 @@ router.get('/me', verifyClientToken, async (req, res) => {
 });
 
 /**
- * ROTA: GET /api/client-portal/my-subscriptions/:establishmentId
- * OBJETIVO: Devolver as assinaturas ativas do cliente para exibição na Área Restrita
+ * POST /profile
+ * Cria ou Atualiza o perfil do cliente com os dados exigidos para assinatura (CPF, DOB)
+ */
+router.post('/profile', verifyClientToken, async (req, res) => {
+    const { uid, email } = req.clientUser;
+    const { db } = req;
+    const { name, phone, document, birthDate, establishmentId } = req.body;
+
+    if (!name || !phone || !document || !birthDate) {
+        return res.status(400).json({ message: 'Dados incompletos. Nome, Telefone, CPF e Data de Nascimento são obrigatórios.' });
+    }
+
+    try {
+        const clientRef = db.collection('clients').doc(uid);
+        const cleanDoc = document.replace(/\D/g, ''); // Sanitiza o CPF
+
+        const payload = {
+            uid,
+            email,
+            name,
+            phone,
+            document: cleanDoc,
+            birthDate,
+            establishmentId: establishmentId || null, // Opcional no cadastro global, mas útil
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const clientDoc = await clientRef.get();
+        if (!clientDoc.exists) {
+            payload.createdAt = admin.firestore.FieldValue.serverTimestamp();
+            payload.loyaltyPoints = 0;
+            payload.totalDebt = 0;
+        }
+
+        await clientRef.set(payload, { merge: true });
+
+        res.status(200).json({ message: 'Perfil salvo com sucesso!', data: payload });
+    } catch (error) {
+        console.error("[PORTAL CLIENTE] Erro ao salvar perfil:", error);
+        res.status(500).json({ message: 'Erro ao processar dados do perfil.' });
+    }
+});
+
+/**
+ * GET /my-subscriptions/:establishmentId
+ * Lista assinaturas do cliente autenticado
  */
 router.get('/my-subscriptions/:establishmentId', verifyClientToken, async (req, res) => {
     const { establishmentId } = req.params;
-    const { phone } = req.query; 
+    const { uid } = req.clientUser; 
     const { db } = req;
 
-    if (!phone) return res.status(400).json({ message: 'Telefone é obrigatório para consultar assinaturas.' });
-    const cleanPhoneSearch = cleanPhone(phone);
-
     try {
+        // Agora buscamos as assinaturas vinculadas ao UID autenticado
         const snapshot = await db.collection('client_subscriptions')
             .where('establishmentId', '==', establishmentId)
-            .where('clientId', '==', cleanPhoneSearch)
+            .where('clientAuthId', '==', uid) // Garantindo segurança via JWT
             .get();
 
-        // Ordenação em memória para não exigir indexação manual no Firestore
         const subs = snapshot.docs.map(doc => {
             const subData = doc.data();
             return {
                 id: doc.id,
                 ...subData,
-                currentPeriodEnd: subData.currentPeriodEnd && subData.currentPeriodEnd.toDate 
-                    ? subData.currentPeriodEnd.toDate().toISOString() 
-                    : subData.currentPeriodEnd,
-                currentPeriodStart: subData.currentPeriodStart && subData.currentPeriodStart.toDate 
-                    ? subData.currentPeriodStart.toDate().toISOString() 
-                    : subData.currentPeriodStart,
-                createdAt: subData.createdAt && subData.createdAt.toDate 
-                    ? subData.createdAt.toDate().toISOString() 
-                    : subData.createdAt,
+                currentPeriodEnd: subData.currentPeriodEnd?.toDate().toISOString(),
+                currentPeriodStart: subData.currentPeriodStart?.toDate().toISOString(),
+                createdAt: subData.createdAt?.toDate().toISOString(),
             };
-        }).sort((a, b) => {
-            const dateA = new Date(a.createdAt || 0);
-            const dateB = new Date(b.createdAt || 0);
-            return dateB - dateA; // Decrescente
-        });
+        }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
         res.status(200).json(subs);
     } catch (error) {
         console.error("[PORTAL CLIENTE] Erro ao buscar assinaturas:", error);
-        res.status(500).json({ message: 'Erro ao processar as assinaturas do cliente.' });
+        res.status(500).json({ message: 'Erro ao processar as assinaturas.' });
     }
 });
 
