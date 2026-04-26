@@ -1133,8 +1133,17 @@ function buildAppointmentsHTML(appointments) {
     const renderCard = (appt, isPast) => {
         const date = new Date(appt.date);
         
-        let statusBadge = isPast ? '<span class="text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-slate-200 shadow-sm">Concluído</span>' : '<span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-emerald-200 shadow-sm">Confirmado</span>';
-        if (appt.status === 'cancelled') statusBadge = '<span class="text-red-600 bg-red-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-red-200 shadow-sm">Cancelado</span>';
+        // ⭐ Lógica de Status Atualizada
+        let statusBadge = '';
+        if (appt.status === 'cancelled') {
+            statusBadge = '<span class="text-red-600 bg-red-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-red-200 shadow-sm">Cancelado</span>';
+        } else if (appt.status === 'completed' || isPast) {
+            statusBadge = '<span class="text-slate-500 bg-slate-100 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-slate-200 shadow-sm">Concluído</span>';
+        } else if (appt.status === 'confirmed') {
+            statusBadge = '<span class="text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-blue-200 shadow-sm">Confirmado</span>';
+        } else {
+            statusBadge = '<span class="text-orange-700 bg-orange-50 px-2 py-0.5 rounded text-[9px] uppercase font-bold border border-orange-200 shadow-sm">Aguardando</span>';
+        }
         
         const unitName = localState.establishments.find(e => e.id === appt.establishmentId)?.name || 'Unidade Local';
 

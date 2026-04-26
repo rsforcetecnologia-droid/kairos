@@ -189,6 +189,9 @@ function renderWeekView(allEvents) {
             dayContent = dayEvents.map(event => {
                 const st = new Date(event.startTime);
                 const timeStr = st.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const et = new Date(event.endTime);
+                const endTimeStr = et.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                
                 const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd' };
                 const isCompleted = event.status === 'completed';
                 const isChecked = localState.selectedItems.has(event.id);
@@ -196,11 +199,13 @@ function renderWeekView(allEvents) {
                 // 🚀 DETEÇÃO DE PLANO VIP
                 const isVIP = event.coveredByPlan;
 
+                // ⭐ MELHORIA: Renderização do Bloqueio na Semana
                 if (event.type === 'blockage') {
-                    return `<div class="week-event-chip bg-red-50 border-l-4 border-red-500 rounded-md p-2 mb-2">
-                        <div class="text-xs font-bold text-red-700 flex items-center"><i class="bi bi-lock mr-1"></i>${timeStr}</div>
-                        <div class="text-xs text-gray-800 font-semibold mt-1">${esc(event.reason)}</div>
-                        <div class="text-[0.65rem] text-gray-500">${esc(event.professionalName)}</div>
+                    return `<div class="week-event-chip bg-red-50 border-l-4 border-red-500 rounded-md p-2 mb-2 shadow-sm cursor-default">
+                        <div class="text-[9px] uppercase font-black text-red-500 mb-0.5"><i class="bi bi-lock-fill"></i> Bloqueio</div>
+                        <div class="text-xs font-bold text-red-800">${timeStr} - ${endTimeStr}</div>
+                        <div class="text-xs text-red-900 font-semibold mt-1 leading-tight">${esc(event.reason || 'Indisponível')}</div>
+                        <div class="text-[0.65rem] text-red-600 mt-1"><i class="bi bi-person-badge"></i> ${esc(event.professionalName)}</div>
                     </div>`;
                 }
 
@@ -213,12 +218,19 @@ function renderWeekView(allEvents) {
                        </div>`
                     : '';
 
+                // ⭐ MELHORIA: Ícone de Status na visão semanal
+                let statusIcon = '';
+                if (event.status === 'completed') statusIcon = '<i class="bi bi-check-all text-green-500 ml-1" title="Finalizado"></i>';
+                else if (event.status === 'confirmed') statusIcon = '<i class="bi bi-hand-thumbs-up-fill text-blue-500 ml-1" title="Confirmado"></i>';
+                else statusIcon = '<i class="bi bi-clock-history text-orange-400 ml-1" title="Aguardando Confirmação"></i>';
+
                 return `<div class="week-event-chip relative shadow-sm border-l-4 rounded-md p-2 mb-2 cursor-pointer transition-transform active:scale-95 ${isCompleted ? 'opacity-60' : ''} ${selStyle}" style="border-left-color: ${profColor.main};"
                     data-action="edit-appointment" data-appointment='${dataStr}'>
                     ${checkboxHtml}
                     <div class="text-xs font-bold text-gray-900">${timeStr}</div>
-                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2">
+                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2 flex items-center">
                         ${esc(event.clientName)} 
+                        ${statusIcon}
                         ${isVIP ? '<i class="bi bi-gem text-indigo-500 ml-1" title="Cliente VIP"></i>' : ''}
                     </div>
                     <div class="text-[0.65rem] text-gray-500 leading-tight mt-0.5">${esc(event.serviceName)} <br/> <span class="font-medium text-indigo-600">${esc((event.professionalName || '').split(' ')[0])}</span></div>
@@ -274,6 +286,7 @@ function renderListView(allEvents) {
         const et = new Date(event.endTime);
         const durMin = Math.round((et - st) / 60000);
         const timeStr = st.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const endTimeStr = et.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd', light: '#f1f3f5' };
         const isCompleted = event.status === 'completed';
         const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
@@ -287,16 +300,21 @@ function renderListView(allEvents) {
 
         const selStyle = isChecked ? 'ring-2 ring-indigo-500 bg-indigo-50' : 'bg-white';
 
+        // ⭐ MELHORIA: Renderização do Bloqueio na Lista
         if (event.type === 'blockage') {
-            html += `<div class="list-card flex bg-red-50 rounded-2xl p-4 shadow-sm border border-red-100 mb-3 cursor-pointer">
+            html += `<div class="list-card flex bg-red-50 rounded-2xl p-4 shadow-sm border border-red-200 mb-3 cursor-default">
                 ${checkboxHtml}
-                <div class="flex flex-col items-center justify-center border-r border-red-200 pr-4 min-w-[4.5rem]">
-                    <span class="text-lg font-bold text-red-700">${timeStr}</span>
-                    <span class="text-xs text-red-500 font-semibold"><i class="bi bi-lock-fill"></i> Bloqueio</span>
+                <div class="flex flex-col items-center justify-center border-r border-red-200 pr-4 min-w-[5rem]">
+                    <span class="text-sm font-bold text-red-700">${timeStr}</span>
+                    <span class="text-xs text-red-400 font-semibold my-0.5">até</span>
+                    <span class="text-sm font-bold text-red-700">${endTimeStr}</span>
                 </div>
                 <div class="flex-1 pl-4 flex flex-col justify-center">
-                    <h3 class="font-bold text-red-800 text-sm">${esc(event.reason)}</h3>
-                    <p class="text-xs text-red-600 mt-1 font-medium">${esc(event.professionalName)}</p>
+                    <div class="flex items-center gap-2">
+                        <span class="bg-red-100 text-red-800 text-[10px] uppercase font-black px-2 py-0.5 rounded-md"><i class="bi bi-lock-fill"></i> Bloqueio</span>
+                    </div>
+                    <h3 class="font-bold text-red-900 text-sm mt-1.5">${esc(event.reason || 'Motivo não informado')}</h3>
+                    <p class="text-xs text-red-600 mt-1 font-medium"><i class="bi bi-person-badge"></i> ${esc(event.professionalName)}</p>
                 </div>
             </div>`;
             return;
@@ -304,15 +322,23 @@ function renderListView(allEvents) {
 
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
         
-        // 🚀 CÁLCULO DE PREÇO COM VALIDAÇÃO VIP
+        // CÁLCULO DE PREÇO COM VALIDAÇÃO VIP
         const baseServiceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.servicePrice || 0);
-        // Se o totalAmount existir, usa-o (ele vem zerado do backend se for coberto pelo plano)
         const displayValue = event.totalAmount !== undefined ? Number(event.totalAmount) : baseServiceValue;
         
         const isVIP = event.coveredByPlan;
         const vipBadge = isVIP ? `<span class="bg-indigo-100 text-indigo-700 text-[9px] px-1.5 py-0.5 rounded border border-indigo-200 font-black uppercase tracking-wider ml-1 flex-shrink-0" title="Coberto pelo Plano VIP"><i class="bi bi-gem mr-0.5"></i> VIP</span>` : '';
 
-        const paymentState = event.paymentStatus || (event.status === 'completed' ? 'Finalizado' : 'Agendado');
+        // ⭐ MELHORIA: Badge de Status (Aguardando / Confirmado / Finalizado)
+        let statusBadge = '';
+        if (event.status === 'completed') {
+            statusBadge = `<span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold bg-green-50 text-green-700 border-green-200"><i class="bi bi-check-all"></i> Finalizado</span>`;
+        } else if (event.status === 'confirmed') {
+            statusBadge = `<span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold bg-blue-50 text-blue-700 border-blue-200"><i class="bi bi-hand-thumbs-up-fill"></i> Confirmado</span>`;
+        } else {
+            statusBadge = `<span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold bg-orange-50 text-orange-700 border-orange-200"><i class="bi bi-clock-history"></i> Aguardando Confirmação</span>`;
+        }
+
         const professionalShort = esc((event.professionalName || '').split(' ')[0]);
 
         html += `<div class="list-card flex rounded-2xl p-3.5 shadow-sm border border-gray-100 cursor-pointer transition-transform active:scale-95 ${selStyle} ${isCompleted ? 'opacity-70 bg-gray-50' : ''}"
@@ -336,7 +362,7 @@ function renderListView(allEvents) {
                 <div class="flex flex-wrap gap-1.5 mt-2.5">
                     <span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">R$ ${displayValue.toFixed(2).replace('.', ',')}</span>
                     ${event.clientPhone ? `<span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold flex items-center gap-1"><i class="bi bi-telephone-fill opacity-70"></i> ${esc(event.clientPhone)}</span>` : ''}
-                    <span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold ${isCompleted ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">${esc(paymentState)}</span>
+                    ${statusBadge}
                 </div>
             </div>
 
@@ -458,16 +484,26 @@ async function fetchAndDisplayAgenda() {
 
         if (!document.getElementById('agenda-view')) return;
 
-        const enrich = items => items.map(a => ({
+        // ⭐ MELHORIA: Garantir que Bloqueios sejam estritamente "blockage" e Agendamentos "appointment"
+        const enrichAppt = items => items.map(a => ({
             ...a,
-            type: a.type || 'appointment',
+            type: 'appointment',
             professionalName: a.professionalName || (() => {
                 const p = state.professionals?.find(pp => pp.id === a.professionalId);
                 return p ? p.name : 'Indefinido';
             })()
         }));
 
-        state.allEvents = [...enrich(allAppts), ...enrich(allBlockages)];
+        const enrichBlockage = items => items.map(b => ({
+            ...b,
+            type: 'blockage', // Forçando o tipo para não confundir com agendamentos!
+            professionalName: b.professionalName || (() => {
+                const p = state.professionals?.find(pp => pp.id === b.professionalId);
+                return p ? p.name : 'Indefinido';
+            })()
+        }));
+
+        state.allEvents = [...enrichAppt(allAppts), ...enrichBlockage(allBlockages)];
         renderProfessionalSelector();
         renderAgenda();
     } catch (error) {
