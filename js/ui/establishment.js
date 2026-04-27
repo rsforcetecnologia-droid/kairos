@@ -58,13 +58,14 @@ let currentEditingId = null;
 function getMenuItems() {
     return [
         { id: 'personal-data', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', label: 'Dados Gerais da Unidade' },
-        { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
+        { id: 'branding', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0-1 1h-2a1 1 0 01-1-1v-6z', label: 'Identidade e Cores'},
         { id: 'booking', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', label: 'Agendamento Online' },
         { id: 'working-hours', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Horário de Funcionamento' },
         { id: 'whatsapp-bot', icon: 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', label: 'Atendente Virtual (WhatsApp)' },
+        // 🚀 ADICIONADO AQUI: Novo Módulo de Mensagens Automáticas
+        { id: 'auto-messages', icon: 'M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z', label: 'Mensagens Automáticas' },
         { id: 'loyalty', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v1h2a1 1 0 011 1v3a1 1 0 01-1 1h-2v1a2 2 0 01-2 2H7a2 2 0 01-2-2v-1H3a1 1 0 01-1-1V7a1 1 0 011-1h2V5z', label: 'Plano de Fidelidade' },
         { id: 'financial', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8a1 1 0 011 1v4a1 1 0 11-2 0v-4a1 1 0 011-1zm0 0a1 1 0 001-1V5a1 1 0 10-2 0v2a1 1 0 001 1zm0 0a1 1 0 011 1v2a1 1 0 11-2 0v-2a1 1 0 011-1z', label: 'Integração Financeira' },
-        // 🚀 ADICIONADO AQUI: Novo Módulo de Pagamentos
         { id: 'pagarme', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z', label: 'Pagamentos (Pagar.me)' },
         { id: 'change-password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', label: 'Alterar senha' },
         { id: 'change-email', icon: 'M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207', label: 'Alterar E-mail de Acesso' },
@@ -516,12 +517,6 @@ function renderBrandingSection(data, container) {
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div class="absolute bottom-4 left-4 right-4 py-3 px-4 shadow-lg flex justify-between items-center z-20" style="background-color: var(--preview-primary); color: white; border-radius: var(--preview-btn-radius);">
-                                <span class="text-xs font-semibold">1 serviço</span>
-                                <span class="text-sm font-bold flex items-center gap-1">Continuar <i class="bi bi-arrow-right"></i></span>
-                            </div>
-
                         </div>
                     </form>
                 </div>
@@ -619,7 +614,7 @@ function renderBrandingSection(data, container) {
 
                         </div>
                     </div>
-                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -1197,6 +1192,158 @@ async function renderWhatsAppSection(data, container) {
     }
 }
 
+// 🚀 NOVO: RENDERIZAÇÃO DA SEÇÃO DE MENSAGENS AUTOMÁTICAS
+function renderAutoMessagesSection(data, container) {
+    const config = data.autoMessagesConfig || {};
+    
+    // Fallbacks para os templates
+    const tplReminder = config.appointmentReminder?.template || "Olá {{cliente}}! 👋 Passando para lembrar do seu horário hoje às {{hora}} com {{profissional}}. Para confirmar, responda CONFIRMAR, ou se precisar desmarcar, responda CANCELAR.";
+    const tplBirthday = config.birthdayCongrats?.template || "Parabéns {{cliente}}! 🎉 O Kairós deseja-lhe um feliz aniversário! Temos um desconto especial para si hoje na sua próxima visita.";
+    const tplInactive = config.inactiveRecovery?.template || "Olá {{cliente}}, tudo bem? Já faz {{dias}} dias desde a sua última visita à *{{unidade}}*! Que tal agendar um novo horário hoje?";
+
+    container.innerHTML = `
+        <div class="bg-white p-4 md:p-6 rounded-lg shadow-md border border-gray-100 space-y-6">
+            <div class="flex justify-between items-center border-b pb-4">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800">Mensagens Automáticas (WhatsApp)</h3>
+                    <p class="text-sm text-gray-500">Configure os disparos inteligentes para os seus clientes.</p>
+                </div>
+                <button type="submit" form="auto-messages-form" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all shadow-md active:scale-95 flex items-center gap-2">
+                    <i class="bi bi-save"></i> Salvar Modelos
+                </button>
+            </div>
+
+            <form id="auto-messages-form" class="space-y-8">
+                
+                <div class="p-5 rounded-xl border border-blue-100 bg-blue-50/30">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center">
+                                <i class="bi bi-alarm"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800">Lembrete de Agendamento</h4>
+                                <p class="text-xs text-gray-500">Enviado automaticamente antes do serviço.</p>
+                            </div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input cursor-pointer" type="checkbox" id="activeReminder" ${config.appointmentReminder?.active !== false ? 'checked' : ''}>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3 text-sm text-gray-700">
+                            <span>Enviar</span>
+                            <input type="number" id="minutesBefore" value="${config.appointmentReminder?.minutesBefore || 60}" class="w-16 p-1 border rounded text-center font-bold" min="15" max="1440">
+                            <span>minutos antes do horário.</span>
+                        </div>
+                        <textarea id="tplReminder" rows="3" class="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">${tplReminder}</textarea>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplReminder" data-var="{{cliente}}">@cliente</button>
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplReminder" data-var="{{hora}}">@hora</button>
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplReminder" data-var="{{profissional}}">@profissional</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-5 rounded-xl border border-pink-100 bg-pink-50/30">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-pink-100 text-pink-600 rounded-full flex items-center justify-center">
+                                <i class="bi bi-cake2"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800">Aniversariantes do Dia</h4>
+                                <p class="text-xs text-gray-500">Enviado todas as manhãs para os aniversariantes.</p>
+                            </div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input cursor-pointer" type="checkbox" id="activeBirthday" ${config.birthdayCongrats?.active ? 'checked' : ''}>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <textarea id="tplBirthday" rows="3" class="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none">${tplBirthday}</textarea>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplBirthday" data-var="{{cliente}}">@cliente</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-5 rounded-xl border border-indigo-100 bg-indigo-50/30">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center">
+                                <i class="bi bi-people"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-800">Fidelização (Inativos)</h4>
+                                <p class="text-xs text-gray-500">Chame clientes que não aparecem há algum tempo.</p>
+                            </div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input cursor-pointer" type="checkbox" id="activeInactive" ${config.inactiveRecovery?.active ? 'checked' : ''}>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3 text-sm text-gray-700">
+                            <span>Enviar para quem não vem há</span>
+                            <input type="number" id="daysInactive" value="${config.inactiveRecovery?.daysInactive || 30}" class="w-16 p-1 border rounded text-center font-bold" min="7" max="180">
+                            <span>dias.</span>
+                        </div>
+                        <textarea id="tplInactive" rows="3" class="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">${tplInactive}</textarea>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplInactive" data-var="{{cliente}}">@cliente</button>
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplInactive" data-var="{{dias}}">@dias_inativo</button>
+                            <button type="button" class="btn-variable text-[10px] bg-white border px-2 py-1 rounded" data-target="tplInactive" data-var="{{unidade}}">@unidade</button>
+                        </div>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+    `;
+
+    // Lógica para os botões de variáveis
+    container.querySelectorAll('.btn-variable').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const variable = btn.dataset.var;
+            const textarea = container.querySelector(`#${targetId}`);
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const text = textarea.value;
+            textarea.value = text.substring(0, start) + variable + text.substring(end);
+            textarea.focus();
+            textarea.setSelectionRange(start + variable.length, start + variable.length);
+        });
+    });
+
+    container.querySelector('#auto-messages-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = {
+            autoMessagesConfig: {
+                appointmentReminder: {
+                    active: container.querySelector('#activeReminder').checked,
+                    minutesBefore: parseInt(container.querySelector('#minutesBefore').value, 10) || 60,
+                    template: container.querySelector('#tplReminder').value
+                },
+                birthdayCongrats: {
+                    active: container.querySelector('#activeBirthday').checked,
+                    template: container.querySelector('#tplBirthday').value
+                },
+                inactiveRecovery: {
+                    active: container.querySelector('#activeInactive').checked,
+                    daysInactive: parseInt(container.querySelector('#daysInactive').value, 10) || 30,
+                    template: container.querySelector('#tplInactive').value
+                }
+            }
+        };
+        handleSave(formData, e);
+    });
+}
+
 async function renderLoyaltySection(data, container) {
     const loyaltyProgram = data.loyaltyProgram || {};
     const currentPointsPerVisit = loyaltyProgram.pointsPerVisit || 1;
@@ -1625,9 +1772,10 @@ async function showSettingsDetailView(sectionId) {
         case 'booking': renderBookingSection(establishmentData, detailContainer); break;
         case 'working-hours': renderWorkingHoursSection(establishmentData, detailContainer); break;
         case 'whatsapp-bot': renderWhatsAppSection(establishmentData, detailContainer); break;
+        // 🚀 ROTEAMENTO PARA A TELA DE MENSAGENS AUTOMÁTICAS
+        case 'auto-messages': renderAutoMessagesSection(establishmentData, detailContainer); break;
         case 'loyalty': await renderLoyaltySection(establishmentData, detailContainer); break; 
         case 'financial': await renderFinancialIntegrationSection(establishmentData, detailContainer); break;
-        // 🚀 ROTEAMENTO PARA A TELA DE PAGAMENTOS PAGAR.ME
         case 'pagarme': loadPagarmeConfig(detailContainer); break;
         case 'support': renderSupportSection(establishmentData, detailContainer); break;
         case 'cancellation': renderCancellationSection(establishmentData, detailContainer); break;
