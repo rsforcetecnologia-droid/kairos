@@ -23,7 +23,7 @@ const EVOLUTION_API_URL = "https://kinghost-evolution-api.tm5bar.easypanel.host"
 const GLOBAL_API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
 // URL DE PRODUÇÃO DO SEU NÓ "WEBHOOK" LÁ DO N8N:
-const N8N_WEBHOOK_URL = "https://kinghost-n8n.tm5bar.easypanel.host/webhook-test/whatsapp"; 
+const N8N_WEBHOOK_URL = "https://kinghost-n8n.tm5bar.easypanel.host/webhook/kairos-whatsapp"; 
 
 // ============================================================================
 // SEÇÃO 1: AJUDANTES (Helpers) E MULTITENANT

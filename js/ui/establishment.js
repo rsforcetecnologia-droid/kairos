@@ -960,8 +960,23 @@ function renderWorkingHoursSection(data, container) {
     });
 }
 
-function renderWhatsAppSection(data, container) {
+// DOCUMENTAÇÃO: Esta função gere a ligação do WhatsApp.
+// Agora suporta a herança de instâncias da matriz para filiais.
+async function renderWhatsAppSection(data, container) {
     const isConnected = !!data.whatsappInstance;
+    const isFilial = !!data.parentId; // Verifica se tem uma matriz vinculada
+    let parentData = null;
+
+    // Se for filial e não estiver conectada, tentamos carregar os dados da Matriz para ver se ela tem WhatsApp
+    if (isFilial && !isConnected) {
+        try {
+            parentData = await establishmentApi.getEstablishmentDetails(data.parentId);
+        } catch (err) {
+            console.error("Erro ao buscar dados da matriz:", err);
+        }
+    }
+
+    const parentHasWhatsapp = parentData && !!parentData.whatsappInstance;
 
     container.innerHTML = `
         <div class="bg-white p-4 md:p-6 rounded-lg shadow-md border border-gray-100">
@@ -969,7 +984,7 @@ function renderWhatsAppSection(data, container) {
                 <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
                     <i class="bi bi-robot text-green-500"></i> Atendente Virtual Inteligente
                 </h3>
-                <p class="text-sm text-gray-600 mt-2">Conecte o WhatsApp desta unidade para que a nossa Inteligência Artificial atenda os clientes, responda dúvidas e faça os agendamentos de forma automática, 24 horas por dia.</p>
+                <p class="text-sm text-gray-600 mt-2">Conecte o WhatsApp para que a IA atenda os clientes automaticamente.</p>
             </div>
 
             <div class="bg-green-50 p-6 rounded-xl border border-green-200 text-center">
@@ -978,11 +993,26 @@ function renderWhatsAppSection(data, container) {
                     <div class="bg-white inline-block p-4 rounded-full shadow-sm mb-4">
                         <i class="bi bi-qr-code-scan text-4xl text-gray-700"></i>
                     </div>
+                    
                     <h4 class="text-lg font-bold text-gray-800 mb-2">Ligar o Bot a esta Unidade</h4>
-                    <p class="text-sm text-gray-600 mb-6 max-w-md mx-auto">Clique no botão abaixo para gerar um QR Code. Escaneie-o com o telemóvel do estabelecimento (em Aparelhos Conectados).</p>
+                    
+                    ${isFilial && parentHasWhatsapp ? `
+                        <div class="bg-white border border-green-200 p-4 rounded-xl mb-4 max-w-sm mx-auto shadow-sm">
+                            <p class="text-xs text-green-700 font-bold mb-3 uppercase">Sugestão Multi-unidade</p>
+                            <p class="text-sm text-gray-600 mb-4">A sua Matriz já tem um WhatsApp ligado. Deseja usar o mesmo número nesta filial?</p>
+                            <button type="button" id="btnUseParentWhatsapp" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2 px-6 rounded-lg transition-all w-full shadow-md">
+                                Usar WhatsApp da Matriz
+                            </button>
+                        </div>
+                        <div class="flex items-center my-4 max-w-sm mx-auto">
+                            <hr class="flex-grow border-gray-300"> <span class="px-3 text-gray-400 text-xs font-bold uppercase">ou</span> <hr class="flex-grow border-gray-300">
+                        </div>
+                    ` : ''}
+
+                    <p class="text-sm text-gray-600 mb-6 max-w-md mx-auto">Gere um QR Code para usar um número de WhatsApp <b>exclusivo</b> para esta unidade.</p>
                     
                     <button type="button" id="btnGenerateQr" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 flex items-center gap-2 mx-auto">
-                        <i class="bi bi-phone-vibrate"></i> Gerar QR Code
+                        <i class="bi bi-phone-vibrate"></i> Gerar QR Code Próprio
                     </button>
                 </div>
 
@@ -997,29 +1027,61 @@ function renderWhatsAppSection(data, container) {
                         <li><span class="font-bold text-green-600">3.</span> Toque em <b>Aparelhos Conectados</b>.</li>
                         <li><span class="font-bold text-green-600">4.</span> Aponte a câmera para o quadrado acima.</li>
                     </ul>
-                    <button type="button" id="btnCancelQr" class="mt-4 text-red-500 hover:text-red-700 font-semibold text-sm underline">Cancelar</button>
+                    <button type="button" id="btnCancelQr" class="mt-4 text-red-500 hover:text-red-700 font-semibold text-sm underline block mx-auto">Cancelar</button>
                 </div>
 
                 <div id="connectedStatusArea" class="${isConnected ? 'block' : 'hidden'} mt-4">
                     <div class="bg-white inline-block p-4 rounded-full shadow-sm mb-4 border-4 border-green-500">
                         <i class="bi bi-check-circle-fill text-4xl text-green-500"></i>
                     </div>
-                    <h4 class="text-xl font-bold text-green-700 mb-2">WhatsApp Conectado!</h4>
-                    <p class="text-sm text-gray-600 max-w-md mx-auto mb-6">O bot da Inteligência Artificial já está ativo no número desta unidade.</p>
+                    <h4 class="text-xl font-bold text-green-700 mb-2">WhatsApp Ativo!</h4>
+                    <p class="text-sm text-gray-600 max-w-md mx-auto mb-6">
+                        ${data.whatsappInstance === parentData?.whatsappInstance && isFilial 
+                            ? "Esta filial está a partilhar o número da Matriz." 
+                            : "O bot está a funcionar com um número exclusivo para esta unidade."}
+                    </p>
                     
-                    <div class="flex justify-center gap-4">
-                        <button type="button" id="btnDisconnectWhatsapp" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
-                            <i class="bi bi-power"></i> Desconectar
-                        </button>
-                    </div>
+                    <button type="button" id="btnDisconnectWhatsapp" class="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 font-semibold py-2 px-6 rounded-lg transition-colors flex items-center gap-2 mx-auto">
+                        <i class="bi bi-power"></i> Desconectar
+                    </button>
                 </div>
 
             </div>
         </div>
     `;
 
-    let pollingInterval = null; 
+    // ==========================================
+    // LÓGICA DE EVENTOS (MESCLADA)
+    // ==========================================
 
+    // 1. AÇÃO: USAR WHATSAPP DA MATRIZ (Exclusivo para filiais)
+    const btnUseParent = container.querySelector('#btnUseParentWhatsapp');
+    if (btnUseParent) {
+        btnUseParent.addEventListener('click', async () => {
+            if (!confirm("Confirmar a utilização do mesmo número da Matriz? As mensagens desta filial serão geridas pela mesma inteligência.")) return;
+            
+            try {
+                btnUseParent.disabled = true;
+                btnUseParent.innerText = "A vincular...";
+                
+                // Salvamos o whatsappInstance da matriz na filial atual no Firebase
+                await establishmentApi.updateEstablishmentDetails(currentEditingId, { 
+                    whatsappInstance: parentData.whatsappInstance 
+                });
+
+                showNotification('Sucesso', 'Número da matriz vinculado com sucesso!', 'success');
+                establishmentData.whatsappInstance = parentData.whatsappInstance;
+                renderWhatsAppSection(establishmentData, container); // Recarrega a UI para mostrar "Conectado"
+            } catch (err) {
+                showNotification('Erro', 'Não foi possível vincular ao número da matriz.', 'error');
+                btnUseParent.disabled = false;
+                btnUseParent.innerText = "Usar WhatsApp da Matriz";
+            }
+        });
+    }
+
+    // 2. AÇÃO: GERAR QR CODE PRÓPRIO
+    let pollingInterval = null; 
     const btnGenerate = container.querySelector('#btnGenerateQr');
     const btnCancel = container.querySelector('#btnCancelQr');
 
@@ -1072,11 +1134,12 @@ function renderWhatsAppSection(data, container) {
                 showNotification('Erro de Conexão', 'Não foi possível aceder ao servidor Kairós.', 'error');
             } finally {
                 btnGenerate.disabled = false;
-                btnGenerate.innerHTML = '<i class="bi bi-phone-vibrate"></i> Gerar QR Code';
+                btnGenerate.innerHTML = '<i class="bi bi-phone-vibrate"></i> Gerar QR Code Próprio';
             }
         });
     }
 
+    // 3. AÇÃO: CANCELAR QR CODE
     if (btnCancel) {
         btnCancel.addEventListener('click', () => {
             if (pollingInterval) clearInterval(pollingInterval);
@@ -1085,10 +1148,11 @@ function renderWhatsAppSection(data, container) {
         });
     }
 
+    // 4. AÇÃO: DESCONECTAR WHATSAPP (Seja próprio ou da matriz)
     const btnDisconnect = container.querySelector('#btnDisconnectWhatsapp');
     if (btnDisconnect) {
         btnDisconnect.addEventListener('click', async () => {
-            if (!confirm("Tem certeza que deseja DESCONECTAR? O bot parará de responder imediatamente.")) return;
+            if (!confirm("Tem certeza que deseja DESCONECTAR? O bot parará de responder imediatamente nesta unidade.")) return;
 
             btnDisconnect.disabled = true;
             btnDisconnect.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Desconectando...';
@@ -1096,6 +1160,16 @@ function renderWhatsAppSection(data, container) {
             const LOCAL_API_URL = "https://us-central1-kairos-agenda-us.cloudfunctions.net/whatsapp/api/whatsapp";
 
             try {
+                // Se estiver a partilhar com a matriz, apenas apagamos do Firebase da filial (não derrubamos a sessão original da matriz)
+                if (isFilial && data.whatsappInstance === parentData?.whatsappInstance) {
+                    await establishmentApi.updateEstablishmentDetails(currentEditingId, { whatsappInstance: null });
+                    showNotification('Sucesso', 'Filial desvinculada do WhatsApp da Matriz!', 'success');
+                    establishmentData.whatsappInstance = null;
+                    renderWhatsAppSection(establishmentData, container);
+                    return;
+                }
+
+                // Se for um número próprio, faz o fluxo normal de desligar na API
                 const response = await fetch(`${LOCAL_API_URL}/disconnect`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
