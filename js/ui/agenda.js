@@ -714,8 +714,11 @@ export async function loadAgendaPage(params = {}) {
 
             const card = e.target.closest('.list-card[data-appointment], .week-event-chip[data-appointment]');
             if (card) {
+                // ⭐ AJUSTE: Bloqueia propagação de evento para evitar Ghost Click no modal
+                e.preventDefault();
+                e.stopPropagation();
+                
                 if (localState.isSelectionMode) {
-                    e.stopPropagation();
                     const cb = card.querySelector('input[type="checkbox"]');
                     if (cb) {
                         const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
@@ -748,6 +751,10 @@ export async function loadAgendaPage(params = {}) {
 
             const fab = e.target.closest('[data-action="new-appointment"]');
             if (fab) {
+                // ⭐ AJUSTE: Bloqueia propagação de evento para evitar Ghost Click no modal
+                e.preventDefault();
+                e.stopPropagation();
+                
                 if (navigator.vibrate) navigator.vibrate(30);
                 openAppointmentModal();
                 return;

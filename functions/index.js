@@ -262,15 +262,18 @@ exports.dailyRetentionMessagesCron = onSchedule({
     
     try {
         const now = new Date();
-        // Formatar mês e dia atual no formato "-MM-DD" para buscar aniversários
-        const currentMonthDay = `-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        // Em vez de formatar a data completa, agora pegamos apenas no dia e mês atual
+        const currentDay = now.getDate();
+        const currentMonth = now.getMonth() + 1; // No JavaScript, os meses vão de 0 a 11, por isso somamos 1
         
-        // 1. Obter todos os estabelecimentos que têm o WhatsApp conectado
         const shopsSnap = await db.collection('establishments').where('whatsappInstance', '!=', null).get();
-        if (shopsSnap.empty) return;
+        if (shopsSnap.empty) {
+            console.log("[CRON] Nenhuma loja com WhatsApp conectado encontrada.");
+            return;
+        }
 
         let messagesSentCount = 0;
-        const batch = db.batch(); // Usado para atualizar a data da última mensagem enviada, evitando spam.
+        const batch = db.batch();
 
         for (const shopDoc of shopsSnap.docs) {
             const shop = shopDoc.data();
@@ -279,11 +282,8 @@ exports.dailyRetentionMessagesCron = onSchedule({
             const birthdayConfig = autoConfig.birthdayCongrats || {};
             const inactiveConfig = autoConfig.inactiveRecovery || {};
 
-            // Se nenhum dos módulos de retenção estiver ativo nesta loja, pula.
             if (!birthdayConfig.active && !inactiveConfig.active) continue;
 
-            // 2. Buscar todos os clientes desta loja
-            // (Nota: Em bases gigantes, usamos paginação, mas para SaaS de lojas normais isto é seguro)
             const clientsSnap = await db.collection('clients').where('establishmentId', '==', shopDoc.id).get();
             
             for (const clientDoc of clientsSnap.docs) {
@@ -292,21 +292,20 @@ exports.dailyRetentionMessagesCron = onSchedule({
 
                 const clientName = client.name?.split(' ')[0] || "Cliente";
 
-                // --- A) VERIFICAÇÃO DE ANIVERSÁRIO ---
-                if (birthdayConfig.active && client.birthDate) {
-                    // Verifica se a data de nascimento termina com o mês-dia de hoje (ex: "1990-05-15" termina em "-05-15")
-                    if (client.birthDate.includes(currentMonthDay)) {
+                // --- A) VERIFICAÇÃO DE ANIVERSÁRIO (AJUSTADA PARA dobDay E dobMonth) ---
+                if (birthdayConfig.active && client.dobDay && client.dobMonth) {
+                    // Compara o dia e o mês do banco de dados com o dia e mês de hoje
+                    if (Number(client.dobDay) === currentDay && Number(client.dobMonth) === currentMonth) {
                         
-                        // Verifica se já enviamos parabéns este ano (para evitar duplicados se o cron falhar/repetir)
                         const currentYear = now.getFullYear();
                         if (client.lastBirthdayMessageYear !== currentYear) {
                             const template = birthdayConfig.template || "Parabéns {{cliente}}! 🎉 Feliz aniversário!";
                             const finalMsg = template.replace(/\{\{cliente\}\}/g, clientName);
                             
                             await sendWhatsAppMessage(client.phone, finalMsg, shop.whatsappInstance);
+                            console.log(`[CRON] Mensagem de Aniversário enviada para: ${client.phone}`);
                             messagesSentCount++;
                             
-                            // Regista o ano do último parabéns enviado
                             batch.update(clientDoc.ref, { lastBirthdayMessageYear: currentYear });
                         }
                     }
@@ -321,7 +320,6 @@ exports.dailyRetentionMessagesCron = onSchedule({
                         const diffTime = Math.abs(now - lastVisit);
                         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-                        // Se a diferença de dias for EXATAMENTE igual ao configurado (para mandar a mensagem apenas no dia exato do marco)
                         if (diffDays === targetDays) {
                             const template = inactiveConfig.template || "Olá {{cliente}}, já faz {{dias}} dias desde a sua última visita à {{unidade}}! Que tal agendar?";
                             const finalMsg = template
@@ -330,9 +328,9 @@ exports.dailyRetentionMessagesCron = onSchedule({
                                 .replace(/\{\{unidade\}\}/g, shop.name || 'nossa loja');
                             
                             await sendWhatsAppMessage(client.phone, finalMsg, shop.whatsappInstance);
+                            console.log(`[CRON] Mensagem de Inativo enviada para: ${client.phone}`);
                             messagesSentCount++;
                             
-                            // Opcional: Atualizar algo no cliente para dizer que a mensagem de "inativo" foi enviada.
                             batch.update(clientDoc.ref, { inactiveMessageSent: true });
                         }
                     }
@@ -342,7 +340,7 @@ exports.dailyRetentionMessagesCron = onSchedule({
 
         if (messagesSentCount > 0) {
             await batch.commit();
-            console.log(`[CRON] Rotina de Retenção concluída! ${messagesSentCount} mensagens enviadas (Aniversários/Inativos).`);
+            console.log(`[CRON] Rotina de Retenção concluída! ${messagesSentCount} mensagens enviadas.`);
         } else {
             console.log("[CRON] Rotina de Retenção concluída. Nenhum alvo encontrado hoje.");
         }

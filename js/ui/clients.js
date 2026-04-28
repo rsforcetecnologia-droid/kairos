@@ -1528,10 +1528,17 @@ function attachDynamicEvents(client) {
 
 async function handleSaveClient(e) {
     e.preventDefault();
-    const btnSubmit = e.target.querySelector('button[type="submit"]');
-    const originalText = btnSubmit.innerHTML;
-    btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Gravando...';
-    btnSubmit.disabled = true;
+    
+    // 1. AJUSTE: Busca o botão pelo 'e.submitter' ou pelo atributo form, já que ele está no footer (fora do <form>)
+    const btnSubmit = e.submitter || document.querySelector('button[form="form-edit-client"]');
+    let originalText = '';
+    
+    // Garantimos que o botão foi encontrado antes de mudar o texto
+    if (btnSubmit) {
+        originalText = btnSubmit.innerHTML;
+        btnSubmit.innerHTML = '<span class="spinner-border spinner-border-sm mr-2"></span> Gravando...';
+        btnSubmit.disabled = true;
+    }
 
     const formData = new FormData(e.target);
     const data = Object.fromEntries(formData.entries());
@@ -1557,8 +1564,11 @@ async function handleSaveClient(e) {
         renderList();
     } catch (err) { 
         showNotification('Erro', err.message, 'error'); 
-        btnSubmit.innerHTML = originalText;
-        btnSubmit.disabled = false;
+        // 2. AJUSTE: Restaura o botão original em caso de erro
+        if (btnSubmit) {
+            btnSubmit.innerHTML = originalText;
+            btnSubmit.disabled = false;
+        }
     }
 }
 
