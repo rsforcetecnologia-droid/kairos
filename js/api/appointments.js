@@ -78,6 +78,19 @@ export const updateAppointment = (appointmentId, appointmentData) => {
 };
 
 /**
+ * Atualiza SOMENTE o status de um agendamento usando a rota PATCH (usado para Confirmar Agenda).
+ * @param {string} appointmentId - O ID do agendamento a ser atualizado.
+ * @param {string} status - O novo status do agendamento (ex: 'confirmed').
+ * @returns {Promise<object>}
+ */
+export const updateAppointmentStatus = (appointmentId, status) => {
+    return authenticatedFetch(`/api/appointments/${appointmentId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+    });
+};
+
+/**
  * Apaga um agendamento.
  * @param {string} appointmentId - O ID do agendamento a ser apagado.
  * @returns {Promise<object>} - Uma promessa que resolve com a confirmação da exclusão.

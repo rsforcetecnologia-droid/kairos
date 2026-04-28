@@ -38,12 +38,13 @@ let localState = {
     showInactiveProfs: false,
     isSelectionMode: false,
     selectedItems: new Set(),
+    loadedEstablishments: [] 
 };
 
 let newAppointmentState = {
     step: 1,
     data: {
-        id: null, clientName: '', clientPhone: '', selectedServiceIds: [],
+        id: null, establishmentId: null, clientName: '', clientPhone: '', selectedServiceIds: [],
         professionalId: null, professionalName: '', date: null, time: null,
         originalDate: null, originalTime: null, 
         redeemedReward: null, clientHasRewards: false, clientLoyaltyPoints: 0
@@ -125,7 +126,7 @@ function renderCalendarStrip() {
         const numClass = isSelected ? 'text-white' : (isToday ? 'text-indigo-700' : 'text-gray-900');
 
         html += `
-            <div class="flex flex-col items-center justify-center min-w-[3.5rem] py-2 rounded-xl ${bgClass} cursor-pointer transition-transform active:scale-90 flex-shrink-0" data-action="select-date" data-date="${d.toISOString()}">
+            <div type="button" class="flex flex-col items-center justify-center min-w-[3.5rem] py-2 rounded-xl ${bgClass} cursor-pointer transition-transform active:scale-90 flex-shrink-0" data-action="select-date" data-date="${d.toISOString()}">
                 <span class="text-[0.65rem] uppercase font-bold tracking-wider opacity-80 pointer-events-none">${dayName}</span>
                 <span class="text-lg font-bold ${numClass} pointer-events-none mt-0.5">${dayNum}</span>
                 ${isToday && !isSelected ? `<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1 pointer-events-none"></div>` : '<div class="w-1.5 h-1.5 mt-1 opacity-0"></div>'}
@@ -184,7 +185,7 @@ function renderWeekView(allEvents) {
 
         let dayContent = '';
         if (dayEvents.length === 0) {
-            dayContent = '<div class="week-empty text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200"><i class="bi bi-dash-lg block text-lg mb-1"></i>Livre</div>';
+            dayContent = '<div class="week-empty text-xs text-gray-400 text-center py-4 bg-gray-50 rounded-lg border border-dashed border-gray-200"><i class="bi bi-dash-lg block text-lg mb-1 pointer-events-none"></i>Livre</div>';
         } else {
             dayContent = dayEvents.map(event => {
                 const st = new Date(event.startTime);
@@ -195,11 +196,8 @@ function renderWeekView(allEvents) {
                 const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd' };
                 const isCompleted = event.status === 'completed';
                 const isChecked = localState.selectedItems.has(event.id);
-                
-                // 🚀 DETEÇÃO DE PLANO VIP
                 const isVIP = event.coveredByPlan;
 
-                // ⭐ MELHORIA: Renderização do Bloqueio na Semana
                 if (event.type === 'blockage') {
                     return `<div class="week-event-chip bg-red-50 border-l-4 border-red-500 rounded-md p-2 mb-2 shadow-sm cursor-default">
                         <div class="text-[9px] uppercase font-black text-red-500 mb-0.5"><i class="bi bi-lock-fill"></i> Bloqueio</div>
@@ -209,31 +207,29 @@ function renderWeekView(allEvents) {
                     </div>`;
                 }
 
-                const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
                 const selStyle = isChecked ? 'ring-2 ring-indigo-500 bg-indigo-50' : 'bg-white';
                 
                 const checkboxHtml = localState.isSelectionMode
-                    ? `<div class="absolute top-1 right-1 z-10">
+                    ? `<div class="absolute top-1 right-1 z-10 pointer-events-none">
                            <input type="checkbox" class="w-4 h-4 accent-indigo-600 pointer-events-none" ${isChecked ? 'checked' : ''}>
                        </div>`
                     : '';
 
-                // ⭐ MELHORIA: Ícone de Status na visão semanal
                 let statusIcon = '';
                 if (event.status === 'completed') statusIcon = '<i class="bi bi-check-all text-green-500 ml-1" title="Finalizado"></i>';
                 else if (event.status === 'confirmed') statusIcon = '<i class="bi bi-hand-thumbs-up-fill text-blue-500 ml-1" title="Confirmado"></i>';
                 else statusIcon = '<i class="bi bi-clock-history text-orange-400 ml-1" title="Aguardando Confirmação"></i>';
 
                 return `<div class="week-event-chip relative shadow-sm border-l-4 rounded-md p-2 mb-2 cursor-pointer transition-transform active:scale-95 ${isCompleted ? 'opacity-60' : ''} ${selStyle}" style="border-left-color: ${profColor.main};"
-                    data-action="edit-appointment" data-appointment='${dataStr}'>
+                    data-action="edit-appointment" data-appointment-id="${event.id}">
                     ${checkboxHtml}
-                    <div class="text-xs font-bold text-gray-900">${timeStr}</div>
-                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2 flex items-center">
+                    <div class="text-xs font-bold text-gray-900 pointer-events-none">${timeStr}</div>
+                    <div class="text-xs text-gray-800 font-semibold mt-0.5 truncate pr-2 flex items-center pointer-events-none">
                         ${esc(event.clientName)} 
                         ${statusIcon}
                         ${isVIP ? '<i class="bi bi-gem text-indigo-500 ml-1" title="Cliente VIP"></i>' : ''}
                     </div>
-                    <div class="text-[0.65rem] text-gray-500 leading-tight mt-0.5">${esc(event.serviceName)} <br/> <span class="font-medium text-indigo-600">${esc((event.professionalName || '').split(' ')[0])}</span></div>
+                    <div class="text-[0.65rem] text-gray-500 leading-tight mt-0.5 pointer-events-none">${esc(event.serviceName)} <br/> <span class="font-medium text-indigo-600">${esc((event.professionalName || '').split(' ')[0])}</span></div>
                 </div>`;
             }).join('');
         }
@@ -289,18 +285,16 @@ function renderListView(allEvents) {
         const endTimeStr = et.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const profColor = state.professionalColors.get(event.professionalId) || { main: '#adb5bd', light: '#f1f3f5' };
         const isCompleted = event.status === 'completed';
-        const dataStr = JSON.stringify(event).replace(/'/g, '&apos;');
         const isChecked = localState.selectedItems.has(event.id);
 
         const checkboxHtml = localState.isSelectionMode
-            ? `<div class="flex items-center justify-center pr-3 border-r border-gray-100 mr-3">
+            ? `<div class="flex items-center justify-center pr-3 border-r border-gray-100 mr-3 pointer-events-none">
                    <input type="checkbox" class="w-5 h-5 accent-indigo-600 pointer-events-none" ${isChecked ? 'checked' : ''}>
                </div>`
             : '';
 
         const selStyle = isChecked ? 'ring-2 ring-indigo-500 bg-indigo-50' : 'bg-white';
 
-        // ⭐ MELHORIA: Renderização do Bloqueio na Lista
         if (event.type === 'blockage') {
             html += `<div class="list-card flex bg-red-50 rounded-2xl p-4 shadow-sm border border-red-200 mb-3 cursor-default">
                 ${checkboxHtml}
@@ -322,14 +316,12 @@ function renderListView(allEvents) {
 
         const whatsappLink = createWhatsAppLink(event.clientPhone, event.clientName, event.serviceName, event.professionalName, event.startTime);
         
-        // CÁLCULO DE PREÇO COM VALIDAÇÃO VIP
         const baseServiceValue = (event.services || []).reduce((sum, srv) => sum + (Number(srv.price) || 0), 0) || Number(event.servicePrice || 0);
         const displayValue = event.totalAmount !== undefined ? Number(event.totalAmount) : baseServiceValue;
         
         const isVIP = event.coveredByPlan;
         const vipBadge = isVIP ? `<span class="bg-indigo-100 text-indigo-700 text-[9px] px-1.5 py-0.5 rounded border border-indigo-200 font-black uppercase tracking-wider ml-1 flex-shrink-0" title="Coberto pelo Plano VIP"><i class="bi bi-gem mr-0.5"></i> VIP</span>` : '';
 
-        // ⭐ MELHORIA: Badge de Status (Aguardando / Confirmado / Finalizado)
         let statusBadge = '';
         if (event.status === 'completed') {
             statusBadge = `<span class="text-[0.65rem] px-2 py-0.5 rounded border font-bold bg-green-50 text-green-700 border-green-200"><i class="bi bi-check-all"></i> Finalizado</span>`;
@@ -341,38 +333,55 @@ function renderListView(allEvents) {
 
         const professionalShort = esc((event.professionalName || '').split(' ')[0]);
 
-        html += `<div class="list-card flex rounded-2xl p-3.5 shadow-sm border border-gray-100 cursor-pointer transition-transform active:scale-95 ${selStyle} ${isCompleted ? 'opacity-70 bg-gray-50' : ''}"
-            style="border-left: 5px solid ${profColor.main};"
-            data-action="edit-appointment" data-appointment='${dataStr}'>
+        let unitBadge = '';
+        if (localState.loadedEstablishments.length > 1) {
+            const unitObj = localState.loadedEstablishments.find(e => e.id === event.establishmentId);
+            const uName = unitObj ? unitObj.name : 'Outra Unidade';
+            unitBadge = `<span class="text-[0.6rem] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200 font-bold truncate max-w-[100px]"><i class="bi bi-shop"></i> ${esc(uName)}</span>`;
+        }
+
+        // ==========================================
+        // 🛡️ NOVO LAYOUT DO CARD (SPLIT ZONES)
+        // ==========================================
+        html += `<div class="list-card flex rounded-2xl p-3.5 shadow-sm border border-gray-100 ${selStyle} ${isCompleted ? 'opacity-70 bg-gray-50' : ''}"
+            style="border-left: 5px solid ${profColor.main};">
             
             ${checkboxHtml}
             
-            <div class="flex flex-col items-center justify-center border-r border-gray-100 pr-3.5 min-w-[4.5rem]">
-                <span class="text-lg font-bold text-gray-900 ${isCompleted ? 'line-through text-gray-500' : ''}">${timeStr}</span>
-                <span class="text-xs text-gray-500 font-medium">${durMin} min</span>
-            </div>
-            
-            <div class="flex-1 pl-3.5 flex flex-col justify-center min-w-0">
-                <div class="flex items-center">
-                    <h3 class="font-bold text-gray-900 text-[0.95rem] truncate">${esc(event.clientName)}</h3>
-                    ${vipBadge}
+            <div class="flex-1 flex min-w-0 cursor-pointer transition-transform active:scale-[0.98]" data-action="edit-appointment" data-appointment-id="${event.id}">
+                <div class="flex flex-col items-center justify-center border-r border-gray-100 pr-3.5 min-w-[4.5rem]">
+                    <span class="text-lg font-bold text-gray-900 ${isCompleted ? 'line-through text-gray-500' : ''} pointer-events-none">${timeStr}</span>
+                    <span class="text-xs text-gray-500 font-medium pointer-events-none">${durMin} min</span>
                 </div>
-                <p class="text-xs text-gray-600 mt-0.5 truncate">${esc(event.serviceName)} <span class="font-bold text-indigo-600 px-1">·</span> ${professionalShort}</p>
                 
-                <div class="flex flex-wrap gap-1.5 mt-2.5">
-                    <span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">R$ ${displayValue.toFixed(2).replace('.', ',')}</span>
-                    ${event.clientPhone ? `<span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold flex items-center gap-1"><i class="bi bi-telephone-fill opacity-70"></i> ${esc(event.clientPhone)}</span>` : ''}
-                    ${statusBadge}
+                <div class="flex-1 pl-3.5 flex flex-col justify-center min-w-0 pointer-events-none">
+                    <div class="flex items-center">
+                        <h3 class="font-bold text-gray-900 text-[0.95rem] truncate">${esc(event.clientName)}</h3>
+                        ${vipBadge}
+                    </div>
+                    <p class="text-xs text-gray-600 mt-0.5 truncate">${esc(event.serviceName)} <span class="font-bold text-indigo-600 px-1">·</span> ${professionalShort}</p>
+                    
+                    <div class="flex flex-wrap gap-1.5 mt-2.5 items-center">
+                        <span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold">R$ ${displayValue.toFixed(2).replace('.', ',')}</span>
+                        ${event.clientPhone ? `<span class="text-[0.65rem] bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200 font-bold flex items-center gap-1"><i class="bi bi-telephone-fill opacity-70"></i> ${esc(event.clientPhone)}</span>` : ''}
+                        ${statusBadge}
+                        ${unitBadge}
+                    </div>
                 </div>
             </div>
 
             ${!isCompleted && !localState.isSelectionMode ? `
-            <div class="flex flex-col justify-center items-end pl-2 gap-2 border-l border-gray-50">
-                <button class="lc-action-btn wa w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100 transition-colors" data-link="${whatsappLink}" title="WhatsApp">
-                    <i class="bi bi-whatsapp"></i>
+            <div class="flex flex-col justify-center items-end pl-2 gap-2.5 border-l border-gray-50 relative z-10 ml-2">
+                ${event.status !== 'confirmed' ? `
+                <button type="button" class="lc-action-btn w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100 transition-transform active:scale-90 shadow-sm border border-blue-100" data-action="confirm-appointment" data-appointment-id="${event.id}" title="Confirmar Manualmente">
+                    <i class="bi bi-check-lg text-xl pointer-events-none"></i>
                 </button>
-                <button class="lc-action-btn comanda w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors" data-action="open-comanda" data-appointment='${dataStr}' title="Comanda">
-                    <i class="bi bi-receipt-cutoff"></i>
+                ` : ''}
+                <button type="button" class="lc-action-btn wa w-11 h-11 rounded-full bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100 transition-transform active:scale-90 shadow-sm border border-green-100" data-link="${whatsappLink}" title="WhatsApp">
+                    <i class="bi bi-whatsapp text-lg pointer-events-none"></i>
+                </button>
+                <button type="button" class="lc-action-btn comanda w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-transform active:scale-90 shadow-sm border border-indigo-100" data-action="open-comanda" data-appointment-id="${event.id}" title="Comanda">
+                    <i class="bi bi-receipt-cutoff text-lg pointer-events-none"></i>
                 </button>
             </div>` : ''}
         </div>`;
@@ -402,7 +411,7 @@ function updateBatchDeleteUI() {
     if (localState.isSelectionMode && localState.selectedItems.size > 0) {
         container.innerHTML = `<div class="bg-gray-900 text-white p-3 mx-4 rounded-2xl shadow-xl flex items-center justify-between">
             <span class="font-semibold text-sm flex items-center"><span class="bg-indigo-500 text-white w-6 h-6 flex items-center justify-center rounded-full mr-2 text-xs">${localState.selectedItems.size}</span> selecionados</span>
-            <button data-action="batch-delete" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
+            <button type="button" data-action="batch-delete" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors">
                 <i class="bi bi-trash3-fill"></i> Apagar
             </button>
         </div>`;
@@ -433,7 +442,7 @@ function updateDateDisplay() {
 }
 
 // ============================================================================
-// BUSCA DE DADOS
+// BUSCA DE DADOS E AÇÕES
 // ============================================================================
 
 async function fetchAndDisplayAgenda() {
@@ -484,7 +493,6 @@ async function fetchAndDisplayAgenda() {
 
         if (!document.getElementById('agenda-view')) return;
 
-        // ⭐ MELHORIA: Garantir que Bloqueios sejam estritamente "blockage" e Agendamentos "appointment"
         const enrichAppt = items => items.map(a => ({
             ...a,
             type: 'appointment',
@@ -496,7 +504,7 @@ async function fetchAndDisplayAgenda() {
 
         const enrichBlockage = items => items.map(b => ({
             ...b,
-            type: 'blockage', // Forçando o tipo para não confundir com agendamentos!
+            type: 'blockage', 
             professionalName: b.professionalName || (() => {
                 const p = state.professionals?.find(pp => pp.id === b.professionalId);
                 return p ? p.name : 'Indefinido';
@@ -529,7 +537,7 @@ async function populateFilters() {
                 servicesApi.getServices(estId),
                 establishmentApi.getEstablishmentDetails(estId)
             ]);
-            return { profs: profs || [], services: services || [], estDetails };
+            return { estId, profs: profs || [], services: services || [], estDetails };
         });
 
         const results = await Promise.all(fetchPromises);
@@ -537,6 +545,11 @@ async function populateFilters() {
         const profsMap = new Map();
         const servicesMap = new Map();
         let primaryDetails = results[0]?.estDetails;
+        
+        localState.loadedEstablishments = results.map(res => ({
+            id: res.estId,
+            name: res.estDetails?.nomeFantasia || res.estDetails?.name || `Unidade ${res.estId.substring(0,4)}`
+        }));
 
         results.forEach(res => {
             res.profs.forEach(p => profsMap.set(p.id, p));
@@ -561,6 +574,103 @@ async function populateFilters() {
     }
 }
 
+async function handleConfirmAppointment(apptId, btnElement) {
+    const confirmed = await showConfirmation('Confirmar Agendamento', 'Deseja confirmar este agendamento manualmente?');
+    if (!confirmed) return;
+
+    const originalHtml = btnElement.innerHTML;
+    // Bloqueia o botão e mostra o loading
+    btnElement.innerHTML = '<div class="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin pointer-events-none"></div>';
+    btnElement.disabled = true;
+
+    try {
+        // 🚀 CORREÇÃO APLICADA AQUI: Usando a nova rota otimizada para Status
+        await appointmentsApi.updateAppointmentStatus(apptId, 'confirmed');
+        showNotification('Agendamento confirmado!', 'success');
+        fetchAndDisplayAgenda(); // Atualiza a tela imediatamente
+    } catch (error) {
+        console.error("Erro ao confirmar:", error);
+        showNotification('Erro ao confirmar: ' + error.message, 'error');
+        // Devolve o ícone caso dê erro
+        btnElement.innerHTML = originalHtml;
+        btnElement.disabled = false;
+    }
+}
+
+// ============================================================================
+// MODAL DE SELEÇÃO DE UNIDADE
+// ============================================================================
+
+function openEstablishmentSelectorModal() {
+    const existing = document.getElementById('estSelectorModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'estSelectorModal';
+    modal.className = 'fixed inset-0 z-[11000] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-opacity duration-300 px-4 opacity-0';
+    
+    const optionsHtml = (localState.loadedEstablishments || []).map(est => `
+        <button type="button" class="w-full text-left p-4 bg-white border border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 rounded-2xl shadow-sm transition-all flex items-center gap-4 mb-3 est-option-btn active:scale-95" data-est-id="${est.id}">
+            <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black shadow-sm pointer-events-none">
+                <i class="bi bi-shop text-xl"></i>
+            </div>
+            <div class="flex-1 pointer-events-none">
+                <p class="font-bold text-gray-900 text-base">${esc(est.name)}</p>
+                <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-0.5 font-bold">Selecionar Unidade</p>
+            </div>
+            <i class="bi bi-chevron-right text-gray-400 text-lg pointer-events-none"></i>
+        </button>
+    `).join('');
+
+    modal.innerHTML = `
+        <div class="bg-white rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col transform transition-transform duration-300 scale-95" id="estSelectorModalContent">
+            <div class="p-6 border-b border-gray-100 flex items-start justify-between bg-gray-50/50">
+                <div>
+                    <h3 class="font-black text-gray-900 text-xl tracking-tight">Novo Agendamento</h3>
+                    <p class="text-xs text-gray-500 font-bold mt-1.5 uppercase tracking-wide">Escolha a unidade de destino</p>
+                </div>
+                <button type="button" class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-100 shadow-sm active:scale-90 transition-transform" id="closeEstModalBtn">
+                    <i class="bi bi-x-lg text-xs pointer-events-none"></i>
+                </button>
+            </div>
+            <div class="p-6 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50">
+                ${optionsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    requestAnimationFrame(() => {
+        modal.classList.remove('opacity-0');
+        const content = modal.querySelector('#estSelectorModalContent');
+        content.classList.remove('scale-95');
+        content.classList.add('scale-100');
+    });
+
+    const closeEstModal = () => {
+        modal.classList.add('opacity-0');
+        const content = modal.querySelector('#estSelectorModalContent');
+        content.classList.remove('scale-100');
+        content.classList.add('scale-95');
+        setTimeout(() => modal.remove(), 300);
+    };
+
+    document.getElementById('closeEstModalBtn').addEventListener('click', closeEstModal);
+
+    modal.querySelectorAll('.est-option-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (navigator.vibrate) navigator.vibrate(15);
+            const estId = btn.dataset.estId;
+            closeEstModal();
+            setTimeout(() => {
+                openAppointmentModal({ establishmentId: estId }, false);
+            }, 300);
+        });
+    });
+}
+
+
 // ============================================================================
 // INICIALIZAÇÃO DA PÁGINA
 // ============================================================================
@@ -572,13 +682,16 @@ export async function loadAgendaPage(params = {}) {
     localState.isSelectionMode = false;
     localState.selectedItems.clear();
 
-    contentDiv.innerHTML = `
+    const appContent = document.getElementById('content');
+    if (!appContent) return;
+
+    appContent.innerHTML = `
         <div class="flex flex-col h-[calc(100vh-80px)] md:h-auto bg-gray-50 relative font-sans w-full">
 
             <div class="bg-white pt-safe-top sticky top-0 z-10 shadow-sm border-b border-gray-100 flex flex-col">
                 <div class="flex justify-between items-center px-4 py-3">
                     <div class="flex items-center gap-3">
-                        <button id="btnWeekDays" class="text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors" title="Opções">
+                        <button type="button" id="btnWeekDays" class="text-gray-700 hover:bg-gray-100 p-2 rounded-full transition-colors" title="Opções">
                             <i class="bi bi-sliders text-xl"></i>
                         </button>
                         <h1 id="currentMonthYearDisplay" class="text-lg font-bold text-gray-900 m-0 leading-none">Carregando...</h1>
@@ -586,19 +699,19 @@ export async function loadAgendaPage(params = {}) {
 
                     <div class="flex items-center gap-2">
                         <div class="flex items-center gap-1 bg-indigo-50 rounded-lg border border-indigo-100 p-0.5 shadow-sm">
-                            <button id="btnPrevDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Anterior">
+                            <button type="button" id="btnPrevDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Anterior">
                                 <i class="bi bi-chevron-left text-sm"></i>
                             </button>
-                            <button id="btnTodayHeader" class="text-indigo-700 px-2 py-1 font-bold text-xs hover:bg-indigo-100 transition-colors uppercase tracking-wide rounded-md active:scale-95">
+                            <button type="button" id="btnTodayHeader" class="text-indigo-700 px-2 py-1 font-bold text-xs hover:bg-indigo-100 transition-colors uppercase tracking-wide rounded-md active:scale-95">
                                 Hoje
                             </button>
-                            <button id="btnNextDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Próximo">
+                            <button type="button" id="btnNextDate" class="w-7 h-7 flex items-center justify-center text-indigo-700 rounded-md hover:bg-indigo-100 transition-colors active:scale-95" title="Próximo">
                                 <i class="bi bi-chevron-right text-sm"></i>
                             </button>
                         </div>
                         <div class="agenda-view-toggle bg-gray-100 p-1 rounded-xl flex gap-1">
-                            <button class="${localState.currentView === 'list' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="list">Lista</button>
-                            <button class="${localState.currentView === 'week' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="week">Semana</button>
+                            <button type="button" class="${localState.currentView === 'list' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="list">Lista</button>
+                            <button type="button" class="${localState.currentView === 'week' ? 'bg-white shadow-sm' : 'text-gray-500'} rounded-lg px-3 py-1 text-xs font-bold transition-all" data-action="setView" data-view="week">Semana</button>
                         </div>
                     </div>
                 </div>
@@ -614,8 +727,8 @@ export async function loadAgendaPage(params = {}) {
 
             <div id="batch-delete-container" class="fixed bottom-24 left-0 right-0 z-50 hidden px-4"></div>
 
-            <button id="agendaFab" data-action="new-appointment" class="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform active:scale-90 z-40">
-                <i class="bi bi-plus-lg text-2xl"></i>
+            <button type="button" id="agendaFab" data-action="open-new-appointment-modal" class="fixed bottom-24 right-4 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg flex items-center justify-center transition-transform active:scale-90 z-40">
+                <i class="bi bi-plus-lg text-2xl pointer-events-none"></i>
             </button>
             
             <div id="appointmentModal" class="fixed inset-0 z-[10000] hidden"></div>
@@ -658,16 +771,41 @@ export async function loadAgendaPage(params = {}) {
 
     document.getElementById('btnWeekDays').addEventListener('click', showOptionsMenu);
 
+    // ==============================================
+    // GESTÃO BLINDADA DO OUVINTE DE CLIQUES DA TELA
+    // ==============================================
     if (!hasContentDelegationInitialized) {
-        contentDiv.addEventListener('click', async (e) => {
-            const comandaBtn = e.target.closest('[data-action="open-comanda"]');
-            if (comandaBtn) {
+        document.body.addEventListener('click', async (e) => {
+            // Se não estamos na tela da agenda, não processa os cliques.
+            if (!document.getElementById('agenda-view')) return;
+
+            // 1. Botão Confirmar Manualmente
+            const confirmBtn = e.target.closest('[data-action="confirm-appointment"]');
+            if (confirmBtn) {
+                e.preventDefault();
                 e.stopPropagation();
                 if (navigator.vibrate) navigator.vibrate(20);
-                const apptDataStr = comandaBtn.dataset.appointment || comandaBtn.closest('[data-appointment]')?.dataset.appointment;
-                if (!apptDataStr) return;
                 
-                const apptData = JSON.parse(apptDataStr.replace(/&apos;/g, "'"));
+                const apptId = confirmBtn.dataset.appointmentId;
+                if (!apptId) return;
+                
+                handleConfirmAppointment(apptId, confirmBtn);
+                return;
+            }
+
+            // 2. Botão Comanda
+            const comandaBtn = e.target.closest('[data-action="open-comanda"]');
+            if (comandaBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (navigator.vibrate) navigator.vibrate(20);
+                
+                const apptId = comandaBtn.dataset.appointmentId;
+                if (!apptId) return;
+                
+                const apptData = state.allEvents.find(ev => ev.id === apptId);
+                if (!apptData) return;
+                
                 const initialFilter = apptData.status === 'completed' ? 'finalizadas' : 'em-atendimento';
                 const navParams = { selectedAppointmentId: apptData.id, initialFilter };
                 
@@ -680,15 +818,21 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
+            // 3. Botão WhatsApp
             const waBtn = e.target.closest('.lc-action-btn.wa');
             if (waBtn) {
+                e.preventDefault();
                 e.stopPropagation();
                 if (navigator.vibrate) navigator.vibrate(20);
                 if (waBtn.dataset.link) window.open(waBtn.dataset.link, '_blank');
                 return;
             }
 
-            if (e.target.closest('[data-action="batch-delete"]')) {
+            // 4. Apagar em lote
+            const batchDeleteBtn = e.target.closest('[data-action="batch-delete"]');
+            if (batchDeleteBtn) {
+                e.preventDefault();
+                e.stopPropagation();
                 const count = localState.selectedItems.size;
                 const confirmed = await showConfirmation('Apagar Selecionados', `Deseja apagar ${count} registro(s)? Esta ação é irreversível.`);
                 if (confirmed) {
@@ -703,8 +847,11 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
+            // 5. Filtro de Profissionais
             const profPill = e.target.closest('[data-action="select-professional"]');
             if (profPill) {
+                e.preventDefault();
+                e.stopPropagation();
                 if (navigator.vibrate) navigator.vibrate(20);
                 const profId = profPill.dataset.profId;
                 localState.selectedProfessionalId = (localState.selectedProfessionalId === profId && profId !== 'all') ? 'all' : profId;
@@ -712,16 +859,39 @@ export async function loadAgendaPage(params = {}) {
                 return;
             }
 
-            const card = e.target.closest('.list-card[data-appointment], .week-event-chip[data-appointment]');
-            if (card) {
-                // ⭐ AJUSTE: Bloqueia propagação de evento para evitar Ghost Click no modal
+            // 6. Botão Nova Agenda (FAB)
+            const fab = e.target.closest('[data-action="open-new-appointment-modal"]');
+            if (fab) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (navigator.vibrate) navigator.vibrate(30);
+                
+                if (localState.loadedEstablishments && localState.loadedEstablishments.length > 1) {
+                    openEstablishmentSelectorModal();
+                } else {
+                    const estId = (localState.loadedEstablishments && localState.loadedEstablishments.length === 1) 
+                        ? localState.loadedEstablishments[0].id 
+                        : state.establishmentId;
+                    openAppointmentModal({ establishmentId: estId }, false);
+                }
+                return;
+            }
+
+            // 7. Card de Agenda (Área de Edição - Agora estritamente separada)
+            const editWrapper = e.target.closest('[data-action="edit-appointment"]');
+            if (editWrapper) {
                 e.preventDefault();
                 e.stopPropagation();
                 
+                const apptId = editWrapper.dataset.appointmentId;
+                const apptData = state.allEvents.find(ev => ev.id === apptId);
+                
                 if (localState.isSelectionMode) {
+                    const card = editWrapper.closest('.list-card, .week-event-chip');
+                    if (!card) return;
+                    
                     const cb = card.querySelector('input[type="checkbox"]');
-                    if (cb) {
-                        const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
+                    if (cb && apptData) {
                         const isNowChecked = !cb.checked; 
                         cb.checked = isNowChecked;
                         
@@ -743,20 +913,10 @@ export async function loadAgendaPage(params = {}) {
                     return;
                 }
                 
-                const apptData = JSON.parse(card.dataset.appointment.replace(/&apos;/g, "'"));
-                if (navigator.vibrate) navigator.vibrate(20);
-                openAppointmentModal(apptData);
-                return;
-            }
-
-            const fab = e.target.closest('[data-action="new-appointment"]');
-            if (fab) {
-                // ⭐ AJUSTE: Bloqueia propagação de evento para evitar Ghost Click no modal
-                e.preventDefault();
-                e.stopPropagation();
-                
-                if (navigator.vibrate) navigator.vibrate(30);
-                openAppointmentModal();
+                if (apptData) {
+                    if (navigator.vibrate) navigator.vibrate(20);
+                    openAppointmentModal(apptData);
+                }
                 return;
             }
         });
@@ -765,6 +925,20 @@ export async function loadAgendaPage(params = {}) {
 
     await populateFilters();
     await fetchAndDisplayAgenda();
+
+    // Verificação vinda de outra tela (ex: Dashboard -> Agendar)
+    if (params.action === 'new-appointment' || params.openNewAppointment) {
+        setTimeout(() => {
+            if (localState.loadedEstablishments && localState.loadedEstablishments.length > 1) {
+                openEstablishmentSelectorModal();
+            } else {
+                const estId = (localState.loadedEstablishments && localState.loadedEstablishments.length === 1) 
+                    ? localState.loadedEstablishments[0].id 
+                    : state.establishmentId;
+                openAppointmentModal({ establishmentId: estId }, false);
+            }
+        }, 500); 
+    }
 }
 
 function showOptionsMenu() {
@@ -784,15 +958,15 @@ function showOptionsMenu() {
             
             <div class="flex justify-between items-center mb-5">
                 <span class="text-lg font-bold text-gray-900">Opções da Agenda</span>
-                <button id="closeOptSheet" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200">
-                    <i class="bi bi-x-lg text-sm"></i>
+                <button type="button" id="closeOptSheet" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200">
+                    <i class="bi bi-x-lg text-sm pointer-events-none"></i>
                 </button>
             </div>
 
             <div class="mb-5">
                 <div class="text-[0.7rem] font-bold text-gray-400 uppercase tracking-wider mb-2.5">Gestão em Lote</div>
-                <button id="optSelectMode" class="w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 ${selModeBtnBg} transition-colors active:scale-95">
-                    <i class="bi ${selModeIcon} text-lg"></i> ${localState.isSelectionMode ? 'Desativar Modo de Exclusão' : 'Ativar Seleção Múltipla'}
+                <button type="button" id="optSelectMode" class="w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 ${selModeBtnBg} transition-colors active:scale-95">
+                    <i class="bi ${selModeIcon} text-lg pointer-events-none"></i> ${localState.isSelectionMode ? 'Desativar Modo de Exclusão' : 'Ativar Seleção Múltipla'}
                 </button>
                 <p class="text-xs text-gray-500 text-center mt-2.5">${localState.isSelectionMode ? 'Toque num cartão para desmarcar.' : 'Permite selecionar vários registros para apagar.'}</p>
             </div>
@@ -872,7 +1046,7 @@ function renderStep1_Client(appointment) {
             <div class="pt-4 border-t border-gray-200">
                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Buscar na Base de Dados</label>
                 <div class="relative">
-                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base pointer-events-none"></i>
                     <input type="text" id="clientSearchInput" placeholder="Procurar cliente..." class="w-full p-3 pl-11 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-900 font-medium focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all">
                 </div>
                 <div id="clientSearchResults" class="mt-3 space-y-2"></div>
@@ -892,7 +1066,7 @@ function renderStep2_Service() {
         <div class="p-4 space-y-4 flex-1 flex flex-col">
             <div class="flex items-center gap-3">
                 <div class="relative flex-1">
-                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                    <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base pointer-events-none"></i>
                     <input type="search" id="serviceSearchModalInput" placeholder="Buscar serviço..." class="w-full p-3 pl-11 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none">
                 </div>
                 <label class="flex items-center gap-2 bg-white px-3 py-3 rounded-xl border border-gray-200 cursor-pointer shadow-sm">
@@ -928,7 +1102,7 @@ function renderStep3_Professional() {
         content: `
         <div class="p-4 space-y-4 flex-1 flex flex-col">
             <div class="relative">
-                <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+                <i class="bi bi-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base pointer-events-none"></i>
                 <input type="search" id="professionalSearchModalInput" placeholder="Procurar profissional..." class="w-full p-3 pl-11 bg-gray-100 border border-transparent rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
             </div>
             <div id="apptProfessionalContainer" class="flex-1 overflow-y-auto grid grid-cols-3 gap-3 content-start pb-4">
@@ -988,7 +1162,7 @@ function renderStep4_Schedule() {
         <div class="p-4 bg-white border-t border-gray-200 flex gap-3 pb-safe">
             <button type="button" data-action="prev-step" data-current-step="4" class="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl active:bg-gray-200 transition-colors text-sm">Voltar</button>
             <button type="button" id="btnSubmitAppointment" class="w-2/3 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2 text-sm">
-                <i class="bi bi-check-circle-fill"></i> ${newAppointmentState.data.id ? 'Salvar' : 'Confirmar'}
+                <i class="bi bi-check-circle-fill pointer-events-none"></i> ${newAppointmentState.data.id ? 'Salvar' : 'Confirmar'}
             </button>
         </div>`
     };
@@ -1002,6 +1176,7 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
             step: 1,
             data: {
                 id: appointment?.id || null,
+                establishmentId: appointment?.establishmentId || null,
                 clientName: appointment?.clientName || '',
                 clientPhone: appointment?.clientPhone || '',
                 selectedServiceIds: appointment?.services?.map(s => s.id) || [],
@@ -1029,7 +1204,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         case 4: renderResult = renderStep4_Schedule(); break;
     }
 
-    // Configurando as classes do Modal (Mobile Tela Cheia / Desktop Flutuante)
     modal.className = 'fixed inset-0 z-[10000] hidden flex items-end md:items-center justify-center bg-gray-900/50 backdrop-blur-sm transition-opacity duration-300 opacity-0';
     
     modal.innerHTML = `
@@ -1037,7 +1211,7 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         <div id="appointmentModalContent" class="relative z-10 w-full h-full md:h-auto md:max-h-[85vh] md:w-[550px] md:rounded-2xl bg-gray-50 flex flex-col transform transition-all duration-300 translate-y-full md:translate-y-8 md:scale-95 shadow-2xl overflow-hidden">
             <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between pt-safe-top md:pt-4 shadow-sm z-20">
                 <button type="button" data-action="close-modal" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 active:scale-90 transition-all">
-                    <i class="bi bi-x-lg text-sm"></i>
+                    <i class="bi bi-x-lg text-sm pointer-events-none"></i>
                 </button>
                 <div class="text-center flex-1 px-2">
                     <h2 class="text-sm font-black text-gray-900 tracking-tight leading-tight truncate">${renderResult.title}</h2>
@@ -1054,7 +1228,6 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         </div>
     `;
 
-    // Função universal de encerramento
     const closeApptModal = () => {
         const content = modal.querySelector('#appointmentModalContent');
         if (content) {
@@ -1083,9 +1256,8 @@ async function openAppointmentModal(appointment = null, isNavigating = false) {
         btn.addEventListener('click', closeApptModal);
     });
 
-    // Exibindo o Modal (Trigger Animations)
     modal.classList.remove('hidden');
-    void modal.offsetWidth; // Força layout reflow
+    void modal.offsetWidth; 
     modal.classList.remove('opacity-0');
     const contentBox = modal.querySelector('#appointmentModalContent');
     if (contentBox) {
@@ -1180,7 +1352,7 @@ async function handleAppointmentFormSubmit(e) {
     }
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processando...';
+    btn.innerHTML = '<i class="bi bi-hourglass-split pointer-events-none"></i> Processando...';
 
     const servicesData = newAppointmentState.data.selectedServiceIds.map(id => {
         const s = availableServicesForModal.find(x => x.id === id);
@@ -1193,9 +1365,10 @@ async function handleAppointmentFormSubmit(e) {
     const totalDur = servicesData.reduce((acc, s) => acc + (s.duration + (s.bufferTime || 0)), 0);
     const endTime = new Date(startTime.getTime() + totalDur * 60000);
 
-    const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
-        ? state.selectedEstablishments[0] 
-        : state.establishmentId;
+    const targetEstId = newAppointmentState.data.establishmentId || 
+        ((state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+            ? state.selectedEstablishments[0] 
+            : state.establishmentId);
 
     const data = {
         establishmentId: targetEstId,
@@ -1217,7 +1390,6 @@ async function handleAppointmentFormSubmit(e) {
 
         showNotification('Registro salvo!', 'success');
         
-        // Fechamento Universal Animado
         const modal = document.getElementById('appointmentModal');
         const content = modal.querySelector('#appointmentModalContent');
         if (content) {
@@ -1231,7 +1403,7 @@ async function handleAppointmentFormSubmit(e) {
     } catch (error) {
         showNotification(error.message, 'error');
         btn.disabled = false;
-        btn.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${newAppointmentState.data.id ? 'Salvar Edição' : 'Confirmar'}`;
+        btn.innerHTML = `<i class="bi bi-check-circle-fill pointer-events-none"></i> ${newAppointmentState.data.id ? 'Salvar Edição' : 'Confirmar'}`;
     }
 }
 
@@ -1261,9 +1433,10 @@ async function updateTimesAndDuration() {
     container.innerHTML = '<div class="col-span-full flex justify-center py-4"><div class="w-6 h-6 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div></div>';
 
     try {
-        const targetEstId = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
-            ? state.selectedEstablishments[0] 
-            : state.establishmentId;
+        const targetEstId = newAppointmentState.data.establishmentId || 
+            ((state.selectedEstablishments && state.selectedEstablishments.length > 0) 
+                ? state.selectedEstablishments[0] 
+                : state.establishmentId);
 
         let slots = await appointmentsApi.getAvailability({
             establishmentId: targetEstId,

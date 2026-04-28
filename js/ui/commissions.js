@@ -63,7 +63,7 @@ function getInitials(name) {
     return name.substring(0, 2).toUpperCase();
 }
 
-// Oculta a lista e mostra o ecrã de detalhes ocupando tudo (Screen Swap)
+// Oculta a lista e mostra o ecrã de detalhes ocupando tudo via Flex Layout
 function openDetailScreen() {
     const main = document.getElementById('commissions-layout-main');
     const detail = document.getElementById('commissions-layout-detail');
@@ -72,7 +72,8 @@ function openDetailScreen() {
     if(main) main.style.display = 'none';
     if(detail) {
         detail.classList.remove('hidden');
-        detail.classList.add('flex');
+        // Setup Modal overlay fixo que usa flexbox para controlar o scroll
+        detail.className = 'fixed inset-0 z-[99999] bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-end md:justify-center w-full h-[100dvh] overflow-hidden';
     }
     if(nav && window.innerWidth < 768) nav.style.display = 'none';
 }
@@ -86,10 +87,11 @@ function closeDetailScreen() {
     if(main) main.style.display = 'flex';
     if(detail) {
         detail.classList.add('hidden');
-        detail.classList.remove('flex');
+        detail.className = 'hidden'; // Reseta as classes
     }
     if(nav && window.innerWidth < 768) nav.style.display = '';
     localState.viewMode = 'list';
+    localState.calculationResult = null; // Limpa cache
 }
 
 // ============================================================================
@@ -124,6 +126,10 @@ function renderBaseLayout() {
     contentDiv.innerHTML = `
         <style>
             #toast-container, .toast-notification, .modal, .modal-backdrop { z-index: 9999999 !important; }
+            /* Custom Scrollbar escondida para UI Limpa mas funcional */
+            .hide-scroll-calc::-webkit-scrollbar { width: 4px; }
+            .hide-scroll-calc::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+            .hide-scroll-calc::-webkit-scrollbar-track { background: transparent; }
         </style>
         
         <section id="commissions-layout-main" class="h-[calc(100vh-80px)] md:h-auto flex flex-col p-0 md:p-4 md:pl-6 w-full relative bg-slate-50 overflow-hidden" style="font-family: 'Plus Jakarta Sans', 'Nunito', sans-serif;">
@@ -165,9 +171,9 @@ function renderBaseLayout() {
                     
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div class="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-1 md:pb-0 w-full md:w-auto">
-                            <button class="date-preset-btn px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm active:scale-95 transition-all" data-preset="month">Este Mês</button>
-                            <button class="date-preset-btn px-4 py-2 bg-white text-gray-600 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm hover:bg-gray-50 active:scale-95 transition-all" data-preset="last_month">Mês Passado</button>
-                            <button id="custom-date-btn" class="px-4 py-2 bg-white text-gray-600 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2"><i class="bi bi-calendar-event"></i> Customizado</button>
+                            <button class="date-preset-btn px-4 py-2 bg-indigo-50 text-indigo-700 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm active:scale-95 transition-all border border-indigo-200" data-preset="month">Este Mês</button>
+                            <button class="date-preset-btn px-4 py-2 bg-white text-gray-600 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all" data-preset="last_month">Mês Passado</button>
+                            <button id="custom-date-btn" class="px-4 py-2 bg-white text-gray-600 text-sm font-bold rounded-xl whitespace-nowrap shadow-sm hover:bg-gray-50 active:scale-95 transition-all flex items-center gap-2 border border-gray-200"><i class="bi bi-calendar-event"></i> Customizado</button>
                         </div>
                         
                         <div class="relative w-full md:w-80">
@@ -207,7 +213,7 @@ function renderBaseLayout() {
                 <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-4 text-xs font-bold text-gray-500 tracking-wide items-center bg-white border border-gray-100 sticky top-0 z-20 shadow-sm mx-4 mt-4 rounded-t-2xl max-w-7xl md:mx-auto">
                     <div class="col-span-3 flex items-center gap-2">
                         <input type="checkbox" id="select-all-toggle" class="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
-                        Profissional
+                        Profissional & Unidade
                     </div>
                     <div class="col-span-2">Período de Ref.</div>
                     <div class="col-span-2 text-right">Bruto (R$)</div>
@@ -224,8 +230,7 @@ function renderBaseLayout() {
             </div>
         </section>
 
-        <div id="commissions-layout-detail" class="hidden fixed inset-0 z-[99999] bg-gray-50 flex-col overflow-hidden w-full h-[100dvh]">
-        </div>
+        <div id="commissions-layout-detail" class="hidden"></div>
     `;
 }
 
@@ -256,7 +261,6 @@ async function fetchAndDisplayData() {
         ]);
 
         localState.reports = history || [];
-        
         const netPaid = localState.reports.reduce((acc, rep) => acc + (rep.summary.finalValue || rep.summary.totalCommission), 0);
         
         localState.stats = {
@@ -363,6 +367,7 @@ function renderList() {
         const credit = report.summary.extraCredit || 0;
         const finalVal = report.summary.finalValue || bruto;
         const isSelected = localState.selectedIds.has(report.id);
+        const unitName = report.establishmentName || 'Unidade Atual';
         
         let ajustesStr = '';
         if (debit > 0 && credit > 0) ajustesStr = `<span class="text-red-500">-R$${debit.toFixed(2)}</span> / <span class="text-emerald-500">+R$${credit.toFixed(2)}</span>`;
@@ -381,8 +386,11 @@ function renderList() {
                         ${getInitials(report.professionalName)}
                     </div>
                     <div class="min-w-0">
-                        <p class="font-bold text-sm text-gray-900 truncate" title="${report.professionalName}">${report.professionalName}</p>
-                        <p class="text-[10px] text-gray-500 font-medium truncate mt-0.5">Gerado: ${dateStr}</p>
+                        <p class="font-bold text-sm text-slate-900 truncate" title="${report.professionalName}">${report.professionalName}</p>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[90px]" title="${unitName}"><i class="bi bi-shop"></i> ${unitName}</span>
+                            <span class="text-[10px] text-slate-400 font-medium truncate">Gerado: ${dateStr}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -392,8 +400,11 @@ function renderList() {
                     ${getInitials(report.professionalName)}
                 </div>
                 <div class="min-w-0">
-                    <p class="font-bold text-sm text-gray-900 truncate">${report.professionalName}</p>
-                    <p class="text-xs text-gray-500 font-medium truncate mt-0.5">Gerado: ${dateStr}</p>
+                    <p class="font-bold text-sm text-slate-900 truncate">${report.professionalName}</p>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                        <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[120px]"><i class="bi bi-shop"></i> ${unitName}</span>
+                        <span class="text-[10px] text-slate-400 font-medium truncate">Gerado: ${dateStr}</span>
+                    </div>
                 </div>
             </div>
 
@@ -468,6 +479,9 @@ function setupEventListeners() {
                 case 'new-calculation':
                     renderNewCalculationView();
                     break;
+                case 'whatsapp-receipt':
+                    handleWhatsAppReceipt(id);
+                    break;
                 case 'print-receipt':
                     handlePrintReceipt(id);
                     break;
@@ -482,10 +496,25 @@ function setupEventListeners() {
                     break;
                 
                 // --- In-Screen Actions ---
+                case 'set-calc-preset':
+                    handleCalcDatePreset(actionBtn);
+                    break;
                 case 'toggle-all-profs':
                     const checkboxes = document.querySelectorAll('.prof-checkbox');
                     const allChecked = Array.from(checkboxes).every(c => c.checked);
                     checkboxes.forEach(c => c.checked = !allChecked);
+                    // Update visual state of custom toggles
+                    document.querySelectorAll('.prof-toggle-ui').forEach(ui => {
+                        if (!allChecked) {
+                            ui.classList.replace('bg-slate-100', 'bg-indigo-500');
+                            ui.classList.replace('border-slate-300', 'border-indigo-500');
+                            ui.querySelector('.toggle-dot').classList.replace('translate-x-0', 'translate-x-4');
+                        } else {
+                            ui.classList.replace('bg-indigo-500', 'bg-slate-100');
+                            ui.classList.replace('border-indigo-500', 'border-slate-300');
+                            ui.querySelector('.toggle-dot').classList.replace('translate-x-4', 'translate-x-0');
+                        }
+                    });
                     break;
                 case 'calculate-preview':
                     handleCalculatePreview();
@@ -496,7 +525,7 @@ function setupEventListeners() {
                 case 'toggle-preview-details':
                     const idx = actionBtn.dataset.idx;
                     const detailsDiv = document.getElementById(`preview-details-${idx}`);
-                    const icon = actionBtn.querySelector('i');
+                    const icon = actionBtn.querySelector('i.chevron-icon');
                     if (detailsDiv) {
                         if (detailsDiv.classList.contains('hidden')) {
                             detailsDiv.classList.remove('hidden');
@@ -512,6 +541,41 @@ function setupEventListeners() {
     };
 
     document.body.addEventListener('click', pageEventListener);
+
+    // Dynamic UI Update for Custom Toggles
+    document.body.addEventListener('change', (e) => {
+        if (e.target.classList.contains('custom-toggle-input')) {
+            const wrapper = e.target.closest('label');
+            const toggleBg = wrapper.querySelector('.toggle-bg');
+            const toggleDot = wrapper.querySelector('.toggle-dot');
+            const labelText = wrapper.querySelector('.toggle-text');
+            
+            if (e.target.checked) {
+                toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+                toggleDot.classList.replace('translate-x-1', 'translate-x-6');
+                if(labelText) labelText.classList.replace('text-slate-500', 'text-indigo-700');
+            } else {
+                toggleBg.classList.replace('bg-indigo-500', 'bg-slate-200');
+                toggleDot.classList.replace('translate-x-6', 'translate-x-1');
+                if(labelText) labelText.classList.replace('text-indigo-700', 'text-slate-500');
+            }
+        }
+        
+        if (e.target.classList.contains('prof-checkbox')) {
+            const wrapper = e.target.closest('label');
+            const toggleUi = wrapper.querySelector('.prof-toggle-ui');
+            const dot = wrapper.querySelector('.toggle-dot');
+            if(e.target.checked) {
+                toggleUi.classList.replace('bg-slate-100', 'bg-indigo-500');
+                toggleUi.classList.replace('border-slate-300', 'border-indigo-500');
+                dot.classList.replace('translate-x-0', 'translate-x-4');
+            } else {
+                toggleUi.classList.replace('bg-indigo-500', 'bg-slate-100');
+                toggleUi.classList.replace('border-indigo-500', 'border-slate-300');
+                dot.classList.replace('translate-x-4', 'translate-x-0');
+            }
+        }
+    });
 
     const searchInput = document.getElementById('search-input');
     if(searchInput) {
@@ -576,7 +640,7 @@ function setupEventListeners() {
         }
     });
 
-    // Handle Preset Buttons (Este Mês, Mês Passado)
+    // Handle Preset Buttons for main list
     document.querySelectorAll('.date-preset-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             if (navigator.vibrate) navigator.vibrate(15);
@@ -609,6 +673,35 @@ function setupEventListeners() {
     });
 }
 
+function handleCalcDatePreset(actionBtn) {
+    const presetType = actionBtn.dataset.preset;
+    const now = new Date();
+    let start, end;
+
+    if (presetType === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (presetType === 'last_month') {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (presetType === 'today') {
+        start = new Date();
+        end = new Date();
+    }
+
+    if(start && end) {
+        document.getElementById('calc-start-date').value = start.toISOString().split('T')[0];
+        document.getElementById('calc-end-date').value = end.toISOString().split('T')[0];
+    }
+
+    document.querySelectorAll('button[data-action="set-calc-preset"]').forEach(b => {
+        b.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+        b.classList.add('bg-white', 'text-gray-500', 'border-gray-200');
+    });
+    actionBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+    actionBtn.classList.remove('bg-white', 'text-gray-500', 'border-gray-200');
+}
+
 function updateBatchActionBar() {
     const bar = document.getElementById('batch-action-bar');
     const countSpan = document.getElementById('selected-count');
@@ -628,7 +721,7 @@ function updateBatchActionBar() {
 }
 
 // ============================================================================
-// 🧮 NOVA TELA: APURAÇÃO E CÁLCULO (SCREEN SWAP)
+// 🧮 NOVA TELA: APURAÇÃO E CÁLCULO (ARQUITETURA FLEXBOX / BOTTOM SHEET)
 // ============================================================================
 
 function renderNewCalculationView() {
@@ -639,77 +732,107 @@ function renderNewCalculationView() {
     const todayStr = new Date().toISOString().split('T')[0];
     const firstDayStr = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     
+    // Lista de profissionais modernizada (Checkbox style toggle)
     const profsHtml = localState.professionals.map(p => `
-        <label class="flex items-center p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all cursor-pointer group mb-1.5">
-            <input type="checkbox" value="${p.id}" class="prof-checkbox w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-            <div class="ml-3 flex items-center gap-2">
-                <div class="w-8 h-8 rounded-lg border border-gray-100 bg-gray-50 text-gray-500 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors shadow-sm">${getInitials(p.name)}</div>
-                <span class="font-bold text-sm text-gray-800">${p.name}</span>
+        <label class="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-indigo-300 transition-all cursor-pointer group mb-2">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-black group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">${getInitials(p.name)}</div>
+                <span class="font-bold text-sm text-slate-800">${p.name}</span>
+            </div>
+            <div class="relative">
+                <input type="checkbox" value="${p.id}" class="prof-checkbox sr-only">
+                <div class="prof-toggle-ui block w-10 h-6 bg-slate-100 border border-slate-300 rounded-full transition-colors"></div>
+                <div class="toggle-dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform transform translate-x-0 shadow-sm border border-slate-200"></div>
             </div>
         </label>`).join('');
 
-    const mobileHeaderHTML = `
-        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50">
-            <button data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner transition-transform active:scale-95">
-                <i class="bi bi-arrow-left text-lg"></i>
-            </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Nova Apuração</h3>
-        </div>
-    `;
-
     detailContainer.innerHTML = `
-        ${mobileHeaderHTML}
-        <div id="calc-flow-container" class="flex flex-col flex-1 overflow-hidden relative max-w-4xl mx-auto w-full md:mt-6 md:rounded-3xl md:border md:border-gray-200 md:shadow-2xl md:bg-white md:max-h-[85vh]">
+        <div class="w-full h-full md:h-auto md:max-h-[90vh] md:max-w-3xl md:w-[90%] flex flex-col bg-slate-50 md:rounded-3xl shadow-2xl overflow-hidden relative animate-fade-in-down">
             
-            <div id="calc-step-1" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 custom-scrollbar bg-gray-50/50 md:bg-transparent pb-28 md:pb-8">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="bi bi-calendar-range text-indigo-500"></i> Período</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Início</label>
-                            <input type="date" id="calc-start-date" value="${firstDayStr}" class="w-full mt-1.5 p-3.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner transition-shadow">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Fim</label>
-                            <input type="date" id="calc-end-date" value="${todayStr}" class="w-full mt-1.5 p-3.5 bg-gray-50 border border-gray-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner transition-shadow">
-                        </div>
+            <header class="flex-shrink-0 p-4 border-b border-slate-200 bg-white flex items-center justify-between shadow-sm z-20">
+                <div class="flex items-center gap-3">
+                    <button type="button" data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-slate-200 transition-transform active:scale-95">
+                        <i class="bi bi-x-lg text-lg"></i>
+                    </button>
+                    <div>
+                        <h3 id="calc-header-title" class="font-black text-base text-slate-800 uppercase tracking-wider">Apuração de Vendas (1/2)</h3>
                     </div>
                 </div>
+            </header>
 
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                    <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2"><i class="bi bi-tags text-indigo-500"></i> Considerar nas vendas</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <label class="flex items-center justify-center p-3.5 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95 shadow-sm">
-                            <input type="checkbox" id="calc-type-services" checked class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-2 text-sm font-bold text-gray-700 uppercase tracking-wider">Serviços</span>
-                        </label>
-                        <label class="flex items-center justify-center p-3.5 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95 shadow-sm">
-                            <input type="checkbox" id="calc-type-products" checked class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-2 text-sm font-bold text-gray-700 uppercase tracking-wider">Produtos</span>
-                        </label>
-                        <label class="flex items-center justify-center p-3.5 border border-gray-200 rounded-xl bg-gray-50 cursor-pointer hover:bg-white transition-colors active:scale-95 shadow-sm">
-                            <input type="checkbox" id="calc-type-packages" class="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
-                            <span class="ml-2 text-sm font-bold text-gray-700 uppercase tracking-wider">Pacotes</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+            <div id="calc-step-1" class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-slate-50 space-y-6">
+                
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                     <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2"><i class="bi bi-people text-indigo-500"></i> Equipe</h3>
+                        <h3 class="text-sm font-black text-slate-800 flex items-center gap-2"><i class="bi bi-calendar-range text-indigo-500"></i> Período</h3>
+                    </div>
+                    
+                    <div class="flex gap-2 mb-4 overflow-x-auto hide-scroll-calc pb-1">
+                        <button type="button" data-action="set-calc-preset" data-preset="month" class="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm transition-colors">Este Mês</button>
+                        <button type="button" data-action="set-calc-preset" data-preset="last_month" class="px-4 py-2 bg-white text-slate-500 border border-slate-200 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition-colors">Mês Passado</button>
+                        <button type="button" data-action="set-calc-preset" data-preset="today" class="px-4 py-2 bg-white text-slate-500 border border-slate-200 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition-colors">Hoje</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Início</label>
+                            <input type="date" id="calc-start-date" value="${firstDayStr}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Fim</label>
+                            <input type="date" id="calc-end-date" value="${todayStr}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-sm font-black text-slate-800 mb-4 flex items-center gap-2"><i class="bi bi-tags text-indigo-500"></i> Considerar na Apuração</h3>
+                    <div class="flex flex-col gap-3">
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <span class="toggle-text text-indigo-700 text-sm font-bold uppercase tracking-wider transition-colors">Serviços Executados</span>
+                            <div class="relative">
+                                <input type="checkbox" id="calc-type-services" checked class="custom-toggle-input sr-only">
+                                <div class="toggle-bg block w-12 h-7 bg-indigo-500 rounded-full shadow-inner transition-colors"></div>
+                                <div class="toggle-dot absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform transform translate-x-6 shadow-sm"></div>
+                            </div>
+                        </label>
+                        <div class="border-t border-slate-100"></div>
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <span class="toggle-text text-indigo-700 text-sm font-bold uppercase tracking-wider transition-colors">Produtos Vendidos</span>
+                            <div class="relative">
+                                <input type="checkbox" id="calc-type-products" checked class="custom-toggle-input sr-only">
+                                <div class="toggle-bg block w-12 h-7 bg-indigo-500 rounded-full shadow-inner transition-colors"></div>
+                                <div class="toggle-dot absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform transform translate-x-6 shadow-sm"></div>
+                            </div>
+                        </label>
+                        <div class="border-t border-slate-100"></div>
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <span class="toggle-text text-slate-500 text-sm font-bold uppercase tracking-wider transition-colors">Venda de Pacotes</span>
+                            <div class="relative">
+                                <input type="checkbox" id="calc-type-packages" class="custom-toggle-input sr-only">
+                                <div class="toggle-bg block w-12 h-7 bg-slate-200 rounded-full shadow-inner transition-colors"></div>
+                                <div class="toggle-dot absolute left-1 top-1 bg-white w-5 h-5 rounded-full transition-transform transform translate-x-1 shadow-sm"></div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-sm font-black text-slate-800 flex items-center gap-2"><i class="bi bi-people text-indigo-500"></i> Selecionar Equipe</h3>
                         <button type="button" data-action="toggle-all-profs" class="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors shadow-sm active:scale-95">Inverter Sel.</button>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+                    <div class="max-h-60 overflow-y-auto custom-scrollbar pr-2 grid grid-cols-1 md:grid-cols-2 md:gap-x-4">
                         ${profsHtml}
                     </div>
                 </div>
             </div>
 
-            <div id="calc-step-2" class="hidden flex-1 overflow-y-auto p-4 md:p-8 space-y-4 custom-scrollbar bg-gray-50/50 md:bg-transparent pb-28 md:pb-8"></div>
+            <div id="calc-step-2" class="hidden flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-slate-50/50 space-y-4"></div>
 
-            <footer class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-white flex justify-end gap-3 z-50 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)]">
-                <button type="button" data-action="close-detail-screen" class="hidden md:block py-3.5 px-6 bg-white border border-gray-300 text-gray-700 font-bold text-sm rounded-xl hover:bg-gray-50 transition-colors shadow-sm uppercase tracking-wider">Cancelar</button>
-                <button type="button" data-action="calculate-preview" id="btn-calc-action" class="w-full md:w-auto py-3.5 px-8 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
+            <footer class="flex-shrink-0 p-4 border-t border-slate-200 bg-white flex justify-end gap-3 z-20 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)]">
+                <button type="button" data-action="close-detail-screen" class="hidden md:block py-3 px-6 bg-white border border-slate-300 text-slate-700 font-bold text-sm rounded-xl hover:bg-slate-50 transition-colors shadow-sm uppercase tracking-wider">Cancelar</button>
+                <button type="button" data-action="calculate-preview" id="btn-calc-action" class="w-full md:w-auto py-3 px-8 bg-indigo-600 text-white font-black text-sm rounded-xl hover:bg-indigo-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
                     <i class="bi bi-calculator text-lg"></i> Calcular Vendas
                 </button>
             </footer>
@@ -721,7 +844,7 @@ function renderNewCalculationView() {
 
 async function handleCalculatePreview() {
     const profIds = Array.from(document.querySelectorAll('.prof-checkbox:checked')).map(c => c.value);
-    if (profIds.length === 0) return showNotification('Atenção', 'Selecione pelo menos um profissional.', 'warning');
+    if (profIds.length === 0) return showNotification('Atenção', 'Selecione pelo menos um profissional na lista.', 'warning');
 
     // Consome o filtro global de lojas do cabecalho (App Header)
     const targetEstIds = (state.selectedEstablishments && state.selectedEstablishments.length > 0) 
@@ -788,6 +911,10 @@ function renderCalculationPreview() {
         return;
     }
 
+    // Altera Header
+    const headerTitle = document.getElementById('calc-header-title');
+    if (headerTitle) headerTitle.innerText = "Revisão e Pagamento (2/2)";
+
     const step1 = document.getElementById('calc-step-1');
     const step2 = document.getElementById('calc-step-2');
     const btn = document.getElementById('btn-calc-action');
@@ -797,7 +924,7 @@ function renderCalculationPreview() {
 
     if (btn) {
         btn.dataset.action = "save-final-reports";
-        btn.className = "w-full md:w-auto py-3.5 px-8 bg-emerald-600 text-white font-black text-sm rounded-xl hover:bg-emerald-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider";
+        btn.className = "w-full md:w-auto py-3 px-8 bg-emerald-600 text-white font-black text-sm rounded-xl hover:bg-emerald-700 shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider";
         btn.innerHTML = '<i class="bi bi-check2-circle text-lg"></i> Confirmar Pagtos.';
         btn.disabled = false;
     }
@@ -806,23 +933,24 @@ function renderCalculationPreview() {
 
     const cardsHtml = results.map((r, idx) => {
         if (r.summary.totalCommission === 0) return ''; 
+        const unitName = r.establishmentName || 'Unidade Atual';
         
         const itemsHtml = (r.items || []).map(item => `
-            <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
-                <td class="py-2.5 truncate max-w-[120px] text-gray-800 font-bold" title="${item.item}">${item.item}</td>
-                <td class="py-2.5 text-gray-500 font-medium">${item.client || '--'}</td>
-                <td class="py-2.5 text-right text-gray-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
-                <td class="py-2.5 text-center text-gray-600 font-bold">${item.commissionRate}%</td>
+            <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
+                <td class="py-2.5 truncate max-w-[120px] text-slate-800 font-bold" title="${item.item}">${item.item}</td>
+                <td class="py-2.5 text-slate-500 font-medium">${item.client || '--'}</td>
+                <td class="py-2.5 text-right text-slate-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
+                <td class="py-2.5 text-center text-slate-600 font-bold">${item.commissionRate}%</td>
                 <td class="py-2.5 text-right font-black text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
             </tr>
         `).join('');
 
-        const detailsDiv = `
-            <div id="preview-details-${idx}" class="hidden mt-4 pt-4 border-t border-gray-100">
-                <h5 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Itens Processados</h5>
-                <div class="overflow-x-auto border border-gray-200 rounded-xl shadow-sm custom-scrollbar">
+        const tableDetailsDiv = `
+            <div id="preview-details-${idx}" class="hidden mt-4 pt-4 border-t border-slate-100 animate-fade-in-down">
+                <h5 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Itens Processados</h5>
+                <div class="overflow-x-auto border border-slate-200 rounded-xl shadow-sm custom-scrollbar bg-white">
                     <table class="w-full text-left text-xs whitespace-nowrap">
-                        <thead class="text-gray-500 bg-gray-50 border-b border-gray-200">
+                        <thead class="text-slate-500 bg-slate-50 border-b border-slate-200">
                             <tr>
                                 <th class="p-3 font-bold uppercase tracking-wider text-[10px]">Serviço/Produto</th>
                                 <th class="p-3 font-bold uppercase tracking-wider text-[10px]">Cliente</th>
@@ -831,24 +959,29 @@ function renderCalculationPreview() {
                                 <th class="p-3 font-bold uppercase tracking-wider text-[10px] text-right">Comissão</th>
                             </tr>
                         </thead>
-                        <tbody class="bg-white">${itemsHtml || '<tr><td colspan="5" class="py-4 text-center text-gray-400">Nenhum item</td></tr>'}</tbody>
+                        <tbody class="bg-white">${itemsHtml || '<tr><td colspan="5" class="py-4 text-center text-slate-400">Nenhum item</td></tr>'}</tbody>
                     </table>
                 </div>
             </div>
         `;
         
         return `
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 mb-4 relative overflow-hidden">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-4 relative overflow-hidden">
             <div class="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
             
-            <div class="flex justify-between items-start mb-5 border-b border-gray-100 pb-4 pl-3">
+            <div class="flex justify-between items-start mb-5 border-b border-slate-100 pb-4 pl-3">
                 <div>
-                    <h4 class="font-black text-gray-800 text-base uppercase tracking-wider">${r.professionalName}</h4>
-                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">${r.summary.totalItems} itens calculados</p>
+                    <h4 class="font-black text-slate-800 text-base uppercase tracking-wider flex items-center gap-2">
+                        ${r.professionalName}
+                    </h4>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-[9px] font-bold bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100"><i class="bi bi-shop"></i> ${unitName}</span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">${r.summary.totalItems} itens calculados</span>
+                    </div>
                 </div>
-                <div class="text-right bg-gray-50 px-4 py-2 rounded-xl border border-gray-200 shadow-inner">
-                    <p class="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Valor Bruto</p>
-                    <p class="font-black text-gray-800 text-base md:text-lg leading-none">R$ ${r.summary.totalCommission.toFixed(2)}</p>
+                <div class="text-right bg-slate-50 px-4 py-2 rounded-xl border border-slate-200 shadow-inner">
+                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Valor Bruto</p>
+                    <p class="font-black text-slate-800 text-base md:text-lg leading-none">R$ ${r.summary.totalCommission.toFixed(2)}</p>
                 </div>
             </div>
             
@@ -870,7 +1003,7 @@ function renderCalculationPreview() {
             </div>
 
             <div class="pl-3 mb-5">
-                <input type="text" data-idx="${idx}" class="input-notes w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-gray-700 shadow-inner" placeholder="Motivo dos ajustes (Opcional)">
+                <input type="text" data-idx="${idx}" class="input-notes w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700 shadow-inner" placeholder="Motivo dos ajustes (Opcional)">
             </div>
             
             <div class="flex justify-between items-center bg-indigo-50 border border-indigo-200 p-4 rounded-xl pl-5 ml-3 shadow-sm">
@@ -878,18 +1011,18 @@ function renderCalculationPreview() {
                 <span class="text-2xl font-black text-indigo-800 final-value-display drop-shadow-sm" data-idx="${idx}">R$ ${r.finalValue.toFixed(2)}</span>
             </div>
 
-            <div class="pl-3 mt-5 border-t border-gray-50 pt-4">
-                <button type="button" data-action="toggle-preview-details" data-idx="${idx}" class="text-[10px] md:text-xs font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-widest flex items-center gap-1.5 transition-colors bg-indigo-50 px-4 py-2.5 rounded-xl border border-indigo-100 shadow-sm">
-                    <i class="bi bi-list-check text-sm"></i> Detalhar Itens <i class="bi bi-chevron-down ml-1"></i>
+            <div class="pl-3 mt-4 border-t border-slate-50 pt-4">
+                <button type="button" data-action="toggle-preview-details" data-idx="${idx}" class="w-full text-xs font-bold text-slate-600 hover:text-indigo-700 uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors bg-slate-50 px-4 py-3 rounded-xl border border-slate-200 shadow-sm active:scale-[0.98]">
+                    <i class="bi bi-list-check"></i> Abrir Detalhamento de Itens <i class="bi bi-chevron-down chevron-icon ml-1"></i>
                 </button>
-                ${detailsDiv}
+                ${tableDetailsDiv}
             </div>
         </div>
         `;
     }).join('');
 
     if (step2) step2.innerHTML = `
-        <div class="bg-gradient-to-r from-indigo-700 to-indigo-800 p-5 rounded-2xl shadow-lg text-white mb-6 flex flex-col md:flex-row justify-between items-start md:items-center relative overflow-hidden border border-indigo-600 gap-4">
+        <div class="bg-gradient-to-r from-indigo-700 to-indigo-800 p-5 rounded-2xl shadow-lg text-white mb-6 flex flex-col md:flex-row justify-between items-start md:items-center relative overflow-hidden border border-indigo-600 gap-4 sticky top-0 z-10">
             <div class="absolute right-[-10px] top-[-10px] opacity-10"><i class="bi bi-cash-coin text-9xl"></i></div>
             <div class="bg-indigo-900/40 p-4 px-5 rounded-xl backdrop-blur-sm border border-indigo-400/30 z-10 w-full md:w-auto">
                 <span class="block text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-1.5">Soma Total Equipe</span>
@@ -939,7 +1072,7 @@ async function handleSaveReports() {
     
     if (count === 0) return showNotification('Aviso', 'Não há valores para pagar.', 'info');
 
-    const confirmed = await showConfirmation('Confirmar Pagamentos', `Você está prestes a gerar recibos e marcar as vendas de ${count} profissional(is) como PAGAS. Essa ação lançará a despesa correspondente no Financeiro. Confirmar?`);
+    const confirmed = await showConfirmation('Confirmar Pagamentos', `Você está prestes a gerar recibos e marcar as vendas de ${count} profissional(is) como PAGAS. Essa ação lançará a despesa correspondente no Financeiro da respectiva unidade. Confirmar?`);
     if (!confirmed) return;
     
     const btn = document.getElementById('btn-calc-action');
@@ -952,12 +1085,16 @@ async function handleSaveReports() {
                 .map(item => item.originalSaleId)
                 .filter(id => id !== undefined && id !== null);
 
+            // Garante que o ID salvo seja o da unidade do resultado, caso contrário, usa o global
+            const unitIdToSave = result.establishmentId || state.establishmentId;
+
             await commissionsApi.saveCommissionReport({
                 professionalId: result.professionalId,
                 professionalName: result.professionalName,
                 period: localState.periodString,
                 processedSalesIds: salesIds,
-                establishmentId: state.establishmentId, 
+                establishmentId: unitIdToSave, 
+                establishmentName: result.establishmentName || '',
                 reportData: {
                     ...result,
                     summary: {
@@ -978,7 +1115,7 @@ async function handleSaveReports() {
                     const defCostCenter = config.defaultDespesaCentroCustoId || config.financeConfig?.despesaCentroCustoId || null;
 
                     await financialApi.createPayable({
-                        establishmentId: state.establishmentId,
+                        establishmentId: unitIdToSave,
                         description: `Comissões - ${result.period}`,
                         amount: result.finalValue,
                         dueDate: new Date().toISOString().split('T')[0],
@@ -1012,7 +1149,7 @@ async function handleSaveReports() {
 }
 
 // ============================================================================
-// 🔍 NOVA TELA: DETALHES DO RECIBO (SCREEN SWAP)
+// 🔍 NOVA TELA: DETALHES DO RECIBO (ARQUITETURA FLEXBOX / BOTTOM SHEET)
 // ============================================================================
 
 function renderReportDetailsView(reportId) {
@@ -1028,22 +1165,14 @@ function renderReportDetailsView(reportId) {
     const debit = rData.extraDebit || 0;
     const credit = rData.extraCredit || 0;
     const notes = rData.notes || '';
-
-    const mobileHeaderHTML = `
-        <div class="p-4 border-b border-gray-200 bg-white flex items-center shadow-sm w-full flex-shrink-0 z-50 md:rounded-t-3xl">
-            <button data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center hover:bg-gray-200 shadow-inner transition-transform active:scale-95">
-                <i class="bi bi-arrow-left text-lg"></i>
-            </button>
-            <h3 class="font-black text-base text-gray-800 ml-4 uppercase tracking-wider">Detalhes do Recibo</h3>
-        </div>
-    `;
+    const unitName = report.establishmentName || 'Unidade Atual';
 
     const itemsHtml = items.map(item => `
-        <tr class="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4 text-gray-800 font-bold whitespace-normal min-w-[150px]">${item.item}</td>
-            <td class="py-3 px-4 text-gray-500 font-medium">${item.client || '--'}</td>
-            <td class="py-3 px-4 text-right text-gray-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
-            <td class="py-3 px-4 text-center text-gray-600 font-black">${item.commissionRate}%</td>
+        <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
+            <td class="py-3 px-4 text-slate-800 font-bold whitespace-normal min-w-[150px]">${item.item}</td>
+            <td class="py-3 px-4 text-slate-500 font-medium">${item.client || '--'}</td>
+            <td class="py-3 px-4 text-right text-slate-600 font-bold">R$ ${(item.value || 0).toFixed(2)}</td>
+            <td class="py-3 px-4 text-center text-slate-600 font-black">${item.commissionRate}%</td>
             <td class="py-3 px-4 text-right font-black text-emerald-600">R$ ${(item.commissionValue || 0).toFixed(2)}</td>
         </tr>
     `).join('');
@@ -1051,21 +1180,32 @@ function renderReportDetailsView(reportId) {
     let adjustmentsHtml = '';
     if (debit > 0 || credit > 0 || notes) {
         adjustmentsHtml = `
-            <div class="mt-5 bg-gray-50 p-5 rounded-3xl border border-gray-200 shadow-sm">
-                <h5 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4"><i class="bi bi-sliders mr-1 text-indigo-500"></i> Ajustes Aplicados</h5>
+            <div class="mt-5 bg-slate-50 p-5 rounded-3xl border border-slate-200 shadow-sm">
+                <h5 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4"><i class="bi bi-sliders mr-1 text-indigo-500"></i> Ajustes Aplicados</h5>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    ${debit > 0 ? `<div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Descontos/Vales</span> <span class="font-black text-red-500 text-xl leading-none">-R$ ${debit.toFixed(2)}</span></div>` : ''}
-                    ${credit > 0 ? `<div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm"><span class="text-gray-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Bônus Extras</span> <span class="font-black text-emerald-500 text-xl leading-none">+R$ ${credit.toFixed(2)}</span></div>` : ''}
+                    ${debit > 0 ? `<div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span class="text-slate-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Descontos/Vales</span> <span class="font-black text-red-500 text-xl leading-none">-R$ ${debit.toFixed(2)}</span></div>` : ''}
+                    ${credit > 0 ? `<div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><span class="text-slate-400 block text-[9px] uppercase tracking-widest font-bold mb-1">Bônus Extras</span> <span class="font-black text-emerald-500 text-xl leading-none">+R$ ${credit.toFixed(2)}</span></div>` : ''}
                 </div>
-                ${notes ? `<div class="text-sm font-bold text-gray-600 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm"><strong class="block text-[9px] uppercase tracking-widest text-indigo-400 mb-1.5"><i class="bi bi-card-text"></i> Motivo do Ajuste</strong> ${notes}</div>` : ''}
+                ${notes ? `<div class="text-sm font-bold text-slate-600 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><strong class="block text-[9px] uppercase tracking-widest text-indigo-400 mb-1.5"><i class="bi bi-card-text"></i> Motivo do Ajuste</strong> ${notes}</div>` : ''}
             </div>
         `;
     }
 
     detailContainer.innerHTML = `
-        <div class="w-full h-full md:h-auto md:max-h-[90vh] md:max-w-4xl md:mx-auto md:mt-8 md:rounded-3xl md:shadow-2xl md:border md:border-gray-200 flex flex-col bg-gray-50 overflow-hidden relative">
-            ${mobileHeaderHTML}
-            <div class="flex-grow overflow-y-auto p-4 md:p-8 pb-28 md:pb-6 custom-scrollbar bg-gray-50/50">
+        <div class="w-full h-full md:h-auto md:max-h-[90vh] md:max-w-4xl md:w-[90%] flex flex-col bg-slate-50 md:rounded-3xl shadow-2xl overflow-hidden relative animate-fade-in-down">
+            
+            <header class="flex-shrink-0 p-4 border-b border-slate-200 bg-white flex items-center justify-between shadow-sm z-20">
+                <div class="flex items-center gap-3">
+                    <button type="button" data-action="close-detail-screen" class="w-10 h-10 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center hover:bg-slate-200 transition-transform active:scale-95">
+                        <i class="bi bi-arrow-left text-lg"></i>
+                    </button>
+                    <div>
+                        <h3 class="font-black text-base text-slate-800 uppercase tracking-wider">Detalhes do Recibo</h3>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar bg-slate-50">
                 <div class="flex flex-col md:flex-row justify-between md:items-center bg-indigo-50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-indigo-200 mb-5 gap-4 shadow-sm relative overflow-hidden">
                     <div class="absolute right-0 top-0 bottom-0 w-2 bg-indigo-500"></div>
                     <div class="flex items-center gap-4">
@@ -1075,6 +1215,7 @@ function renderReportDetailsView(reportId) {
                         <div>
                             <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-0.5">Profissional</p>
                             <p class="font-black text-indigo-900 text-2xl leading-tight uppercase tracking-wider">${report.professionalName}</p>
+                            <p class="text-[10px] font-bold text-indigo-600 mt-1 flex items-center gap-1"><i class="bi bi-shop"></i> ${unitName}</p>
                         </div>
                     </div>
                     <div class="md:text-right border-t md:border-t-0 md:border-l border-indigo-200 pt-4 md:pt-0 md:pl-6">
@@ -1083,10 +1224,10 @@ function renderReportDetailsView(reportId) {
                     </div>
                 </div>
 
-                <div class="border border-gray-200 rounded-2xl md:rounded-3xl overflow-hidden shadow-sm bg-white">
+                <div class="border border-slate-200 rounded-2xl md:rounded-3xl overflow-hidden shadow-sm bg-white">
                     <div class="overflow-x-auto custom-scrollbar">
                         <table class="w-full text-left text-sm whitespace-nowrap">
-                            <thead class="bg-gray-50 text-gray-500 border-b border-gray-200">
+                            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200">
                                 <tr>
                                     <th class="p-4 font-bold uppercase tracking-wider text-[10px]">Serviço / Produto</th>
                                     <th class="p-4 font-bold uppercase tracking-wider text-[10px]">Cliente</th>
@@ -1095,12 +1236,12 @@ function renderReportDetailsView(reportId) {
                                     <th class="p-4 font-bold uppercase tracking-wider text-[10px] text-right">Comissão</th>
                                 </tr>
                             </thead>
-                            <tbody>${itemsHtml || '<tr><td colspan="5" class="text-center py-10 text-gray-400 font-bold text-sm">Nenhum item detalhado neste recibo.</td></tr>'}</tbody>
+                            <tbody>${itemsHtml || '<tr><td colspan="5" class="text-center py-10 text-slate-400 font-bold text-sm">Nenhum item detalhado neste recibo.</td></tr>'}</tbody>
                         </table>
                     </div>
-                    <div class="bg-gray-50 p-5 border-t border-gray-200 flex justify-between items-center shadow-inner">
-                        <span class="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Bruto Apurado</span>
-                        <span class="font-black text-gray-800 text-2xl drop-shadow-sm">R$ ${(rData.totalCommission || 0).toFixed(2)}</span>
+                    <div class="bg-slate-50 p-5 border-t border-slate-200 flex justify-between items-center shadow-inner">
+                        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Bruto Apurado</span>
+                        <span class="font-black text-slate-800 text-2xl drop-shadow-sm">R$ ${(rData.totalCommission || 0).toFixed(2)}</span>
                     </div>
                 </div>
                 
@@ -1115,12 +1256,15 @@ function renderReportDetailsView(reportId) {
                 </div>
             </div>
 
-            <footer class="absolute bottom-0 left-0 right-0 p-4 md:p-5 bg-white border-t border-gray-200 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.1)] w-full flex-shrink-0 z-50 flex gap-3 md:rounded-b-3xl">
-                <button data-action="print-receipt" data-id="${report.id}" class="flex-1 py-4 md:py-3.5 bg-indigo-50 text-indigo-700 font-black text-sm rounded-xl hover:bg-indigo-100 transition-colors shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 border border-indigo-200 active:scale-95">
-                    <i class="bi bi-printer text-xl"></i> Imprimir Recibo
+            <footer class="flex-shrink-0 p-4 border-t border-slate-200 bg-white flex gap-2 md:gap-3 z-20 shadow-[0_-10px_20px_-3px_rgba(0,0,0,0.05)] md:rounded-b-3xl">
+                <button data-action="whatsapp-receipt" data-id="${report.id}" class="flex-1 py-3 md:py-3.5 bg-[#25D366]/10 text-[#075E54] font-black text-xs md:text-sm rounded-xl hover:bg-[#25D366]/20 transition-colors shadow-sm uppercase tracking-wider flex items-center justify-center gap-1.5 md:gap-2 border border-[#25D366]/30 active:scale-95" title="Enviar por WhatsApp">
+                    <i class="bi bi-whatsapp text-lg md:text-xl"></i> <span class="truncate">WhatsApp</span>
                 </button>
-                <button data-action="delete-report" data-id="${report.id}" class="w-14 md:w-16 h-auto bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-100 transition-colors border border-red-200 shadow-sm active:scale-95" title="Excluir e Estornar">
-                    <i class="bi bi-trash3 text-xl"></i>
+                <button data-action="print-receipt" data-id="${report.id}" class="flex-1 py-3 md:py-3.5 bg-indigo-50 text-indigo-700 font-black text-xs md:text-sm rounded-xl hover:bg-indigo-100 transition-colors shadow-sm uppercase tracking-wider flex items-center justify-center gap-1.5 md:gap-2 border border-indigo-200 active:scale-95">
+                    <i class="bi bi-printer text-lg md:text-xl"></i> <span class="truncate">Imprimir</span>
+                </button>
+                <button data-action="delete-report" data-id="${report.id}" class="w-12 md:w-14 h-auto bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-100 transition-colors border border-red-200 shadow-sm active:scale-95" title="Excluir e Estornar">
+                    <i class="bi bi-trash3 text-lg md:text-xl"></i>
                 </button>
             </footer>
         </div>
@@ -1130,8 +1274,38 @@ function renderReportDetailsView(reportId) {
 }
 
 // ============================================================================
-// 🖨️ EXPORTAÇÃO, RECIBO E EXCLUSÃO EM LOTE
+// 🖨️ EXPORTAÇÃO, WHATSAPP, RECIBO E EXCLUSÃO EM LOTE
 // ============================================================================
+
+function handleWhatsAppReceipt(reportId) {
+    const report = localState.reports.find(r => r.id === reportId);
+    if (!report) return;
+
+    const rData = report.summary || {};
+    const unitName = report.establishmentName || 'Unidade Principal';
+    
+    let message = `*RECIBO DE COMISSÕES* 💰\n\n`;
+    message += `*Profissional:* ${report.professionalName}\n`;
+    message += `*Unidade:* ${unitName}\n`;
+    message += `*Período:* ${report.period}\n\n`;
+    
+    message += `*Resumo da Apuração:*\n`;
+    message += `Bruto Apurado: R$ ${(rData.totalCommission || 0).toFixed(2)}\n`;
+    
+    if (rData.extraCredit > 0) message += `(+) Bônus Extras: R$ ${rData.extraCredit.toFixed(2)}\n`;
+    if (rData.extraDebit > 0) message += `(-) Descontos/Vales: R$ ${rData.extraDebit.toFixed(2)}\n`;
+    if (rData.notes) message += `\n*Obs:* ${rData.notes}\n`;
+    
+    const finalVal = rData.finalValue || rData.totalCommission || 0;
+    message += `\n*TOTAL LÍQUIDO PAGO: R$ ${finalVal.toFixed(2)}*\n\n`;
+    message += `_Este é um recibo gerado automaticamente pelo sistema._`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
+    
+    // Abre em nova guia/janela (No celular tentará abrir o App nativo)
+    window.open(whatsappUrl, '_blank');
+}
 
 function handleExportExcel() {
     if (localState.reports.length === 0) {
@@ -1156,6 +1330,7 @@ function handleExportExcel() {
 
         return {
             "Data da Apuração": new Date(report.createdAt).toLocaleDateString('pt-BR'),
+            "Unidade": report.establishmentName || "Unidade Principal",
             "Profissional": report.professionalName,
             "Período Base": report.period,
             "Itens Calculados": report.summary.totalItems || 0,
@@ -1203,7 +1378,7 @@ function handlePrintReceipt(reportId) {
     doc.setFont(undefined, 'bold');
     doc.text('RECIBO DE COMISSÕES', 105, 20, { align: 'center' });
     doc.setFontSize(10);
-    doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')}`, 105, 28, { align: 'center' });
+    doc.text(`Data de Emissão: ${new Date().toLocaleDateString('pt-BR')} - Unidade: ${report.establishmentName || 'Principal'}`, 105, 28, { align: 'center' });
 
     doc.setTextColor(50, 50, 50);
     doc.setFontSize(11);
