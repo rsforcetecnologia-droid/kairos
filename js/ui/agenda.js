@@ -371,7 +371,7 @@ function renderListView(allEvents) {
             </div>
 
             ${!isCompleted && !localState.isSelectionMode ? `
-            <div class="flex flex-col justify-center items-end pl-2 gap-2.5 border-l border-gray-50 relative z-10 ml-2">
+            <div class="flex flex-col justify-center items-end pl-2 gap-2.5 border-l border-gray-100 ml-2">
                 ${event.status !== 'confirmed' ? `
                 <button type="button" class="lc-action-btn w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100 transition-transform active:scale-90 shadow-sm border border-blue-100" data-action="confirm-appointment" data-appointment-id="${event.id}" title="Confirmar Manualmente">
                     <i class="bi bi-check-lg text-xl pointer-events-none"></i>
@@ -380,9 +380,12 @@ function renderListView(allEvents) {
                 <button type="button" class="lc-action-btn wa w-11 h-11 rounded-full bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100 transition-transform active:scale-90 shadow-sm border border-green-100" data-link="${whatsappLink}" title="WhatsApp">
                     <i class="bi bi-whatsapp text-lg pointer-events-none"></i>
                 </button>
+                
+                ${event.status !== 'aguardando_confirmacao' ? `
                 <button type="button" class="lc-action-btn comanda w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-transform active:scale-90 shadow-sm border border-indigo-100" data-action="open-comanda" data-appointment-id="${event.id}" title="Comanda">
                     <i class="bi bi-receipt-cutoff text-lg pointer-events-none"></i>
                 </button>
+                ` : ''}
             </div>` : ''}
         </div>`;
     });

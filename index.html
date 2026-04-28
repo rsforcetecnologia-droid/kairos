@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     
-    <title>Kairos Agenda - Sistema de Gestão para Barbearias e Salões</title>
-    <meta name="description" content="O Kairos Agenda é a solução completa para gestão de barbearias e salões. Agendamento online, controle financeiro, comandas e fidelidade. Teste grátis hoje!">
-    <meta name="keywords" content="kairos agenda, agenda online, sistema barbearia, gestão de salão, agendamento, sistema para salão de beleza, controle financeiro salão">
+    <title>Kairos Agenda - Plataforma de Gestão Escalável para Redes e Salões</title>
+    <meta name="description" content="O ERP definitivo para o setor da beleza. Gestão multi-unidades, agendamento online, PDV com fidelidade, automação via WhatsApp e controle financeiro avançado.">
+    <meta name="keywords" content="kairos agenda, erp salão, sistema franquia beleza, gestão multi-unidades, agenda online whatsapp, pdv salão">
     <meta name="author" content="Kairos Tecnologia">
     <meta name="robots" content="index, follow">
 
@@ -16,8 +16,8 @@
 
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://kairosagenda.com.br/">
-    <meta property="og:title" content="Kairos Agenda - Gestão Simples e Eficiente">
-    <meta property="og:description" content="Domine a agenda e o financeiro do seu estabelecimento com o Kairos. O sistema ideal para o seu negócio.">
+    <meta property="og:title" content="Kairos Agenda - O Software que Cresce com o Seu Negócio">
+    <meta property="og:description" content="Do estúdio local à grande franquia. Controle total de agenda, estoque, equipe e financeiro numa única plataforma robusta.">
     <meta property="og:image" content="https://kairosagenda.com.br/assets/icon.png">
 
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -41,62 +41,17 @@
     <link rel="stylesheet" href="css/landing.css">
     
     <style>
-        /* --- CORREÇÃO DE CLIQUE PREÇOS --- */
-        .pricing-toggle-container {
-            position: relative;
-            z-index: 50;
-            margin-bottom: 30px;
-        }
-        .toggle-btn {
-            cursor: pointer;
-        }
+        /* --- ESTILOS COMPARTILHADOS E MANTIDOS --- */
+        html { scroll-behavior: smooth; } /* Adicionado para rolagem suave ao clicar nos links do menu */
         
-        /* --- ESTILO PREÇO RISCADO --- */
-        .original-price {
-            display: block;
-            font-size: 0.95rem;
-            color: #94A3B8;
-            text-decoration: line-through;
-            margin-top: -5px;
-            margin-bottom: 5px;
-            height: 20px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
+        .pricing-toggle-container { position: relative; z-index: 50; margin-bottom: 30px; }
+        .toggle-btn { cursor: pointer; }
+        .original-price { display: block; font-size: 0.95rem; color: #94A3B8; text-decoration: line-through; margin-top: -5px; margin-bottom: 5px; height: 20px; opacity: 0; transition: opacity 0.3s; }
         .original-price.visible { opacity: 1; }
-
-        /* --- ESTILO INFO TOTAL E PARCELAMENTO --- */
-        .total-price-info {
-            font-size: 0.85rem;
-            color: #CBD5E1;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 20px;
-            min-height: 50px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            line-height: 1.4;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            width: 100%;
-        }
-        .total-price-info strong {
-            color: #F8FAFC;
-            font-weight: 600;
-        }
-
-        /* --- ANIMAÇÃO SLIDES --- */
-        .demo-slide, .mobile-slide {
-            opacity: 0;
-            transition: opacity 1s ease-in-out;
-        }
-        .demo-slide.active, .mobile-slide.active {
-            opacity: 1;
-        }
-
-        /* --- DASHBOARD HERO (ESTILO RICO) --- */
+        .total-price-info { font-size: 0.85rem; color: #CBD5E1; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 10px; margin-bottom: 20px; min-height: 50px; display: flex; flex-direction: column; justify-content: center; line-height: 1.4; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; width: 100%; }
+        .total-price-info strong { color: #F8FAFC; font-weight: 600; }
+        .demo-slide, .mobile-slide { opacity: 0; transition: opacity 1s ease-in-out; }
+        .demo-slide.active, .mobile-slide.active { opacity: 1; }
         .dashboard-preview { display: flex; flex-direction: column; gap: 20px; height: 100%; }
         .dash-stat { margin-bottom: 5px; }
         .stat-label { font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -113,192 +68,10 @@
         .item-info span { font-size: 0.75rem; color: #94a3b8; }
         .status-badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #10B981; }
 
-        /* ========================================= */
-        /* --- ESTILOS DA PROMOÇÃO 2026 --- */
-        /* ========================================= */
-        .pricing-section.launch-mode {
-            background: linear-gradient(180deg, #0F172A 0%, #172554 100%);
-            position: relative;
-            overflow: hidden;
-            padding: 80px 0;
-        }
-        .launch-card-wrapper {
-            display: flex;
-            flex-wrap: wrap;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 24px;
-            backdrop-filter: blur(10px);
-            max-width: 900px;
-            margin: 0 auto;
-            overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-        }
-        .launch-badge {
-            background: linear-gradient(90deg, #8B5CF6, #6366f1);
-            color: white;
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
-            border: none;
-            margin-bottom: 15px;
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .launch-features {
-            flex: 1.5;
-            padding: 40px;
-            border-right: 1px solid rgba(255, 255, 255, 0.05);
-            text-align: left;
-        }
-        .launch-features h3 {
-            color: #F8FAFC;
-            margin-bottom: 25px;
-            font-size: 1.4rem;
-        }
-        .feature-grid-launch {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .feat-item {
-            color: #CBD5E1;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.95rem;
-        }
-        .feat-item i { color: #8B5CF6; font-size: 1.2rem; }
-        .comparison-box {
-            background: rgba(0,0,0,0.2);
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .comparison-box p { color: #94A3B8; font-size: 0.9rem; margin-bottom: 10px; }
-        .personas-row {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 5px;
-        }
-        .persona {
-            font-size: 0.8rem;
-            color: #64748B;
-            background: rgba(255,255,255,0.05);
-            padding: 4px 10px;
-            border-radius: 20px;
-        }
-        .persona.striked { text-decoration: line-through; }
-        .highlight-text {
-            color: #F59E0B !important;
-            font-weight: bold;
-            margin-top: 5px;
-            margin-bottom: 0 !important;
-        }
-        .launch-price-box {
-            flex: 1;
-            padding: 40px;
-            background: linear-gradient(145deg, rgba(30, 27, 75, 0.6), rgba(15, 23, 42, 0.6));
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            border-left: 1px solid rgba(255,255,255,0.05);
-        }
-        .glow-ring {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px; height: 200px;
-            background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
-            animation: pulse-glow 3s infinite ease-in-out;
-            pointer-events: none;
-        }
-        .price-header {
-            background: rgba(139, 92, 246, 0.15);
-            color: #A78BFA;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            margin-bottom: 15px;
-            border: 1px solid rgba(139, 92, 246, 0.3);
-            z-index: 2;
-        }
-        .price-display {
-            display: flex;
-            align-items: flex-start;
-            color: #fff;
-            margin-bottom: 5px;
-            z-index: 2;
-        }
-        .price-display .currency { font-size: 1.5rem; margin-top: 10px; margin-right: 5px; }
-        .price-display .amount { font-size: 3.5rem; font-weight: 700; font-family: 'Playfair Display', serif; line-height: 1; transition: opacity 0.2s; }
-        .price-display .period { font-size: 1rem; color: #94A3B8; align-self: flex-end; margin-bottom: 10px; margin-left: 5px; }
-        .price-sub { color: #94A3B8; font-size: 0.9rem; margin-bottom: 25px; z-index: 2; }
-        
-        /* Botão Pulsante */
-        .pulse-btn {
-            background: #8B5CF6;
-            border: none;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7);
-            animation: pulse-purple 2s infinite;
-            transition: all 0.3s;
-            z-index: 2;
-            text-align: center;
-            text-decoration: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            color: white;
-            display: block;
-            width: 100%;
-        }
-        .pulse-btn:hover {
-            background: #7C3AED;
-            transform: scale(1.02);
-        }
-        .guarantees {
-            list-style: none;
-            margin-top: 25px;
-            text-align: left;
-            padding: 0;
-            z-index: 2;
-        }
-        .guarantees li {
-            font-size: 0.85rem;
-            color: #94A3B8;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .guarantees li i { color: #10B981; }
-        @keyframes pulse-purple {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); }
-            70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-        }
-        @keyframes pulse-glow {
-            0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
-            50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
-            100% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.8); }
-        }
-        @media (max-width: 768px) {
-            .launch-card-wrapper { flex-direction: column; }
-            .launch-features { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.05); padding: 30px 20px; }
-            .feature-grid-launch { grid-template-columns: 1fr; }
-            .launch-price-box { padding: 40px 20px; border-left: none; }
-        }
+        .pulse-btn { background: #8B5CF6; border: none; font-weight: 600; letter-spacing: 0.5px; box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); animation: pulse-purple 2s infinite; transition: all 0.3s; z-index: 2; text-align: center; text-decoration: none; padding: 12px 24px; border-radius: 8px; color: white; display: block; width: 100%; }
+        .pulse-btn:hover { background: #7C3AED; transform: scale(1.02); }
+        @keyframes pulse-purple { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.7); } 70% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); } }
+        @media (max-width: 768px) { .feature-grid-launch { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -306,23 +79,24 @@
     <nav class="navbar">
         <div class="container navbar-content">
             <div class="brand">
-                <img src="images/logo_kairossite.png" alt="Kairos Agenda - Sistema de Gestão para Barbearias e Salões" class="logo-img">
+                <img src="images/logo_kairossite.png" alt="Kairos Agenda Logo" class="logo-img">
             </div>
             
             <div class="nav-links desktop-only">
-                <a href="#funcionalidades">Funcionalidades</a>
-                <a href="#demonstracao">Demonstração</a>
+                <a href="#solucoes">Soluções Corporativas</a>
+                <a href="#ecossistema">Ecossistema</a>
+                <a href="#tecnologia">Tecnologia</a>
                 <a href="#planos">Planos</a>
             </div>
             
             <div class="nav-actions desktop-only">
-                <a href="login.html" class="btn-text">Entrar</a>
-                <a href="#planos" class="btn-primary">Criar Conta</a>
+                <a href="login.html" class="btn-text">Área do Cliente</a>
+                <a href="#planos" class="btn-primary">Fale com um Especialista</a>
             </div>
         </div>
     </nav>
 
-    <header class="hero" id="home">
+    <header class="hero" id="solucoes">
         <div class="hero-slideshow">
             <div class="slide-item" style="background-image: url('images/hero-bg-1.jpg');"></div>
             <div class="slide-item" style="background-image: url('images/hero-bg-2.jpg');"></div>
@@ -332,22 +106,22 @@
 
         <div class="container hero-container">
             <div class="hero-text">
-                <span class="badge">Kairos Agenda - Gestão Premium</span>
-                <h1>O tempo a favor da <br>sua beleza.</h1>
-                <p>Domine a agenda, o financeiro e o estoque do seu estabelecimento com o <strong>Kairos Agenda</strong>, uma plataforma desenhada para a elegância e eficiência.</p>
+                <span class="badge">ERP Completo para Beleza e Bem-Estar</span>
+                <h1>A Plataforma que Escala o seu Negócio.</h1>
+                <p>Do controle de uma unidade à expansão de grandes redes e franquias. O <strong>Kairos Agenda</strong> centraliza Agendamentos Otimizados, Automação de WhatsApp, Gestão de Caixa Avançada e Controle de Estoque Preditivo.</p>
                 <div class="cta-group">
-                    <a href="#planos" class="btn-primary">Ver Oferta 2026</a>
-                    <a href="#demonstracao" class="btn-outline"><i class="ph ph-play-circle"></i> Ver em Ação</a>
+                    <a href="#planos" class="btn-primary">Conhecer Planos</a>
+                    <a href="#ecossistema" class="btn-outline"><i class="ph ph-rocket-launch"></i> Ver Funcionalidades B2B</a>
                 </div>
                 
                 <div class="stats">
                     <div class="stat-item">
-                        <strong>+200</strong>
-                        <span>Salões</span>
+                        <strong>Escalável</strong>
+                        <span>Micro a Franquias</span>
                     </div>
                     <div class="stat-item">
-                        <strong>4.9/5</strong>
-                        <span>Avaliação</span>
+                        <strong>Cloud</strong>
+                        <span>Alta Disponibilidade</span>
                     </div>
                 </div>
             </div>
@@ -357,14 +131,14 @@
                         <div class="dots">
                             <span></span><span></span><span></span>
                         </div>
-                        <div class="bar">Kairos Dashboard</div>
+                        <div class="bar">Visão Consolidada de Franquias</div>
                     </div>
                     <div class="card-body dashboard-preview">
                         <div class="dash-stat">
-                            <span class="stat-label">Faturamento Hoje</span>
+                            <span class="stat-label">Faturamento Global (Rede)</span>
                             <div class="stat-value">
-                                R$ 1.850,00
-                                <span class="stat-growth"><i class="ph ph-trend-up"></i> +12%</span>
+                                R$ 45.850,00
+                                <span class="stat-growth"><i class="ph ph-trend-up"></i> +18%</span>
                             </div>
                         </div>
 
@@ -379,20 +153,20 @@
 
                         <div class="dash-list">
                             <div class="dash-item">
-                                <div class="avatar-mini">JM</div>
+                                <div class="avatar-mini"><i class="ph ph-whatsapp-logo"></i></div>
                                 <div class="item-info">
-                                    <strong>João M.</strong>
-                                    <span>Corte + Barba • 14:00</span>
+                                    <strong>Automação WhatsApp</strong>
+                                    <span>340 Lembretes Enviados Hoje</span>
                                 </div>
-                                <span class="status-badge">Confirmado</span>
+                                <span class="status-badge">Ativo</span>
                             </div>
                             <div class="dash-item">
-                                <div class="avatar-mini" style="background: #10B981;">AL</div>
+                                <div class="avatar-mini" style="background: #F59E0B;"><i class="ph ph-package"></i></div>
                                 <div class="item-info">
-                                    <strong>André L.</strong>
-                                    <span>Pigmentação • 14:45</span>
+                                    <strong>Alerta de Estoque</strong>
+                                    <span>Sugestão de Compra Gerada</span>
                                 </div>
-                                <span class="status-badge">Aguardando</span>
+                                <span class="status-badge" style="background: rgba(245, 158, 11, 0.2); color: #F59E0B;">Revisar</span>
                             </div>
                         </div>
                     </div>
@@ -402,146 +176,113 @@
         </div>
     </header>
 
-    <section id="funcionalidades" class="features section-padding">
+    <section id="ecossistema" class="features section-padding">
         <div class="container">
-            <div class="section-header">
-                <h2>Tudo o que o seu negócio <br>precisa para crescer.</h2>
-                <p>Centralizamos todas as ferramentas de gestão num único lugar.</p>
+            <div class="section-header text-center">
+                <span class="badge">O Ecossistema Kairos</span>
+                <h2>Engenharia de Software Aplicada <br>ao Setor da Beleza.</h2>
+                <p>Nossa plataforma robusta elimina o uso de vários sistemas soltos, centralizando as operações mais críticas do seu negócio.</p>
             </div>
 
             <div class="features-grid">
+                
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-calendar-check"></i></div>
-                    <h3>Agenda & App</h3>
+                    <div class="icon-box"><i class="ph ph-repeat"></i></div>
+                    <h3>Clube de Assinaturas</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Agendamento Online</li>
-                        <li><i class="ph ph-check"></i> Bloqueio de Ausências</li>
-                        <li><i class="ph ph-check"></i> App Mobile Completo</li>
+                        <li><i class="ph ph-check"></i> <b>Ofereça planos de assinatura aos clientes</b></li>
+                        <li><i class="ph ph-check"></i> Cobrança recorrente 100% automática</li>
+                        <li><i class="ph ph-check"></i> Receita previsível garantida todo mês</li>
                     </ul>
                 </div>
+
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-chart-line-up"></i></div>
-                    <h3>Financeiro 360°</h3>
+                    <div class="icon-box"><i class="ph ph-wallet"></i></div>
+                    <h3>Gestão de Comissões</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Gestão Financeira Completa</li>
-                        <li><i class="ph ph-check"></i> Dashboards Financeiros</li>
-                        <li><i class="ph ph-check"></i> Cálculo de Comissões</li>
+                        <li><i class="ph ph-check"></i> <b>Cálculo automático de comissões</b></li>
+                        <li><i class="ph ph-check"></i> Regras flexíveis por serviço e profissional</li>
+                        <li><i class="ph ph-check"></i> Extratos individuais sem complicação</li>
                     </ul>
                 </div>
+
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-receipt"></i></div>
-                    <h3>Vendas & Caixa</h3>
+                    <div class="icon-box"><i class="ph ph-truck"></i></div>
+                    <h3>Compras & Fornecedores</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Comandas e Portal de Vendas</li>
-                        <li><i class="ph ph-check"></i> Relatórios Detalhados</li>
-                        <li><i class="ph ph-check"></i> Gestão de Pacotes</li>
+                        <li><i class="ph ph-check"></i> <b>Módulo completo de Compras</b></li>
+                        <li><i class="ph ph-check"></i> Cadastro inteligente de <b>Fornecedores</b></li>
+                        <li><i class="ph ph-check"></i> Alertas automáticos de baixa de estoque</li>
                     </ul>
                 </div>
+
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-package"></i></div>
-                    <h3>Estoque Inteligente</h3>
+                    <div class="icon-box"><i class="ph ph-shopping-cart"></i></div>
+                    <h3>PDV Inteligente e Fidelidade</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Gestão de Produtos</li>
-                        <li><i class="ph ph-check"></i> Sugestão de Compras</li>
-                        <li><i class="ph ph-check"></i> Cadastro de Fornecedores</li>
+                        <li><i class="ph ph-check"></i> Carrinho dinâmico de serviços e produtos</li>
+                        <li><i class="ph ph-check"></i> Programa de pontos e premiação</li>
+                        <li><i class="ph ph-check"></i> Fechamento de comandas ágil</li>
                     </ul>
                 </div>
+                
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-users-three"></i></div>
-                    <h3>Equipa & Acesso</h3>
+                    <div class="icon-box"><i class="ph ph-whatsapp-logo"></i></div>
+                    <h3>Automação WhatsApp API</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Gestão de Profissionais</li>
-                        <li><i class="ph ph-check"></i> Controle de Usuários</li>
-                        <li><i class="ph ph-check"></i> Metas e Desempenho</li>
+                        <li><i class="ph ph-check"></i> Envio de lembretes e confirmações</li>
+                        <li><i class="ph ph-check"></i> Cobranças e relacionamento nativo</li>
+                        <li><i class="ph ph-check"></i> Redução drástica de ausências (no-shows)</li>
                     </ul>
                 </div>
+
                 <div class="feature-card">
-                    <div class="icon-box"><i class="ph ph-heart"></i></div>
-                    <h3>CRM & Serviços</h3>
+                    <div class="icon-box"><i class="ph ph-calendar-plus"></i></div>
+                    <h3>Agenda Inteligente Multi-nível</h3>
                     <ul class="feature-list">
-                        <li><i class="ph ph-check"></i> Cadastro de Clientes</li>
-                        <li><i class="ph ph-check"></i> Histórico de Atendimentos</li>
-                        <li><i class="ph ph-check"></i> Gestão de Serviços</li>
+                        <li><i class="ph ph-check"></i> <b>Profissional visualiza só a sua agenda</b></li>
+                        <li><i class="ph ph-check"></i> <b>Gestor visualiza a equipe e rede inteira</b></li>
+                        <li><i class="ph ph-check"></i> Algoritmo de Otimização de Horários Livres</li>
                     </ul>
                 </div>
+
             </div>
         </div>
     </section>
 
-    <section id="demonstracao" class="modern-demo-section">
-        <div class="container">
-            <div class="section-header text-center">
-                <span class="badge">Em Ação</span>
-                <h2>Experiência Visual Imersiva</h2>
-                <p>Veja como o <strong>Kairos Agenda</strong> transforma a gestão numa experiência fluida.</p>
-            </div>
-
-            <div class="demo-showcase">
-                <div class="browser-frame">
-                    <div class="browser-header">
-                        <div class="window-controls">
-                            <span class="control red"></span>
-                            <span class="control yellow"></span>
-                            <span class="control green"></span>
-                        </div>
-                        <div class="address-bar">app.kairosagenda.com/dashboard</div>
-                    </div>
-                    
-                    <div class="screen-viewport" id="demo-slider">
-                        <img src="images/demo-1.png" class="demo-slide active" alt="Slide 1">
-                        <img src="images/demo-2.png" class="demo-slide" alt="Slide 2">
-                        <img src="images/demo-3.png" class="demo-slide" alt="Slide 3">
-                        <img src="images/demo-4.png" class="demo-slide" alt="Slide 4">
-
-                        <button class="nav-btn prev-btn"><i class="ph ph-caret-left"></i></button>
-                        <button class="nav-btn next-btn"><i class="ph ph-caret-right"></i></button>
-
-                        <div class="slide-indicators">
-                            <span class="indicator active" data-index="0"></span>
-                            <span class="indicator" data-index="1"></span>
-                            <span class="indicator" data-index="2"></span>
-                            <span class="indicator" data-index="3"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <section id="mobile-app" class="mobile-app-section">
+    <section id="tecnologia" class="mobile-app-section">
         <div class="container">
             <div class="mobile-grid">
                 
                 <div class="mobile-text">
-                    <span class="badge">Disponível em iOS e Android</span>
-                    <h2>A sua empresa,<br>no seu bolso.</h2>
-                    <p>Não precisa estar no balcão para gerir o negócio. Com a app <strong>Kairos Agenda</strong>, tem controlo total onde quer que esteja.</p>
+                    <span class="badge">App Nativo (iOS e Android)</span>
+                    <h2>Mobilidade para Gestores<br>e Profissionais.</h2>
+                    <p>Mantenha sua equipe conectada e produtiva. O aplicativo <strong>Kairos Agenda</strong> oferece interfaces independentes: <b>O Profissional tem na mão a própria agenda</b>, enquanto o gestor controla a visão de toda a operação de onde estiver.</p>
                     
                     <ul class="mobile-features-list">
                         <li>
                             <div class="icon-check"><i class="ph ph-check"></i></div>
-                            <span>Notificações de agendamento em tempo real</span>
+                            <span>Dashboard do Profissional (Metas e Comissões na palma da mão)</span>
                         </li>
                         <li>
                             <div class="icon-check"><i class="ph ph-check"></i></div>
-                            <span>Acesso rápido à agenda da equipe</span>
+                            <span>Visão do Gestor: Controle de todas as agendas simultaneamente</span>
                         </li>
                         <li>
                             <div class="icon-check"><i class="ph ph-check"></i></div>
-                            <span>Resumo financeiro diário</span>
+                            <span>Notificações de Fornecedores e Estoque Direto no Celular</span>
                         </li>
                     </ul>
 
                     <div class="app-buttons">
                         <a href="install.html" class="btn-primary">
-                            <i class="ph ph-download-simple"></i> Instalar App
+                            <i class="ph ph-download-simple"></i> Baixar App Kairos
                         </a>
                     </div>
                 </div>
 
                 <div class="mobile-visual">
                     <div class="phone-glow"></div>
-
                     <div class="phone-frame">
                         <div class="phone-notch"></div>
                         <div class="phone-buttons-right"></div>
@@ -560,152 +301,56 @@
         </div>
     </section>
 
-    <section id="depoimentos" class="testimonials-section">
+    <section id="planos" class="pricing-section section-padding" style="background: #0F172A; color: white;">
         <div class="container">
             <div class="section-header text-center">
-                <span class="badge">Resultados Reais</span>
-                <h2>Quem usa, cresce.</h2>
-                <p>Junte-se a centenas de estabelecimentos que transformaram a sua gestão e aumentaram os lucros com o Kairos.</p>
+                <span class="badge" style="background: rgba(139, 92, 246, 0.2); color: #A78BFA;">Escalabilidade Real</span>
+                <h2>Planos que Crescem com o seu Negócio</h2>
+                <p>Escolha a estrutura ideal para o seu momento atual e libere módulos corporativos incríveis.</p>
             </div>
-
-            <div class="testimonials-grid">
+    
+            <div class="pricing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 50px;">
                 
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"Antes do <strong>Kairos Agenda</strong>, eu perdia 2 horas por dia a responder no WhatsApp. Com o agendamento automático, ganhei tempo para fazer mais 4 cortes diários. O sistema pagou-se na primeira semana."</p>
-                    <div class="author">
-                        <div class="avatar-circle">CR</div>
-                        <div class="author-info">
-                            <strong>Carlos Rodrigues</strong>
-                            <span>Barber King, Lisboa</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"A clareza financeira é incrível. Descobri onde estava a perder dinheiro com produtos de estoque parado. Em 3 meses, o nosso lucro líquido aumentou 18% só com a organização que o sistema trouxe."</p>
-                    <div class="author">
-                        <div class="avatar-circle">AS</div>
-                        <div class="author-info">
-                            <strong>Ana Silva</strong>
-                            <span>Studio Glamour</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"O cálculo de comissões era um pesadelo no final do mês, sempre gerava discussões. Agora é automático e transparente. A minha equipe está mais motivada e eu tenho paz de espírito."</p>
-                    <div class="author">
-                        <div class="avatar-circle">ML</div>
-                        <div class="author-info">
-                            <strong>Mariana Lima</strong>
-                            <span>Lotus Estética Avançada</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="testimonial-card">
-                    <div class="card-top">
-                        <div class="stars">★★★★★</div>
-                        <div class="verified"><i class="ph ph-seal-check"></i> Verificado</div>
-                    </div>
-                    <p class="testimonial-text">"Os meus clientes adoram a App. Agendam às 2 da manhã se quiserem. O sistema de lembretes reduziu as faltas (no-shows) em quase 40%. É essencial."</p>
-                    <div class="author">
-                        <div class="avatar-circle">JP</div>
-                        <div class="author-info">
-                            <strong>João Pereira</strong>
-                            <span>Vintage Barber Shop</span>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <section id="planos" class="pricing-section launch-mode">
-        <div class="container">
-            <div class="section-header text-center">
-                <span class="badge launch-badge">Promoção 2026</span>
-                <h2>Prepare-se para crescer.</h2>
-                <p>Condição especial antecipada: Desbloqueie o potencial máximo do seu negócio em 2026.</p>
-            </div>
-
-            <div class="pricing-toggle-container">
-                <div class="pricing-toggle">
-                    <button class="toggle-btn active" onclick="updatePrices('mensal', this)">Mensal</button>
-                    <button class="toggle-btn" onclick="updatePrices('semestral', this)">Semestral <span class="discount-tag">-15%</span></button>
-                    <button class="toggle-btn" onclick="updatePrices('anual', this)">Anual <span class="discount-tag">-30%</span></button>
-                </div>
-            </div>
-
-            <div class="launch-card-wrapper pricing-card" data-plan-level="lancamento">
-                
-                <div class="launch-features">
-                    <h3>O Plano Unlimited inclui:</h3>
-                    <div class="feature-grid-launch">
-                        <div class="feat-item"><i class="ph ph-users-three"></i> Profissionais Ilimitados</div>
-                        <div class="feat-item"><i class="ph ph-storefront"></i> Múltiplas Unidades</div>
-                        <div class="feat-item"><i class="ph ph-whatsapp-logo"></i> Notificações WhatsApp</div>
-                        <div class="feat-item"><i class="ph ph-chart-line-up"></i> Financeiro Completo</div>
-                        <div class="feat-item"><i class="ph ph-calendar-check"></i> Agenda Inteligente</div>
-                        <div class="feat-item"><i class="ph ph-shield-check"></i> Suporte Prioritário</div>
-                    </div>
-                    
-                    <div class="comparison-box">
-                        <p>Esqueça os limites de usuários:</p>
-                        <div class="personas-row">
-                            <span class="persona striked">Custo por Profissional</span>
-                            <span class="persona striked">Taxas de Instalação</span>
-                        </div>
-                        <p class="arrow-down" style="color: #64748B;">▼</p>
-                        <p class="highlight-text">Acesso Total. Valor Fixo.</p>
-                    </div>
-                </div>
-
-                <div class="launch-price-box">
-                    <div class="glow-ring"></div>
-                    <div class="price-header">
-                        <span class="uppercase">Oferta Exclusiva 2026</span>
-                    </div>
-                    <div class="price-display">
-                        <span class="currency">R$</span>
-                        <span class="amount" data-mensal="85,90" data-semestral="73,02" data-anual="60,13">85,90</span>
-                        <span class="period">/mês</span>
-                    </div>
-                    
-                    <div class="original-price">de R$ 219,90</div>
-                    
-                    <div class="total-price-info">
-                        Cobrança mensal recorrente<br>Cancele quando quiser
-                    </div>
-                    
-                    <a href="publicRegister.html?planId=lancamento_mensal" id="btn-subscribe-main" class="btn-primary full-width pulse-btn btn-plan">
-                        Escolha seu plano para começar a testar
-                    </a>
-                    
-                    <ul class="guarantees">
-                        <li><i class="ph ph-check"></i> 7 dias grátis para testar</li>
-                        <li><i class="ph ph-check"></i> Configuração assistida</li>
-                        <li><i class="ph ph-check"></i> Garantia de preço fixo</li>
+                <div class="plan-card" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                    <h3>Starter</h3>
+                    <p style="color: #94A3B8;">Para profissionais independentes.</p>
+                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">R$ 49,90<span style="font-size: 1rem; color: #94A3B8;">/mês</span></div>
+                    <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Agenda Digital Básica</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Controle Financeiro Simples</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> 1 Profissional no App</li>
                     </ul>
+                    <a href="publicRegister.html?planId=starter_mensal" class="btn-outline" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Começar Grátis</a>
                 </div>
+    
+                <div class="plan-card featured" style="background: linear-gradient(145deg, #1E1B4B, #0F172A); padding: 40px; border-radius: 20px; border: 2px solid #8B5CF6; transform: scale(1.05); position: relative;">
+                    <span style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #8B5CF6; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">MAIS VENDIDO</span>
+                    <h3>Business Pro</h3>
+                    <p style="color: #A78BFA;">Gestão completa e comissões.</p>
+                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">R$ 85,90<span style="font-size: 1rem; color: #94A3B8;">/mês</span></div>
+                    <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> <b>Cálculo de Comissões Auto</b></li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> <b>Clube de Assinatura p/ Clientes</b></li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> Profissionais Ilimitados</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> Visão Gestor vs Profissional</li>
+                    </ul>
+                    <a href="publicRegister.html?planId=pro_mensal" class="pulse-btn" style="width: 100%; display: block;">Assinar Plano Pro</a>
+                </div>
+    
+                <div class="plan-card" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                    <h3>Enterprise</h3>
+                    <p style="color: #94A3B8;">Para redes e franquias.</p>
+                    <div class="price" style="font-size: 1.5rem; font-weight: bold; margin: 20px 0; color: #fff;">Sob Consulta</div>
+                    <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> <b>Módulo de Compras & Fornecedores</b></li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> <b>Integração API WhatsApp</b></li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Gestão Multi-unidades</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Gerente de Conta Dedicado</li>
+                    </ul>
+                    <a href="#" class="btn-outline" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Falar com Consultor</a>
+                </div>
+    
             </div>
-            
-            <p class="pricing-note text-center" style="margin-top: 30px; opacity: 0.6;">
-                *Ao assinar nesta oferta promocional, você garante este valor especial para 2026 enquanto mantiver a assinatura ativa.
-            </p>
         </div>
     </section>
 
@@ -713,41 +358,22 @@
         <div class="container footer-content">
             <div class="footer-brand">
                 <h3>Kairos Agenda.</h3>
-                <p>Transformando a gestão de beleza.</p>
+                <p>A inteligência por trás das maiores redes de beleza.</p>
             </div>
             <div class="footer-links">
+                <a href="#">Governança e Segurança</a>
+                <a href="#">API Integrations</a>
                 <a href="#">Termos de Uso</a>
-                <a href="#">Privacidade</a>
                 <a href="#">Suporte</a>
             </div>
         </div>
         <div class="copyright">
-            <p>&copy; 2024 Kairos Tecnologia. Todos os direitos reservados.</p>
+            <p>&copy; 2024 Kairos Tecnologia Corporativa. Todos os direitos reservados.</p>
         </div>
     </footer>
 
-    <nav class="bottom-nav">
-        <a href="#" class="nav-item active">
-            <i class="ph ph-house"></i>
-            <span>Início</span>
-        </a>
-        <a href="#funcionalidades" class="nav-item">
-            <i class="ph ph-list-checks"></i>
-            <span>Func.</span>
-        </a>
-        <a href="#demonstracao" class="nav-item">
-            <i class="ph ph-desktop"></i>
-            <span>Demo</span>
-        </a>
-        <a href="login.html" class="nav-item highlight-item">
-            <i class="ph ph-sign-in"></i>
-            <span>Entrar</span>
-        </a>
-    </nav>
-
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            // 1. SLIDERS e NAVBAR
             const navbar = document.querySelector('.navbar');
             if (navbar) {
                 window.addEventListener('scroll', () => {
@@ -795,68 +421,7 @@
             }
             createSlider('demo-slider', 5000);
             createSlider('mobile-slider', 4000);
-
-            // 2. INICIALIZAÇÃO DE PREÇOS
-            const defaultToggle = document.querySelector('.toggle-btn.active');
-            if (defaultToggle) {
-                updatePrices('mensal', defaultToggle);
-            } else {
-                const firstToggle = document.querySelector('.toggle-btn');
-                if (firstToggle) updatePrices('mensal', firstToggle);
-            }
         });
-
-        // 3. FUNÇÕES GLOBAIS DE PREÇO
-        function updatePrices(period, btn) {
-            if (btn) {
-                document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            }
-
-            const card = document.querySelector('.pricing-card');
-            if (!card) return;
-
-            const amountEl = card.querySelector('.amount');
-            const originalPriceEl = card.querySelector('.original-price');
-            const totalInfoEl = card.querySelector('.total-price-info');
-            const actionBtn = document.getElementById('btn-subscribe-main');
-            const planLevel = card.getAttribute('data-plan-level');
-            
-            if (amountEl) {
-                const priceString = amountEl.getAttribute('data-' + period);
-                
-                amountEl.textContent = priceString;
-                amountEl.style.opacity = '1';
-
-                if (period === 'mensal') {
-                    if(originalPriceEl) {
-                        originalPriceEl.textContent = 'de R$ 219,90';
-                        originalPriceEl.classList.add('visible');
-                    }
-                    if(totalInfoEl) totalInfoEl.innerHTML = 'Cobrança mensal recorrente<br>sem fidelidade';
-                } else {
-                    const originalValue = amountEl.getAttribute('data-mensal'); 
-                    if(originalPriceEl) {
-                        originalPriceEl.textContent = 'de R$ ' + originalValue;
-                        originalPriceEl.classList.add('visible');
-                    }
-
-                    if(totalInfoEl) {
-                        const priceValue = parseFloat(priceString.replace(',', '.')); 
-                        let multiplier = period === 'semestral' ? 6 : 12;
-                        let total = (priceValue * multiplier).toFixed(2).replace('.', ',');
-                        
-                        totalInfoEl.innerHTML = `Total de <strong>R$ ${total}</strong><br>em até ${multiplier}x sem juros no cartão`;
-                    }
-                }
-
-                if (actionBtn && planLevel) {
-                    const finalPlanId = `${planLevel}_${period}`;
-                    actionBtn.href = `publicRegister.html?planId=${finalPlanId}`;
-                }
-            }
-        }
     </script>
-
 </body>
 </html>
