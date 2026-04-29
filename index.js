@@ -187,6 +187,8 @@ app.use('/api/establishments', establishmentRoutes);
 app.use('/api/professionals', professionalRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/availability', availabilityRoutes);
+// Adiciona esta linha junto das tuas outras rotas públicas
+app.use('/api/public/saas', require('./routes/publicSaas'));
 
 app.use('/api/import', importRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
