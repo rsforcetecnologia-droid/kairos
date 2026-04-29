@@ -89,10 +89,12 @@ const packagesRoutes = require('./routes/packages');
 const publicSubscriptionsRoutes = require('./routes/publicSubscriptions'); 
 const publicRegisterRoutes = require('./routes/publicRegister'); 
 
+
 // 🚀 NOVAS IMPORTAÇÕES: Integração Pagar.me & Assinaturas
 const pagarmeRecipientRoutes = require('./routes/pagarmeRecipient'); 
 const subscriptionPlansRoutes = require('./routes/subscriptionPlans'); 
 const pagarmeWebhookRoutes = require('./routes/pagarmeWebhook'); 
+const saasPlansRoutes = require('./routes/saasPlans');
 
 // --- 0. ROTAS DE WEBHOOK ---
 // IMPORTANTE: Webhooks não usam verifyToken pois as chamadas vêm dos servidores do Pagar.me
@@ -178,6 +180,7 @@ app.use('/api/packages', verifyToken, checkSubscription, hasAccess, packagesRout
 // 🚀 NOVAS ROTAS: Integração Pagar.me & Planos de Assinatura (Protegidas)
 app.use('/api/pagarme', pagarmeRecipientRoutes);
 app.use('/api/subscription-plans', verifyToken, hasAccess, subscriptionPlansRoutes);
+app.use('/api/saas/plans', verifyToken, isSuperAdmin, saasPlansRoutes);
 
 // Rotas Híbridas/Públicas
 app.use('/api/establishments', establishmentRoutes); 

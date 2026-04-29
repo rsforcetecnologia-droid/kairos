@@ -164,7 +164,9 @@ async function fetchPlans() {
     try {
         // CORREÇÃO DE CACHE: Adicionamos "?_t=" com um timestamp para forçar o navegador a trazer dados novos!
         const timestamp = new Date().getTime();
-        const plans = await authenticatedFetch(`/api/subscriptions/plans?_t=${timestamp}`);
+        
+        // NOVO: Aponta para a nova rota isolada do SaaS
+        const plans = await authenticatedFetch(`/api/saas/plans?_t=${timestamp}`);
         
         localState.plans = plans || [];
         renderTable();
@@ -239,7 +241,6 @@ function openModal(planId = null) {
 
     const planData = isEditing ? localState.plans.find(p => p.id === planId) : null;
 
-    // CORREÇÃO: Asseguramos que os campos ficam vazios ao criar um Novo Plano
     document.getElementById('plan-name').value = planData ? planData.name : '';
     document.getElementById('plan-price').value = planData ? planData.price : '';
     document.getElementById('plan-max-ests').value = planData ? (planData.maxEstablishments || 1) : 1;
@@ -322,21 +323,23 @@ async function savePlan(e) {
 
     try {
         if (localState.tempPlanId) {
-            await authenticatedFetch(`/api/subscriptions/plans/${localState.tempPlanId}`, { 
+            // NOVO: Aponta para a nova rota isolada do SaaS
+            await authenticatedFetch(`/api/saas/plans/${localState.tempPlanId}`, { 
                 method: 'PUT', 
                 body: JSON.stringify(payload) 
             });
             showNotification('Sucesso!', 'Plano atualizado com sucesso.', 'success');
         } else {
-            await authenticatedFetch('/api/subscriptions/plans', {
+            // NOVO: Aponta para a nova rota isolada do SaaS
+            await authenticatedFetch('/api/saas/plans', {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });
-            showNotification('Sucesso!', 'Plano criado com sucesso.', 'success');
+            showNotification('Sucesso!', 'Plano criado com sucesso no SaaS e no Pagar.me.', 'success');
         }
 
         closeModal();
-        await fetchPlans(); // Como adicionamos o timestamp lá em cima, agora a tabela vai atualizar instantaneamente!
+        await fetchPlans(); 
 
     } catch (error) {
         console.error("Erro ao salvar plano:", error);
@@ -356,9 +359,10 @@ async function deletePlan(planId) {
     if (!confirmed) return;
 
     try {
-        await authenticatedFetch(`/api/subscriptions/plans/${planId}`, { method: 'DELETE' });
+        // NOVO: Aponta para a nova rota isolada do SaaS
+        await authenticatedFetch(`/api/saas/plans/${planId}`, { method: 'DELETE' });
         showNotification('Sucesso', 'Plano apagado.', 'success');
-        await fetchPlans(); // Também vai usar o cache-busting e sumir logo da tabela
+        await fetchPlans(); 
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
@@ -370,7 +374,6 @@ function setupEvents(container) {
     }
 
     pageEventListener = (e) => {
-        // CORREÇÃO: Usando .closest() para o botão "X" de fechar
         const isCloseBtn = e.target.closest('#btn-close-modal') || e.target.closest('#btn-cancel-modal');
         const isOverlay = e.target.id === 'plan-modal';
         
@@ -379,7 +382,6 @@ function setupEvents(container) {
             return;
         }
 
-        // Se clicou no botão "Novo Plano" ou Editar
         const actionBtn = e.target.closest('[data-action], #btn-new-plan');
         if (!actionBtn) return;
 
