@@ -1,4 +1,4 @@
-// routes/establishments.js (Arquitetura Multi-Tenant Matriz/Filial)
+// routes/establishments.js (Arquitetura Multi-Tenant Matriz/Filial com Limite de Lojas SaaS)
 
 const express = require('express');
 const router = express.Router();
@@ -27,7 +27,7 @@ router.get('/hierarchy', verifyToken, async (req, res) => {
 
         let allEstablishments = [];
 
-        if (userData.role === 'owner' || userData.role === 'admin') {
+        if (userData.role === 'owner' || userData.role === 'admin' || userData.role === 'company_admin') {
             const snap = await db.collection('establishments').where('ownerId', '==', uid).get();
             allEstablishments = snap.docs.map(d => d.data());
         } 
@@ -143,68 +143,108 @@ router.post('/', isOwner, async (req, res) => {
     try {
         const { db } = req;
         const newEstablishmentRef = db.collection('establishments').doc();
-        
         const isMatriz = !parentId; 
 
-        const establishmentData = {
-            id: newEstablishmentRef.id,
-            parentId: parentId || null,
-            isMatriz: isMatriz,
-            name,
-            cnpj: cnpj || null,
-            phone: phone || null,
-            address: address || null,
-            timezone: timezone || 'America/Sao_Paulo',
-            ownerId: uid,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            status: 'active',
-            publicBookingEnabled: false, 
-            modules: {
-                'agenda-section': true, 'comandas-section': true,
-                'financial-section': true, 'reports-section': true
-            },
-            loyaltyProgram: { enabled: false, pointsPerVisit: 1, tiers: [] },
-            financialIntegration: { defaultNaturezaId: null, defaultCentroDeCustoId: null },
-            whatsappAutomations: { 
-                reminder: { enabled: false, hoursBefore: 1, template: "" },
-                birthday: { enabled: false, template: "" },
-                reengagement: { enabled: false, daysInactive: 30, template: "" }
-            } // Inicia com estrutura base de automações
-        };
-
         await db.runTransaction(async (transaction) => {
-            const userRef = db.collection('users').doc(uid);
-            
-            const userDoc = await transaction.get(userRef);
+            // 1. Identificar a Matriz principal para saber qual é o plano
+            let matrixId = isMatriz ? null : parentId;
             let parentDoc = null;
             
-            if (parentId) {
+            if (!isMatriz) {
                 const parentRef = db.collection('establishments').doc(parentId);
                 parentDoc = await transaction.get(parentRef);
-                if (!parentDoc.exists) {
-                    throw new Error("MATRIZ_NOT_FOUND");
+                if (!parentDoc.exists) throw new Error("MATRIZ_NOT_FOUND");
+                matrixId = parentDoc.data().parentId ? parentDoc.data().parentId : parentId;
+            }
+
+            // 2. Buscar o plano ativo do usuário (procuramos na primeira matriz encontrada do dono)
+            const ownerMatrices = await transaction.get(
+                db.collection('establishments')
+                .where('ownerId', '==', uid)
+                .where('parentId', '==', null)
+                .limit(1)
+            );
+
+            let planId = null;
+            if (!ownerMatrices.empty) {
+                const mData = ownerMatrices.docs[0].data();
+                planId = mData.subscription?.planId || mData.planId;
+            }
+
+            // Se for a primeira matriz da vida do usuário, o plano costuma vir no body (enviado pelo SuperAdmin)
+            if (!planId && isMatriz) planId = req.body.planId;
+
+            // 3. Validação de Limites
+            if (planId) {
+                let planDoc;
+                if (planId === 'admin_manual' || planId === 'trial') {
+                    planDoc = { exists: true, data: () => ({ maxEstablishments: 999 }) };
+                } else {
+                    planDoc = await transaction.get(db.collection('saas_plans').doc(planId));
+                }
+
+                if (planDoc.exists) {
+                    const maxEsts = planDoc.data().maxEstablishments || 1;
+
+                    // Contagem Total: Matrizes + Filiais ativas deste dono
+                    const currentStores = await transaction.get(
+                        db.collection('establishments')
+                        .where('ownerId', '==', uid)
+                        .where('status', '==', 'active')
+                    );
+
+                    if (currentStores.size >= maxEsts) {
+                        throw new Error("LIMIT_EXCEEDED");
+                    }
                 }
             }
-            
+
+            // 4. Gravação dos Dados
+            const establishmentData = {
+                id: newEstablishmentRef.id,
+                parentId: parentId || null,
+                isMatriz: isMatriz,
+                name, 
+                cnpj: cnpj || null, 
+                phone: phone || null, 
+                address: address || null,
+                timezone: timezone || 'America/Sao_Paulo',
+                ownerId: uid,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                status: 'active',
+                publicBookingEnabled: false,
+                modules: { 'agenda-section': true, 'comandas-section': true, 'financial-section': true, 'reports-section': true },
+                loyaltyProgram: { enabled: false, pointsPerVisit: 1, tiers: [] },
+                financialIntegration: { defaultNaturezaId: null, defaultCentroDeCustoId: null },
+                whatsappAutomations: { 
+                    reminder: { enabled: false, hoursBefore: 1, template: "" },
+                    birthday: { enabled: false, template: "" },
+                    reengagement: { enabled: false, daysInactive: 30, template: "" }
+                }
+            };
+
             transaction.set(newEstablishmentRef, establishmentData);
             
             if (parentId && parentDoc && parentDoc.exists) {
                 transaction.update(parentDoc.ref, { isMatriz: true });
             }
-            
+
+            // 5. Atualiza o usuário para ter acesso à nova loja
+            const userRef = db.collection('users').doc(uid);
+            const userDoc = await transaction.get(userRef);
             if (userDoc.exists) {
                 const userData = userDoc.data();
-                const currentAccessible = userData.accessibleEstablishments || [];
+                const accessible = userData.accessibleEstablishments || [];
                 
-                currentAccessible.push({ 
+                accessible.push({ 
                     id: newEstablishmentRef.id, 
                     parentId: parentId || null, 
                     name: name 
                 });
                 
-                let updates = { accessibleEstablishments: currentAccessible };
+                let updates = { accessibleEstablishments: accessible };
                 
-                if (isMatriz && userData.role !== 'admin' && userData.role !== 'owner') {
+                if (isMatriz && userData.role !== 'admin' && userData.role !== 'owner' && userData.role !== 'company_admin') {
                     updates.role = 'owner'; 
                 }
                 
@@ -221,6 +261,9 @@ router.post('/', isOwner, async (req, res) => {
     } catch (error) {
         if (error.message === "MATRIZ_NOT_FOUND") {
             return res.status(404).json({ message: 'A Matriz especificada para vínculo não foi encontrada.' });
+        }
+        if (error.message === "LIMIT_EXCEEDED") {
+            return res.status(403).json({ message: 'Limite de lojas atingido para o seu plano (Matriz + Filiais). Faça um upgrade no plano.' });
         }
         handleFirestoreError(res, error, 'criar estabelecimento');
     }
@@ -289,7 +332,7 @@ router.put('/:id/loyalty', isOwner, async (req, res) => {
     }
 });
 
-// 8. Salvar Configurações de Automação de WhatsApp (NOVA ROTA)
+// 8. Salvar Configurações de Automação de WhatsApp
 router.put('/:id/whatsapp-automations', isOwner, async (req, res) => {
     const { id } = req.params;
     const { whatsappAutomations } = req.body;

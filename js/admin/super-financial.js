@@ -65,7 +65,7 @@ function renderBaseLayout(container) {
                             <tr>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nome do Plano</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Preço (Mensal)</th>
-                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Limite de Unidades</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Limites (Lojas/Usr/Prof)</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Status</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Ações</th>
                             </tr>
@@ -94,7 +94,7 @@ function renderBaseLayout(container) {
                             <p class="text-[10px] text-emerald-100 font-bold uppercase tracking-widest mt-0.5">Configuração do SaaS</p>
                         </div>
                         <button type="button" id="btn-close-modal" class="w-10 h-10 flex items-center justify-center rounded-full bg-black/10 text-white hover:bg-black/20 active:scale-90 transition-colors z-10 relative">
-                            <i class="bi bi-x-lg"></i>
+                            <i class="bi bi-x-lg pointer-events-none"></i>
                         </button>
                     </header>
                     
@@ -115,8 +115,19 @@ function renderBaseLayout(container) {
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Quantas filiais este plano permite criar?">Máx. Lojas (Filiais) *</label>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Quantas Lojas (Matriz + Filiais) o cliente pode ter?">Máx. Lojas Total *</label>
                                     <input type="number" id="plan-max-ests" required min="1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="Ex: 1, 3, 999...">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Quantos usuários administrativos o plano permite?">Máx. Usuários Sistema *</label>
+                                    <input type="number" id="plan-max-users" required min="1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="Ex: 5, 10, 999...">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Quantos profissionais podem ter agenda neste plano?">Máx. Profissionais *</label>
+                                    <input type="number" id="plan-max-profs" required min="1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="Ex: 3, 10, 999...">
                                 </div>
                             </div>
                         </div>
@@ -151,7 +162,10 @@ async function fetchPlans() {
     const tbody = document.getElementById('plans-table-body');
     
     try {
-        const plans = await authenticatedFetch('/api/admin/plans');
+        // CORREÇÃO DE CACHE: Adicionamos "?_t=" com um timestamp para forçar o navegador a trazer dados novos!
+        const timestamp = new Date().getTime();
+        const plans = await authenticatedFetch(`/api/subscriptions/plans?_t=${timestamp}`);
+        
         localState.plans = plans || [];
         renderTable();
     } catch (error) {
@@ -192,13 +206,15 @@ function renderTable() {
                 <td class="p-4 text-center">
                     <p class="text-lg font-black text-slate-700">${formatter.format(plan.price)}</p>
                 </td>
-                <td class="p-4 text-center">
-                    <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest shadow-sm">${plan.maxEstablishments || 1} Lojas Max.</span>
+                <td class="p-4 text-center space-y-1">
+                    <span class="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${plan.maxEstablishments || 1} Lojas</span>
+                    <span class="inline-block bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${plan.maxUsers || 1} Usrs</span>
+                    <span class="inline-block bg-cyan-50 text-cyan-700 border border-cyan-200 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${plan.maxProfessionals || 1} Profs</span>
                 </td>
                 <td class="p-4 text-center">${statusBadge}</td>
                 <td class="p-4 text-right">
                     <button data-action="delete-plan" data-id="${plan.id}" class="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 shadow-sm transition-all active:scale-95 ml-auto">
-                        <i class="bi bi-trash3"></i>
+                        <i class="bi bi-trash3 pointer-events-none"></i>
                     </button>
                 </td>
             </tr>
@@ -223,26 +239,22 @@ function openModal(planId = null) {
 
     const planData = isEditing ? localState.plans.find(p => p.id === planId) : null;
 
-    if (isEditing && planData) {
-        document.getElementById('plan-name').value = planData.name || '';
-        document.getElementById('plan-price').value = planData.price || 0;
-        document.getElementById('plan-max-ests').value = planData.maxEstablishments || 1;
-    } else {
-        document.getElementById('plan-max-ests').value = 1; // Default
-    }
+    // CORREÇÃO: Asseguramos que os campos ficam vazios ao criar um Novo Plano
+    document.getElementById('plan-name').value = planData ? planData.name : '';
+    document.getElementById('plan-price').value = planData ? planData.price : '';
+    document.getElementById('plan-max-ests').value = planData ? (planData.maxEstablishments || 1) : 1;
+    document.getElementById('plan-max-users').value = planData ? (planData.maxUsers || 1) : 1;
+    document.getElementById('plan-max-profs').value = planData ? (planData.maxProfessionals || 1) : 1;
 
     // Gerar os checkboxes dos módulos
     const modulesGrid = document.getElementById('modules-grid');
-    // Para retrocompatibilidade, lemos "allowedModules" (versão antiga) ou "features" (nova versão)
     const allowedModules = planData?.features || planData?.allowedModules || {};
     
-    // Converte array ['agenda', 'comandas'] (novo formato) para object map {agenda: true} se necessário
     const modulesMap = Array.isArray(allowedModules) 
         ? allowedModules.reduce((acc, curr) => ({...acc, [curr]: true}), {}) 
         : allowedModules;
 
     modulesGrid.innerHTML = Object.entries(SYSTEM_MODULES).map(([key, label]) => {
-        // Se for plano novo, marcamos todos por padrão para facilitar
         const isChecked = (!isEditing || modulesMap[key]) ? 'checked' : '';
         return `
             <label class="flex items-center p-3 border border-slate-200 rounded-xl cursor-pointer transition-colors hover:bg-emerald-50/50 hover:border-emerald-300 group shadow-sm bg-slate-50">
@@ -281,7 +293,7 @@ function closeModal() {
         modal.classList.add('hidden');
         modal.style.display = 'none';
         localState.tempPlanId = null;
-    }, 300); // Tempo igual à transição CSS
+    }, 300); 
 }
 
 async function savePlan(e) {
@@ -292,7 +304,7 @@ async function savePlan(e) {
     btnSubmit.innerHTML = '<div class="loader-small border-white mr-2"></div> Salvando...';
     btnSubmit.disabled = true;
 
-    // Lê os módulos selecionados e salva num Array (Novo Formato)
+    // Lê os módulos selecionados
     const featuresArray = [];
     document.querySelectorAll('input[name="plan-modules"]:checked').forEach(checkbox => {
         featuresArray.push(checkbox.value);
@@ -302,18 +314,21 @@ async function savePlan(e) {
         name: document.getElementById('plan-name').value,
         price: parseFloat(document.getElementById('plan-price').value),
         maxEstablishments: parseInt(document.getElementById('plan-max-ests').value, 10),
+        maxUsers: parseInt(document.getElementById('plan-max-users').value, 10),
+        maxProfessionals: parseInt(document.getElementById('plan-max-profs').value, 10),
+        allowedModules: featuresArray, 
         features: featuresArray 
     };
 
     try {
         if (localState.tempPlanId) {
-            await authenticatedFetch(`/api/admin/plans/${localState.tempPlanId}`, { 
+            await authenticatedFetch(`/api/subscriptions/plans/${localState.tempPlanId}`, { 
                 method: 'PUT', 
                 body: JSON.stringify(payload) 
             });
             showNotification('Sucesso!', 'Plano atualizado com sucesso.', 'success');
         } else {
-            await authenticatedFetch('/api/admin/plans', {
+            await authenticatedFetch('/api/subscriptions/plans', {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });
@@ -321,7 +336,7 @@ async function savePlan(e) {
         }
 
         closeModal();
-        await fetchPlans(); 
+        await fetchPlans(); // Como adicionamos o timestamp lá em cima, agora a tabela vai atualizar instantaneamente!
 
     } catch (error) {
         console.error("Erro ao salvar plano:", error);
@@ -334,35 +349,37 @@ async function savePlan(e) {
 
 async function deletePlan(planId) {
     const confirmed = await showConfirmation(
-        'Desativar Plano', 
-        'Deseja realmente desativar este plano? Clientes antigos continuarão a utilizá-lo, mas não estará disponível para novas vendas.'
+        'Apagar Plano', 
+        'Deseja realmente apagar este plano? Clientes antigos continuarão a utilizá-lo, mas não estará disponível para novas vendas.'
     );
     
     if (!confirmed) return;
 
     try {
-        await authenticatedFetch(`/api/admin/plans/${planId}`, { method: 'DELETE' });
-        showNotification('Sucesso', 'Plano desativado.', 'success');
-        await fetchPlans();
+        await authenticatedFetch(`/api/subscriptions/plans/${planId}`, { method: 'DELETE' });
+        showNotification('Sucesso', 'Plano apagado.', 'success');
+        await fetchPlans(); // Também vai usar o cache-busting e sumir logo da tabela
     } catch (error) {
         showNotification('Erro', error.message, 'error');
     }
 }
 
 function setupEvents(container) {
-    // 1. Limpa o Event Listener anterior para evitar duplicação em navegação SPA
     if (pageEventListener) {
         container.removeEventListener('click', pageEventListener);
     }
 
-    // 2. Define o novo Listener através de delegação (Event Delegation)
     pageEventListener = (e) => {
-        // Ignora cliques no overlay que não sejam exatamente nele ou no botão de fechar
-        if (e.target.id === 'btn-close-modal' || e.target.id === 'btn-cancel-modal' || e.target.id === 'plan-modal') {
+        // CORREÇÃO: Usando .closest() para o botão "X" de fechar
+        const isCloseBtn = e.target.closest('#btn-close-modal') || e.target.closest('#btn-cancel-modal');
+        const isOverlay = e.target.id === 'plan-modal';
+        
+        if (isCloseBtn || isOverlay) {
             closeModal();
             return;
         }
 
+        // Se clicou no botão "Novo Plano" ou Editar
         const actionBtn = e.target.closest('[data-action], #btn-new-plan');
         if (!actionBtn) return;
 
@@ -375,22 +392,19 @@ function setupEvents(container) {
         
         switch(action) {
             case 'edit-plan':
-                // Se clicar no botão de apagar que está dentro da TR, não aciona a edição
                 if (!e.target.closest('[data-action="delete-plan"]')) {
                     openModal(actionBtn.dataset.id);
                 }
                 break;
             case 'delete-plan':
-                e.stopPropagation(); // Evita acionar o 'edit-plan' da linha
+                e.stopPropagation(); 
                 deletePlan(actionBtn.dataset.id);
                 break;
         }
     };
 
-    // 3. Acopla o listener ao container que nos foi passado pelo roteador
     container.addEventListener('click', pageEventListener);
 
-    // 4. Acopla o listener de submit ao formulário do modal
     const form = document.getElementById('plan-form');
     if (form) form.addEventListener('submit', savePlan);
 }

@@ -7,15 +7,21 @@ const admin = require('firebase-admin');
 // --- Middleware para verificar se é Super Admin ---
 const { verifyToken, isSuperAdmin } = require('../middlewares/auth');
 
-// Aplica o middleware de autenticação em todas as rotas
+// Aplica o middleware de autenticação e proteção em todas as rotas deste ficheiro
 router.use(verifyToken, isSuperAdmin);
 
-// Rota para criar um novo plano de assinatura
+/**
+ * ROTA: POST /api/subscriptions/plans
+ * OBJETIVO: Criar um novo plano de assinatura SaaS com limites de uso
+ */
 router.post('/plans', async (req, res) => {
-    const { name, price, maxProfessionals, maxUsers, allowedModules } = req.body;
-    if (!name || price === undefined || maxProfessionals === undefined || maxUsers === undefined || !allowedModules) {
-        return res.status(400).json({ message: 'Todos os campos são obrigatórios para criar um plano.' });
+    const { name, price, maxProfessionals, maxUsers, maxEstablishments, allowedModules } = req.body;
+    
+    // Validação de campos obrigatórios (incluindo o novo maxEstablishments)
+    if (!name || price === undefined || maxProfessionals === undefined || maxUsers === undefined || maxEstablishments === undefined || !allowedModules) {
+        return res.status(400).json({ message: 'Todos os campos, incluindo limites de lojas, utilizadores e profissionais, são obrigatórios.' });
     }
+
     try {
         const { db } = req;
         const newPlan = {
@@ -23,40 +29,54 @@ router.post('/plans', async (req, res) => {
             price: Number(price),
             maxProfessionals: Number(maxProfessionals),
             maxUsers: Number(maxUsers),
+            maxEstablishments: Number(maxEstablishments), // NOVO: Persistindo limite de lojas
             allowedModules,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            active: true // Recomendado para manter soft-delete futuramente
+            active: true 
         };
-        // 🔄 CORREÇÃO: Apontando para saas_plans
+
+        // Grava na coleção oficial de planos SaaS
         const docRef = await db.collection('saas_plans').add(newPlan);
-        res.status(201).json({ message: 'Plano criado com sucesso!', id: docRef.id, data: newPlan });
+        
+        res.status(201).json({ 
+            message: 'Plano criado com sucesso!', 
+            id: docRef.id, 
+            data: newPlan 
+        });
     } catch (error) {
         console.error("Erro ao criar plano de assinatura:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao criar o plano.' });
     }
 });
 
-// Rota para obter todos os planos de assinatura
+/**
+ * ROTA: GET /api/subscriptions/plans
+ * OBJETIVO: Listar todos os planos cadastrados (ordenados por nome)
+ */
 router.get('/plans', async (req, res) => {
     try {
         const { db } = req;
-        // 🔄 CORREÇÃO: Apontando para saas_plans
         const snapshot = await db.collection('saas_plans').orderBy('name').get();
         const plansList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.status(200).json(plansList);
     } catch (error) {
         console.error("Erro ao listar planos de assinatura:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao listar os planos.' });
     }
 });
 
-// Rota para atualizar um plano de assinatura
+/**
+ * ROTA: PUT /api/subscriptions/plans/:planId
+ * OBJETIVO: Atualizar as regras e limites de um plano existente
+ */
 router.put('/plans/:planId', async (req, res) => {
     const { planId } = req.params;
-    const { name, price, maxProfessionals, maxUsers, allowedModules } = req.body;
-    if (!name || price === undefined || maxProfessionals === undefined || maxUsers === undefined || !allowedModules) {
-        return res.status(400).json({ message: 'Todos os campos são obrigatórios para atualizar um plano.' });
+    const { name, price, maxProfessionals, maxUsers, maxEstablishments, allowedModules } = req.body;
+
+    if (!name || price === undefined || maxProfessionals === undefined || maxUsers === undefined || maxEstablishments === undefined || !allowedModules) {
+        return res.status(400).json({ message: 'Todos os campos são obrigatórios para a atualização do plano.' });
     }
+
     try {
         const { db } = req;
         const updatedData = {
@@ -64,36 +84,42 @@ router.put('/plans/:planId', async (req, res) => {
             price: Number(price),
             maxProfessionals: Number(maxProfessionals),
             maxUsers: Number(maxUsers),
+            maxEstablishments: Number(maxEstablishments), // NOVO: Atualizando limite de lojas
             allowedModules,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         };
-        // 🔄 CORREÇÃO: Apontando para saas_plans
+
         await db.collection('saas_plans').doc(planId).update(updatedData);
         res.status(200).json({ message: 'Plano atualizado com sucesso!' });
     } catch (error) {
         console.error("Erro ao atualizar plano de assinatura:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao atualizar o plano.' });
     }
 });
 
-// Rota para apagar um plano de assinatura
+/**
+ * ROTA: DELETE /api/subscriptions/plans/:planId
+ * OBJETIVO: Remover (ou desativar) um plano de assinatura
+ */
 router.delete('/plans/:planId', async (req, res) => {
     const { planId } = req.params;
     try {
         const { db } = req;
-        // 🔄 CORREÇÃO: Apontando para saas_plans
         await db.collection('saas_plans').doc(planId).delete();
         res.status(200).json({ message: 'Plano apagado com sucesso!' });
     } catch (error) {
         console.error("Erro ao apagar plano de assinatura:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        res.status(500).json({ message: 'Ocorreu um erro no servidor ao apagar o plano.' });
     }
 });
 
-// ROTA ATUALIZADA: Atribuir ou prorrogar um plano a um estabelecimento
+/**
+ * ROTA: PATCH /api/subscriptions/assign/:establishmentId
+ * OBJETIVO: Atribuir ou renovar um plano para um estabelecimento específico
+ */
 router.patch('/assign/:establishmentId', async (req, res) => {
     const { establishmentId } = req.params;
-    const { planId, paymentDate } = req.body; 
+    const { planId } = req.body; 
     
     if (!planId) {
         return res.status(400).json({ message: 'O ID do plano é obrigatório.' });
@@ -110,7 +136,7 @@ router.patch('/assign/:establishmentId', async (req, res) => {
 
         const subscription = doc.data().subscription || {};
 
-        // --- Correção: Trata os diferentes tipos de expiryDate ---
+        // Tratamento robusto da data de expiração
         let currentExpiryDate;
         if (subscription.expiryDate) {
             if (typeof subscription.expiryDate.toDate === 'function') {
@@ -125,34 +151,27 @@ router.patch('/assign/:establishmentId', async (req, res) => {
             currentExpiryDate = new Date();
         }
 
-        // 1. Determina a data de início da prorrogação
+        // Calcula renovação (+30 dias) a partir da data atual ou da expiração futura
         let startDateForExtension = new Date();
-        
-        // Se já existe uma data de expiração futura, começa dela
         if (subscription.expiryDate && currentExpiryDate > startDateForExtension) {
             startDateForExtension = currentExpiryDate;
         }
 
-        // 2. Calcula a nova data de expiração (+ 30 dias)
         let newExpiryDate = new Date(startDateForExtension);
         newExpiryDate.setDate(newExpiryDate.getDate() + 30);
         
-        // Se o request body tiver o campo 'expiryDate', valida antes de usar
         let finalDate;
         if (req.body.expiryDate) {
             finalDate = new Date(req.body.expiryDate);
             if (isNaN(finalDate.getTime())) {
-                return res.status(400).json({ message: 'A data de expiração informada é inválida. Use o padrão yyyy-MM-dd ou yyyy-MM-ddTHH:mm:ssZ.' });
+                return res.status(400).json({ message: 'Data de expiração inválida.' });
             }
         } else {
             finalDate = newExpiryDate;
         }
 
-        // *** Atualiza status conforme data de expiração ***
-        let status = "inactive";
-        if (finalDate > new Date()) {
-            status = "active";
-        }
+        // Define status baseado na validade
+        const status = finalDate > new Date() ? "active" : "inactive";
 
         const updatedData = {
             subscription: {
@@ -165,13 +184,13 @@ router.patch('/assign/:establishmentId', async (req, res) => {
         await establishmentRef.update(updatedData);
 
         res.status(200).json({ 
-            message: 'Plano de assinatura atribuído/prorrogado com sucesso!', 
+            message: 'Plano de assinatura atribuído com sucesso!', 
             newExpiryDate: finalDate.toISOString() 
         });
 
     } catch (error) {
-        console.error("Erro ao atribuir/prorrogar plano:", error);
-        res.status(500).json({ message: 'Ocorreu um erro no servidor.' });
+        console.error("Erro ao atribuir plano:", error);
+        res.status(500).json({ message: 'Ocorreu um erro interno ao processar a assinatura.' });
     }
 });
 
