@@ -4,27 +4,11 @@
 import { auth, setPersistence, browserLocalPersistence } from './firebase-config.js';
 import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-// CONFIGURAÇÃO: Chave Pública do Stripe
-const STRIPE_PUBLIC_KEY = 'pk_test_51STpHSAIZNC4mWLrbapCgFGi2o6tMg07vyFa22LKwGOpN4nNdO0KzB6S4ioHsz4YiQXWrFPn8dVuYgkl0xnCHl2l000K2JtygR'; 
-const stripe = Stripe(STRIPE_PUBLIC_KEY);
-const elements = stripe.elements();
+// 🚀 CONFIGURAÇÃO: Chave Pública do Pagar.me V5
+// Substitua pela Public Key da sua conta MASTER do Pagar.me (Ex: pk_test_xxxxxx)
+const PAGARME_PUBLIC_KEY = 'pk_e7xXzWnskUEZkjV0'; 
 
-// 2. Configurar Stripe Elements
-const style = {
-    base: {
-        color: '#ffffff',
-        fontFamily: '"Inter", sans-serif',
-        fontSmoothing: 'antialiased',
-        fontSize: '16px',
-        '::placeholder': { color: '#94a3b8' }
-    },
-    invalid: { color: '#f87171', iconColor: '#f87171' }
-};
-
-const card = elements.create('card', { style: style, hidePostalCode: true });
-card.mount('#card-element');
-
-// 3. Lógica PWA (Instalação)
+// 2. Lógica PWA (Instalação)
 let deferredPrompt;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 const isAndroid = /Android/.test(navigator.userAgent);
@@ -35,7 +19,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
     deferredPrompt = e;
 });
 
-// 4. Lógica de Planos
+// 3. Lógica de Planos
 const urlParams = new URLSearchParams(window.location.search);
 const selectedPlanId = urlParams.get('planId');
 
@@ -58,11 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const dateDisplay = document.getElementById('charge-date-display');
     if(dateDisplay) dateDisplay.innerText = formattedDate;
 
-    if (!selectedPlanId) {
-        // Se não tiver plano, volta para home
-        // window.location.href = "index.html#planos"; 
-        // Comentado para facilitar testes locais
-    } else {
+    if (selectedPlanId) {
         updateUIForPlan(selectedPlanId);
     }
 });
@@ -118,10 +98,10 @@ function updateUIForPlan(planId) {
     }
 }
 
-// 5. Processar Registro e Pagamento
-const form = document.getElementById('registerForm'); // ID Corrigido conforme HTML anterior
-const submitBtn = document.getElementById('btnRegister'); // ID Corrigido
-const errorMsg = document.getElementById('errorMsg'); // ID Corrigido
+// 4. Processar Registro e Pagamento via Pagar.me
+const form = document.getElementById('registerForm');
+const submitBtn = document.getElementById('btnRegister');
+const errorMsg = document.getElementById('errorMsg');
 
 if(form) {
     form.addEventListener('submit', async (event) => {
@@ -134,34 +114,52 @@ if(form) {
         if(errorMsg) errorMsg.style.display = 'none';
 
         const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value; // Captura senha para login automático
+        const password = document.getElementById('password').value; 
+        const name = document.getElementById('name').value;
+        const phone = document.getElementById('phone').value;
         const installmentsCount = parseInt(document.getElementById('installmentsCount')?.value) || 1;
 
+        // Captura os dados do cartão (Inputs que você deve ter no HTML)
+        const cardNumber = document.getElementById('cardNumber')?.value.replace(/\D/g, '') || '';
+        const cardHolderName = document.getElementById('cardHolderName')?.value || '';
+        const expMonth = document.getElementById('expMonth')?.value || '';
+        const expYear = document.getElementById('expYear')?.value || '';
+        const cardCvv = document.getElementById('cardCvv')?.value || '';
+
         try {
-            // A. Criar Payment Method no Stripe
-            const { paymentMethod, error } = await stripe.createPaymentMethod({
-                type: 'card',
-                card: card,
-                billing_details: {
-                    name: document.getElementById('name').value,
-                    email: email,
-                    phone: document.getElementById('phone').value
-                },
+            // A. GERAR TOKEN SEGURO DO CARTÃO VIA API DO PAGAR.ME V5
+            const tokenResponse = await fetch(`https://api.pagar.me/core/v5/tokens?appId=${PAGARME_PUBLIC_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'card',
+                    card: {
+                        number: cardNumber,
+                        holder_name: cardHolderName,
+                        exp_month: parseInt(expMonth),
+                        exp_year: parseInt(expYear),
+                        cvv: cardCvv
+                    }
+                })
             });
 
-            if (error) throw new Error(error.message);
+            const tokenData = await tokenResponse.json();
 
-            // B. Enviar para Backend (Cria Usuário e Assinatura)
+            if (!tokenResponse.ok) {
+                // Se der erro no cartão (Ex: número inválido, validade incorreta)
+                throw new Error("Dados do cartão inválidos. Verifique e tente novamente.");
+            }
+
+            // B. Enviar dados e TOKEN para o SEU Backend
             const formData = {
                 establishmentName: document.getElementById('establishmentName').value,
-                // Se o campo establishmentId não existir no HTML, usa um fallback ou gera no backend
                 establishmentId: document.getElementById('establishmentId')?.value || '', 
-                ownerName: document.getElementById('name').value,
+                ownerName: name,
                 ownerEmail: email,
                 ownerPassword: password,
-                phone: document.getElementById('phone').value,
+                phone: phone,
                 planId: selectedPlanId,
-                paymentMethodId: paymentMethod.id,
+                cardToken: tokenData.id, // Enviando o Token Seguro do Pagar.me!
                 installments: installmentsCount, 
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
             };
@@ -174,11 +172,9 @@ if(form) {
 
             const result = await response.json();
 
-            if (!response.ok) throw new Error(result.message || "Erro ao processar assinatura.");
+            if (!response.ok) throw new Error(result.message || "Erro ao processar assinatura no servidor.");
 
             // C. SUCESSO NO BACKEND -> LOGIN AUTOMÁTICO NO FRONTEND
-            // Aqui acontece a mágica: usamos a senha que o usuário acabou de digitar
-            
             submitBtn.innerHTML = '<i class="ph ph-check"></i> Sucesso! Entrando...';
 
             // 1. Configura Persistência LOCAL (PWA)
@@ -204,14 +200,14 @@ if(form) {
             } else {
                 alert(err.message);
             }
-            // Restaura botão
+            // Restaura botão em caso de erro
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalBtnText;
         }
     });
 }
 
-// 6. Função Modal PWA
+// 5. Função Modal PWA
 function showPWAModal() {
     const modal = document.getElementById('pwa-success-modal');
     const btnInstall = document.getElementById('pwa-install-btn');

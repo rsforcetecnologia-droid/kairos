@@ -15,8 +15,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
     
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <script src="https://js.stripe.com/v3/"></script>
-
     <style>
         :root {
             --primary: #8B5CF6;
@@ -134,8 +132,6 @@
         .card-icon { width: 38px; height: 24px; background: #fff; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .card-icon img { height: 100%; width: 100%; object-fit: contain; }
 
-        #card-element { padding: 12px; border-radius: 6px; background: #1E293B; border: 1px solid #334155; }
-
         .btn-submit { 
             width: 100%; 
             background: linear-gradient(90deg, var(--primary), var(--primary-hover)); 
@@ -248,7 +244,7 @@
             .trust-badge { display: none; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/publicRegister-Ut358-2v.js"></script>
+  <script type="module" crossorigin src="/assets/publicRegister-BUcTP1xS.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
   <link rel="modulepreload" crossorigin href="/assets/firebase-config-seH-87Om.js">
 <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
@@ -294,7 +290,8 @@
             <h2>Ativar Teste Grátis</h2>
             <p class="step-desc">Comece a usar agora. Só pague se gostar.</p>
 
-            <form id="registerForm"> <div class="form-section-title">Dados do Estabelecimento</div>
+            <form id="registerForm"> 
+                <div class="form-section-title">Dados do Estabelecimento</div>
                 
                 <div class="input-group">
                     <label>Nome do Negócio</label>
@@ -344,7 +341,23 @@
                         <div class="card-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Elo_logo.png" alt="Elo"></div>
                     </div>
 
-                    <div id="card-element"></div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px;">
+                        <div class="input-group" style="grid-column: span 2; margin-bottom: 0;">
+                            <input type="text" id="cardNumber" placeholder="Número do Cartão (0000 0000 0000 0000)" maxlength="19" required>
+                        </div>
+                        <div class="input-group" style="grid-column: span 2; margin-bottom: 0;">
+                            <input type="text" id="cardHolderName" placeholder="NOME IMPRESSO NO CARTÃO" style="text-transform: uppercase;" required>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <input type="number" id="expMonth" placeholder="Mês (Ex: 12)" min="1" max="12" required>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 0;">
+                            <input type="number" id="expYear" placeholder="Ano (Ex: 29)" min="24" max="99" required>
+                        </div>
+                        <div class="input-group" style="grid-column: span 2; margin-bottom: 0;">
+                            <input type="text" id="cardCvv" placeholder="Código de Segurança (CVV)" maxlength="4" required>
+                        </div>
+                    </div>
                     <div id="card-errors" role="alert" style="color: #F87171; font-size: 0.8rem; margin-top: 8px;"></div>
 
                     <div class="trial-summary">
@@ -364,7 +377,7 @@
                 </p>
 
                 <button type="submit" id="btnRegister" class="btn-submit">
-                    <i class="ph ph-circle-notch loader"></i> <span id="btn-text">Começar Teste Grátis de 7 Dias</span>
+                    <i class="ph ph-circle-notch loader" style="display:none;"></i> <span id="btn-text">Começar Teste Grátis de 7 Dias</span>
                 </button>
                 <p id="errorMsg" style="color: #F87171; font-size: 0.85rem; margin-top: 10px; display: none; text-align: center;"></p>
 
