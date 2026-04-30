@@ -257,7 +257,7 @@
                 
                 <div class="plan-highlight">
                     <div>
-                        <div class="plan-name" id="plan-name-display">Plano Unlimited 2026</div>
+                        <div class="plan-name" id="plan-name-display">Carregando plano...</div>
                         <div class="plan-price-display">
                             <span id="plan-price-val">--,--</span>
                             <span class="plan-period" id="plan-period-text">/mês</span>
@@ -410,10 +410,12 @@
     <script type="module" src="js/publicRegister.js"></script>
 
     <script>
-        // Script simples para preencher dados do plano visualmente (caso o JS principal demore)
+        // =======================================================
+        // LÓGICA DE APRESENTAÇÃO DE PLANOS DINÂMICOS
+        // =======================================================
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const planId = urlParams.get('planId');
+            const planId = urlParams.get('planId') || 'starter_anual'; // Starter Anual por defeito
             
             const priceEl = document.getElementById('plan-price-val');
             const nameEl = document.getElementById('plan-name-display');
@@ -421,49 +423,52 @@
             const installmentsWrapper = document.getElementById('installments-wrapper');
             const installmentsSelect = document.getElementById('installmentsCount');
 
-            // Calcula data de cobrança (Hoje + 7 dias)
+            // 1. Calcula a data de cobrança (Hoje + 7 dias)
             const chargeDate = new Date();
             chargeDate.setDate(chargeDate.getDate() + 7);
             const dateStr = chargeDate.toLocaleDateString('pt-BR');
-            document.getElementById('charge-date-display').innerText = dateStr;
+            const chargeDateDisplay = document.getElementById('charge-date-display');
+            if (chargeDateDisplay) {
+                chargeDateDisplay.innerText = dateStr;
+            }
 
-            if(planId) {
-                if(planId.includes('mensal')) {
-                    priceEl.innerText = 'R$ 85,90';
-                    nameEl.innerText = 'Plano Unlimited 2026 - Mensal';
-                    if(periodEl) periodEl.innerText = '/mês';
-                } else if (planId.includes('semestral')) {
-                    priceEl.innerText = 'R$ 438,09';
-                    nameEl.innerText = 'Plano Unlimited 2026 - Semestral';
-                    if(periodEl) periodEl.innerText = '/semestre';
-                    
-                    if(installmentsWrapper && installmentsSelect) {
-                        installmentsWrapper.classList.add('visible');
-                        installmentsSelect.innerHTML = `
-                            <option value="1">1x de R$ 438,09</option>
-                            <option value="2">2x de R$ 219,05</option>
-                            <option value="3">3x de R$ 146,03</option>
-                            <option value="4">4x de R$ 109,52</option>
-                            <option value="5">5x de R$ 87,62</option>
-                            <option value="6">6x de R$ 73,02</option>
-                        `;
-                    }
-                } else if (planId.includes('anual')) {
-                    priceEl.innerText = 'R$ 721,56';
-                    nameEl.innerText = 'Plano Unlimited 2026 - Anual';
-                    if(periodEl) periodEl.innerText = '/ano';
+            // 2. Mapeamento de todos os planos e preços baseados na tua tabela
+            const plansData = {
+                'starter_mensal': { name: 'Starter - Mensal', price: '79,90', total: '79,90', period: '/mês', months: 1 },
+                'starter_semestral': { name: 'Starter - Semestral', price: '67,80', total: '406,80', period: '/mês', months: 6 },
+                'starter_anual': { name: 'Starter - Anual', price: '55,90', total: '670,80', period: '/mês', months: 12 },
+                
+                'pro_mensal': { name: 'Business Pro - Mensal', price: '109,90', total: '109,90', period: '/mês', months: 1 },
+                'pro_semestral': { name: 'Business Pro - Semestral', price: '93,30', total: '559,80', period: '/mês', months: 6 },
+                'pro_anual': { name: 'Business Pro - Anual', price: '76,90', total: '922,80', period: '/mês', months: 12 },
+                
+                'enterprise_mensal': { name: 'Enterprise - Mensal', price: '164,50', total: '164,50', period: '/mês', months: 1 },
+                'enterprise_semestral': { name: 'Enterprise - Semestral', price: '139,80', total: '838,80', period: '/mês', months: 6 },
+                'enterprise_anual': { name: 'Enterprise - Anual', price: '115,15', total: '1381,80', period: '/mês', months: 12 }
+            };
 
-                    if(installmentsWrapper && installmentsSelect) {
-                        installmentsWrapper.classList.add('visible');
-                        installmentsSelect.innerHTML = `
-                            <option value="1">1x de R$ 721,56</option>
-                            <option value="3">3x de R$ 240,52</option>
-                            <option value="6">6x de R$ 120,26</option>
-                            <option value="10">10x de R$ 72,16</option>
-                            <option value="12">12x de R$ 60,13</option>
-                        `;
-                    }
-                }
+            const selected = plansData[planId] || plansData['starter_anual'];
+
+            // 3. Atualizar a Interface com o Plano selecionado
+            if (priceEl) priceEl.innerText = 'R$ ' + selected.price;
+            if (nameEl) nameEl.innerText = selected.name;
+            if (periodEl) periodEl.innerText = selected.period;
+
+            // 4. Lógica de Parcelamento Dinâmica
+            if (selected.months > 1 && installmentsWrapper && installmentsSelect) {
+                installmentsWrapper.classList.add('visible');
+                installmentsSelect.innerHTML = '';
+                
+                // Configura as opções de parcelamento baseadas no período
+                const options = selected.months === 12 ? [1, 2, 3, 4, 5, 6, 10, 12] : [1, 2, 3, 4, 5, 6];
+                
+                options.forEach(num => {
+                    // Converter o valor total string ("922,80") para número (922.80)
+                    const totalFloat = parseFloat(selected.total.replace(',', '.'));
+                    // Dividir pelas parcelas e voltar para string pt-BR
+                    const valuePerMonth = (totalFloat / num).toFixed(2).replace('.', ',');
+                    installmentsSelect.innerHTML += `<option value="${num}">${num}x de R$ ${valuePerMonth}</option>`;
+                });
             }
         });
     </script>

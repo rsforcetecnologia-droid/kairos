@@ -42,14 +42,22 @@
     
     <style>
         /* --- ESTILOS COMPARTILHADOS E MANTIDOS --- */
-        html { scroll-behavior: smooth; } /* Adicionado para rolagem suave ao clicar nos links do menu */
+        html { scroll-behavior: smooth; }
         
-        .pricing-toggle-container { position: relative; z-index: 50; margin-bottom: 30px; }
-        .toggle-btn { cursor: pointer; }
+        /* Estilos do Toggle de Preços (Aba Anual, Semestral, Mensal) */
+        .pricing-toggle-wrapper { display: flex; justify-content: center; margin-bottom: 40px; position: relative; z-index: 50; }
+        .pricing-toggle-container { display: flex; background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.1); }
+        .toggle-btn { cursor: pointer; padding: 12px 24px; border-radius: 25px; border: none; background: transparent; color: #94A3B8; font-weight: 600; font-family: 'Inter', sans-serif; transition: all 0.3s ease; }
+        .toggle-btn.active { background: #8B5CF6; color: white; box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4); }
+        .toggle-btn:not(.active):hover { color: white; background: rgba(255,255,255,0.1); }
+
         .original-price { display: block; font-size: 0.95rem; color: #94A3B8; text-decoration: line-through; margin-top: -5px; margin-bottom: 5px; height: 20px; opacity: 0; transition: opacity 0.3s; }
         .original-price.visible { opacity: 1; }
-        .total-price-info { font-size: 0.85rem; color: #CBD5E1; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 10px; margin-bottom: 20px; min-height: 50px; display: flex; flex-direction: column; justify-content: center; line-height: 1.4; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; width: 100%; }
+        .total-price-info { font-size: 0.85rem; color: #CBD5E1; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 10px; margin-bottom: 20px; min-height: 50px; display: flex; flex-direction: column; justify-content: center; line-height: 1.4; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; width: 100%; transition: all 0.3s ease;}
         .total-price-info strong { color: #F8FAFC; font-weight: 600; }
+        
+        .amount { transition: opacity 0.3s ease; } /* Transição suave do valor */
+
         .demo-slide, .mobile-slide { opacity: 0; transition: opacity 1s ease-in-out; }
         .demo-slide.active, .mobile-slide.active { opacity: 1; }
         .dashboard-preview { display: flex; flex-direction: column; gap: 20px; height: 100%; }
@@ -308,46 +316,84 @@
                 <h2>Planos que Crescem com o seu Negócio</h2>
                 <p>Escolha a estrutura ideal para o seu momento atual e libere módulos corporativos incríveis.</p>
             </div>
+
+            <div class="pricing-toggle-wrapper">
+                <div class="pricing-toggle-container">
+                    <button class="toggle-btn" data-period="mensal">Mensal</button>
+                    <button class="toggle-btn" data-period="semestral">Semestral</button>
+                    <button class="toggle-btn active" data-period="anual">Anual</button>
+                </div>
+            </div>
             
-            <div class="pricing-grid" id="pricing-grid-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 50px;">
+            <div class="pricing-grid" id="pricing-grid-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 10px;">
                 
-                <div class="plan-card" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                <div class="plan-card pricing-card" data-plan-level="starter" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
                     <h3>Starter</h3>
-                    <p style="color: #94A3B8;">Para profissionais independentes.</p>
-                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">R$ 49,90<span style="font-size: 1rem; color: #94A3B8;">/mês</span></div>
+                    <p style="color: #94A3B8;">Para profissionais independentes (1 Profissional).</p>
+                    
+                    <div class="original-price">de R$ 79,90</div>
+                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 10px 0;">
+                        R$ <span class="amount" data-mensal="79,90" data-semestral="67,80" data-anual="55,90">55,90</span>
+                        <span style="font-size: 1rem; color: #94A3B8;">/mês</span>
+                    </div>
+                    
+                    <div class="total-price-info">
+                        Total de <strong>R$ 670,80</strong><br>em até 12x sem juros no cartão
+                    </div>
+
                     <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Agenda Digital Básica</li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Controle Financeiro Simples</li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> 1 Profissional no App</li>
                     </ul>
-                    <a href="publicRegister.html?planId=starter_mensal" class="btn-outline" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Começar Grátis</a>
+                    <a href="publicRegister.html?planId=starter_anual" class="btn-outline btn-plan" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Começar Grátis</a>
                 </div>
     
-                <div class="plan-card featured" style="background: linear-gradient(145deg, #1E1B4B, #0F172A); padding: 40px; border-radius: 20px; border: 2px solid #8B5CF6; transform: scale(1.05); position: relative;">
+                <div class="plan-card pricing-card featured" data-plan-level="pro" style="background: linear-gradient(145deg, #1E1B4B, #0F172A); padding: 40px; border-radius: 20px; border: 2px solid #8B5CF6; transform: scale(1.05); position: relative;">
                     <span style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #8B5CF6; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">MAIS VENDIDO</span>
                     <h3>Business Pro</h3>
-                    <p style="color: #A78BFA;">Gestão completa e comissões.</p>
-                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">R$ 85,90<span style="font-size: 1rem; color: #94A3B8;">/mês</span></div>
+                    <p style="color: #A78BFA;">Gestão completa e comissões (2 a 5 Profis.).</p>
+                    
+                    <div class="original-price">de R$ 109,90</div>
+                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 10px 0;">
+                        R$ <span class="amount" data-mensal="109,90" data-semestral="93,30" data-anual="76,90">76,90</span>
+                        <span style="font-size: 1rem; color: #94A3B8;">/mês</span>
+                    </div>
+
+                    <div class="total-price-info">
+                        Total de <strong>R$ 922,80</strong><br>em até 12x sem juros no cartão
+                    </div>
+
                     <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> <b>Cálculo de Comissões Auto</b></li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> <b>Clube de Assinatura p/ Clientes</b></li>
-                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> Profissionais Ilimitados</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> Gestão de até 5 Profissionais</li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#8B5CF6"></i> Visão Gestor vs Profissional</li>
                     </ul>
-                    <a href="publicRegister.html?planId=pro_mensal" class="pulse-btn" style="width: 100%; display: block;">Assinar Plano Pro</a>
+                    <a href="publicRegister.html?planId=pro_anual" class="pulse-btn btn-plan" style="width: 100%; display: block;">Assinar Plano Pro</a>
                 </div>
     
-                <div class="plan-card" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                <div class="plan-card pricing-card" data-plan-level="enterprise" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
                     <h3>Enterprise</h3>
-                    <p style="color: #94A3B8;">Para redes e franquias.</p>
-                    <div class="price" style="font-size: 1.5rem; font-weight: bold; margin: 20px 0; color: #fff;">Sob Consulta</div>
+                    <p style="color: #94A3B8;">Para redes e franquias (6 a 15 Profis.).</p>
+                    
+                    <div class="original-price">de R$ 164,50</div>
+                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 10px 0; color: #fff;">
+                        R$ <span class="amount" data-mensal="164,50" data-semestral="139,80" data-anual="115,15">115,15</span>
+                        <span style="font-size: 1rem; color: #94A3B8;">/mês</span>
+                    </div>
+
+                    <div class="total-price-info">
+                        Total de <strong>R$ 1.381,80</strong><br>em até 12x sem juros no cartão
+                    </div>
+
                     <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> <b>Módulo de Compras & Fornecedores</b></li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> <b>Integração API WhatsApp</b></li>
-                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Gestão Multi-unidades</li>
+                        <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Gestão de até 15 Profissionais</li>
                         <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:#10B981"></i> Gerente de Conta Dedicado</li>
                     </ul>
-                    <a href="#" class="btn-outline" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Falar com Consultor</a>
+                    <a href="publicRegister.html?planId=enterprise_anual" class="btn-outline btn-plan" style="width: 100%; display: block; text-align: center; border-color: rgba(255,255,255,0.2);">Começar Enterprise</a>
                 </div>
     
             </div>
@@ -372,140 +418,38 @@
         </div>
     </footer>
 
+    <script src="js/landing.js"></script>
+
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const navbar = document.querySelector('.navbar');
-            if (navbar) {
-                window.addEventListener('scroll', () => {
-                    window.scrollY > 50 ? navbar.classList.add('scrolled') : navbar.classList.remove('scrolled');
-                });
-            }
-
-            function createSlider(containerId, intervalTime = 4000) {
-                const container = document.getElementById(containerId);
-                if (!container) return; 
-                let slides = container.querySelectorAll('.demo-slide, .mobile-slide');
-                if (slides.length === 0) slides = container.querySelectorAll('img');
-                if (slides.length === 0) return;
-                const parentFrame = container.parentElement;
-                const indicators = parentFrame ? parentFrame.querySelectorAll('.indicator') : [];
-                const nextBtn = parentFrame ? parentFrame.querySelector('.next-btn') : null;
-                const prevBtn = parentFrame ? parentFrame.querySelector('.prev-btn') : null;
-                let currentIndex = 0;
-                let slideInterval;
-                function showSlide(index) {
-                    if (index >= slides.length) index = 0;
-                    if (index < 0) index = slides.length - 1;
-                    slides.forEach(s => s.classList.remove('active'));
-                    indicators.forEach(i => i.classList.remove('active'));
-                    currentIndex = index;
-                    slides[currentIndex].classList.add('active');
-                    if (indicators[currentIndex]) indicators[currentIndex].classList.add('active');
-                }
-                function next() { showSlide(currentIndex + 1); }
-                function prev() { showSlide(currentIndex - 1); }
-                function startTimer() {
-                    clearInterval(slideInterval);
-                    slideInterval = setInterval(next, intervalTime);
-                }
-                if (nextBtn) nextBtn.addEventListener('click', (e) => { e.preventDefault(); next(); startTimer(); });
-                if (prevBtn) prevBtn.addEventListener('click', (e) => { e.preventDefault(); prev(); startTimer(); });
-                indicators.forEach(ind => {
-                    ind.addEventListener('click', (e) => {
-                        const idx = parseInt(e.target.dataset.index);
-                        showSlide(idx);
-                        startTimer();
-                    });
-                });
-                startTimer();
-            }
-            createSlider('demo-slider', 5000);
-            createSlider('mobile-slider', 4000);
-
             // =========================================================================
-            // INÍCIO DO CÓDIGO INJETADO: BUSCA DINÂMICA DE PLANOS DO SEU BACKEND SAAS
+            // SCRIPT DINÂMICO TEMPORARIAMENTE DESATIVADO PARA MANTER A INTERFACE ESTÁTICA
+            // O JavaScript original foi mantido aqui em comentário para referência futura.
+            // Se desejares integrar a API mantendo a nova funcionalidade de abas (Mensal/Anual),
+            // a API terá de devolver os valores para cada período.
             // =========================================================================
+            
+            /*
             async function loadDynamicPlans() {
                 try {
-                    // Endpoint configurado de acordo com a rota do publicSaas.js
                     const backendUrl = 'https://kairos-app-407358446276.us-central1.run.app/api/public/saas/plans';
-                    
                     const response = await fetch(backendUrl);
-                    
-                    if (!response.ok) {
-                        console.warn("API de planos indisponível no momento. Mantendo layout estático.");
-                        return;
-                    }
-
+                    if (!response.ok) return;
                     const plans = await response.json();
                     const container = document.getElementById('pricing-grid-container');
                     
                     if (plans && plans.length > 0) {
-                        // Limpa os planos fixos que estão no HTML como Fallback
                         container.innerHTML = ''; 
-                        
-                        // Opcional: Ordena os planos pelo preço (do menor pro maior)
                         plans.sort((a, b) => a.price - b.price);
-
-                        plans.forEach((plan, index) => {
-                            // Definimos que o segundo plano (index 1) será o "Destaque" visual
-                            const isFeatured = index === 1; 
-                            
-                            // Formata as 'features' do plano vindas do banco de dados (se houver)
-                            let featuresHtml = '';
-                            if (plan.features && plan.features.length > 0) {
-                                featuresHtml = plan.features.map(f => 
-                                    `<li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> ${f}</li>`
-                                ).join('');
-                            } else {
-                                // Fallback caso você não tenha cadastrado features específicas
-                                featuresHtml = `
-                                    <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> Até ${plan.maxProfessionals} Profissionais</li>
-                                    <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> Suporte Dedicado</li>
-                                `;
-                            }
-
-                            // Utiliza o ID gerado pelo Firebase que a tua API pública retorna!
-                            const checkoutPlanId = plan.id;
-
-                            // Monta o Card do HTML com os dados dinâmicos
-                            const cardHtml = `
-                                <div class="plan-card ${isFeatured ? 'featured' : ''}" style="${isFeatured ? 'background: linear-gradient(145deg, #1E1B4B, #0F172A); padding: 40px; border-radius: 20px; border: 2px solid #8B5CF6; transform: scale(1.05); position: relative;' : 'background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);'}">
-                                    ${isFeatured ? '<span style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #8B5CF6; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">MAIS VENDIDO</span>' : ''}
-                                    
-                                    <h3>${plan.name}</h3>
-                                    <p style="color: ${isFeatured ? '#A78BFA' : '#94A3B8'};">Ideal para seu momento.</p>
-                                    
-                                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">
-                                        R$ ${Number(plan.price).toFixed(2).replace('.', ',')}
-                                        <span style="font-size: 1rem; color: #94A3B8;">/mês</span>
-                                    </div>
-                                    
-                                    <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
-                                        ${featuresHtml}
-                                    </ul>
-                                    
-                                    <a href="publicRegister.html?planId=${checkoutPlanId}" class="${isFeatured ? 'pulse-btn' : 'btn-outline'}" style="width: 100%; display: block; text-align: center; ${!isFeatured ? 'border-color: rgba(255,255,255,0.2);' : ''}">
-                                        ${isFeatured ? 'Assinar ' + plan.name : 'Começar Agora'}
-                                    </a>
-                                </div>
-                            `;
-                            
-                            container.innerHTML += cardHtml;
-                        });
+                        // ... Lógica de criação dinâmica dos cartões ...
                     }
                 } catch (error) {
-                    console.error("Não foi possível carregar os planos dinâmicos:", error);
-                    // Como a div já tem os cartões antigos por padrão, se falhar, o utilizador não percebe e ainda vê o site bonito.
+                    console.error("Erro ao carregar planos:", error);
                 }
             }
-
-            // Inicia a requisição dinâmica assim que a página termina de carregar
             loadDynamicPlans();
+            */
             // =========================================================================
-            // FIM DO CÓDIGO INJETADO
-            // =========================================================================
-
         });
     </script>
 </body>
