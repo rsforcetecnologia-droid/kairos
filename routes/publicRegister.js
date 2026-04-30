@@ -1,220 +1,248 @@
-// routes/publicRegister.js
-const express = require('express');
-const router = express.Router();
-const admin = require('firebase-admin');
-const axios = require('axios'); // Necessário para chamar a API do Pagar.me
+// js/publicRegister.js
 
-// ============================================================================
-// CONFIGURAÇÃO DA API PAGAR.ME V5
-// A chave secreta (sk_...) deve estar configurada nas suas variáveis de ambiente
-// ============================================================================
-const PAGARME_API = axios.create({
-    baseURL: 'https://api.pagar.me/core/v5',
-    headers: {
-        'Authorization': `Basic ${Buffer.from(process.env.PAGARME_SECRET_KEY + ':').toString('base64')}`,
-        'Content-Type': 'application/json'
+// 1. IMPORTS DO FIREBASE (Para Login Automático e Persistência)
+import { auth, setPersistence, browserLocalPersistence } from './firebase-config.js';
+import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+// 🚀 CONFIGURAÇÃO: Chave Pública do Pagar.me V5
+const PAGARME_PUBLIC_KEY = 'pk_e7xXzWnskUEZkjV0'; 
+
+// 2. Lógica PWA (Instalação)
+let deferredPrompt;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isAndroid = /Android/.test(navigator.userAgent);
+const isMobile = isIOS || isAndroid;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+});
+
+// 3. Captura do Plano da URL
+const urlParams = new URLSearchParams(window.location.search);
+const selectedPlanId = urlParams.get('planId');
+
+document.addEventListener("DOMContentLoaded", () => {
+    // Cálculo da Data de Cobrança (7 dias de teste)
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(today.getDate() + 7);
+    
+    const formattedDate = futureDate.toLocaleDateString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+    });
+
+    const dateDisplay = document.getElementById('charge-date-display');
+    if(dateDisplay) dateDisplay.innerText = formattedDate;
+
+    // Busca os dados do plano na API
+    if (selectedPlanId) {
+        updateUIForPlan(selectedPlanId);
     }
 });
 
-// ####################################################################
-// ### PERMISSÕES DO USUÁRIO MASTER ###
-// ####################################################################
-const masterPermissions = {
-    'agenda-section': { view: true, create: true, edit: true, view_all_prof: true },
-    'comandas-section': { view: true, create: true, edit: true, view_all_prof: true },
-    'relatorios-section': { view: true, create: true, edit: true },
-    'sales-report-section': { view: true, create: true, edit: true },
-    'financial-section': { view: true, create: true, edit: true },
-    'servicos-section': { view: true, create: true, edit: true },
-    'produtos-section': { view: true, create: true, edit: true },
-    'profissionais-section': { view: true, create: true, edit: true },
-    'clientes-section': { view: true, create: true, edit: true },
-    'packages-section': { view: true, create: true, edit: true },
-    'commissions-section': { view: true, create: true, edit: true },
-    'estabelecimento-section': { view: true, create: true, edit: true },
-    'users-section': { view: true, create: true, edit: true },
-    'ausencias-section': { view: true, create: true, edit: true },
-    'loyalty-section': { view: true, create: true, edit: true }
-};
-
-// ####################################################################
-// ### ROTA DE CRIAÇÃO DO AMBIENTE E ASSINATURA SAAS (PÚBLICA) ###
-// ####################################################################
-
-router.post('/', async (req, res) => {
-    
-    // Instanciando Auth e DB diretamente do admin (pois é rota sem verifyToken)
-    const db = admin.firestore();
-    const auth = admin.auth();
-
-    const { 
-        establishmentName, 
-        ownerEmail, 
-        ownerPassword,
-        ownerName,      
-        documentInfo,   
-        phone,          
-        planId,
-        cardToken,       // NOVO: Token seguro do cartão enviado pelo Frontend
-        installments,    // NOVO: Quantidade de parcelas (para planos anuais)
-        timezone 
-    } = req.body;
-    
-    if (!establishmentName || !ownerEmail || !ownerPassword || !planId || !cardToken) {
-        return res.status(400).json({ message: 'Campos obrigatórios ausentes. Verifique os dados preenchidos e o cartão.' });
-    }
-    
-    if (ownerPassword.length < 6) {
-        return res.status(400).json({ message: 'A senha deve ter pelo menos 6 caracteres.' });
-    }
-
-    // 1. GERAR ID DO ESTABELECIMENTO BASEADO NO NOME (Ex: "Studio Kairos" -> "studiokairos")
-    const baseId = establishmentName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
-    let sanitizedId = baseId;
-    let counter = 1;
-    
+// =========================================================================
+// NOVO: BUSCA DINÂMICA DOS DADOS DO PLANO
+// =========================================================================
+async function updateUIForPlan(planId) {
     try {
-        // Verifica se o ID gerado já existe, se existir, adiciona um número (ex: studiokairos2)
-        let existingEstablishment = await db.collection('establishments').doc(sanitizedId).get();
-        while (existingEstablishment.exists) {
-            sanitizedId = `${baseId}${counter}`;
-            existingEstablishment = await db.collection('establishments').doc(sanitizedId).get();
-            counter++;
-        }
-
-        // 2. VERIFICA SE O EMAIL JÁ EXISTE NO FIREBASE ANTES DE COBRAR
-        try {
-            await auth.getUserByEmail(ownerEmail);
-            return res.status(409).json({ message: 'Este e-mail já está sendo utilizado por outro usuário.' });
-        } catch (error) {
-            if (error.code !== 'auth/user-not-found') throw error;
-        }
-
-        // 3. TRATAR O NÚMERO DE TELEFONE PARA O PAGAR.ME (Exige DDD separado)
-        const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
-        const ddd = cleanPhone.length >= 10 ? cleanPhone.substring(0, 2) : '11';
-        const phoneNumber = cleanPhone.length >= 10 ? cleanPhone.substring(2) : '999999999';
-
-        // 4. INTEGRAÇÃO PAGAR.ME: CRIAR ASSINATURA
-        let pagarmeSubscriptionId = null;
-        let pagarmeCustomerId = null;
-
-        try {
-            console.log(`[PAGARME] Iniciando cobrança SaaS para a empresa: ${establishmentName}`);
-            
-            // Payload para criar Assinatura com o Token do Cartão
-            const pagarmePayload = {
-                plan_id: planId, // Deve ser o ID do plano configurado no Pagar.me
-                payment_method: 'credit_card',
-                card_token: cardToken,
-                installments: installments || 1,
-                customer: {
-                    name: ownerName || establishmentName,
-                    email: ownerEmail,
-                    document: documentInfo ? documentInfo.replace(/\D/g, '') : '',
-                    type: (documentInfo && documentInfo.replace(/\D/g, '').length === 14) ? 'company' : 'individual',
-                    phones: {
-                        mobile_phone: {
-                            country_code: "55",
-                            area_code: ddd,
-                            number: phoneNumber
-                        }
-                    }
-                }
-            };
-
-            const subResponse = await PAGARME_API.post('/subscriptions', pagarmePayload);
-            
-            pagarmeSubscriptionId = subResponse.data.id;
-            pagarmeCustomerId = subResponse.data.customer.id;
-            
-        } catch (pagarmeError) {
-            const errorDetails = pagarmeError.response?.data || pagarmeError.message;
-            console.error("[PAGAR.ME ERRO]", JSON.stringify(errorDetails));
-            // Se o cartão for recusado, devolve o erro para o Frontend
-            return res.status(402).json({ message: "O pagamento foi recusado pela operadora. Verifique os dados do cartão." });
-        }
-
-        // ====================================================================
-        // SE CHEGOU AQUI, O PAGAMENTO (OU CARTÃO) FOI APROVADO!
-        // ====================================================================
-
-        // 5. CRIAR USUÁRIO NO FIREBASE
-        const userRecord = await auth.createUser({
-            email: ownerEmail,
-            password: ownerPassword,
-            displayName: ownerName || establishmentName, 
-        });
+        // Busca a lista de planos públicos da sua API
+        const response = await fetch('https://kairos-app-407358446276.us-central1.run.app/api/public/saas/plans');
+        if (!response.ok) throw new Error("Erro ao carregar planos");
         
-        // 6. BUSCAR MÓDULOS PERMITIDOS DO PLANO
-        let allowedModules = {};
-        const planDoc = await db.collection('saas_plans').doc(planId).get();
-        if (planDoc.exists) {
-            allowedModules = planDoc.data().allowedModules || {};
+        const plans = await response.json();
+        
+        // Encontra o plano específico que o usuário escolheu
+        const selectedPlan = plans.find(p => p.id === planId);
+        
+        if (!selectedPlan) {
+            alert("Plano selecionado não encontrado ou indisponível.");
+            window.location.href = "index.html#planos";
+            return;
         }
 
-        // 7. SALVAR O AMBIENTE (TENANT) NO FIRESTORE
-        const establishmentData = {
-            id: sanitizedId,
-            name: establishmentName,
-            companyName: establishmentName, 
-            document: documentInfo || null,
-            phone: phone || null,
-            ownerUid: userRecord.uid,
-            ownerId: userRecord.uid, 
-            ownerEmail: ownerEmail,
-            ownerName: ownerName || '',
-            isNetwork: false,
-            status: 'active', 
-            planId: planId, 
-            modules: allowedModules, 
-            timezone: timezone || 'America/Sao_Paulo', 
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            publicBookingEnabled: false,
+        const priceEl = document.getElementById('plan-price-val');
+        const nameEl = document.getElementById('plan-name-display');
+        const periodEl = document.getElementById('plan-period-text');
+        const installmentsWrapper = document.getElementById('installments-wrapper');
+        const installmentsSelect = document.getElementById('installmentsCount');
+
+        let price = Number(selectedPlan.price);
+        
+        // Atualiza Nomes e Preços na UI
+        if(nameEl) nameEl.innerText = selectedPlan.name;
+        if(priceEl) priceEl.innerText = `R$ ${price.toFixed(2).replace('.', ',')}`;
+        if(periodEl) periodEl.innerText = '/mês'; // Assumindo padrão mensal por enquanto
+
+        // Regra de Parcelamento (Se for acima de R$ 200, libera parcelamento)
+        let maxInstallments = 1;
+        if (price > 200) {
+            maxInstallments = price > 600 ? 12 : 6;
+        }
+
+        // Preencher Select de Parcelas
+        if (installmentsSelect && maxInstallments > 1) {
+            if(installmentsWrapper) installmentsWrapper.classList.add('visible');
+            installmentsSelect.innerHTML = '';
             
-            // 🚀 AQUI FICAM OS DADOS DO SAAS E PAGAR.ME
-            saasSubscription: {
-                pagarmeSubscriptionId: pagarmeSubscriptionId,
-                pagarmeCustomerId: pagarmeCustomerId,
-                planId: planId,
-                status: 'active',
-                isManualAdmin: false,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            const opt1 = document.createElement('option');
+            opt1.value = 1;
+            opt1.text = `1x de R$ ${price.toFixed(2).replace('.', ',')} (À vista)`;
+            installmentsSelect.add(opt1);
+
+            for (let i = 2; i <= maxInstallments; i++) {
+                let installmentValue = price / i;
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.text = `${i}x de R$ ${installmentValue.toFixed(2).replace('.', ',')} sem juros`;
+                installmentsSelect.add(opt);
             }
-        };
-
-        await db.collection('establishments').doc(sanitizedId).set(establishmentData);
-
-        // 8. DAR PERMISSÕES MASTER E ATRIBUIR AO SALÃO
-        await auth.setCustomUserClaims(userRecord.uid, { 
-            role: 'owner', 
-            establishmentId: sanitizedId 
-        });
-
-        // 9. CRIAR O DOCUMENTO DO USUÁRIO
-        const newUserRef = db.collection('users').doc(userRecord.uid);
-        await newUserRef.set({
-            name: ownerName || establishmentName,
-            email: ownerEmail,
-            establishmentId: sanitizedId,
-            permissions: masterPermissions,
-            professionalId: null,
-            status: 'active',
-            isOwnerMaster: true,
-            role: 'owner',
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        res.status(201).json({ 
-            message: 'Assinatura concluída e ambiente criado com sucesso!',
-            establishmentId: sanitizedId,
-            success: true
-        });
+            installmentsSelect.value = maxInstallments; // Seleciona o máximo por padrão
+        } else {
+            if(installmentsWrapper) installmentsWrapper.classList.remove('visible');
+        }
 
     } catch (error) {
-        console.error("Erro Crítico no Registro Público SaaS:", error);
-        res.status(500).json({ message: 'Erro interno no servidor ao processar o registro.' });
+        console.error("Erro ao buscar dados do plano:", error);
     }
-});
+}
 
-module.exports = router;
+// 4. Processar Registro e Pagamento via Pagar.me
+const form = document.getElementById('registerForm');
+const submitBtn = document.getElementById('btnRegister');
+const errorMsg = document.getElementById('errorMsg');
+
+if(form) {
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        
+        // Bloqueia botão
+        submitBtn.disabled = true;
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="ph ph-circle-notch loader" style="display:inline-block"></i> Processando...';
+        if(errorMsg) errorMsg.style.display = 'none';
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value; 
+        const name = document.getElementById('name').value;
+        const phone = document.getElementById('phone').value;
+        const installmentsCount = parseInt(document.getElementById('installmentsCount')?.value) || 1;
+
+        // Captura os dados do cartão
+        const cardNumber = document.getElementById('cardNumber')?.value.replace(/\D/g, '') || '';
+        const cardHolderName = document.getElementById('cardHolderName')?.value || '';
+        const expMonth = document.getElementById('expMonth')?.value || '';
+        const expYear = document.getElementById('expYear')?.value || '';
+        const cardCvv = document.getElementById('cardCvv')?.value || '';
+
+        try {
+            // A. GERAR TOKEN SEGURO DO CARTÃO VIA API DO PAGAR.ME V5
+            const tokenResponse = await fetch(`https://api.pagar.me/core/v5/tokens?appId=${PAGARME_PUBLIC_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'card',
+                    card: {
+                        number: cardNumber,
+                        holder_name: cardHolderName,
+                        exp_month: parseInt(expMonth),
+                        exp_year: parseInt(expYear),
+                        cvv: cardCvv
+                    }
+                })
+            });
+
+            const tokenData = await tokenResponse.json();
+
+            if (!tokenResponse.ok) {
+                throw new Error("Dados do cartão inválidos. Verifique e tente novamente.");
+            }
+
+            // B. Enviar dados e TOKEN para o SEU Backend
+            const formData = {
+                establishmentName: document.getElementById('establishmentName').value,
+                ownerName: name,
+                ownerEmail: email,
+                ownerPassword: password,
+                phone: phone,
+                planId: selectedPlanId, // <-- Mandando o ID dinâmico da URL para o Backend!
+                cardToken: tokenData.id, 
+                installments: installmentsCount, 
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
+
+            const response = await fetch('https://kairos-app-407358446276.us-central1.run.app/api/public/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) throw new Error(result.message || "Erro ao processar assinatura no servidor.");
+
+            // C. SUCESSO NO BACKEND -> LOGIN AUTOMÁTICO NO FRONTEND
+            submitBtn.innerHTML = '<i class="ph ph-check"></i> Sucesso! Entrando...';
+
+            await setPersistence(auth, browserLocalPersistence);
+            await signInWithEmailAndPassword(auth, email, password);
+
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+            
+            if (isMobile && !isStandalone) {
+                showPWAModal(); 
+            } else {
+                window.location.href = 'app.html'; 
+            }
+
+        } catch (err) {
+            console.error(err);
+            if(errorMsg) {
+                errorMsg.textContent = err.message;
+                errorMsg.style.display = 'block';
+            } else {
+                alert(err.message);
+            }
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
+    });
+}
+
+// 5. Função Modal PWA
+function showPWAModal() {
+    const modal = document.getElementById('pwa-success-modal');
+    const btnInstall = document.getElementById('pwa-install-btn');
+    const iosHint = document.getElementById('pwa-ios-hint');
+    const iosArrow = document.getElementById('ios-arrow');
+    const skipBtn = document.getElementById('pwa-skip-btn');
+
+    if(modal) modal.style.display = 'flex';
+
+    if (isIOS) {
+        if(iosHint) iosHint.style.display = 'block';
+        if(iosArrow) iosArrow.style.display = 'block';
+    } else if (isAndroid) {
+        if(btnInstall) {
+            btnInstall.style.display = 'block';
+            btnInstall.onclick = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        setTimeout(() => window.location.href = 'app.html', 2000);
+                    }
+                    deferredPrompt = null;
+                } else {
+                    alert("Toque no menu do navegador e escolha 'Instalar aplicativo'.");
+                }
+            };
+        }
+    }
+
+    if(skipBtn) {
+        skipBtn.onclick = () => {
+            window.location.href = 'app.html';
+        };
+    }
+}

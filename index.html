@@ -308,8 +308,8 @@
                 <h2>Planos que Crescem com o seu Negócio</h2>
                 <p>Escolha a estrutura ideal para o seu momento atual e libere módulos corporativos incríveis.</p>
             </div>
-    
-            <div class="pricing-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 50px;">
+            
+            <div class="pricing-grid" id="pricing-grid-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 50px;">
                 
                 <div class="plan-card" style="background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);">
                     <h3>Starter</h3>
@@ -421,6 +421,91 @@
             }
             createSlider('demo-slider', 5000);
             createSlider('mobile-slider', 4000);
+
+            // =========================================================================
+            // INÍCIO DO CÓDIGO INJETADO: BUSCA DINÂMICA DE PLANOS DO SEU BACKEND SAAS
+            // =========================================================================
+            async function loadDynamicPlans() {
+                try {
+                    // Endpoint configurado de acordo com a rota do publicSaas.js
+                    const backendUrl = 'https://kairos-app-407358446276.us-central1.run.app/api/public/saas/plans';
+                    
+                    const response = await fetch(backendUrl);
+                    
+                    if (!response.ok) {
+                        console.warn("API de planos indisponível no momento. Mantendo layout estático.");
+                        return;
+                    }
+
+                    const plans = await response.json();
+                    const container = document.getElementById('pricing-grid-container');
+                    
+                    if (plans && plans.length > 0) {
+                        // Limpa os planos fixos que estão no HTML como Fallback
+                        container.innerHTML = ''; 
+                        
+                        // Opcional: Ordena os planos pelo preço (do menor pro maior)
+                        plans.sort((a, b) => a.price - b.price);
+
+                        plans.forEach((plan, index) => {
+                            // Definimos que o segundo plano (index 1) será o "Destaque" visual
+                            const isFeatured = index === 1; 
+                            
+                            // Formata as 'features' do plano vindas do banco de dados (se houver)
+                            let featuresHtml = '';
+                            if (plan.features && plan.features.length > 0) {
+                                featuresHtml = plan.features.map(f => 
+                                    `<li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> ${f}</li>`
+                                ).join('');
+                            } else {
+                                // Fallback caso você não tenha cadastrado features específicas
+                                featuresHtml = `
+                                    <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> Até ${plan.maxProfessionals} Profissionais</li>
+                                    <li style="margin-bottom: 10px; display: flex; align-items: center; gap: 8px;"><i class="ph ph-check-circle" style="color:${isFeatured ? '#8B5CF6' : '#10B981'}"></i> Suporte Dedicado</li>
+                                `;
+                            }
+
+                            // Utiliza o ID gerado pelo Firebase que a tua API pública retorna!
+                            const checkoutPlanId = plan.id;
+
+                            // Monta o Card do HTML com os dados dinâmicos
+                            const cardHtml = `
+                                <div class="plan-card ${isFeatured ? 'featured' : ''}" style="${isFeatured ? 'background: linear-gradient(145deg, #1E1B4B, #0F172A); padding: 40px; border-radius: 20px; border: 2px solid #8B5CF6; transform: scale(1.05); position: relative;' : 'background: rgba(255,255,255,0.03); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);'}">
+                                    ${isFeatured ? '<span style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #8B5CF6; color: white; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">MAIS VENDIDO</span>' : ''}
+                                    
+                                    <h3>${plan.name}</h3>
+                                    <p style="color: ${isFeatured ? '#A78BFA' : '#94A3B8'};">Ideal para seu momento.</p>
+                                    
+                                    <div class="price" style="font-size: 2.5rem; font-weight: bold; margin: 20px 0;">
+                                        R$ ${Number(plan.price).toFixed(2).replace('.', ',')}
+                                        <span style="font-size: 1rem; color: #94A3B8;">/mês</span>
+                                    </div>
+                                    
+                                    <ul style="list-style: none; padding: 0; margin-bottom: 30px; color: #CBD5E1;">
+                                        ${featuresHtml}
+                                    </ul>
+                                    
+                                    <a href="publicRegister.html?planId=${checkoutPlanId}" class="${isFeatured ? 'pulse-btn' : 'btn-outline'}" style="width: 100%; display: block; text-align: center; ${!isFeatured ? 'border-color: rgba(255,255,255,0.2);' : ''}">
+                                        ${isFeatured ? 'Assinar ' + plan.name : 'Começar Agora'}
+                                    </a>
+                                </div>
+                            `;
+                            
+                            container.innerHTML += cardHtml;
+                        });
+                    }
+                } catch (error) {
+                    console.error("Não foi possível carregar os planos dinâmicos:", error);
+                    // Como a div já tem os cartões antigos por padrão, se falhar, o utilizador não percebe e ainda vê o site bonito.
+                }
+            }
+
+            // Inicia a requisição dinâmica assim que a página termina de carregar
+            loadDynamicPlans();
+            // =========================================================================
+            // FIM DO CÓDIGO INJETADO
+            // =========================================================================
+
         });
     </script>
 </body>
