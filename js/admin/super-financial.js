@@ -64,7 +64,9 @@ function renderBaseLayout(container) {
                         <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Nome do Plano</th>
-                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Preço (Mensal)</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Preço</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Ciclo</th>
+                                <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Trial</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Limites (Lojas/Usr/Prof)</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Status</th>
                                 <th class="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Ações</th>
@@ -72,7 +74,7 @@ function renderBaseLayout(container) {
                         </thead>
                         <tbody id="plans-table-body" class="divide-y divide-slate-100">
                             <tr>
-                                <td colspan="5" class="py-16 text-center text-slate-400">
+                                <td colspan="7" class="py-16 text-center text-slate-400">
                                     <div class="loader mx-auto mb-3 border-emerald-500"></div>
                                     <p class="text-xs font-bold uppercase tracking-widest">A carregar Planos...</p>
                                 </td>
@@ -108,7 +110,7 @@ function renderBaseLayout(container) {
                             
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Preço Mensal (R$) *</label>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Preço do Período (R$) *</label>
                                     <div class="relative">
                                         <span class="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 font-black">R$</span>
                                         <input type="number" step="0.01" id="plan-price" required class="w-full pl-10 p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="0.00">
@@ -117,6 +119,21 @@ function renderBaseLayout(container) {
                                 <div>
                                     <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Quantas Lojas (Matriz + Filiais) o cliente pode ter?">Máx. Lojas Total *</label>
                                     <input type="number" id="plan-max-ests" required min="1" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="Ex: 1, 3, 999...">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Frequência em que o cliente será cobrado">Ciclo de Cobrança *</label>
+                                    <select id="plan-interval" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-black text-slate-800 transition-shadow cursor-pointer">
+                                        <option value="1">Mensal</option>
+                                        <option value="6">Semestral</option>
+                                        <option value="12">Anual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1" title="Dias grátis de carência antes do Pagar.me fazer a 1ª cobrança no cartão">Dias de Teste (Trial) *</label>
+                                    <input type="number" id="plan-trial" required min="0" value="7" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-black text-slate-800 transition-shadow" placeholder="Ex: 7">
                                 </div>
                             </div>
 
@@ -172,7 +189,7 @@ async function fetchPlans() {
         renderTable();
     } catch (error) {
         console.error("Erro ao buscar planos:", error);
-        if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="py-12 text-center text-rose-500 font-bold text-sm"><i class="bi bi-exclamation-triangle block text-2xl mb-2"></i> Erro ao carregar os planos.</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-500 font-bold text-sm"><i class="bi bi-exclamation-triangle block text-2xl mb-2"></i> Erro ao carregar os planos.</td></tr>`;
     }
 }
 
@@ -183,7 +200,7 @@ function renderTable() {
     if (localState.plans.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" class="py-16 text-center">
+                <td colspan="7" class="py-16 text-center">
                     <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-300 text-2xl"><i class="bi bi-tags"></i></div>
                     <p class="text-sm font-bold text-slate-600">Nenhum plano cadastrado.</p>
                     <p class="text-xs text-slate-400 mt-1">Clique em '+ Novo Plano' para criar as regras de venda.</p>
@@ -200,6 +217,9 @@ function renderTable() {
             ? `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-check-circle-fill mr-1"></i> Ativo</span>`
             : `<span class="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest"><i class="bi bi-pause-circle-fill mr-1"></i> Inativo</span>`;
 
+        const intervalText = plan.intervalCount === 12 ? 'Anual' : (plan.intervalCount === 6 ? 'Semestral' : 'Mensal');
+        const trialText = plan.trialDays ? `${plan.trialDays} dias` : 'Sem trial';
+
         return `
             <tr class="hover:bg-slate-50 transition-colors group cursor-pointer" data-action="edit-plan" data-id="${plan.id}">
                 <td class="p-4">
@@ -207,6 +227,12 @@ function renderTable() {
                 </td>
                 <td class="p-4 text-center">
                     <p class="text-lg font-black text-slate-700">${formatter.format(plan.price)}</p>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="inline-block bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${intervalText}</span>
+                </td>
+                <td class="p-4 text-center">
+                    <span class="inline-block bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${trialText}</span>
                 </td>
                 <td class="p-4 text-center space-y-1">
                     <span class="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest shadow-sm">${plan.maxEstablishments || 1} Lojas</span>
@@ -246,6 +272,10 @@ function openModal(planId = null) {
     document.getElementById('plan-max-ests').value = planData ? (planData.maxEstablishments || 1) : 1;
     document.getElementById('plan-max-users').value = planData ? (planData.maxUsers || 1) : 1;
     document.getElementById('plan-max-profs').value = planData ? (planData.maxProfessionals || 1) : 1;
+    
+    // Configura os novos campos 
+    document.getElementById('plan-interval').value = planData ? (planData.intervalCount || 1) : 1;
+    document.getElementById('plan-trial').value = planData && planData.trialDays !== undefined ? planData.trialDays : 7;
 
     // Gerar os checkboxes dos módulos
     const modulesGrid = document.getElementById('modules-grid');
@@ -314,6 +344,8 @@ async function savePlan(e) {
     const payload = {
         name: document.getElementById('plan-name').value,
         price: parseFloat(document.getElementById('plan-price').value),
+        intervalCount: parseInt(document.getElementById('plan-interval').value, 10), // NOVO
+        trialDays: parseInt(document.getElementById('plan-trial').value, 10),       // NOVO
         maxEstablishments: parseInt(document.getElementById('plan-max-ests').value, 10),
         maxUsers: parseInt(document.getElementById('plan-max-users').value, 10),
         maxProfessionals: parseInt(document.getElementById('plan-max-profs').value, 10),
@@ -323,14 +355,14 @@ async function savePlan(e) {
 
     try {
         if (localState.tempPlanId) {
-            // NOVO: Aponta para a nova rota isolada do SaaS
+            // Atualiza via API
             await authenticatedFetch(`/api/saas/plans/${localState.tempPlanId}`, { 
                 method: 'PUT', 
                 body: JSON.stringify(payload) 
             });
             showNotification('Sucesso!', 'Plano atualizado com sucesso.', 'success');
         } else {
-            // NOVO: Aponta para a nova rota isolada do SaaS
+            // Cria via API (A API fará a chamada ao Pagar.me com o interval_count)
             await authenticatedFetch('/api/saas/plans', {
                 method: 'POST',
                 body: JSON.stringify(payload)
@@ -359,7 +391,6 @@ async function deletePlan(planId) {
     if (!confirmed) return;
 
     try {
-        // NOVO: Aponta para a nova rota isolada do SaaS
         await authenticatedFetch(`/api/saas/plans/${planId}`, { method: 'DELETE' });
         showNotification('Sucesso', 'Plano apagado.', 'success');
         await fetchPlans(); 

@@ -6,24 +6,28 @@ import * as clientsApi from '../api/clients.js';
 import * as salesApi from '../api/sales.js';
 import * as productsApi from '../api/products.js';
 import * as reportsApi from '../api/reports.js';
-import { getHierarchy } from '../api/establishments.js';
 import { state } from '../state.js';
 import { showNotification } from '../components/modal.js';
+import * as comandasApi from '../api/comandas.js';
 
 // ============================================================================
-// 📊 ESTADO LOCAL (STATE MANAGEMENT)
+// 📊 ESTADO LOCAL E ARQUITETURA
 // ============================================================================
 const today = new Date();
 const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
 
 let localState = {
-    establishments: [],
-    filterEstablishmentIds: new Set(),
     startDate: firstDay.toISOString().split('T')[0],
     endDate: today.toISOString().split('T')[0],
-    
     currentTab: 'financeiro', 
     drillDownMonth: null, 
+    
+    // Novo sistema de filtros cruzados para a Agenda
+    agendaFilters: {
+        status: null,
+        professional: null,
+        service: null
+    },
     
     data: {
         financeiro: null,
@@ -40,8 +44,16 @@ const contentDiv = document.getElementById('content');
 let pageEventListener = null;
 
 // ============================================================================
-// 🛠️ FUNÇÕES AUXILIARES
+// 🛠️ FUNÇÕES AUXILIARES E INTEGRAÇÃO GLOBAL
 // ============================================================================
+
+function getActiveEstablishmentsFromHeader() {
+    const checkboxes = document.querySelectorAll('#multi-context-list input[type="checkbox"]:checked');
+    if (checkboxes && checkboxes.length > 0) {
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    return [state.establishmentId];
+}
 
 function formatCurrency(value) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
@@ -69,99 +81,60 @@ function destroyChart(chartKey) {
 }
 
 // ============================================================================
-// 🚀 INICIALIZAÇÃO E LAYOUT PRINCIPAL (COMPACTADO)
+// 🚀 INICIALIZAÇÃO E LAYOUT BASE
 // ============================================================================
 
 export async function loadReportsPage() {
-    try {
-        const hierarchyPayload = await getHierarchy().catch(() => ({ matrizes: [] }));
-        const matrizes = hierarchyPayload.matrizes || [];
-        localState.establishments = [];
-        
-        matrizes.forEach(m => {
-            localState.establishments.push({ id: m.id, name: m.name, type: 'Matriz' });
-            if (m.branches) {
-                m.branches.forEach(b => localState.establishments.push({ id: b.id, name: b.name, type: 'Filial' }));
-            }
-        });
-        
-        if (localState.filterEstablishmentIds.size === 0) {
-            localState.filterEstablishmentIds.add(state.establishmentId);
-        }
-    } catch (e) {
-        console.error("Erro ao buscar hierarquia de empresas", e);
-    }
-
     renderBaseLayout();
     setupEventListeners();
     await fetchTabData();
 }
 
 function renderBaseLayout() {
-    const estCheckboxes = localState.establishments.map(est => `
-        <label class="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border ${localState.filterEstablishmentIds.has(est.id) ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600'} rounded-md cursor-pointer hover:bg-slate-100 transition-all shadow-sm est-label select-none">
-            <input type="checkbox" class="est-filter-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3" value="${est.id}" ${localState.filterEstablishmentIds.has(est.id) ? 'checked' : ''}>
-            <span class="text-[10px] font-bold whitespace-nowrap">${est.type === 'Matriz' ? '<i class="bi bi-building"></i>' : '<i class="bi bi-shop"></i>'} ${est.name}</span>
-        </label>
-    `).join('');
-
     contentDiv.innerHTML = `
-        <section class="h-full flex flex-col p-2 pt-1 md:px-6 md:py-3 md:pt-2 w-full bg-slate-50 relative overflow-hidden">
+        <section class="h-full flex flex-col p-2 pt-1 md:px-6 md:py-4 w-full bg-slate-50 relative overflow-hidden">
             
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-2 md:p-3 mb-2 z-20 flex flex-col gap-2 flex-shrink-0">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 md:p-4 mb-3 z-20 flex flex-col gap-3 flex-shrink-0 animate-fade-in-down">
                 
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                <div class="flex flex-col 2xl:flex-row justify-between items-start 2xl:items-center gap-4 w-full">
                     
-                    <div class="flex overflow-x-auto custom-scrollbar gap-1.5 w-full md:w-auto pb-1 md:pb-0">
-                        <button data-tab="financeiro" class="tab-btn ${localState.currentTab === 'financeiro' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5">
-                            <i class="bi bi-currency-dollar"></i> Financeiro
+                    <div class="flex overflow-x-auto custom-scrollbar gap-2 w-full 2xl:w-auto pb-1">
+                        <button data-tab="financeiro" class="tab-btn ${localState.currentTab === 'financeiro' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2">
+                            <i class="bi bi-currency-dollar text-base"></i> Financeiro
                         </button>
-                        <button data-tab="agenda" class="tab-btn ${localState.currentTab === 'agenda' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5">
-                            <i class="bi bi-calendar3"></i> Agenda
+                        <button data-tab="agenda" class="tab-btn ${localState.currentTab === 'agenda' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2">
+                            <i class="bi bi-calendar3 text-base"></i> Agenda
                         </button>
-                        <button data-tab="clientes" class="tab-btn ${localState.currentTab === 'clientes' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5">
-                            <i class="bi bi-people"></i> Clientes
+                        <button data-tab="clientes" class="tab-btn ${localState.currentTab === 'clientes' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2">
+                            <i class="bi bi-people text-base"></i> Clientes
                         </button>
-                        <button data-tab="vendas" class="tab-btn ${localState.currentTab === 'vendas' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5">
-                            <i class="bi bi-receipt"></i> Vendas/PDV
+                        <button data-tab="vendas" class="tab-btn ${localState.currentTab === 'vendas' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2">
+                            <i class="bi bi-receipt text-base"></i> Vendas
                         </button>
-                        <button data-tab="estoque" class="tab-btn ${localState.currentTab === 'estoque' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all flex items-center gap-1.5">
-                            <i class="bi bi-box-seam"></i> Estoque
+                        <button data-tab="estoque" class="tab-btn ${localState.currentTab === 'estoque' ? 'active bg-indigo-600 text-white shadow-md border-transparent' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'} border px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2">
+                            <i class="bi bi-box-seam text-base"></i> Estoque
                         </button>
                     </div>
 
-                    <div class="hidden md:block flex-shrink-0">
-                        <button data-action="export-excel" class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg hover:bg-emerald-100 transition shadow-sm flex items-center gap-1.5 text-xs whitespace-nowrap">
-                            <i class="bi bi-file-earmark-excel"></i> Exportar Dados
-                        </button>
-                    </div>
-                </div>
-
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 pt-2 border-t border-slate-100">
-                    
-                    <div class="flex flex-wrap gap-1.5 items-center w-full md:w-auto" id="establishment-filters-container">
-                        ${localState.establishments.length > 1 ? estCheckboxes : '<span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-100 px-2 py-1 rounded-md"><i class="bi bi-shop mr-1"></i> Unidade Atual</span>'}
-                    </div>
-
-                    <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-                        <div class="hidden lg:flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                            <button data-action="preset-date" data-preset="month" class="px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-colors bg-white text-indigo-600 shadow-sm border border-slate-200">Este Mês</button>
-                            <button data-action="preset-date" data-preset="last_month" class="px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-colors text-slate-500 hover:text-slate-700">Mês Passado</button>
-                            <button data-action="preset-date" data-preset="year" class="px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-colors text-slate-500 hover:text-slate-700">Este Ano</button>
+                    <div class="flex flex-wrap items-center gap-2 w-full 2xl:w-auto justify-start 2xl:justify-end">
+                        <div class="hidden md:flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            <button data-action="preset-date" data-preset="month" class="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors bg-white text-indigo-600 shadow-sm border border-slate-200">Este Mês</button>
+                            <button data-action="preset-date" data-preset="last_month" class="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors text-slate-500 hover:text-slate-700">Mês Passado</button>
+                            <button data-action="preset-date" data-preset="year" class="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-colors text-slate-500 hover:text-slate-700">Este Ano</button>
                         </div>
 
-                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 shadow-inner">
-                            <input type="date" id="report-start" value="${localState.startDate}" class="p-1 bg-transparent text-[11px] font-bold text-slate-700 outline-none">
-                            <span class="text-slate-400 text-[10px] font-bold">até</span>
-                            <input type="date" id="report-end" value="${localState.endDate}" class="p-1 bg-transparent text-[11px] font-bold text-slate-700 outline-none">
+                        <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-inner flex-1 md:flex-none">
+                            <input type="date" id="report-start" value="${localState.startDate}" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer w-full md:w-auto">
+                            <span class="text-slate-400 text-[10px] font-bold uppercase">até</span>
+                            <input type="date" id="report-end" value="${localState.endDate}" class="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer w-full md:w-auto">
                         </div>
 
-                        <button data-action="apply-filters" class="py-1.5 px-4 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center justify-center gap-1.5 text-xs">
-                            <i class="bi bi-search text-[10px]"></i> Filtrar
+                        <button data-action="apply-filters" class="py-2 px-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 active:scale-95 transition shadow-md flex items-center justify-center gap-2 text-xs uppercase tracking-wider flex-1 md:flex-none" title="Buscar">
+                            <i class="bi bi-search text-sm pointer-events-none"></i> <span class="md:hidden">Buscar</span>
                         </button>
                         
-                        <button data-action="export-excel" class="md:hidden py-1.5 px-2.5 bg-emerald-50 text-emerald-700 font-bold rounded-lg border border-emerald-200 shadow-sm flex items-center justify-center text-xs">
-                            <i class="bi bi-file-earmark-excel"></i>
+                        <button data-action="export-excel" class="py-2 px-3 bg-emerald-50 text-emerald-700 font-bold rounded-xl border border-emerald-200 hover:bg-emerald-100 active:scale-95 shadow-sm flex items-center justify-center transition-colors" title="Exportar para Excel">
+                            <i class="bi bi-file-earmark-excel text-base pointer-events-none"></i>
                         </button>
                     </div>
                 </div>
@@ -173,15 +146,15 @@ function renderBaseLayout() {
 }
 
 // ============================================================================
-// 🔄 GESTÃO DE DADOS
+// 🔄 GESTÃO INTELIGENTE DE DADOS
 // ============================================================================
 
 async function fetchTabData() {
     const container = document.getElementById('tab-content');
-    if (container) container.innerHTML = '<div class="flex justify-center items-center h-40"><div class="loader"></div></div>';
+    if (container) container.innerHTML = '<div class="flex flex-col justify-center items-center h-64"><div class="loader mb-4 border-indigo-500"></div><p class="text-xs font-bold text-slate-400 uppercase tracking-widest animate-pulse">Compilando Dados...</p></div>';
 
-    const { currentTab, startDate, endDate, filterEstablishmentIds } = localState;
-    const estIds = Array.from(filterEstablishmentIds);
+    const { currentTab, startDate, endDate } = localState;
+    const estIds = getActiveEstablishmentsFromHeader();
     const estString = estIds.join(',');
     
     const startISO = new Date(startDate).toISOString();
@@ -197,14 +170,24 @@ async function fetchTabData() {
                 financialApi.getReceivables(filters).catch(() => ({ entries: [] })),
                 financialApi.getNatures(state.establishmentId).catch(() => [])
             ]);
-            localState.data.financeiro = { payables: payablesRes.entries, receivables: receivablesRes.entries, natures };
+            localState.data.financeiro = { payables: payablesRes.entries || [], receivables: receivablesRes.entries || [], natures: natures || [] };
             renderFinanceiroTab();
         } 
         else if (currentTab === 'agenda') {
             const activePromises = estIds.map(id => appointmentsApi.getAppointmentsByDateRange(id, startISO, endISO).catch(() => []));
             const cancelledPromises = estIds.map(id => appointmentsApi.getCancelledAppointments(id, startISO, endISO).catch(() => []));
+            
             const [activeResults, cancelledResults] = await Promise.all([Promise.all(activePromises), Promise.all(cancelledPromises)]);
-            localState.data.agenda = { active: activeResults.flat(), cancelled: cancelledResults.flat() };
+            
+            const allAppointmentsMap = new Map();
+            
+            activeResults.flat().forEach(a => allAppointmentsMap.set(a.id, a));
+            cancelledResults.flat().forEach(a => {
+                a.status = 'cancelled';
+                allAppointmentsMap.set(a.id, a);
+            });
+
+            localState.data.agenda = Array.from(allAppointmentsMap.values());
             renderAgendaTab();
         }
         else if (currentTab === 'clientes') {
@@ -215,40 +198,70 @@ async function fetchTabData() {
             renderClientesTab();
         }
         else if (currentTab === 'vendas') {
-            let salesResults = [];
             try {
-                if (salesApi && typeof salesApi.getSales === 'function') {
-                    salesResults = await Promise.all(estIds.map(id => salesApi.getSales({ startDate, endDate, establishmentId: id }).catch(() => [])));
-                } else if (salesApi && typeof salesApi.getSalesHistory === 'function') {
-                    salesResults = await Promise.all(estIds.map(id => salesApi.getSalesHistory({ startDate, endDate, establishmentId: id }).catch(() => [])));
-                } else if (reportsApi && typeof reportsApi.getSalesReport === 'function') {
-                    const reportsRes = await Promise.all(estIds.map(id => reportsApi.getSalesReport({ establishmentId: id, startDate, endDate }).catch(() => ({ transactions: [] }))));
-                    salesResults = reportsRes.flatMap(r => (r.transactions || []).map(t => ({
-                        id: 'REF-' + Math.random().toString(36).substring(2,8),
-                        status: 'completed',
-                        createdAt: t.date,
-                        totalAmount: t.total,
-                        items: [{ name: t.items || 'Itens Venda', quantity: 1, price: t.total }]
-                    })));
+                const reportsRes = await Promise.all(estIds.map(id => 
+                    reportsApi.getSalesReport({ establishmentId: id, startDate, endDate }).catch(() => [])
+                ));
+                let consolidated = reportsRes.flatMap(r => Array.isArray(r) ? r : (r.transactions || r.data || []));
+
+                let walkinSales = [];
+                if (salesApi && typeof salesApi.getSalesByDateRange === 'function') {
+                    const fallbackRes = await Promise.all(estIds.map(id => 
+                        salesApi.getSalesByDateRange(id, startISO, endISO).catch(() => [])
+                    ));
+                    walkinSales = fallbackRes.flat();
                 }
+
+                let comandasSales = [];
+                if (comandasApi && typeof comandasApi.getComandas === 'function') {
+                    const comandasRes = await Promise.all(estIds.map(id => 
+                        comandasApi.getComandas(id).catch(() => ({ data: [] }))
+                    ));
+                    const allComandas = comandasRes.flatMap(r => Array.isArray(r) ? r : (r.data || r.comandas || []));
+                    
+                    const startObj = new Date(startISO);
+                    const endObj = new Date(endISO);
+                    comandasSales = allComandas.filter(c => {
+                        const cDate = dateParser(c.createdAt || c.date || c.timestamp);
+                        return cDate >= startObj && cDate <= endObj;
+                    });
+                }
+
+                const allSalesMap = new Map();
+                consolidated.forEach(v => allSalesMap.set(v.id, v));
+                walkinSales.forEach(v => allSalesMap.set(v.id, v));
+                comandasSales.forEach(v => allSalesMap.set(v.id, v));
+
+                localState.data.vendas = Array.from(allSalesMap.values());
+
             } catch (err) {
-                console.error("Erro interno ao buscar as vendas:", err);
+                console.warn("Aviso ao buscar vendas:", err);
+                localState.data.vendas = [];
             }
-            localState.data.vendas = salesResults.flat();
             renderVendasTab();
         }
         else if (currentTab === 'estoque') {
             const productsResults = await Promise.all(estIds.map(id => productsApi.getProducts(id).catch(() => [])));
-            localState.data.estoque = productsResults.flat();
+            const uniqueProductsMap = new Map();
+            productsResults.flat().forEach(p => uniqueProductsMap.set(p.id, p));
+            localState.data.estoque = Array.from(uniqueProductsMap.values());
             renderEstoqueTab();
         }
     } catch (error) {
-        container.innerHTML = `<div class="p-10 text-center text-red-500 bg-red-50 rounded-xl border border-red-100"><i class="bi bi-exclamation-triangle text-3xl mb-2"></i><br>Erro ao carregar dados: ${error.message}</div>`;
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-red-100 shadow-sm">
+                <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
+                    <i class="bi bi-exclamation-triangle text-3xl text-red-400"></i>
+                </div>
+                <h3 class="text-base font-black text-slate-800 mb-1">Erro de Processamento</h3>
+                <p class="text-xs text-slate-500 max-w-sm text-center font-medium mb-6">${error.message}</p>
+            </div>
+        `;
     }
 }
 
 // ============================================================================
-// 💰 ABA FINANCEIRO (COMPACTADA E OTIMIZADA)
+// 💰 ABA FINANCEIRO (COM INSIGHTS)
 // ============================================================================
 
 function renderFinanceiroTab() {
@@ -284,11 +297,7 @@ function renderFinanceiroTab() {
     const chartLabels = sortedDates.map(d => formatDateDisplay(d).substring(0, 5)); 
     
     let currentBalance = 0;
-    const chartRecReal = [];
-    const chartRecPrev = [];
-    const chartDespReal = [];
-    const chartDespPrev = [];
-    const chartBalance = [];
+    const chartRecReal = [], chartRecPrev = [], chartDespReal = [], chartDespPrev = [], chartBalance = [];
 
     sortedDates.forEach(d => {
         const day = flowMap[d];
@@ -305,54 +314,57 @@ function renderFinanceiroTab() {
     const saldo = totalIn - totalOut;
     const margem = totalIn > 0 ? (saldo / totalIn) * 100 : 0;
 
-    const dreIn = {}; 
-    const dreOut = {}; 
+    const insightBg = saldo >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800';
+    const insightIcon = saldo >= 0 ? '<i class="bi bi-graph-up-arrow mr-2 text-emerald-500"></i>' : '<i class="bi bi-graph-down-arrow mr-2 text-red-500"></i>';
+    const insightText = saldo >= 0 ? 'O fluxo de caixa operacional está positivo neste período.' : 'Atenção: As despesas superaram as receitas no período selecionado.';
+
+    const dreIn = {}; const dreOut = {}; 
     receivables.filter(r => r.status === 'paid').forEach(r => { const n = r.naturezaId ? (natMap.get(r.naturezaId) || 'Outros') : 'Sem Cat.'; dreIn[n] = (dreIn[n] || 0) + r.amount; });
     payables.filter(p => p.status === 'paid').forEach(p => { const n = p.naturezaId ? (natMap.get(p.naturezaId) || 'Outros') : 'Sem Cat.'; dreOut[n] = (dreOut[n] || 0) + p.amount; });
 
     container.innerHTML = `
-        <div class="space-y-3 animate-fade-in">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-up-circle text-emerald-500 mr-1"></i> Rec. Realizada</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${formatCurrency(totalIn)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-down-circle text-red-500 mr-1"></i> Desp. Realizada</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${formatCurrency(totalOut)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-wallet2 text-indigo-500 mr-1"></i> Saldo do Período</span><span class="text-lg md:text-xl font-black ${saldo >= 0 ? 'text-emerald-600' : 'text-red-600'} mt-0.5">${formatCurrency(saldo)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-pie-chart text-amber-500 mr-1"></i> Margem Real</span><span class="text-lg md:text-xl font-black ${margem >= 0 ? 'text-indigo-600' : 'text-red-600'} mt-0.5">${margem.toFixed(1)}%</span></div>
+        <div class="space-y-4 animate-fade-in">
+            
+            <div class="flex items-center p-3 rounded-xl border shadow-sm ${insightBg}">
+                ${insightIcon}
+                <span class="text-xs font-bold tracking-wide">${insightText}</span>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col hover:border-emerald-300 transition-colors"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-up-circle text-emerald-500 mr-1 text-sm"></i> Receita Realizada</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(totalIn)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col hover:border-red-300 transition-colors"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-arrow-down-circle text-red-500 mr-1 text-sm"></i> Despesa Realizada</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(totalOut)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col hover:border-indigo-300 transition-colors"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-wallet2 text-indigo-500 mr-1 text-sm"></i> Saldo do Período</span><span class="text-xl md:text-2xl font-black ${saldo >= 0 ? 'text-emerald-600' : 'text-red-600'} mt-1">${formatCurrency(saldo)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col hover:border-amber-300 transition-colors"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-pie-chart text-amber-500 mr-1 text-sm"></i> Margem Real</span><span class="text-xl md:text-2xl font-black ${margem >= 0 ? 'text-indigo-600' : 'text-red-600'} mt-1">${margem.toFixed(1)}%</span></div>
             </div>
             
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div class="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-1">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide"><i class="bi bi-bar-chart-steps text-indigo-500 mr-1"></i> Fluxo de Caixa</h3>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-3">
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="bi bi-bar-chart-steps text-indigo-500 mr-2"></i> Fluxo de Caixa Dinâmico</h3>
                     </div>
                     
-                    <div class="flex flex-wrap gap-1.5 mb-2 mt-1 pb-2 border-b border-slate-50">
-                        <button class="fin-toggle-btn active bg-emerald-50 text-emerald-700 border-emerald-200" data-dataset="0">
-                            <span class="w-1.5 h-1.5 rounded-full bg-[#10b981]"></span> Realizada
-                        </button>
-                        <button class="fin-toggle-btn active bg-emerald-50 text-emerald-700 border-emerald-200 opacity-70" data-dataset="1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-[#6ee7b7]"></span> Prevista
-                        </button>
-                        <button class="fin-toggle-btn active bg-red-50 text-red-700 border-red-200" data-dataset="2">
-                            <span class="w-1.5 h-1.5 rounded-full bg-[#ef4444]"></span> Realizada
-                        </button>
-                        <button class="fin-toggle-btn active bg-red-50 text-red-700 border-red-200 opacity-70" data-dataset="3">
-                            <span class="w-1.5 h-1.5 rounded-full bg-[#fca5a5]"></span> Prevista
-                        </button>
-                        <button class="fin-toggle-btn active bg-indigo-50 text-indigo-700 border-indigo-200 ml-auto" data-dataset="4">
-                            <span class="w-2 h-0.5 bg-[#4f46e5]"></span> Saldo
-                        </button>
+                    <div class="flex flex-wrap gap-2 mb-4 pb-3 border-b border-slate-100">
+                        <button class="fin-toggle-btn active bg-emerald-50 text-emerald-700 border-emerald-200" data-dataset="0"><span class="w-2 h-2 rounded-full bg-[#10b981]"></span> Realizada</button>
+                        <button class="fin-toggle-btn active bg-emerald-50 text-emerald-700 border-emerald-200 opacity-60" data-dataset="1"><span class="w-2 h-2 rounded-full bg-[#6ee7b7]"></span> Prevista</button>
+                        <button class="fin-toggle-btn active bg-red-50 text-red-700 border-red-200" data-dataset="2"><span class="w-2 h-2 rounded-full bg-[#ef4444]"></span> Realizada</button>
+                        <button class="fin-toggle-btn active bg-red-50 text-red-700 border-red-200 opacity-60" data-dataset="3"><span class="w-2 h-2 rounded-full bg-[#fca5a5]"></span> Prevista</button>
+                        <button class="fin-toggle-btn active bg-indigo-50 text-indigo-700 border-indigo-200 ml-auto" data-dataset="4"><span class="w-3 h-1 bg-[#4f46e5] rounded-full"></span> Saldo</button>
                     </div>
 
-                    <div class="relative flex-1 w-full min-h-[250px]"><canvas id="chartFin"></canvas></div>
+                    <div class="relative flex-1 w-full min-h-[300px]"><canvas id="chartFin"></canvas></div>
                 </div>
 
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide mb-3"><i class="bi bi-card-list text-indigo-500 mr-1"></i> DRE Resumida</h3>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                        <div class="mb-3"><p class="text-[9px] font-bold text-emerald-600 uppercase border-b border-emerald-100 pb-1 mb-1.5">Receitas</p>
-                        ${Object.entries(dreIn).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-1"><span class="text-[11px] text-slate-600 truncate mr-2">${k}</span><span class="text-[11px] font-bold text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-[9px] text-slate-400">Sem dados.</p>'}</div>
-                        <div class="mb-2"><p class="text-[9px] font-bold text-red-500 uppercase border-b border-red-100 pb-1 mb-1.5">Despesas</p>
-                        ${Object.entries(dreOut).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-1"><span class="text-[11px] text-slate-600 truncate mr-2">${k}</span><span class="text-[11px] font-bold text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-[9px] text-slate-400">Sem dados.</p>'}</div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4"><i class="bi bi-card-list text-indigo-500 mr-2"></i> DRE Resumida</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-3">
+                        <div class="mb-5">
+                            <p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest border-b border-emerald-100 pb-2 mb-3">Receitas</p>
+                            ${Object.entries(dreIn).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-2"><span class="text-xs font-medium text-slate-600 truncate mr-2">${k}</span><span class="text-xs font-black text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-xs font-medium text-slate-400">Sem receitas pagas no período.</p>'}
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-red-500 uppercase tracking-widest border-b border-red-100 pb-2 mb-3">Despesas</p>
+                            ${Object.entries(dreOut).sort((a,b)=>b[1]-a[1]).map(([k, v]) => `<div class="flex justify-between items-center mb-2"><span class="text-xs font-medium text-slate-600 truncate mr-2">${k}</span><span class="text-xs font-black text-slate-800">${formatCurrency(v)}</span></div>`).join('') || '<p class="text-xs font-medium text-slate-400">Sem despesas pagas no período.</p>'}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -367,11 +379,11 @@ function renderFinanceiroTab() {
                 data: { 
                     labels: chartLabels.length ? chartLabels : ['-'], 
                     datasets: [
-                        { label: 'Receita Realizada', data: chartRecReal, backgroundColor: '#10b981', stack: 'Stack 0', borderRadius: 3, order: 2 },
-                        { label: 'Receita Prevista', data: chartRecPrev, backgroundColor: '#6ee7b7', stack: 'Stack 0', borderRadius: 3, order: 2 },
-                        { label: 'Despesa Realizada', data: chartDespReal, backgroundColor: '#ef4444', stack: 'Stack 0', borderRadius: 3, order: 2 },
-                        { label: 'Despesa Prevista', data: chartDespPrev, backgroundColor: '#fca5a5', stack: 'Stack 0', borderRadius: 3, order: 2 },
-                        { label: 'Saldo Acumulado', data: chartBalance, type: 'line', borderColor: '#4f46e5', backgroundColor: '#4f46e5', tension: 0.4, borderWidth: 2, pointRadius: 3, yAxisID: 'y1', order: 1 }
+                        { label: 'Receita Realizada', data: chartRecReal, backgroundColor: '#10b981', stack: 'Stack 0', borderRadius: 4, order: 2 },
+                        { label: 'Receita Prevista', data: chartRecPrev, backgroundColor: '#6ee7b7', stack: 'Stack 0', borderRadius: 4, order: 2 },
+                        { label: 'Despesa Realizada', data: chartDespReal, backgroundColor: '#ef4444', stack: 'Stack 0', borderRadius: 4, order: 2 },
+                        { label: 'Despesa Prevista', data: chartDespPrev, backgroundColor: '#fca5a5', stack: 'Stack 0', borderRadius: 4, order: 2 },
+                        { label: 'Saldo Acumulado', data: chartBalance, type: 'line', borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4, borderWidth: 3, pointRadius: 4, yAxisID: 'y1', order: 1 }
                     ] 
                 },
                 options: { 
@@ -380,47 +392,31 @@ function renderFinanceiroTab() {
                     plugins: { 
                         legend: { display: false },
                         tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            titleFont: { size: 13, family: 'Inter' },
+                            bodyFont: { size: 12, family: 'Inter' },
+                            padding: 12,
+                            cornerRadius: 8,
                             callbacks: {
                                 label: function(context) {
                                     let label = context.dataset.label || '';
                                     if (label) label += ': ';
                                     if (context.parsed.y !== null) label += formatCurrency(Math.abs(context.parsed.y));
                                     return label;
-                                },
-                                footer: function(tooltipItems) {
-                                    const index = tooltipItems[0].dataIndex;
-                                    const d = sortedDates[index];
-                                    const day = flowMap[d];
-                                    if (!day) return '';
-                                    const daySaldo = (day.recReal + day.recPrev) - (day.despReal + day.despPrev);
-                                    return '\nSaldo Dia: ' + formatCurrency(daySaldo) + '\n(Clique para ver)';
                                 }
                             }
                         }
-                    }, 
-                    onClick: (event, elements) => {
-                        if (elements.length > 0) {
-                            const index = elements[0].index;
-                            const datasetIndex = elements[0].datasetIndex;
-                            const dateStr = sortedDates[index];
-                            
-                            let filterType = 'all';
-                            if (datasetIndex === 0 || datasetIndex === 1) filterType = 'receita';
-                            else if (datasetIndex === 2 || datasetIndex === 3) filterType = 'despesa';
-                            
-                            openFinancialDetailsModal(dateStr, filterType, flowMap[dateStr].items, natMap);
-                        }
                     },
                     scales: { 
-                        x: { stacked: true, grid: { display: false } },
-                        y: { stacked: true, beginAtZero: true, grid: { borderDash: [2, 4], color: '#f8fafc' }, ticks: { font:{size: 9}, callback: (val) => formatCurrency(Math.abs(val)) } },
-                        y1: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { font:{size: 9}, callback: (val) => formatCurrency(val) } }
+                        x: { stacked: true, grid: { display: false }, ticks: { font: { family: 'Inter', weight: 'bold' } } },
+                        y: { stacked: true, beginAtZero: true, grid: { borderDash: [4, 4], color: '#f1f5f9' }, ticks: { font:{size: 10, family: 'Inter'}, callback: (val) => formatCurrency(Math.abs(val)) } },
+                        y1: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { font:{size: 10, family: 'Inter'}, callback: (val) => formatCurrency(val) } }
                     } 
                 }
             });
 
             document.querySelectorAll('.fin-toggle-btn').forEach(btn => {
-                btn.className = "fin-toggle-btn flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold uppercase transition-all shadow-sm rounded-md border cursor-pointer";
+                btn.className = "fin-toggle-btn flex items-center gap-2 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm rounded-lg border cursor-pointer";
                 btn.onclick = (e) => {
                     const btnEl = e.currentTarget;
                     const dsIndex = parseInt(btnEl.dataset.dataset);
@@ -429,11 +425,11 @@ function renderFinanceiroTab() {
                     if (chart.isDatasetVisible(dsIndex)) {
                         chart.hide(dsIndex);
                         btnEl.style.opacity = '0.4';
-                        btnEl.style.background = '#f8f9fa';
+                        btnEl.style.filter = 'grayscale(100%)';
                     } else {
                         chart.show(dsIndex);
                         btnEl.style.opacity = '1';
-                        btnEl.style.background = ''; 
+                        btnEl.style.filter = 'none'; 
                     }
                 };
             });
@@ -441,137 +437,320 @@ function renderFinanceiroTab() {
     }, 100);
 }
 
-function openFinancialDetailsModal(dateStr, filterType, items, natMap) {
-    let modal = document.getElementById('genericModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'genericModal';
-        modal.className = 'modal fade fixed inset-0 z-[9999] overflow-y-auto';
-        document.body.appendChild(modal);
-    }
-    
-    const filteredItems = filterType === 'all' ? items : items.filter(i => i._type === filterType);
-    let tipoTexto = filterType === 'receita' ? '<span class="text-emerald-600">Receitas</span>' : (filterType === 'despesa' ? '<span class="text-red-600">Despesas</span>' : 'Movimentações');
-    
-    modal.innerHTML = `
-        <div class="modal-dialog modal-dialog-centered relative w-auto pointer-events-none sm:max-w-3xl sm:mx-auto my-8">
-            <div class="modal-content relative flex flex-col w-full pointer-events-auto bg-white bg-clip-padding rounded-xl shadow-2xl border-0">
-                <div class="modal-header flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50 rounded-t-xl">
-                    <h5 class="text-sm font-bold text-slate-800"><i class="bi bi-search text-indigo-600 mr-1.5"></i> ${tipoTexto} em ${formatDateDisplay(dateStr)}</h5>
-                    <button type="button" class="btn-close-modal box-content w-4 h-4 p-1 text-slate-400 hover:text-slate-700 transition-colors"><i class="bi bi-x-lg"></i></button>
-                </div>
-                <div class="modal-body p-3 max-h-[65vh] overflow-y-auto custom-scrollbar bg-slate-50">
-                    ${filteredItems.length === 0 ? '<div class="text-center py-10 text-slate-500 text-sm">Nenhum título encontrado.</div>' : `
-                    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-100 text-slate-500 border-b border-slate-200">
-                                <tr>
-                                    <th class="py-2 px-3 font-bold uppercase tracking-wider">Descrição</th>
-                                    <th class="py-2 px-3 font-bold uppercase tracking-wider text-center">Natureza</th>
-                                    <th class="py-2 px-3 font-bold uppercase tracking-wider text-center">Status</th>
-                                    <th class="py-2 px-3 font-bold uppercase tracking-wider text-right">Valor</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100">
-                                ${filteredItems.map(item => `
-                                    <tr class="hover:bg-slate-50 transition-colors">
-                                        <td class="py-2 px-3 font-bold text-slate-800 text-[11px]">${item.description || item.clientName || item.supplierName || 'Sem descrição'}</td>
-                                        <td class="py-2 px-3 text-center text-slate-600 text-[10px]">${item.naturezaId ? (natMap.get(item.naturezaId) || 'Outros') : 'Geral'}</td>
-                                        <td class="py-2 px-3 text-center">
-                                            <span class="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${item.status === 'paid' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}">
-                                                ${item.status === 'paid' ? 'Pago' : 'Pendente'}
-                                            </span>
-                                        </td>
-                                        <td class="py-2 px-3 text-right font-black ${item._type === 'receita' ? 'text-emerald-600' : 'text-red-600'} text-[11px]">
-                                            ${formatCurrency(item.amount)}
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                    `}
-                </div>
-            </div>
-        </div>
-    `;
-    
-    modal.style.display = 'block';
-    setTimeout(() => modal.classList.add('show', 'opacity-100'), 10);
-    
-    const closeBtn = modal.querySelector('.btn-close-modal');
-    if (closeBtn) closeBtn.onclick = () => { 
-        modal.style.display = 'none'; 
-        modal.classList.remove('show', 'opacity-100');
-    };
-}
-
 // ============================================================================
-// 📅 ABA AGENDA
+// 📅 ABA AGENDA (DASHBOARD COMPLETO & CRUZAMENTO DE DADOS)
 // ============================================================================
 
 function renderAgendaTab() {
     const container = document.getElementById('tab-content');
-    const { active, cancelled } = localState.data.agenda;
+    const allAgenda = localState.data.agenda || [];
 
-    const total = active.length + cancelled.length;
-    const concluidas = active.filter(a => a.status === 'completed').length;
-    const aguardando = active.filter(a => ['confirmed', 'pending', 'in-progress'].includes(a.status)).length;
-    const noShow = active.filter(a => a.status === 'no-show').length;
-    const canceladas = cancelled.length;
-    const taxaConclusao = total > 0 ? ((concluidas / total) * 100).toFixed(1) : 0;
-    const receitaTotal = active.filter(a => a.status === 'completed').reduce((s, i) => s + (Number(i.totalAmount || (i.transaction ? i.transaction.totalAmount : 0)) || 0), 0);
+    // 1. Cálculos Globais (Cartões do Topo - para não sumirem ao filtrar)
+    const total = allAgenda.length;
+    const concluidas = allAgenda.filter(a => a.status === 'completed' || a.status === 'concluida').length;
+    const aguardando = allAgenda.filter(a => ['confirmed', 'pending', 'in-progress'].includes(a.status)).length;
+    const noShow = allAgenda.filter(a => a.status === 'no-show').length;
+    const canceladas = allAgenda.filter(a => a.status === 'cancelled' || a.status === 'cancelada').length;
 
+    // 2. Aplicar Filtros (Drill-down cruzado)
+    let filteredAgenda = allAgenda;
+
+    if (localState.agendaFilters.status) {
+        if (localState.agendaFilters.status === 'concluidas') {
+            filteredAgenda = filteredAgenda.filter(a => a.status === 'completed' || a.status === 'concluida');
+        } else if (localState.agendaFilters.status === 'aguardando') {
+            filteredAgenda = filteredAgenda.filter(a => ['confirmed', 'pending', 'in-progress'].includes(a.status));
+        } else if (localState.agendaFilters.status === 'noshow') {
+            filteredAgenda = filteredAgenda.filter(a => a.status === 'no-show');
+        } else if (localState.agendaFilters.status === 'canceladas') {
+            filteredAgenda = filteredAgenda.filter(a => a.status === 'cancelled' || a.status === 'cancelada');
+        }
+    }
+
+    if (localState.agendaFilters.professional) {
+        filteredAgenda = filteredAgenda.filter(a => (a.professionalName || 'Sem Profissional') === localState.agendaFilters.professional);
+    }
+
+    if (localState.agendaFilters.service) {
+        filteredAgenda = filteredAgenda.filter(a => {
+            if (a.services && Array.isArray(a.services) && a.services.length > 0) {
+                return a.services.some(s => (s.name || s.nome || 'Serviço Indefinido') === localState.agendaFilters.service);
+            } else if (a.serviceName) {
+                return a.serviceName === localState.agendaFilters.service;
+            }
+            return localState.agendaFilters.service === 'Outros';
+        });
+    }
+
+    // 3. Recalcular Métricas Secundárias (Baseadas na Filtragem)
+    const f_total = filteredAgenda.length;
+    const f_concluidas = filteredAgenda.filter(a => a.status === 'completed' || a.status === 'concluida').length;
+    const f_canceladas = filteredAgenda.filter(a => a.status === 'cancelled' || a.status === 'cancelada').length;
+
+    const taxaConclusao = f_total > 0 ? ((f_concluidas / f_total) * 100).toFixed(1) : 0;
+    const taxaCancelamento = f_total > 0 ? ((f_canceladas / f_total) * 100).toFixed(1) : 0;
+    const receitaTotal = filteredAgenda.filter(a => a.status === 'completed' || a.status === 'concluida').reduce((s, i) => s + (Number(i.totalAmount || (i.transaction ? i.transaction.totalAmount : 0)) || 0), 0);
+
+    const insightBg = taxaCancelamento > 20 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-indigo-50 border-indigo-200 text-indigo-800';
+    const insightIcon = taxaCancelamento > 20 ? '<i class="bi bi-exclamation-triangle mr-2 text-amber-500"></i>' : '<i class="bi bi-calendar-check mr-2 text-indigo-500"></i>';
+    const insightText = taxaCancelamento > 20 ? `Atenção: A taxa de cancelamento está alta (${taxaCancelamento}%). Considere enviar lembretes aos clientes.` : `A agenda fluiu bem neste cenário, com ${taxaConclusao}% de aproveitamento.`;
+
+    // Processamento do Gráfico Principal: Evolução
     let labels = [];
-    let dataPoints = [];
+    let dataAgendados = [];
+    let dataCancelados = [];
     
     if (localState.drillDownMonth !== null) {
         const anoAtual = new Date(localState.startDate).getFullYear();
         const daysInMonth = new Date(anoAtual, localState.drillDownMonth + 1, 0).getDate();
         labels = Array.from({ length: daysInMonth }, (_, i) => `${i + 1}`);
-        dataPoints = labels.map(day => active.filter(a => { 
+        
+        dataAgendados = labels.map(day => filteredAgenda.filter(a => { 
             const d = dateParser(a.startTime || a.date); 
-            return d.getMonth() === localState.drillDownMonth && d.getDate() === parseInt(day); 
+            return d.getMonth() === localState.drillDownMonth && d.getDate() === parseInt(day) && (a.status !== 'cancelled' && a.status !== 'cancelada'); 
         }).length);
+        
+        dataCancelados = labels.map(day => filteredAgenda.filter(a => { 
+            const d = dateParser(a.startTime || a.date); 
+            return d.getMonth() === localState.drillDownMonth && d.getDate() === parseInt(day) && (a.status === 'cancelled' || a.status === 'cancelada'); 
+        }).length);
+
     } else {
         labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-        dataPoints = labels.map((_, idx) => active.filter(a => dateParser(a.startTime || a.date).getMonth() === idx).length);
+        dataAgendados = labels.map((_, idx) => filteredAgenda.filter(a => dateParser(a.startTime || a.date).getMonth() === idx && (a.status !== 'cancelled' && a.status !== 'cancelada')).length);
+        dataCancelados = labels.map((_, idx) => filteredAgenda.filter(a => dateParser(a.startTime || a.date).getMonth() === idx && (a.status === 'cancelled' || a.status === 'cancelada')).length);
     }
 
+    // Processamento de Profissionais e Serviços
+    const profRanking = {};
+    const serviceRanking = {};
+
+    filteredAgenda.forEach(a => {
+        // Ignora canceladas nos gráficos de Top (a menos que estejamos filtrando apenas canceladas)
+        if ((a.status === 'cancelled' || a.status === 'cancelada') && localState.agendaFilters.status !== 'canceladas') return;
+
+        const prof = a.professionalName || 'Sem Profissional';
+        profRanking[prof] = (profRanking[prof] || 0) + 1;
+
+        if (a.services && Array.isArray(a.services) && a.services.length > 0) {
+            a.services.forEach(s => {
+                const sName = s.name || s.nome || 'Serviço Indefinido';
+                serviceRanking[sName] = (serviceRanking[sName] || 0) + 1;
+            });
+        } else if (a.serviceName) {
+            serviceRanking[a.serviceName] = (serviceRanking[a.serviceName] || 0) + 1;
+        } else {
+            serviceRanking['Outros'] = (serviceRanking['Outros'] || 0) + 1;
+        }
+    });
+
+    const topProfissionais = Object.entries(profRanking).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const topServicos = Object.entries(serviceRanking).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // Classes dinâmicas para as bordas dos cards (UI feedback visual)
+    const fStatus = localState.agendaFilters.status;
+    const cardTodosClass = !fStatus ? 'border-slate-800 ring-2 ring-slate-200' : 'border-slate-200';
+    const cardConcluidaClass = fStatus === 'concluidas' ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-emerald-100';
+    const cardAguardandoClass = fStatus === 'aguardando' ? 'border-amber-500 ring-2 ring-amber-200' : 'border-amber-100';
+    const cardNoshowClass = fStatus === 'noshow' ? 'border-red-500 ring-2 ring-red-200' : 'border-red-100';
+    const cardCanceladasClass = fStatus === 'canceladas' ? 'border-slate-500 ring-2 ring-slate-300' : 'border-slate-200';
+
     container.innerHTML = `
-        <div class="space-y-3 animate-fade-in">
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-                <div class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Total Agendas</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${total}</span></div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest block">Concluídas</span><span class="text-lg md:text-xl font-black text-emerald-600 mt-0.5">${concluidas}</span></div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-amber-500 uppercase tracking-widest block">Aguardando</span><span class="text-lg md:text-xl font-black text-amber-600 mt-0.5">${aguardando}</span></div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-red-400 uppercase tracking-widest block">Faltou (No-Show)</span><span class="text-lg md:text-xl font-black text-red-500 mt-0.5">${noShow}</span></div>
-                <div class="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Canceladas</span><span class="text-lg md:text-xl font-black text-slate-400 mt-0.5">${canceladas}</span></div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div class="bg-indigo-600 p-4 rounded-xl text-white shadow-sm flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase opacity-80 tracking-widest mb-1">Taxa Conclusão</p><p class="text-2xl md:text-3xl font-black">${taxaConclusao}%</p></div><i class="bi bi-graph-up-arrow text-3xl opacity-50"></i></div>
-                <div class="bg-emerald-600 p-4 rounded-xl text-white shadow-sm flex items-center justify-between"><div><p class="text-[10px] font-bold uppercase opacity-80 tracking-widest mb-1">Receita Atendimentos</p><p class="text-2xl md:text-3xl font-black">${formatCurrency(receitaTotal)}</p></div><i class="bi bi-cash-coin text-3xl opacity-50"></i></div>
-            </div>
-            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                <div class="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide"><i class="bi bi-clock-history text-indigo-500 mr-1"></i> Volume de Agendamentos ${localState.drillDownMonth !== null ? `(${labels.length} dias)` : ''}</h3>
-                    ${localState.drillDownMonth !== null ? `<button id="btn-back-agenda" class="text-[9px] font-bold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md hover:bg-indigo-100 transition-colors shadow-sm"><i class="bi bi-arrow-left mr-1"></i> Voltar</button>` : '<span class="hidden md:inline-block text-[9px] text-slate-400 italic">Dica: Clique num mês para ver por dia.</span>'}
+        <div class="space-y-4 animate-fade-in">
+            
+            ${(localState.agendaFilters.status || localState.agendaFilters.professional || localState.agendaFilters.service || localState.drillDownMonth !== null) ? `
+                <div class="flex flex-wrap items-center gap-2 mb-4 bg-indigo-50 p-2.5 rounded-xl border border-indigo-100 shadow-sm animate-fade-in-fast">
+                    <span class="text-[10px] font-bold text-indigo-800 uppercase tracking-widest ml-2 flex items-center gap-1.5"><i class="bi bi-funnel-fill text-indigo-500"></i> Filtros Ativos:</span>
+                    ${localState.agendaFilters.status ? `<span class="bg-white px-2 py-1 rounded border border-indigo-200 text-[10px] font-black text-indigo-600 shadow-sm">${localState.agendaFilters.status.toUpperCase()}</span>` : ''}
+                    ${localState.agendaFilters.professional ? `<span class="bg-white px-2 py-1 rounded border border-indigo-200 text-[10px] font-black text-indigo-600 shadow-sm">${localState.agendaFilters.professional}</span>` : ''}
+                    ${localState.agendaFilters.service ? `<span class="bg-white px-2 py-1 rounded border border-indigo-200 text-[10px] font-black text-indigo-600 shadow-sm">${localState.agendaFilters.service}</span>` : ''}
+                    ${localState.drillDownMonth !== null ? `<span class="bg-white px-2 py-1 rounded border border-indigo-200 text-[10px] font-black text-indigo-600 shadow-sm">MÊS: ${localState.drillDownMonth + 1}</span>` : ''}
+                    <button id="btn-clear-agenda-filters" class="ml-auto text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95"><i class="bi bi-x-lg mr-1"></i> Limpar</button>
                 </div>
-                <div class="relative h-64 w-full"><canvas id="chartAgenda"></canvas></div>
+            ` : ''}
+
+            <div class="flex items-center p-3 rounded-xl border shadow-sm ${insightBg}">
+                ${insightIcon}
+                <span class="text-xs font-bold tracking-wide">${insightText}</span>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div data-agenda-filter="todos" class="cursor-pointer transition-transform hover:scale-105 bg-white p-4 rounded-2xl border ${cardTodosClass} shadow-sm">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Agendas</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${total}</span>
+                </div>
+                <div data-agenda-filter="concluidas" class="cursor-pointer transition-transform hover:scale-105 bg-emerald-50 p-4 rounded-2xl border ${cardConcluidaClass} shadow-sm">
+                    <span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest block">Concluídas</span><span class="text-xl md:text-2xl font-black text-emerald-700 mt-1">${concluidas}</span>
+                </div>
+                <div data-agenda-filter="aguardando" class="cursor-pointer transition-transform hover:scale-105 bg-amber-50 p-4 rounded-2xl border ${cardAguardandoClass} shadow-sm">
+                    <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest block">Aguardando</span><span class="text-xl md:text-2xl font-black text-amber-700 mt-1">${aguardando}</span>
+                </div>
+                <div data-agenda-filter="noshow" class="cursor-pointer transition-transform hover:scale-105 bg-red-50 p-4 rounded-2xl border ${cardNoshowClass} shadow-sm">
+                    <span class="text-[10px] font-bold text-red-600 uppercase tracking-widest block">Faltou (No-Show)</span><span class="text-xl md:text-2xl font-black text-red-700 mt-1">${noShow}</span>
+                </div>
+                <div data-agenda-filter="canceladas" class="cursor-pointer transition-transform hover:scale-105 bg-slate-100 p-4 rounded-2xl border ${cardCanceladasClass} shadow-sm">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Canceladas</span><span class="text-xl md:text-2xl font-black text-slate-600 mt-1">${canceladas}</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-gradient-to-br from-indigo-600 to-violet-700 p-5 rounded-2xl text-white shadow-lg flex items-center justify-between transition-transform hover:scale-[1.02]">
+                    <div>
+                        <p class="text-[11px] font-black uppercase opacity-80 tracking-widest mb-1.5">Taxa Conclusão (Cenário)</p>
+                        <p class="text-3xl md:text-4xl font-black">${taxaConclusao}%</p>
+                    </div>
+                    <i class="bi bi-graph-up-arrow text-5xl opacity-30 drop-shadow-md"></i>
+                </div>
+                <div class="bg-gradient-to-br from-emerald-500 to-teal-600 p-5 rounded-2xl text-white shadow-lg flex items-center justify-between transition-transform hover:scale-[1.02]">
+                    <div>
+                        <p class="text-[11px] font-black uppercase opacity-80 tracking-widest mb-1.5">Receita Atendimentos (Cenário)</p>
+                        <p class="text-3xl md:text-4xl font-black">${formatCurrency(receitaTotal)}</p>
+                    </div>
+                    <i class="bi bi-cash-coin text-5xl opacity-30 drop-shadow-md"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="bi bi-bar-chart-line text-indigo-500 mr-2"></i> Evolução da Agenda ${localState.drillDownMonth !== null ? `(${labels.length} dias)` : ''}</h3>
+                    ${localState.drillDownMonth !== null ? `<button id="btn-back-agenda" class="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors shadow-sm active:scale-95"><i class="bi bi-arrow-left mr-1"></i> Voltar p/ Anual</button>` : '<span class="hidden md:inline-block text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-100 px-2 py-1 rounded-md">Dica: Clique na barra para detalhar.</span>'}
+                </div>
+                <div class="relative h-72 w-full"><canvas id="chartAgenda"></canvas></div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3 flex items-center justify-between">
+                        <span><i class="bi bi-person-badge text-indigo-500 mr-2"></i> Top Profissionais</span>
+                        <span class="text-[9px] text-slate-400">Clique na cor para filtrar</span>
+                    </h3>
+                    <div class="relative h-64 w-full flex justify-center"><canvas id="chartProfissionais"></canvas></div>
+                </div>
+                
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3 flex items-center justify-between">
+                        <span><i class="bi bi-scissors text-indigo-500 mr-2"></i> Serviços Mais Agendados</span>
+                        <span class="text-[9px] text-slate-400">Clique na barra para filtrar</span>
+                    </h3>
+                    <div class="relative h-64 w-full"><canvas id="chartServicos"></canvas></div>
+                </div>
             </div>
         </div>`;
 
     setTimeout(() => {
-        const ctx = document.getElementById('chartAgenda');
-        if (ctx) {
+        if (!window.Chart) return;
+
+        // 1. Gráfico de Evolução (Barras Empilhadas)
+        const ctxAgenda = document.getElementById('chartAgenda');
+        if (ctxAgenda) {
             destroyChart('agenda');
-            localState.charts['agenda'] = new Chart(ctx, {
-                type: 'line',
-                data: { labels: labels, datasets: [{ label: 'Ativos', data: dataPoints, borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4, pointRadius: 4, borderWidth: 2 }] },
-                options: { responsive: true, maintainAspectRatio: false, onClick: (e, elements) => { if (elements.length > 0 && localState.drillDownMonth === null) { localState.drillDownMonth = elements[0].index; renderAgendaTab(); } }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#f8fafc', borderDash: [2, 4] }, ticks: { stepSize: 1, font:{size: 9} } }, x: { grid: { display: false }, ticks: { font:{size: 9} } } } }
+            localState.charts['agenda'] = new Chart(ctxAgenda, {
+                type: 'bar',
+                data: { 
+                    labels: labels, 
+                    datasets: [
+                        { label: 'Realizados / Pendentes', data: dataAgendados, backgroundColor: '#4f46e5', borderRadius: 4, stack: 'Stack 0' },
+                        { label: 'Cancelados', data: dataCancelados, backgroundColor: '#cbd5e1', borderRadius: 4, stack: 'Stack 0' }
+                    ] 
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    onClick: (e, elements) => { 
+                        if (elements.length > 0 && localState.drillDownMonth === null) { 
+                            localState.drillDownMonth = elements[0].index; 
+                            renderAgendaTab(); 
+                        } 
+                    }, 
+                    onHover: (event, chartElement) => {
+                        event.native.target.style.cursor = chartElement[0] && localState.drillDownMonth === null ? 'pointer' : 'default';
+                    },
+                    plugins: { 
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { family: 'Inter', size: 11, weight: 'bold' } } },
+                        tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 }
+                    }, 
+                    scales: { 
+                        y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9', borderDash: [4, 4] }, ticks: { stepSize: 1, font:{size: 10, family: 'Inter', weight: 'bold'} } }, 
+                        x: { stacked: true, grid: { display: false }, ticks: { font:{size: 10, family: 'Inter', weight: 'bold'} } } 
+                    } 
+                }
             });
         }
         const backBtn = document.getElementById('btn-back-agenda');
         if (backBtn) backBtn.onclick = () => { localState.drillDownMonth = null; renderAgendaTab(); };
+
+        // 2. Gráfico de Profissionais (Rosca/Doughnut c/ Drill Down)
+        const ctxProf = document.getElementById('chartProfissionais');
+        if (ctxProf && topProfissionais.length > 0) {
+            destroyChart('profissionais');
+            localState.charts['profissionais'] = new Chart(ctxProf, {
+                type: 'doughnut',
+                data: {
+                    labels: topProfissionais.map(p => p[0].length > 20 ? p[0].substring(0,20)+'...' : p[0]),
+                    datasets: [{ data: topProfissionais.map(p => p[1]), backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'], borderWidth: 0, hoverOffset: 4 }]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, cutout: '65%', 
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const idx = elements[0].index;
+                            const selectedProf = topProfissionais[idx][0];
+                            if(localState.agendaFilters.professional !== selectedProf) {
+                                localState.agendaFilters.professional = selectedProf;
+                                renderAgendaTab();
+                            }
+                        }
+                    },
+                    onHover: (event, chartElement) => {
+                        event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                    },
+                    plugins: { 
+                        legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 8, font: { family: 'Inter', size: 10, weight: 'bold' } } },
+                        tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 } 
+                    } 
+                }
+            });
+        } else if (ctxProf) {
+            ctxProf.parentElement.innerHTML = '<div class="flex h-full items-center justify-center text-xs font-bold text-slate-400">Sem dados suficientes no período</div>';
+        }
+
+        // 3. Gráfico de Serviços (Barras Horizontais c/ Drill Down)
+        const ctxServ = document.getElementById('chartServicos');
+        if (ctxServ && topServicos.length > 0) {
+            destroyChart('servicos');
+            localState.charts['servicos'] = new Chart(ctxServ, {
+                type: 'bar',
+                data: { 
+                    labels: topServicos.map(s => s[0].length > 18 ? s[0].substring(0,18)+'...' : s[0]), 
+                    datasets: [{ label: 'Agendamentos', data: topServicos.map(s => s[1]), backgroundColor: '#f43f5e', borderRadius: 4 }] 
+                },
+                options: { 
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, 
+                    onClick: (e, elements) => {
+                        if (elements.length > 0) {
+                            const idx = elements[0].index;
+                            const selectedServ = topServicos[idx][0];
+                            if(localState.agendaFilters.service !== selectedServ) {
+                                localState.agendaFilters.service = selectedServ;
+                                renderAgendaTab();
+                            }
+                        }
+                    },
+                    onHover: (event, chartElement) => {
+                        event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                    },
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 }
+                    }, 
+                    scales: { 
+                        x: { beginAtZero: true, grid: { color: '#f1f5f9', borderDash: [4, 4] }, ticks: { stepSize: 1, font:{size: 10, family: 'Inter', weight: 'bold'} } }, 
+                        y: { grid: { display: false }, ticks: { font:{size: 10, family: 'Inter', weight: 'bold'} } } 
+                    } 
+                }
+            });
+        } else if (ctxServ) {
+            ctxServ.parentElement.innerHTML = '<div class="flex h-full items-center justify-center text-xs font-bold text-slate-400">Sem dados suficientes no período</div>';
+        }
+
     }, 100);
 }
 
@@ -619,35 +798,35 @@ function renderClientesTab() {
     }
 
     container.innerHTML = `
-        <div class="space-y-3 animate-fade-in">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-people-fill text-indigo-500 mr-1"></i> Base Total</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${totalBase}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-emerald-500 uppercase tracking-widest"><i class="bi bi-person-plus-fill mr-1"></i> Novos (Período)</span><span class="text-lg md:text-xl font-black text-emerald-600 mt-0.5">${novosNoPeriodo.length}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-amber-500 uppercase tracking-widest"><i class="bi bi-person-dash-fill mr-1"></i> Ausentes (>60 dias)</span><span class="text-lg md:text-xl font-black text-amber-600 mt-0.5">${ausentes.length}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-blue-500 uppercase tracking-widest"><i class="bi bi-graph-up-arrow mr-1"></i> Taxa Crescimento</span><span class="text-lg md:text-xl font-black text-blue-600 mt-0.5">+${taxaCrescimento}%</span></div>
+        <div class="space-y-4 animate-fade-in">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest"><i class="bi bi-people-fill text-indigo-500 mr-1"></i> Base Total</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${totalBase}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest"><i class="bi bi-person-plus-fill mr-1"></i> Novos (Período)</span><span class="text-xl md:text-2xl font-black text-emerald-700 mt-1">${novosNoPeriodo.length}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-amber-500 uppercase tracking-widest"><i class="bi bi-person-dash-fill mr-1"></i> Ausentes (>60d)</span><span class="text-xl md:text-2xl font-black text-amber-600 mt-1">${ausentes.length}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-blue-500 uppercase tracking-widest"><i class="bi bi-graph-up-arrow mr-1"></i> Crescimento</span><span class="text-xl md:text-2xl font-black text-blue-600 mt-1">+${taxaCrescimento}%</span></div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div class="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide"><i class="bi bi-person-lines-fill text-indigo-500 mr-1"></i> Aquisição ${localState.drillDownMonth !== null ? '(Diário)' : '(Mensal)'}</h3>
-                        ${localState.drillDownMonth !== null ? `<button id="btn-back-clientes" class="text-[9px] font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">Voltar</button>` : ''}
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="bi bi-person-lines-fill text-indigo-500 mr-2"></i> Aquisição ${localState.drillDownMonth !== null ? '(Diário)' : '(Mensal)'}</h3>
+                        ${localState.drillDownMonth !== null ? `<button id="btn-back-clientes" class="text-[10px] font-black uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">Voltar</button>` : ''}
                     </div>
-                    <div class="relative h-56 w-full"><canvas id="chartClientes"></canvas></div>
+                    <div class="relative h-64 w-full"><canvas id="chartClientes"></canvas></div>
                 </div>
 
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide mb-3"><i class="bi bi-star-fill text-amber-400 mr-1"></i> Últimos Cadastros</h3>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3"><i class="bi bi-star-fill text-amber-400 mr-2"></i> Últimos Cadastros</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
                         ${novosNoPeriodo.slice(0, 10).reverse().map(c => `
-                            <div class="flex items-center justify-between border-b border-slate-50 pb-1.5">
+                            <div class="flex items-center justify-between border-b border-slate-50 pb-2">
                                 <div>
-                                    <p class="text-[11px] font-bold text-slate-700 truncate max-w-[140px]">${c.name}</p>
-                                    <p class="text-[9px] text-slate-400">${c.phone || 'Sem contato'}</p>
+                                    <p class="text-xs font-black text-slate-700 truncate max-w-[140px]">${c.name}</p>
+                                    <p class="text-[10px] font-medium text-slate-400">${c.phone || 'Sem contato'}</p>
                                 </div>
-                                <span class="text-[8px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Novo</span>
+                                <span class="text-[9px] bg-emerald-50 border border-emerald-200 text-emerald-600 px-2 py-1 rounded-lg font-black uppercase tracking-widest">Novo</span>
                             </div>
-                        `).join('') || '<p class="text-[10px] text-slate-400">Nenhum cliente novo neste período.</p>'}
+                        `).join('') || '<p class="text-xs font-medium text-slate-400">Nenhum cliente novo neste período.</p>'}
                     </div>
                 </div>
             </div>
@@ -659,9 +838,9 @@ function renderClientesTab() {
         if (ctx) {
             destroyChart('clientes');
             localState.charts['clientes'] = new Chart(ctx, {
-                type: 'bar',
-                data: { labels: labels, datasets: [{ label: 'Novos Cadastros', data: dataPoints, backgroundColor: '#3b82f6', borderRadius: 3 }] },
-                options: { responsive: true, maintainAspectRatio: false, onClick: (e, elements) => { if (elements.length > 0 && localState.drillDownMonth === null) { localState.drillDownMonth = elements[0].index; renderClientesTab(); } }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font:{size: 9} } }, x: { grid: { display: false }, ticks: { font:{size: 9} } } } }
+                type: 'line',
+                data: { labels: labels, datasets: [{ label: 'Novos Cadastros', data: dataPoints, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.15)', fill: true, tension: 0.4, borderWidth: 3, pointRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, onClick: (e, elements) => { if (elements.length > 0 && localState.drillDownMonth === null) { localState.drillDownMonth = elements[0].index; renderClientesTab(); } }, plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 } }, scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9', borderDash: [4, 4] }, ticks: { stepSize: 1, font:{size: 10, family: 'Inter', weight: 'bold'} } }, x: { grid: { display: false }, ticks: { font:{size: 10, family: 'Inter', weight: 'bold'} } } } }
             });
         }
         const backBtn = document.getElementById('btn-back-clientes');
@@ -677,8 +856,14 @@ function renderVendasTab() {
     const container = document.getElementById('tab-content');
     const sales = localState.data.vendas || [];
     
-    const vendasConcluidas = sales.filter(s => s.status === 'completed' || s.status === 'paid');
-    const faturamentoBruto = vendasConcluidas.reduce((acc, s) => acc + (Number(s.totalAmount) || 0), 0);
+    // Status universais do PDV e Vendas: 'closed', 'paid', 'concluida', 'fechada', 'completed'
+    const vendasConcluidas = sales.filter(s => {
+        const st = String(s.status || '').toLowerCase();
+        return ['completed', 'paid', 'concluida', 'fechada', 'closed'].includes(st);
+    });
+    
+    // Suporte para 'totalAmount' (Vendas) ou 'total' / 'valorTotal' (Comandas PDV)
+    const faturamentoBruto = vendasConcluidas.reduce((acc, s) => acc + (Number(s.totalAmount || s.total || s.totalValue || s.valorTotal) || 0), 0);
     const qtdVendas = vendasConcluidas.length;
     const ticketMedio = qtdVendas > 0 ? faturamentoBruto / qtdVendas : 0;
     
@@ -686,11 +871,13 @@ function renderVendasTab() {
     const itemRanking = {};
     
     vendasConcluidas.forEach(venda => {
-        const safeItems = Array.isArray(venda.items) ? venda.items : (Array.isArray(venda.services) ? venda.services : []);
+        // Suporte para listas de 'items', 'services' ou 'cart' (usado no PDV)
+        const safeItems = Array.isArray(venda.items) ? venda.items : (Array.isArray(venda.services) ? venda.services : (Array.isArray(venda.cart) ? venda.cart : []));
+        
         safeItems.forEach(item => {
-            const qtd = Number(item.quantity) || 1;
+            const qtd = Number(item.quantity || item.quantidade) || 1;
             totalItens += qtd;
-            const nome = item.name || 'Produto/Serviço Indefinido';
+            const nome = item.name || item.nome || 'Produto/Serviço Indefinido';
             itemRanking[nome] = (itemRanking[nome] || 0) + qtd;
         });
     });
@@ -698,38 +885,42 @@ function renderVendasTab() {
     const topItens = Object.entries(itemRanking).sort((a,b) => b[1] - a[1]).slice(0, 5);
 
     container.innerHTML = `
-        <div class="space-y-3 animate-fade-in">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div class="bg-indigo-600 text-white p-3 rounded-xl shadow-sm flex flex-col"><span class="text-[9px] font-bold text-indigo-200 uppercase tracking-widest">Faturamento PDV</span><span class="text-lg md:text-xl font-black mt-0.5">${formatCurrency(faturamentoBruto)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ticket Médio</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${formatCurrency(ticketMedio)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total Vendas</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${qtdVendas}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Volume Itens</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${totalItens}</span></div>
+        <div class="space-y-4 animate-fade-in">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-gradient-to-br from-indigo-600 to-blue-700 text-white p-4 rounded-2xl shadow-md flex flex-col hover:scale-[1.02] transition-transform"><span class="text-[10px] font-black text-indigo-200 uppercase tracking-widest">Faturamento PDV</span><span class="text-xl md:text-2xl font-black mt-1">${formatCurrency(faturamentoBruto)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ticket Médio</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${formatCurrency(ticketMedio)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Vendas</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${qtdVendas}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Volume Itens</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${totalItens}</span></div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide mb-3"><i class="bi bi-trophy-fill text-amber-500 mr-1"></i> Top 5 Vendidos</h3>
-                    <div class="relative h-56 w-full"><canvas id="chartVendas"></canvas></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3"><i class="bi bi-trophy-fill text-amber-500 mr-2"></i> Curva ABC (Top 5 Vendidos)</h3>
+                    <div class="relative h-64 w-full"><canvas id="chartVendas"></canvas></div>
                 </div>
 
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide mb-3"><i class="bi bi-receipt-cutoff text-indigo-500 mr-1"></i> Últimas Vendas</h3>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1.5">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3"><i class="bi bi-receipt-cutoff text-indigo-500 mr-2"></i> Últimas Vendas Processadas</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-3 space-y-2.5">
                         ${vendasConcluidas.slice(0, 8).map(v => {
-                            const size = Array.isArray(v.items) ? v.items.length : (Array.isArray(v.services) ? v.services.length : 1);
+                            const safeItemsArray = Array.isArray(v.items) ? v.items : (Array.isArray(v.services) ? v.services : (Array.isArray(v.cart) ? v.cart : []));
+                            const size = safeItemsArray.length || 1;
+                            const total = Number(v.totalAmount || v.total || v.totalValue || v.valorTotal || 0);
+                            const dateStr = v.createdAt || v.date || v.timestamp || '';
+                            
                             return `
-                                <div class="flex items-center justify-between border border-slate-100 bg-slate-50 p-2 rounded-lg">
+                                <div class="flex items-center justify-between border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors p-3 rounded-xl">
                                     <div>
-                                        <p class="text-[11px] font-bold text-slate-700">#${(v.id || '').substring(0,5).toUpperCase()}</p>
-                                        <p class="text-[9px] text-slate-400">${formatDateDisplay(v.createdAt || v.date || '')}</p>
+                                        <p class="text-xs font-black text-slate-700">#${(v.id || '').substring(0,6).toUpperCase()}</p>
+                                        <p class="text-[10px] font-bold text-slate-400 mt-0.5">${formatDateDisplay(dateStr)}</p>
                                     </div>
                                     <div class="text-right">
-                                        <p class="text-[11px] font-black text-emerald-600">${formatCurrency(v.totalAmount)}</p>
-                                        <p class="text-[9px] text-slate-400">${size} itens</p>
+                                        <p class="text-xs font-black text-emerald-600">${formatCurrency(total)}</p>
+                                        <p class="text-[10px] font-bold text-slate-400 mt-0.5">${size} ${size === 1 ? 'item' : 'itens'}</p>
                                     </div>
                                 </div>
                             `;
-                        }).join('') || '<p class="text-[10px] text-slate-400">Nenhuma venda concluída no período.</p>'}
+                        }).join('') || '<p class="text-xs font-medium text-slate-400 text-center py-4">Nenhuma venda concluída no período.</p>'}
                     </div>
                 </div>
             </div>
@@ -742,17 +933,17 @@ function renderVendasTab() {
             destroyChart('vendas');
             localState.charts['vendas'] = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: topItens.map(i => i[0].substring(0,15)+'...'), datasets: [{ label: 'Quantidade Vendida', data: topItens.map(i => i[1]), backgroundColor: '#f59e0b', borderRadius: 3 }] },
-                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1, font:{size: 9} } }, y: { grid: { display: false }, ticks: { font:{size: 9} } } } }
+                data: { labels: topItens.map(i => i[0].length > 15 ? i[0].substring(0,15)+'...' : i[0]), datasets: [{ label: 'Quantidade Vendida', data: topItens.map(i => i[1]), backgroundColor: '#f59e0b', borderRadius: 4 }] },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 } }, scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9', borderDash: [4, 4] }, ticks: { stepSize: 1, font:{size: 10, family: 'Inter', weight: 'bold'} } }, y: { grid: { display: false }, ticks: { font:{size: 10, family: 'Inter', weight: 'bold'} } } } }
             });
         } else if (ctx) {
-            ctx.parentElement.innerHTML = '<div class="flex h-full items-center justify-center text-[10px] text-slate-400">Sem dados suficientes</div>';
+            ctx.parentElement.innerHTML = '<div class="flex h-full items-center justify-center text-xs font-bold text-slate-400">Sem dados suficientes</div>';
         }
     }, 100);
 }
 
 // ============================================================================
-// 📦 ABA ESTOQUE E HISTÓRICO DE MOVIMENTAÇÕES
+// 📦 ABA ESTOQUE 
 // ============================================================================
 
 function renderEstoqueTab() {
@@ -777,50 +968,47 @@ function renderEstoqueTab() {
     });
 
     container.innerHTML = `
-        <div class="space-y-3 animate-fade-in">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div class="bg-indigo-600 text-white p-3 rounded-xl shadow-sm flex flex-col"><span class="text-[9px] font-bold text-indigo-200 uppercase tracking-widest">Imobilizado</span><span class="text-lg md:text-xl font-black mt-0.5">${formatCurrency(totalImobilizado)}</span></div>
-                <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ativos</span><span class="text-lg md:text-xl font-black text-slate-800 mt-0.5">${ativos}</span></div>
-                <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-amber-600 uppercase tracking-widest">Estoque Baixo</span><span class="text-lg md:text-xl font-black text-amber-600 mt-0.5">${baixoEstoque.length}</span></div>
-                <div class="bg-red-50 p-3 rounded-xl border border-red-200 shadow-sm flex flex-col"><span class="text-[9px] font-bold text-red-600 uppercase tracking-widest">Esgotados</span><span class="text-lg md:text-xl font-black text-red-600 mt-0.5">${esgotados.length}</span></div>
+        <div class="space-y-4 animate-fade-in">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-4 rounded-2xl shadow-md flex flex-col hover:scale-[1.02] transition-transform"><span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">Imobilizado</span><span class="text-xl md:text-2xl font-black mt-1">${formatCurrency(totalImobilizado)}</span></div>
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Produtos Ativos</span><span class="text-xl md:text-2xl font-black text-slate-800 mt-1">${ativos}</span></div>
+                <div class="bg-amber-50 p-4 rounded-2xl border border-amber-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Estoque Baixo</span><span class="text-xl md:text-2xl font-black text-amber-700 mt-1">${baixoEstoque.length}</span></div>
+                <div class="bg-red-50 p-4 rounded-2xl border border-red-200 shadow-sm flex flex-col"><span class="text-[10px] font-bold text-red-600 uppercase tracking-widest">Esgotados</span><span class="text-xl md:text-2xl font-black text-red-700 mt-1">${esgotados.length}</span></div>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wide"><i class="bi bi-pie-chart-fill text-indigo-500 mr-1"></i> Saúde</h3>
-                        <button id="btn-historico-movimentacoes" class="px-2 py-1 bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 text-[9px] font-bold uppercase rounded-md transition-colors shadow-sm flex items-center gap-1">
-                            <i class="bi bi-clock-history"></i> Movs
-                        </button>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider"><i class="bi bi-pie-chart-fill text-indigo-500 mr-2"></i> Saúde Geral</h3>
                     </div>
-                    <div class="relative h-48 w-full flex justify-center"><canvas id="chartEstoque"></canvas></div>
+                    <div class="relative h-64 w-full flex justify-center"><canvas id="chartEstoque"></canvas></div>
                 </div>
 
-                <div class="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-                    <h3 class="text-xs font-bold text-red-500 uppercase tracking-wide mb-3"><i class="bi bi-exclamation-triangle-fill mr-1"></i> Reposição Crítica</h3>
-                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                    <h3 class="text-sm font-black text-red-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3"><i class="bi bi-exclamation-triangle-fill mr-2"></i> Reposição Crítica Necessária</h3>
+                    <div class="flex-1 overflow-y-auto custom-scrollbar pr-3">
                         <table class="w-full text-left text-xs">
                             <thead class="text-slate-400 border-b border-slate-100">
                                 <tr>
-                                    <th class="pb-1.5 font-bold uppercase tracking-wider text-[10px]">Produto</th>
-                                    <th class="pb-1.5 font-bold uppercase tracking-wider text-center text-[10px]">Min</th>
-                                    <th class="pb-1.5 font-bold uppercase tracking-wider text-center text-[10px]">Atual</th>
-                                    <th class="pb-1.5 font-bold uppercase tracking-wider text-right text-[10px]">Status</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-[10px]">Produto</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-center text-[10px]">Mínimo</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-center text-[10px]">Atual</th>
+                                    <th class="pb-2 font-bold uppercase tracking-wider text-right text-[10px]">Status</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-50">
                                 ${[...esgotados, ...baixoEstoque].map(p => `
                                     <tr class="hover:bg-slate-50 transition-colors">
-                                        <td class="py-2 font-bold text-slate-700 text-[11px]">${p.name}</td>
-                                        <td class="py-2 text-center text-slate-500 text-[11px]">${p.minStock || 0}</td>
-                                        <td class="py-2 text-center font-black text-[11px] ${p.currentStock <= 0 ? 'text-red-500' : 'text-amber-500'}">${p.currentStock || 0}</td>
-                                        <td class="py-2 text-right">
-                                            <span class="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${p.currentStock <= 0 ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}">
+                                        <td class="py-3 font-bold text-slate-700 text-xs">${p.name}</td>
+                                        <td class="py-3 text-center text-slate-500 font-bold text-xs">${p.minStock || 0}</td>
+                                        <td class="py-3 text-center font-black text-xs ${p.currentStock <= 0 ? 'text-red-500' : 'text-amber-500'}">${p.currentStock || 0}</td>
+                                        <td class="py-3 text-right">
+                                            <span class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${p.currentStock <= 0 ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-amber-100 text-amber-600 border border-amber-200'}">
                                                 ${p.currentStock <= 0 ? 'Esgotado' : 'Comprar'}
                                             </span>
                                         </td>
                                     </tr>
-                                `).join('') || '<tr><td colspan="4" class="text-center py-6 text-[10px] text-slate-400">Estoque saudável.</td></tr>'}
+                                `).join('') || '<tr><td colspan="4" class="text-center py-10 font-bold text-xs text-slate-400">Todo o estoque está em níveis saudáveis. Nenhuma ação necessária.</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -836,117 +1024,11 @@ function renderEstoqueTab() {
             destroyChart('estoque');
             localState.charts['estoque'] = new Chart(ctx, {
                 type: 'doughnut',
-                data: { labels: ['Saudável', 'Baixo', 'Esgotado'], datasets: [{ data: [Math.max(0, saudavel), baixoEstoque.length, esgotados.length], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { usePointStyle: true, boxWidth: 6, font:{size: 10} } } } }
+                data: { labels: ['Saudável', 'Baixo', 'Esgotado'], datasets: [{ data: [Math.max(0, saudavel), baixoEstoque.length, esgotados.length], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0, hoverOffset: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font:{size: 11, family: 'Inter', weight: 'bold'} } }, tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', titleFont: { size: 13, family: 'Inter' }, bodyFont: { size: 12, family: 'Inter' }, padding: 12, cornerRadius: 8 } } }
             });
         }
     }, 100);
-}
-
-function openStockMovementsModal() {
-    let modal = document.getElementById('genericModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'genericModal';
-        modal.className = 'modal fade fixed inset-0 z-[9999] overflow-y-auto';
-        document.body.appendChild(modal);
-    }
-    
-    modal.innerHTML = `
-        <div class="modal-dialog modal-dialog-centered relative w-auto pointer-events-none sm:max-w-4xl sm:mx-auto my-8">
-            <div class="modal-content relative flex flex-col w-full pointer-events-auto bg-white bg-clip-padding rounded-xl shadow-2xl border-0">
-                <div class="modal-header flex items-center justify-between p-3 border-b border-slate-200 bg-slate-50 rounded-t-xl">
-                    <h5 class="text-sm font-bold text-slate-800"><i class="bi bi-arrow-left-right text-indigo-600 mr-1.5"></i>Histórico de Movimentações</h5>
-                    <button type="button" class="btn-close-modal box-content w-4 h-4 p-1 text-slate-400 hover:text-slate-700 transition-colors"><i class="bi bi-x-lg"></i></button>
-                </div>
-                <div class="modal-body p-3 max-h-[65vh] overflow-y-auto custom-scrollbar bg-slate-50">
-                    <div id="movements-container" class="flex justify-center items-center h-40">
-                        <div class="loader"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    modal.style.display = 'block';
-    setTimeout(() => modal.classList.add('show', 'opacity-100'), 10);
-    
-    const closeBtn = modal.querySelector('.btn-close-modal');
-    if (closeBtn) closeBtn.onclick = () => { 
-        modal.style.display = 'none'; 
-        modal.classList.remove('show', 'opacity-100');
-    };
-
-    fetchStockMovements();
-}
-
-async function fetchStockMovements() {
-    const container = document.getElementById('movements-container');
-    const estIds = Array.from(localState.filterEstablishmentIds);
-    
-    try {
-        let movements = [];
-        
-        if (productsApi && typeof productsApi.getStockMovements === 'function') {
-            const results = await Promise.all(estIds.map(id => productsApi.getStockMovements(id, localState.startDate, localState.endDate).catch(()=>[])));
-            movements = results.flat();
-        } else {
-            const products = localState.data.estoque || [];
-            products.slice(0, 15).forEach(p => {
-                if(Math.random() > 0.4) {
-                    movements.push({
-                        date: new Date(Date.now() - Math.random() * 864000000).toISOString(),
-                        productName: p.name,
-                        type: Math.random() > 0.4 ? 'out' : 'in',
-                        quantity: Math.floor(Math.random() * 5) + 1,
-                        reason: Math.random() > 0.5 ? 'Venda PDV / Atendimento' : 'Ajuste Manual / Compra'
-                    });
-                }
-            });
-        }
-
-        if (movements.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 bg-white rounded-lg border border-slate-200"><i class="bi bi-inbox text-3xl text-slate-300 mb-1 block"></i><p class="text-[11px] text-slate-500 font-medium">Nenhuma movimentação no período.</p></div>';
-            return;
-        }
-
-        movements.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-        container.innerHTML = `
-            <div class="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-100 text-slate-500 border-b border-slate-200">
-                        <tr>
-                            <th class="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Data / Hora</th>
-                            <th class="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Produto</th>
-                            <th class="py-2 px-3 font-bold uppercase tracking-wider text-center text-[10px]">Operação</th>
-                            <th class="py-2 px-3 font-bold uppercase tracking-wider text-center text-[10px]">Qtd</th>
-                            <th class="py-2 px-3 font-bold uppercase tracking-wider text-[10px]">Motivo</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        ${movements.map(m => `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="py-2 px-3 text-slate-600 whitespace-nowrap text-[11px]">${formatDateDisplay(m.date)} <span class="text-[9px] text-slate-400 ml-1">${new Date(m.date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span></td>
-                                <td class="py-2 px-3 font-bold text-slate-800 text-[11px]">${m.productName || m.name || '-'}</td>
-                                <td class="py-2 px-3 text-center">
-                                    <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${m.type === 'in' || m.type === 'entrada' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}">
-                                        ${m.type === 'in' || m.type === 'entrada' ? '<i class="bi bi-arrow-down-left"></i> In' : '<i class="bi bi-arrow-up-right"></i> Out'}
-                                    </span>
-                                </td>
-                                <td class="py-2 px-3 text-center font-black text-[11px] ${m.type === 'in' || m.type === 'entrada' ? 'text-emerald-600' : 'text-red-600'}">${m.type === 'in' || m.type === 'entrada' ? '+' : '-'}${m.quantity}</td>
-                                <td class="py-2 px-3 text-slate-500 truncate max-w-[150px] text-[10px]">${m.reason || m.notes || '-'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-    } catch(e) {
-        console.error("Erro ao carregar movimentações:", e);
-        container.innerHTML = '<div class="text-center py-8 bg-red-50 rounded-lg border border-red-200"><i class="bi bi-exclamation-triangle text-2xl text-red-400 mb-1 block"></i><p class="text-[11px] text-red-600 font-bold">Erro ao carregar histórico.</p></div>';
-    }
 }
 
 // ============================================================================
@@ -954,10 +1036,43 @@ async function fetchStockMovements() {
 // ============================================================================
 
 function setupEventListeners() {
+    // 1. Escutar alterações no Header Global Multi-Empresa
+    const globalApplyBtn = document.getElementById('multi-context-apply');
+    if (globalApplyBtn) {
+        globalApplyBtn.removeEventListener('click', fetchTabData); 
+        globalApplyBtn.addEventListener('click', () => {
+            setTimeout(fetchTabData, 100);
+        });
+    }
+
     if (pageEventListener) contentDiv.removeEventListener('click', pageEventListener);
 
     pageEventListener = (e) => {
         const target = e.target;
+
+        // Limpar todos os filtros da Agenda
+        const clearFiltersBtn = target.closest('#btn-clear-agenda-filters');
+        if (clearFiltersBtn) {
+            localState.agendaFilters = { status: null, professional: null, service: null };
+            localState.drillDownMonth = null;
+            renderAgendaTab();
+            return;
+        }
+
+        // Clicar nos cartões superiores da Agenda (Drill down de Status)
+        const agendaFilterBtn = target.closest('[data-agenda-filter]');
+        if (agendaFilterBtn) {
+            const filterVal = agendaFilterBtn.dataset.agendaFilter;
+            if (filterVal === 'todos') {
+                localState.agendaFilters.status = null;
+            } else if (localState.agendaFilters.status === filterVal) {
+                localState.agendaFilters.status = null; // Toggle off se clicar de novo
+            } else {
+                localState.agendaFilters.status = filterVal;
+            }
+            renderAgendaTab();
+            return;
+        }
 
         const tabBtn = target.closest('.tab-btn');
         if (tabBtn) {
@@ -974,12 +1089,6 @@ function setupEventListeners() {
             return;
         }
 
-        const histBtn = target.closest('#btn-historico-movimentacoes');
-        if (histBtn) {
-            openStockMovementsModal();
-            return;
-        }
-
         const actionBtn = target.closest('button[data-action]');
         if (actionBtn) {
             const action = actionBtn.dataset.action;
@@ -988,6 +1097,7 @@ function setupEventListeners() {
                 localState.startDate = document.getElementById('report-start').value;
                 localState.endDate = document.getElementById('report-end').value;
                 localState.drillDownMonth = null;
+                localState.agendaFilters = { status: null, professional: null, service: null };
                 fetchTabData();
             }
             else if (action === 'preset-date') {
@@ -1012,6 +1122,7 @@ function setupEventListeners() {
                 localState.startDate = start.toISOString().split('T')[0];
                 localState.endDate = end.toISOString().split('T')[0];
                 localState.drillDownMonth = null;
+                localState.agendaFilters = { status: null, professional: null, service: null };
                 fetchTabData();
             }
             else if (action === 'export-excel') {
@@ -1021,23 +1132,6 @@ function setupEventListeners() {
     };
 
     contentDiv.addEventListener('click', pageEventListener);
-
-    document.querySelectorAll('.est-filter-checkbox').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-            const label = e.target.closest('label');
-            if (e.target.checked) {
-                localState.filterEstablishmentIds.add(e.target.value);
-                label.classList.add('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50', 'text-indigo-700');
-                label.classList.remove('border-slate-200', 'text-slate-600');
-            } else {
-                localState.filterEstablishmentIds.delete(e.target.value);
-                label.classList.remove('border-indigo-500', 'ring-1', 'ring-indigo-500', 'bg-indigo-50', 'text-indigo-700');
-                label.classList.add('border-slate-200', 'text-slate-600');
-            }
-            localState.drillDownMonth = null;
-            fetchTabData(); 
-        });
-    });
 }
 
 function handleExportExcel() {
@@ -1048,23 +1142,22 @@ function handleExportExcel() {
 
     const { currentTab, data, startDate, endDate } = localState;
     let exportData = [];
-    let fileName = `Relatorio_${currentTab.toUpperCase()}_${startDate}_a_${endDate}.xlsx`;
+    let fileName = `Kairos_Relatorio_${currentTab.toUpperCase()}_${startDate}_a_${endDate}.xlsx`;
 
     if (currentTab === 'financeiro') {
         if (!data.financeiro || (!data.financeiro.payables.length && !data.financeiro.receivables.length)) return showNotification('Aviso', 'Sem dados financeiros para exportar.', 'info');
-        const estMap = new Map(localState.establishments.map(e => [e.id, e.name]));
         const natureMap = new Map(data.financeiro.natures.map(n => [n.id, n.name]));
         const allTransactions = [
             ...data.financeiro.receivables.filter(r => r.status === 'paid').map(r => ({...r, tipo: 'Receita'})),
             ...data.financeiro.payables.filter(p => p.status === 'paid').map(p => ({...p, tipo: 'Despesa'}))
         ];
         exportData = allTransactions.map(t => ({
-            "Unidade": estMap.get(t.establishmentId) || 'Atual', "Data Pagamento": t.paymentDate ? formatDateDisplay(t.paymentDate) : '-', "Tipo": t.tipo, "Descrição": t.description || '-', "Natureza (DRE)": t.naturezaId ? (natureMap.get(t.naturezaId) || 'Outros') : 'Geral', "Valor (R$)": t.amount || 0
+            "Data Pagamento": t.paymentDate ? formatDateDisplay(t.paymentDate) : '-', "Tipo": t.tipo, "Descrição": t.description || '-', "Natureza (DRE)": t.naturezaId ? (natureMap.get(t.naturezaId) || 'Outros') : 'Geral', "Valor (R$)": t.amount || 0
         }));
     } 
     else if (currentTab === 'agenda') {
-        if (!data.agenda || data.agenda.active.length === 0) return showNotification('Aviso', 'Sem dados de agenda.', 'info');
-        exportData = data.agenda.active.map(a => ({
+        if (!data.agenda || data.agenda.length === 0) return showNotification('Aviso', 'Sem dados de agenda.', 'info');
+        exportData = data.agenda.map(a => ({
             "Data": a.startTime ? formatDateDisplay(a.startTime) : '-', "Cliente": a.clientName || 'Sem nome', "Profissional": a.professionalName || '-', "Status": a.status, "Valor Faturado (R$)": a.totalAmount || 0
         }));
     } 

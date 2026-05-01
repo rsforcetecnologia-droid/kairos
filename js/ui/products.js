@@ -29,7 +29,7 @@ let localState = {
     searchQuery: '',
     filterCategoryId: 'all',
     isAdvancedFilterOpen: false,
-    
+    isMovementFilterOpen: false, // <-- Variável de controle do novo filtro
     selectedIds: new Set(),
     selectedMovementIds: new Set(), // Seleção para exclusão em lote de movimentos
     tempProduct: null,
@@ -65,10 +65,13 @@ function parseSafeDate(dateVal) {
 function showMobileDetail() {
     const modal = document.getElementById('products-layout-detail');
     const modalInner = document.getElementById('product-modal-inner');
+    const bottomNav = document.getElementById('mobile-bottom-nav'); // <- Adicionado
     
     if (modal && modalInner) {
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+        
+        if (bottomNav) bottomNav.style.display = 'none'; // <- Oculta o menu
         
         setTimeout(() => {
             modal.classList.remove('opacity-0');
@@ -83,6 +86,7 @@ function showMobileDetail() {
 function hideMobileDetail() {
     const modal = document.getElementById('products-layout-detail');
     const modalInner = document.getElementById('product-modal-inner');
+    const bottomNav = document.getElementById('mobile-bottom-nav'); // <- Adicionado
     
     if (modal && modalInner) {
         modal.classList.add('opacity-0');
@@ -93,6 +97,7 @@ function hideMobileDetail() {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             document.body.style.overflow = ''; 
+            if (bottomNav) bottomNav.style.display = ''; // <- Restaura o menu
         }, 300); 
     }
     localState.tempProduct = null;
@@ -103,10 +108,13 @@ function hideMobileDetail() {
 function showMovementModal() {
     const modal = document.getElementById('movement-layout-detail');
     const modalInner = document.getElementById('movement-modal-inner');
+    const bottomNav = document.getElementById('mobile-bottom-nav'); // <- Adicionado
     
     if (modal && modalInner) {
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+        
+        if (bottomNav) bottomNav.style.display = 'none'; // <- Oculta o menu
         
         setTimeout(() => {
             modal.classList.remove('opacity-0');
@@ -121,6 +129,7 @@ function showMovementModal() {
 function hideMovementModal() {
     const modal = document.getElementById('movement-layout-detail');
     const modalInner = document.getElementById('movement-modal-inner');
+    const bottomNav = document.getElementById('mobile-bottom-nav'); // <- Adicionado
     
     if (modal && modalInner) {
         modal.classList.add('opacity-0');
@@ -131,6 +140,7 @@ function hideMovementModal() {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             document.body.style.overflow = ''; 
+            if (bottomNav) bottomNav.style.display = ''; // <- Restaura o menu
         }, 300); 
     }
 }
@@ -174,12 +184,12 @@ function renderBaseLayout() {
             </section>
         </div>
 
-        <div id="products-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+        <div id="products-layout-detail" class="hidden fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
             <div id="product-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-4xl flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
             </div>
         </div>
 
-        <div id="movement-layout-detail" class="hidden fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
+        <div id="movement-layout-detail" class="hidden fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm items-center justify-center p-0 md:p-6 opacity-0 transition-opacity duration-300">
             <div id="movement-modal-inner" class="bg-slate-50 w-full h-[100dvh] md:h-auto md:max-h-[95vh] md:max-w-lg flex flex-col md:rounded-3xl shadow-2xl transform scale-95 translate-y-4 md:translate-y-0 transition-all duration-300 overflow-hidden">
             </div>
         </div>
@@ -253,9 +263,7 @@ function renderCurrentTab() {
                 ${renderSkeletonList(8)}
             </div>
 
-            <button data-action="open-product-editor" data-id="" class="md:hidden fixed bottom-20 right-4 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg shadow-indigo-500/40 flex items-center justify-center hover:bg-indigo-700 transition-all z-40 active:scale-95 border border-indigo-500">
-                <i class="bi bi-plus-lg text-2xl pointer-events-none"></i>
-            </button>
+        
         `;
     } 
     else if (localState.currentTab === 'movimentacoes') {
@@ -281,41 +289,47 @@ function renderCurrentTab() {
             </div>
 
             <div class="flex flex-col h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-fade-in">
-                <div class="bg-white px-5 py-5 border-b border-slate-100 flex flex-col md:flex-row md:justify-between md:items-center gap-4 flex-shrink-0">
+                <div class="bg-white px-5 py-4 border-b border-slate-100 flex flex-col md:flex-row md:justify-between md:items-center gap-4 flex-shrink-0">
                     <div>
                         <h2 class="text-base font-black text-slate-800 flex items-center gap-2 uppercase tracking-wider"><i class="bi bi-arrow-left-right text-indigo-500"></i> Histórico de Estoque</h2>
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Acompanhe entradas e saídas de mercadoria na rede.</p>
                     </div>
-                    <button data-action="open-new-movement-modal" class="w-full md:w-auto py-3 px-6 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-indigo-600">
-                        <i class="bi bi-plus-circle text-base pointer-events-none"></i> Lançar Movimento
-                    </button>
+                    
+                    <div class="flex items-center gap-2 w-full md:w-auto">
+                        <button id="toggle-movement-filter-btn" class="flex-1 md:flex-none py-2.5 px-3 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition shadow-sm flex items-center justify-center gap-2 text-xs active:scale-95 ${localState.isMovementFilterOpen ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : ''}">
+                            <i class="bi bi-funnel text-base"></i> Filtros
+                        </button>
+                        <button data-action="open-new-movement-modal" class="flex-1 md:flex-none py-2.5 px-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-colors shadow-md active:scale-95 flex items-center justify-center gap-2 text-xs uppercase tracking-wider border border-indigo-600">
+                            <i class="bi bi-plus-circle text-base pointer-events-none"></i> Movimento
+                        </button>
+                    </div>
                 </div>
 
-                <div class="bg-slate-50 px-5 py-5 border-b border-slate-200 flex-shrink-0">
-                    <div class="flex flex-wrap md:flex-nowrap gap-4 items-end">
-                        <div class="w-full md:w-40">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Início</label>
-                            <input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="w-full px-3 py-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-inner">
+                <div id="movement-filter-panel" class="${localState.isMovementFilterOpen ? 'block' : 'hidden'} bg-slate-50 px-5 py-4 border-b border-slate-200 flex-shrink-0 animate-fade-in">
+                    <div class="flex flex-col md:flex-row items-end gap-3">
+                        <div class="w-full md:w-32">
+                            <label class="block text-[9px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest ml-1">Início</label>
+                            <input type="date" id="reportStartDate" value="${thirtyDaysAgoStr}" class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none">
                         </div>
-                        <div class="w-full md:w-40">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Fim</label>
-                            <input type="date" id="reportEndDate" value="${today}" class="w-full px-3 py-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-inner">
+                        <div class="w-full md:w-32">
+                            <label class="block text-[9px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest ml-1">Fim</label>
+                            <input type="date" id="reportEndDate" value="${today}" class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none">
                         </div>
                         <div class="w-full md:w-auto flex-1">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Filtrar Produto</label>
-                            <select id="productFilterReport" class="w-full px-3 py-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-inner cursor-pointer">
+                            <label class="block text-[9px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest ml-1">Filtrar Produto</label>
+                            <select id="productFilterReport" class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none cursor-pointer">
                                 <option value="all">Todos os produtos</option>${prodOptions}
                             </select>
                         </div>
                         <div class="w-full md:w-auto flex-1 hidden md:block">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Categoria</label>
-                            <select id="categoryFilterReport" class="w-full px-3 py-3 border border-slate-300 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 bg-white shadow-inner cursor-pointer">
+                            <label class="block text-[9px] font-bold text-slate-400 mb-1.5 uppercase tracking-widest ml-1">Categoria</label>
+                            <select id="categoryFilterReport" class="w-full p-2.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 shadow-sm outline-none cursor-pointer">
                                 <option value="all">Todas as categorias</option>${catOptions}
                             </select>
                         </div>
                         <div class="w-full md:w-auto">
-                            <button id="btn-generate-report" class="bg-slate-800 text-white font-black px-8 py-3 rounded-xl hover:bg-slate-900 transition-colors text-sm w-full md:w-auto shadow-md active:scale-95 flex items-center justify-center gap-2 uppercase tracking-wider">
-                                <i class="bi bi-search text-base"></i> Buscar
+                            <button id="btn-generate-report" class="w-full md:w-auto px-6 py-2.5 bg-indigo-600 text-white font-black rounded-lg hover:bg-indigo-700 transition-colors text-xs uppercase tracking-wider shadow-md active:scale-95 flex items-center justify-center gap-2">
+                                <i class="bi bi-search"></i> Buscar
                             </button>
                         </div>
                     </div>
@@ -1658,6 +1672,26 @@ function setupEventListeners() {
                 filterPanel.classList.remove('block');
                 toggleFilterBtn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
                 toggleFilterBtn.classList.add('bg-white', 'text-slate-700', 'border-slate-200');
+            }
+            return;
+        }
+
+        // ADICIONE ESTE BLOCO LOGO ABAIXO:
+        const toggleMovementFilterBtn = e.target.closest('#toggle-movement-filter-btn');
+        if (toggleMovementFilterBtn) {
+            e.preventDefault();
+            localState.isMovementFilterOpen = !localState.isMovementFilterOpen;
+            const filterPanel = document.getElementById('movement-filter-panel');
+            if(localState.isMovementFilterOpen) {
+                filterPanel.classList.remove('hidden');
+                filterPanel.classList.add('block');
+                toggleMovementFilterBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+                toggleMovementFilterBtn.classList.remove('bg-white', 'text-slate-700', 'border-slate-200');
+            } else {
+                filterPanel.classList.add('hidden');
+                filterPanel.classList.remove('block');
+                toggleMovementFilterBtn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-200');
+                toggleMovementFilterBtn.classList.add('bg-white', 'text-slate-700', 'border-slate-200');
             }
             return;
         }

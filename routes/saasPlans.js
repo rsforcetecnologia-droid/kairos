@@ -23,7 +23,19 @@ const getPagarmeHeaders = () => {
 // =======================================================================
 router.post('/', verifyToken, async (req, res) => {
     const { db } = req;
-    const { name, price, maxEstablishments, maxUsers, maxProfessionals, allowedModules, features } = req.body;
+    
+    // NOVO: Adicionado intervalCount (1=Mensal, 6=Semestral, 12=Anual) e trialDays (Teste Grátis)
+    const { 
+        name, 
+        price, 
+        maxEstablishments, 
+        maxUsers, 
+        maxProfessionals, 
+        allowedModules, 
+        features,
+        intervalCount,
+        trialDays
+    } = req.body;
 
     if (!name || price === undefined) {
         return res.status(400).json({ message: "Nome e preço são obrigatórios." });
@@ -31,6 +43,10 @@ router.post('/', verifyToken, async (req, res) => {
 
     try {
         const priceInCents = Math.round(Number(price) * 100);
+        
+        // Configuração dinâmica de período e trial
+        const planIntervalCount = Number(intervalCount) || 1; // Padrão: 1 mês (Mensal)
+        const planTrialDays = trialDays !== undefined ? Number(trialDays) : 7; // Padrão: 7 dias de trial
         
         // 1.1 Criar o Plano na API do Pagar.me V5
         const pagarmeResponse = await fetch('https://api.pagar.me/core/v5/plans', {
@@ -40,11 +56,12 @@ router.post('/', verifyToken, async (req, res) => {
                 name: name,
                 currency: "BRL",
                 interval: "month",
-                interval_count: 1, // Cobrança mensal
+                interval_count: planIntervalCount, // 1 (mensal), 6 (semestral), 12 (anual)
                 billing_type: "prepaid", // Cobrança pré-paga
+                trial_period_days: planTrialDays, // Mágica do Trial Automático do Pagar.me!
                 items: [
                     {
-                        name: "Mensalidade SaaS", // Nome do item dentro da fatura
+                        name: `Licença Kairos ${name}`, // Nome dinâmico para ficar bonito na fatura
                         quantity: 1,
                         pricing_scheme: {
                             scheme_type: "unit",
@@ -71,6 +88,8 @@ router.post('/', verifyToken, async (req, res) => {
             maxProfessionals: Number(maxProfessionals || 1),
             allowedModules: allowedModules || [],
             features: features || [],
+            intervalCount: planIntervalCount, // Salva o período localmente
+            trialDays: planTrialDays, // Salva o tempo de trial localmente
             pagarmePlanId: pagarmeData.id, // ID retornado pelo Pagar.me (Ex: plan_xxxxxxxx)
             active: pagarmeData.status === 'active',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -122,7 +141,19 @@ router.get('/', verifyToken, async (req, res) => {
 router.put('/:planId', verifyToken, async (req, res) => {
     const { db } = req;
     const { planId } = req.params;
-    const { name, price, maxEstablishments, maxUsers, maxProfessionals, allowedModules, features } = req.body;
+    
+    // Lendo os novos campos no PUT também
+    const { 
+        name, 
+        price, 
+        maxEstablishments, 
+        maxUsers, 
+        maxProfessionals, 
+        allowedModules, 
+        features,
+        intervalCount,
+        trialDays 
+    } = req.body;
 
     try {
         const planRef = db.collection('saas_plans').doc(planId);
@@ -150,8 +181,8 @@ router.put('/:planId', verifyToken, async (req, res) => {
             }
         }
 
-        // NOTA: O Pagar.me V5 não permite alterar o PREÇO de um plano existente de forma simples, 
-        // para não afetar assinantes atuais. O preço só é atualizado no Firebase para novas vendas.
+        // NOTA: O Pagar.me V5 não permite alterar o PREÇO, PERÍODO (interval) nem TRIAL de um plano existente de forma simples, 
+        // para não afetar assinantes atuais. Eles só são atualizados no Firebase para novas exibições locais.
 
         // 3.2 Atualizamos os dados no Firebase
         const updateData = {
@@ -162,6 +193,8 @@ router.put('/:planId', verifyToken, async (req, res) => {
             maxProfessionals: maxProfessionals !== undefined ? Number(maxProfessionals) : currentPlanData.maxProfessionals,
             allowedModules: allowedModules || currentPlanData.allowedModules,
             features: features || currentPlanData.features,
+            intervalCount: intervalCount !== undefined ? Number(intervalCount) : currentPlanData.intervalCount,
+            trialDays: trialDays !== undefined ? Number(trialDays) : currentPlanData.trialDays,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
