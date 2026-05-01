@@ -169,17 +169,27 @@ router.get('/tenants', async (req, res) => {
 
 router.put('/tenants/:companyId', async (req, res) => {
     const { companyId } = req.params;
-    const { planId, nextDueDate, gracePeriodDays, lastPaymentStatus, isNetwork } = req.body;
+    
+    // CORREÇÃO: Adicionados 'phone' e 'documentInfo' na desestruturação
+    const { planId, nextDueDate, gracePeriodDays, lastPaymentStatus, isNetwork, phone, documentInfo } = req.body;
 
     try {
         const { db } = req;
         const updateData = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
         
-        if (planId !== undefined) updateData.planId = planId;
+        if (planId !== undefined) {
+            updateData.planId = planId;
+            // CORREÇÃO: Força a atualização dentro do objeto subscription também para retrocompatibilidade
+            updateData['subscription.planId'] = planId; 
+        }
         if (nextDueDate !== undefined) updateData.nextDueDate = nextDueDate; 
         if (gracePeriodDays !== undefined) updateData.gracePeriodDays = Number(gracePeriodDays) || 0;
         if (lastPaymentStatus !== undefined) updateData.lastPaymentStatus = lastPaymentStatus; 
         if (isNetwork !== undefined) updateData.isNetwork = isNetwork;
+        
+        // CORREÇÃO: Salvando telefone e documento no banco
+        if (phone !== undefined) updateData.phone = phone;
+        if (documentInfo !== undefined) updateData.document = documentInfo;
 
         // Atualiza direto o estabelecimento raiz
         await db.collection('establishments').doc(companyId).update(updateData);

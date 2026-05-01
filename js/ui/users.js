@@ -9,31 +9,31 @@ import { escapeHTML } from '../utils.js';
 
 const contentDiv = document.getElementById('content');
 
-// --- AGRUPAMENTO DE MÓDULOS (Design Profissional) ---
+// --- AGRUPAMENTO DE MÓDULOS COM ÍCONES (Design Moderno) ---
 const moduleGroups = {
     'Operação & Atendimento': {
-        'dashboard-section': 'Dashboard',
-        'agenda-section': 'Agenda',
-        'comandas-section': 'Comandas',
-        'ausencias-section': 'Ausências e Bloqueios'
+        'dashboard-section': { title: 'Dashboard', icon: 'bi-grid-1x2-fill' },
+        'agenda-section': { title: 'Agenda', icon: 'bi-calendar3' },
+        'comandas-section': { title: 'Comandas / PDV', icon: 'bi-receipt' },
+        'ausencias-section': { title: 'Ausências e Bloqueios', icon: 'bi-clock-history' }
     },
     'Financeiro & Vendas': {
-        'financial-section': 'Financeiro (ERP)',
-        'sales-report-section': 'Relatório de Vendas',
-        'commissions-section': 'Comissões',
-        'packages-section': 'Planos e Pacotes'
+        'financial-section': { title: 'Financeiro (ERP)', icon: 'bi-currency-dollar' },
+        'sales-report-section': { title: 'Relatório de Vendas', icon: 'bi-graph-up-arrow' },
+        'commissions-section': { title: 'Comissões', icon: 'bi-percent' },
+        'packages-section': { title: 'Planos e Pacotes', icon: 'bi-box-seam' }
     },
     'Cadastros Base': {
-        'clientes-section': 'Clientes',
-        'profissionais-section': 'Profissionais',
-        'servicos-section': 'Serviços',
-        'produtos-section': 'Produtos',
-        'suppliers-section': 'Fornecedores'
+        'clientes-section': { title: 'Clientes', icon: 'bi-people' },
+        'profissionais-section': { title: 'Profissionais', icon: 'bi-person-workspace' },
+        'servicos-section': { title: 'Serviços', icon: 'bi-scissors' },
+        'produtos-section': { title: 'Produtos', icon: 'bi-box' },
+        'suppliers-section': { title: 'Fornecedores', icon: 'bi-truck' }
     },
     'Administração': {
-        'relatorios-section': 'Relatórios Gerais',
-        'estabelecimento-section': 'Configurações da Empresa',
-        'users-section': 'Usuários e Acessos'
+        'relatorios-section': { title: 'Relatórios Gerais', icon: 'bi-bar-chart-fill' },
+        'estabelecimento-section': { title: 'Configurações da Empresa', icon: 'bi-gear-fill' },
+        'users-section': { title: 'Usuários e Acessos', icon: 'bi-shield-lock-fill' }
     }
 };
 
@@ -50,7 +50,7 @@ const roleMap = {
 
 let usersPageClickListener = null;
 let usersPageChangeListener = null;
-let globalContextChangeListener = null; // NOVO: Listener global para o seletor
+let globalContextChangeListener = null; 
 let currentHierarchy = null; 
 
 // --- FUNÇÃO DE BUSCA MULTI-EMPRESA ---
@@ -59,7 +59,6 @@ function getActiveEstablishmentsFromHeader() {
     if (checkboxes.length > 0) {
         return Array.from(checkboxes).map(cb => cb.value);
     }
-    // Suporte robusto para a nova arquitetura de estados
     return [state.currentViewContext?.id || state.establishmentId];
 }
 
@@ -146,14 +145,14 @@ function filterAndRenderUsers() {
     renderUsersList(filteredUsers);
 }
 
-// --- RENDERIZAR FORMULÁRIO DE PERMISSÕES (Agrupado) ---
+// --- RENDERIZAR FORMULÁRIO DE PERMISSÕES (Modernizado com Ícones) ---
 function renderPermissionsForm(currentPermissions = {}) {
     let html = '';
     let hasAnyModule = false;
 
     for (const [groupName, groupModules] of Object.entries(moduleGroups)) {
-        // Filtrar módulos deste grupo que a empresa tem acesso
-        const activeModulesInGroup = Object.entries(groupModules).filter(([key, title]) => {
+        // Filtra para mostrar apenas módulos que a empresa tem contratado
+        const activeModulesInGroup = Object.entries(groupModules).filter(([key]) => {
             const moduleKey = key.replace('-section', '');
             return !(state.enabledModules && state.enabledModules[moduleKey] === false);
         });
@@ -162,18 +161,20 @@ function renderPermissionsForm(currentPermissions = {}) {
         hasAnyModule = true;
 
         html += `
-        <div class="mb-6 last:mb-0">
-            <h4 class="font-black text-[10px] text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-100 pb-2"><i class="bi bi-folder2-open text-indigo-400 mr-1"></i> ${groupName}</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div class="mb-8 last:mb-0">
+            <h4 class="font-black text-xs text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
+                <i class="bi bi-folder2-open text-indigo-400 text-lg"></i> ${groupName}
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         `;
 
-        activeModulesInGroup.forEach(([key, title]) => {
+        activeModulesInGroup.forEach(([key, modData]) => {
             const isAgendaOrComandas = key === 'agenda-section' || key === 'comandas-section';
             const isViewAllChecked = currentPermissions[key]?.view_all_prof === true;
             
             const permissionToggles = Object.entries(permissions).map(([pKey, pLabel]) => `
-                <label class="flex items-center justify-between cursor-pointer p-2 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span class="text-[9px] text-slate-600 font-bold uppercase tracking-widest">${pLabel}</span>
+                <label class="flex items-center justify-between cursor-pointer py-1.5 px-2 rounded-lg hover:bg-slate-50 transition-colors">
+                    <span class="text-[10px] text-slate-600 font-bold uppercase tracking-widest">${pLabel}</span>
                     <div class="relative ml-2">
                         <input type="checkbox" data-module="${key}" data-permission="${pKey}" class="sr-only permission-checkbox" ${currentPermissions[key]?.[pKey] ? 'checked' : ''}>
                         <div class="toggle-bg block bg-slate-200 w-8 h-4 rounded-full transition-colors shadow-inner"></div>
@@ -183,25 +184,41 @@ function renderPermissionsForm(currentPermissions = {}) {
             `).join('');
 
             const specialPermissionHtml = isAgendaOrComandas ? `
-                <div class="mt-2 pt-2 border-t border-slate-100">
-                    <label class="flex items-center justify-between cursor-pointer p-2 rounded-lg bg-indigo-50/50 hover:bg-indigo-100/50 transition-colors border border-indigo-100">
-                        <span class="text-[9px] font-black text-indigo-700 uppercase tracking-widest">Acesso Toda Equipe</span>
-                        <div class="relative ml-2">
-                            <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only permission-checkbox" ${isViewAllChecked ? 'checked' : ''}>
-                            <div class="toggle-bg block bg-slate-200 w-8 h-4 rounded-full transition-colors shadow-inner"></div>
-                            <div class="dot absolute left-1 top-[2px] bg-white w-3 h-3 rounded-full transition-transform ${isViewAllChecked ? 'transform translate-x-4' : ''}"></div>
+                <div class="mt-3 pt-3 border-t border-slate-100">
+                    <label class="flex flex-col cursor-pointer p-3 rounded-xl bg-indigo-50/30 hover:bg-indigo-50 transition-colors border border-indigo-100 relative overflow-hidden group/special">
+                        <div class="flex items-center justify-between mb-1 z-10">
+                            <span class="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-1.5">
+                                <i class="bi bi-globe"></i> Visão Toda Equipe
+                            </span>
+                            <div class="relative ml-2">
+                                <input type="checkbox" data-module="${key}" data-permission="view_all_prof" class="sr-only permission-checkbox" ${isViewAllChecked ? 'checked' : ''}>
+                                <div class="toggle-bg block bg-indigo-200 w-8 h-4 rounded-full transition-colors shadow-inner"></div>
+                                <div class="dot absolute left-1 top-[2px] bg-white w-3 h-3 rounded-full transition-transform ${isViewAllChecked ? 'transform translate-x-4' : ''}"></div>
+                            </div>
                         </div>
+                        <span class="text-[9.5px] text-indigo-500 font-medium z-10 leading-tight">
+                            Desmarque para que o usuário veja <b>apenas</b> a sua própria agenda/comandas.
+                        </span>
                     </label>
                 </div>
             ` : '';
 
             html += `
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-indigo-300 transition-colors flex flex-col justify-between">
-                <h5 class="font-black text-xs text-slate-800 mb-3 uppercase tracking-wider">${title}</h5>
-                <div class="space-y-1">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all flex flex-col justify-between relative overflow-hidden group">
+                <div class="absolute top-0 left-0 w-1 h-full bg-slate-200 group-hover:bg-indigo-500 transition-colors"></div>
+                
+                <h5 class="font-black text-sm text-slate-800 mb-3 flex items-center gap-2 pl-2">
+                    <i class="bi ${modData.icon} text-slate-400 group-hover:text-indigo-500 transition-colors"></i> 
+                    ${modData.title}
+                </h5>
+                
+                <div class="space-y-1 pl-2">
                     ${permissionToggles}
                 </div>
-                ${specialPermissionHtml}
+                
+                <div class="pl-2">
+                    ${specialPermissionHtml}
+                </div>
             </div>
             `;
         });
@@ -210,7 +227,7 @@ function renderPermissionsForm(currentPermissions = {}) {
     }
 
     if (!hasAnyModule) {
-        return `<div class="p-6 bg-red-50 border border-red-100 rounded-2xl text-center"><p class="text-sm font-bold text-red-600">Sua empresa não possui módulos ativados. Contate o administrador do sistema.</p></div>`;
+        return `<div class="p-6 bg-rose-50 border border-rose-100 rounded-2xl text-center"><p class="text-sm font-bold text-rose-600">Sua empresa não possui módulos ativados. Contate o suporte.</p></div>`;
     }
 
     return html;
@@ -218,7 +235,8 @@ function renderPermissionsForm(currentPermissions = {}) {
 
 // --- RENDERIZAR SELETOR DE ACESSOS (HIERARQUIA) ---
 function renderAccessSelector(user) {
-    if (!currentHierarchy || state.userRole === 'professional') return '';
+    if (!currentHierarchy) return '<p class="text-xs text-rose-500 p-4">Carregando lista de unidades...</p>';
+    if (state.userRole === 'professional') return '';
 
     const userAccessBranches = user?.accessibleEstablishments?.map(e => e.id) || [];
     const userAccessCompanies = user?.accessibleCompanies?.map(c => c.id) || [];
@@ -226,6 +244,10 @@ function renderAccessSelector(user) {
 
     if (role === 'owner' || role === 'group_admin') {
         return `<div class="p-5 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-800 text-sm font-black flex items-center justify-center gap-3"><i class="bi bi-shield-check text-2xl"></i> Acesso Total (Toda a Rede)</div>`;
+    }
+
+    if (!currentHierarchy.companies || currentHierarchy.companies.length === 0) {
+        return '<p class="text-xs text-slate-500 p-4">Nenhuma unidade disponível na hierarquia.</p>';
     }
 
     let html = `<div class="space-y-3 max-h-60 overflow-y-auto custom-scrollbar p-1">`;
@@ -278,10 +300,32 @@ async function showUserFormView(user = null) {
         } catch(err) { console.warn('Profissionais não carregados', err); }
     }
     
-    if (['owner', 'group_admin', 'company_admin'].includes(state.userRole) && !currentHierarchy) {
+    // Suporte robusto aos vários nomes de cargo Admin
+    if (['owner', 'group_admin', 'company_admin', 'admin'].includes(state.userRole) && !currentHierarchy) {
         try {
             const response = await establishmentApi.getHierarchy();
-            if(response) currentHierarchy = response;
+            
+            // CORREÇÃO: Traduzindo os dados do Backend (matrizes) para o formato visual do Frontend (companies e branches)
+            if (response && response.matrizes) {
+                const companies = [];
+                const branches = [];
+                
+                response.matrizes.forEach(matriz => {
+                    // Adiciona a matriz na lista de "empresas"
+                    companies.push({ id: matriz.id, name: matriz.name });
+                    
+                    // Se a matriz tiver filiais, adiciona na lista vinculando com o ID da matriz
+                    if (matriz.branches && matriz.branches.length > 0) {
+                        matriz.branches.forEach(filial => {
+                            branches.push({ id: filial.id, name: filial.name, companyId: matriz.id });
+                        });
+                    }
+                });
+                
+                currentHierarchy = { companies, branches };
+            } else if (response) {
+                currentHierarchy = response;
+            }
         } catch (error) {
             console.error('Falha ao buscar hierarquia', error);
             currentHierarchy = { companies: [], branches: [] };
@@ -357,7 +401,7 @@ async function showUserFormView(user = null) {
                 </div>
 
                 <div id="tab-acesso" class="tab-content hidden space-y-6 animate-fade-in-fast">
-                    ${['owner', 'group_admin', 'company_admin'].includes(state.userRole) ? `
+                    ${['owner', 'group_admin', 'company_admin', 'admin'].includes(state.userRole) ? `
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                         <h3 class="font-black text-xs text-slate-800 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3 mb-5"><i class="bi bi-diagram-3 text-indigo-500 text-lg"></i> Permissões de Rede</h3>
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -365,7 +409,7 @@ async function showUserFormView(user = null) {
                                 <label class="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2 ml-1">Qual o cargo/nível na empresa?</label>
                                 <select id="userRole" class="w-full p-3.5 border border-indigo-200 rounded-xl text-sm font-black text-indigo-900 bg-indigo-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-colors" ${isEditingOwner && !isCurrentUserOwner ? 'disabled' : ''}>
                                     ${isCurrentUserOwner ? `<option value="owner" ${user?.role === 'owner' ? 'selected' : ''}>Proprietário (Dono do Negócio)</option>` : ''}
-                                    ${['owner', 'group_admin'].includes(state.userRole) ? `<option value="group_admin" ${user?.role === 'group_admin' ? 'selected' : ''}>Administrador Geral (Acesso Total)</option>` : ''}
+                                    ${['owner', 'group_admin', 'admin'].includes(state.userRole) ? `<option value="group_admin" ${user?.role === 'group_admin' ? 'selected' : ''}>Administrador Geral (Acesso Total)</option>` : ''}
                                     <option value="company_admin" ${user?.role === 'company_admin' ? 'selected' : ''}>Gestor de Matriz / Empresa</option>
                                     <option value="branch_manager" ${user?.role === 'branch_manager' ? 'selected' : ''}>Gestor de Filial (Loja)</option>
                                     <option value="professional" ${user?.role === 'professional' ? 'selected' : ''}>Profissional / Recepção (Padrão)</option>
@@ -407,14 +451,12 @@ async function showUserFormView(user = null) {
 
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            // Remove active style from all
             tabBtns.forEach(b => {
                 b.classList.remove('active', 'text-indigo-600', 'border-indigo-600');
                 b.classList.add('text-slate-400', 'border-transparent');
             });
             tabContents.forEach(c => c.classList.add('hidden'));
 
-            // Add active to clicked
             btn.classList.add('active', 'text-indigo-600', 'border-indigo-600');
             btn.classList.remove('text-slate-400', 'border-transparent');
             const targetId = btn.getAttribute('data-tab');
@@ -429,6 +471,7 @@ async function showUserFormView(user = null) {
     if (roleSelect && hierarchyContainer) {
         roleSelect.addEventListener('change', (e) => {
             const tempUser = { ...user, role: e.target.value };
+            // Atualiza dinamicamente as unidades disponíveis sempre que troca o cargo
             hierarchyContainer.innerHTML = renderAccessSelector(tempUser);
             attachHierarchyListeners();
         });
@@ -459,9 +502,11 @@ async function showUserFormView(user = null) {
             const dot = toggleBg.nextElementSibling;
             if (e.target.checked) {
                 toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+                toggleBg.classList.replace('bg-indigo-200', 'bg-indigo-500'); // caso seja o botão special
                 dot.classList.add('transform', 'translate-x-4');
             } else {
                 toggleBg.classList.replace('bg-indigo-500', 'bg-slate-200');
+                toggleBg.classList.replace('bg-indigo-500', 'bg-indigo-200'); // caso seja o botão special
                 dot.classList.remove('transform', 'translate-x-4');
             }
         });
@@ -469,6 +514,7 @@ async function showUserFormView(user = null) {
             const toggleBg = cb.nextElementSibling;
             const dot = toggleBg.nextElementSibling;
             toggleBg.classList.replace('bg-slate-200', 'bg-indigo-500');
+            toggleBg.classList.replace('bg-indigo-200', 'bg-indigo-500');
             dot.classList.add('transform', 'translate-x-4');
         }
     });
@@ -582,25 +628,22 @@ async function showUserFormView(user = null) {
 // --- FUNÇÃO PARA BUSCAR E RENDERIZAR OS DADOS ---
 async function fetchAndRenderUsers() {
     const listContainer = document.getElementById('usersListContainer');
-    if (!listContainer) return; // Segurança contra atualizações se a view não estiver na tela
+    if (!listContainer) return; 
     
     listContainer.innerHTML = '<div class="col-span-full py-16 flex justify-center"><div class="loader"></div></div>';
     try {
         const activeIds = getActiveEstablishmentsFromHeader();
         
-        // Multi-context fetch: Busca para todos os IDs marcados no topo
         const userPromises = activeIds.map(id => usersApi.getUsers(id));
         const profPromises = activeIds.map(id => professionalsApi.getProfessionals(id));
         
         const userResults = await Promise.all(userPromises);
         const profResults = await Promise.all(profPromises);
         
-        // Desduplicar Usuários
         const userMap = new Map();
         userResults.flat().forEach(u => userMap.set(u.id, u));
         state.users = Array.from(userMap.values());
         
-        // Desduplicar Profissionais
         const profMap = new Map();
         profResults.flat().forEach(p => profMap.set(p.id, p));
         state.professionals = Array.from(profMap.values());
@@ -658,7 +701,6 @@ export async function loadUsersPage() {
         </div>
     `;
 
-    // Limpar eventos antigos se existirem
     if (usersPageClickListener) contentDiv.removeEventListener('click', usersPageClickListener);
     if (usersPageChangeListener) contentDiv.removeEventListener('change', usersPageChangeListener);
     if (globalContextChangeListener) {
@@ -666,11 +708,8 @@ export async function loadUsersPage() {
         document.removeEventListener('change', globalContextChangeListener);
     }
 
-    // --- NOVO: REAÇÃO AO SELETOR DE MÚLTIPLAS EMPRESAS ---
     globalContextChangeListener = (e) => {
-        // Se a mudança foi disparada pelo dropdown principal ou pelas checkboxes de contexto
         if (e.type === 'kairos:contextChanged' || e.target.closest('#multi-context-list')) {
-            // Só atualizar se a visualização principal do utilizador estiver aberta
             if (document.getElementById('user-list-view') && !document.getElementById('user-list-view').classList.contains('hidden')) {
                 fetchAndRenderUsers();
             }

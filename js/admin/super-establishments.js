@@ -171,7 +171,9 @@ function renderTenantsTable() {
 
     const html = localState.tenants.map(tenant => {
         const isBlocked = tenant.status === 'inactive' || tenant.status === 'blocked';
-        const planName = plansMap.get(tenant.planId) || 'Não Definido';
+        // CORREÇÃO: Busca o plano na raiz ou dentro do objeto subscription
+        const actualPlanId = tenant.planId || (tenant.subscription && tenant.subscription.planId);
+        const planName = plansMap.get(actualPlanId) || 'Não Definido';
         const dueDateStr = tenant.nextDueDate ? formatDateBR(tenant.nextDueDate) : '-';
         
         const isOverdue = tenant.lastPaymentStatus === 'overdue';
@@ -426,7 +428,11 @@ function renderViewTabs(tenant, planOptions) {
         
         setTimeout(() => {
             const planSelect = document.getElementById('edit-plan');
-            if (planSelect && tenant.planId) planSelect.value = tenant.planId;
+            // CORREÇÃO: Atribui corretamente a visualização do plano na tela de edição
+            const actualPlanId = tenant.planId || (tenant.subscription && tenant.subscription.planId);
+            if (planSelect && actualPlanId) {
+                planSelect.value = actualPlanId;
+            }
         }, 50);
     }
     else if (localState.activeTab === 'history') {

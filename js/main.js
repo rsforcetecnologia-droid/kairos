@@ -655,7 +655,8 @@ async function initialize() {
                         userPhoto = userData.photo || null;
                     }
                     
-                    state.userProfessionalId = userProfessionalId; 
+                    state.userProfessionalId = userProfessionalId;
+                    state.userRole = claims.role; 
 
                     if (userProfessionalId && !userPhoto) {
                         try {
